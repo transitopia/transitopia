@@ -2,7 +2,7 @@ import React from "react";
 import type * as MapLibreGL from "maplibre-gl";
 export type MapLibreGLType = typeof MapLibreGL;
 
-export const MapContext: React.Context<{ map?: maplibregl.Map }> = React.createContext({});
+export const MapContext = React.createContext<{ map: maplibregl.Map | undefined }>({ map: undefined });
 
 export const MapLibreGLContext: React.Context<{ maplibregl?: MapLibreGLType }> = React.createContext({});
 
