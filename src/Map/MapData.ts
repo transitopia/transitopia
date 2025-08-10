@@ -21,14 +21,5 @@ export interface MapCyclingElement {
 export interface MapParkingElement {
     id: string;
     type: "bicycle_parking",
-    amenity: "bicycle_parking"; // TODO: or "kick-scooter_parking"
-    bicycle_parking?: "stands" | "wall_loops" | "rack" | "shed" | string; // TODO: validate this in planetiler to restrict to known values
     name?: string;
-    operator?: string;
-    indoor?: "yes" | "no";
-    access?: "private" | "customers" | "members";
-    capacity?: number;
-    covered?: "yes" | "no" | string;
-    cyclestreets_id?: string;
-    fee?: "yes" | "no"; // There are more details potentially available from "fee:conditional" but we don't support that yet.
 }

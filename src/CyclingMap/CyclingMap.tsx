@@ -4,6 +4,7 @@ import { mapSource, layers, pathLayerIds, otherLayerIds } from "./cycling-map-la
 import { useMap, useMapLayerEvent } from "../Map/MapUtils.ts";
 import { type MapCyclingElement, type MapParkingElement } from "../Map/MapData.ts";
 import { MapOverlayWindow } from "../Map/MapOverlayWindow.tsx";
+import { InfoboxBikeParking } from "./InfoboxBikeParking.tsx";
 
 export const CyclingMap: React.FC = () => {
 
@@ -104,6 +105,8 @@ export const CyclingMap: React.FC = () => {
         }
     }, [map, selectedFeature]);
 
+    const closeInfobox = React.useCallback(() => setSelectedFeature(undefined), []);
+
     return <>
         {
             selectedFeature?.type === "cycling_way" ?
@@ -117,7 +120,7 @@ export const CyclingMap: React.FC = () => {
                             }
                         </div>
                         <div className="flex-none">
-                            <button className="hover:bg-gray-200 px-2 rounded-lg" onClick={() => setSelectedFeature(undefined)}>x</button>
+                            <button className="hover:bg-gray-200 px-2 rounded-lg" onClick={closeInfobox}>x</button>
                         </div>
                     </div>
                     {selectedFeature.construction ? <span className="inline-block m-1 px-1 rounded-md bg-red-600 text-white">Under Construction</span> : null}
@@ -132,21 +135,7 @@ export const CyclingMap: React.FC = () => {
                 </MapOverlayWindow>
             : selectedFeature?.type === "bicycle_parking" ?
                 <MapOverlayWindow className="top-24">
-                    <div className="flex">
-                        <div className="flex-1">
-                            {selectedFeature.name ?
-                                <><strong>{selectedFeature.name}</strong> (Bicycle Parking)</>
-                                :
-                                <strong>Bicycle Parking</strong>
-                            }
-                        </div>
-                        <div className="flex-none">
-                            <button className="hover:bg-gray-200 px-2 rounded-lg" onClick={() => setSelectedFeature(undefined)}>x</button>
-                        </div>
-                    </div>
-                    {selectedFeature.capacity ? <div>Capacity: {selectedFeature.capacity} bikes.</div> : null}
-                    <br />
-                    <a className="text-slate-500 text-sm" href={`https://www.openstreetmap.org/node/${selectedFeature.id}`}>View or edit this entry on OpenStreetMap</a>
+                    <InfoboxBikeParking featureType="node" osmId={parseInt(selectedFeature.id, 10)} closeInfobox={closeInfobox} />
                 </MapOverlayWindow>
             : null
         }
