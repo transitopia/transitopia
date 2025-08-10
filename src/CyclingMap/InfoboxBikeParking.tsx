@@ -32,9 +32,12 @@ export const InfoboxBikeParking: React.FC<Props> = (props) => {
             </div>
         </div>
         {
-            data ? <>
-                {data.capacity ? <div>Capacity: {data.capacity} bikes.</div> : null}
-            </> :
+            data ? <table>
+                <tbody>
+                    <tr><td className="pr-3">Capacity:</td><td>{data.capacity ? `${data.capacity} bikes` : <span className="text-slate-300">Unknown</span>}</td></tr>
+                    <tr><td className="pr-3">Type:</td><td>{data.bicycleParkingType ? data.bicycleParkingType : <span className="text-slate-300">Unknown</span>}</td></tr>
+                </tbody>
+            </table> :
             osmError ? <p>Error: unable to load data from OpenStreetMap.</p> :
             <>Loading...</>
         }

@@ -6,7 +6,15 @@ import { removeUndefinedKeys } from "./utils";
  * Bike racks or any other "parking space designed for bicycles, where one can leave a pedal cycle unattended in reasonable security"
  * https://wiki.openstreetmap.org/wiki/Tag:amenity%253Dbicycle_parking
  */
-export const bikeParkingSchema = z.object({
+export const bikeParkingSchema = z.preprocess((x, ctx) => {
+    // This messy preprocess code is just to rename 'bicycle_parking' to 'bicycleParkingType'
+    if (typeof x !== "object" || x === null) {
+        ctx.addIssue("not an object");
+        return x;
+    }
+    const {bicycle_parking: bicycleParkingType, ...rest} = x as Record<string, unknown>;
+    return {...rest, bicycleParkingType};
+}, z.object({
     ...osmFeatureSchema.shape,
     /** Transitopia-specific "type" key. */
     type: z.literal("bike_parking").default("bike_parking"),
@@ -72,6 +80,6 @@ export const bikeParkingSchema = z.object({
      */
     covered: z.transform(x => (x && x !== "no" ) ? true : (x == "no" ? false : undefined)).optional(),
    // Potentially add: access=*, capacity:cargo_bike=*, cargo_bike=*, fee=*
-}).transform(removeUndefinedKeys);
+}).transform(removeUndefinedKeys));
 
 export type BikeParkingFeature = z.infer<typeof bikeParkingSchema>;
