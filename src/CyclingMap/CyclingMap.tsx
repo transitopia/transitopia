@@ -135,7 +135,8 @@ export const CyclingMap: React.FC = () => {
                 </MapOverlayWindow>
             : selectedFeature?.type === "bicycle_parking" ?
                 <MapOverlayWindow className="top-24">
-                    <InfoboxBikeParking featureType="node" osmId={parseInt(selectedFeature.id, 10)} closeInfobox={closeInfobox} />
+                    {selectedFeature.osmNodeId && <InfoboxBikeParking featureType="node" osmId={parseInt(selectedFeature.osmNodeId, 10)} closeInfobox={closeInfobox} />}
+                    {selectedFeature.osmWayId && <InfoboxBikeParking featureType="way" osmId={parseInt(selectedFeature.osmWayId, 10)} closeInfobox={closeInfobox} />}
                 </MapOverlayWindow>
             : null
         }

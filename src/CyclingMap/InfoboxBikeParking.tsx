@@ -1,17 +1,18 @@
 import React from "react";
 
-import { useOsmNode } from "../OSMData/osm-data-loader.ts";
+import { useOsmFeature } from "../OSMData/osm-data-loader.ts";
 import { bikeParkingSchema } from "../OSMData/osm-micromobility.ts";
+import { OsmFeatureType } from "../OSMData/osm-types.ts";
 
 interface Props {
-    featureType: "node";
+    featureType: typeof OsmFeatureType.Node | typeof OsmFeatureType.Way;
     osmId: number | undefined;
     closeInfobox: () => void;
 }
 
 export const InfoboxBikeParking: React.FC<Props> = (props) => {
 
-    const { data, error: osmError } = useOsmNode(props.osmId, bikeParkingSchema);
+    const { data, error: osmError } = useOsmFeature(props.featureType, props.osmId, bikeParkingSchema);
     if (data) console.log('data', data);
 
     if (osmError) {

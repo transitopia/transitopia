@@ -22,4 +22,6 @@ export interface MapParkingElement {
     id: string;
     type: "bicycle_parking",
     name?: string;
+    osmNodeId?: string;
+    osmWayId?: string;
 }
