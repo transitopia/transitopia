@@ -22,9 +22,3 @@ java -jar target/planetiler-*-with-deps.jar --force --download
 ```
 
 The result will be in `./data/transitopia-cycling-british-columbia.pmtiles`
-
-Install it into development with:
-
-```
-cp ./data/transitopia-cycling-british-columbia.pmtiles ../transitopia-web/public/transitopia-cycling-bc.pmtiles
-```

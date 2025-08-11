@@ -25,3 +25,5 @@ dist-ssr
 
 # Large .pmtiles files
 *.pmtiles
+# Except this symlink:
+!public/transitopia-cycling-british-columbia.pmtiles

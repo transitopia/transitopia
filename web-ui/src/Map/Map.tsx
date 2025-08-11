@@ -15,7 +15,7 @@ const constrain = (value: number, min: number, max: number, def: number) =>
 const sourceUrlBase = import.meta.env.VITE_BASE_MAP_TILES_CDN ??
   "pmtiles://transitopia-base-bc.pmtiles";
 const sourceUrlCycling = import.meta.env.VITE_CYCLING_MAP_TILES_CDN ??
-  "pmtiles://transitopia-cycling-bc.pmtiles";
+  "pmtiles://transitopia-cycling-british-columbia.pmtiles";
 /** Do we need to load the PMTiles library? */
 const needPmTiles = [sourceUrlBase, sourceUrlCycling].some((url) =>
   url.startsWith("pmtiles://")
