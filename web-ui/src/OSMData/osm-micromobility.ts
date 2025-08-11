@@ -1,20 +1,25 @@
 import * as z from "zod";
-import { osmFeatureSchema, OsmFeatureType } from "./osm-types";
-import { removeUndefinedKeys } from "./utils";
+import { osmFeatureSchema, OsmFeatureType } from "./osm-types.ts";
+import { removeUndefinedKeys } from "./utils.ts";
 
 /**
  * Bike racks or any other "parking space designed for bicycles, where one can leave a pedal cycle unattended in reasonable security"
  * https://wiki.openstreetmap.org/wiki/Tag:amenity%253Dbicycle_parking
  */
-export const bikeParkingSchema = z.preprocess((x, ctx) => {
+export const bikeParkingSchema = z.preprocess(
+  (x, ctx) => {
     // This messy preprocess code is just to rename 'bicycle_parking' to 'bicycleParkingType'
     if (typeof x !== "object" || x === null) {
-        ctx.addIssue("not an object");
-        return x;
+      ctx.addIssue("not an object");
+      return x;
     }
-    const {bicycle_parking: bicycleParkingType, ...rest} = x as Record<string, unknown>;
-    return {...rest, bicycleParkingType};
-}, z.object({
+    const { bicycle_parking: bicycleParkingType, ...rest } = x as Record<
+      string,
+      unknown
+    >;
+    return { ...rest, bicycleParkingType };
+  },
+  z.object({
     ...osmFeatureSchema.shape,
     /** Transitopia-specific "type" key. */
     type: z.literal("bike_parking").default("bike_parking"),
@@ -27,31 +32,31 @@ export const bikeParkingSchema = z.preprocess((x, ctx) => {
      * https://wiki.openstreetmap.org/wiki/Key:bicycle_parking
      */
     bicycleParkingType: z.literal([
-        "stands",
-        "wall_loops",
-        "rack",
-        "shed",
-        "bollard",
-        "wide_stands",
-        "building",
-        "lockers",
-        "wave",
-        "anchors",
-        "floor",
-        "safe_loops",
-        "ground_slots",
-        "handlebar_holder",
-        "informal",
-        "two-tier",
-        "streetpod",
-        "lean_and_stick",
-        "upright_stands",
-        "tree",
-        "saddle_holder",
-        "crossbar",
-        "rope",
-        "arcadia",
-        "log_with_slots",
+      "stands",
+      "wall_loops",
+      "rack",
+      "shed",
+      "bollard",
+      "wide_stands",
+      "building",
+      "lockers",
+      "wave",
+      "anchors",
+      "floor",
+      "safe_loops",
+      "ground_slots",
+      "handlebar_holder",
+      "informal",
+      "two-tier",
+      "streetpod",
+      "lean_and_stick",
+      "upright_stands",
+      "tree",
+      "saddle_holder",
+      "crossbar",
+      "rope",
+      "arcadia",
+      "log_with_slots",
     ]).optional().catch(undefined),
     name: z.string().optional(),
     /**
@@ -69,7 +74,9 @@ export const bikeParkingSchema = z.preprocess((x, ctx) => {
      * boolean, based on OSM values like `yes`, `no`, `room`, `area`, `wall`.
      * https://wiki.openstreetmap.org/wiki/Key:indoor
      */
-    indoor: z.transform(x => (x && x !== "no" ) ? true : (x == "no" ? false : undefined)).optional(),
+    indoor: z.transform((x) =>
+      (x && x !== "no") ? true : (x == "no" ? false : undefined)
+    ).optional(),
     /**
      * "The total number of bikes that can be parked here. Please note that many stands are two-sided and can hold up to two bicycles for each stand."
      */
@@ -78,8 +85,11 @@ export const bikeParkingSchema = z.preprocess((x, ctx) => {
      * Is this covered?
      * boolean, based on OSM values like `yes`, `no`, `partial` (becomes `yes`)
      */
-    covered: z.transform(x => (x && x !== "no" ) ? true : (x == "no" ? false : undefined)).optional(),
-   // Potentially add: access=*, capacity:cargo_bike=*, cargo_bike=*, fee=*
-}).transform(removeUndefinedKeys));
+    covered: z.transform((x) =>
+      (x && x !== "no") ? true : (x == "no" ? false : undefined)
+    ).optional(),
+    // Potentially add: access=*, capacity:cargo_bike=*, cargo_bike=*, fee=*
+  }).transform(removeUndefinedKeys),
+);
 
 export type BikeParkingFeature = z.infer<typeof bikeParkingSchema>;
