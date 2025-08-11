@@ -8,6 +8,9 @@ on:
 jobs:
   Build-Cycling-Layer:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./map-layers
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -37,6 +40,9 @@ jobs:
     # Only deploy this once per day in any case.
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./map-layers
     needs: Build-Cycling-Layer
     env:
       RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_TYPE: s3

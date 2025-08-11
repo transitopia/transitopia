@@ -10,6 +10,9 @@ jobs:
   test-web-ui:
     name: Test and validate code (web-ui)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./web-ui
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -21,16 +24,16 @@ jobs:
         run: deno install --node-modules-dir=auto
       - name: Lint TypeScript code (web-ui)
         run: deno lint
-        working-directory: ./web-ui
       - name: Check Types (web-ui)
         run: deno run types
-        working-directory: ./web-ui
       - name: Check Formatting (web-ui)
         run: deno fmt --check
-        working-directory: ./web-ui
   build-web-ui:
     name: Build (web-ui)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./web-ui
     steps:
       - name: Check out code
         uses: actions/checkout@v4
