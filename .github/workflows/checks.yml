@@ -1,14 +1,15 @@
-name: Project Checks
+name: Web UI Checks
 
 on:
   pull_request:
+    paths: 'web-ui/**'
   push:
     branches:
       - main
 
 jobs:
   test-web-ui:
-    name: Test and validate code (web-ui)
+    name: Test and validate code
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -22,14 +23,14 @@ jobs:
           deno-version: v2.x
       - name: Install dependencies
         run: deno install --node-modules-dir=auto
-      - name: Lint TypeScript code (web-ui)
+      - name: Lint TypeScript code
         run: deno lint
-      - name: Check Types (web-ui)
+      - name: Check Types
         run: deno run types
-      - name: Check Formatting (web-ui)
+      - name: Check Formatting
         run: deno fmt --check
   build-web-ui:
-    name: Build (web-ui)
+    name: Build
     runs-on: ubuntu-latest
     defaults:
       run:

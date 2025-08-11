@@ -2,6 +2,7 @@ name: Build Transitopia Cycling Layer
 
 on:
   pull_request:
+    paths: 'map-layers/**'
   schedule:
     # Every day at 09:45 UTC
     - cron:  '45 9 * * *'
