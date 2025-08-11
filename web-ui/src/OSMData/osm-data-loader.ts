@@ -85,6 +85,7 @@ export function useOsmFeature<Schema extends z.ZodType>(
         otherTags: Object.fromEntries(
           Object.entries(nodeData.tags).filter(([k]) => !(k in parsed)),
         ),
+        // deno-lint-ignore no-explicit-any
       } as any;
       // All schemas MUST also match 'osmFeatureSchema':
       osmFeatureSchema.parse(result);

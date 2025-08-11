@@ -137,6 +137,7 @@ export const CyclingMap: React.FC = () => {
         {
           id: feature.id as string,
           type: "bicycle_parking",
+          // deno-lint-ignore no-explicit-any
           ...(feature.properties as any),
         } as MapParkingElement,
       );
@@ -199,6 +200,7 @@ export const CyclingMap: React.FC = () => {
               </div>
               <div className="flex-none">
                 <button
+                  type="button"
                   className="hover:bg-gray-200 px-2 rounded-lg"
                   onClick={closeInfobox}
                 >

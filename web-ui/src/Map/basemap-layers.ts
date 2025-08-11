@@ -28,7 +28,7 @@ export function interpolateZoom<T>(
       | ExpressionSpecification;
   },
 ): DataDrivenPropertyValueSpecification<T> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const spec: any[] = [];
   Object.entries(stops).forEach(([zoomValue, expr]) => {
     spec.push(Number(zoomValue.substring(1))); // Remove the 'z' prefix from the zoom value
@@ -53,7 +53,7 @@ export function interpolateZoomExp<T>(
       | ExpressionSpecification;
   },
 ): DataDrivenPropertyValueSpecification<T> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // deno-lint-ignore no-explicit-any
   const spec: any[] = [];
   Object.entries(stops).forEach(([zoomValue, expr]) => {
     spec.push(Number(zoomValue.substring(1))); // Remove the 'z' prefix from the zoom value
