@@ -1,9 +1,10 @@
 import React from "react";
 
-import { mapSource, layers } from "./cycling-map-layers.ts";
+import { mapSource, layers, pathLayerIds, otherLayerIds } from "./cycling-map-layers.ts";
 import { useMap, useMapLayerEvent } from "../Map/MapUtils.ts";
-import { MapCyclingElement } from "../Map/MapData.ts";
+import { type MapCyclingElement, type MapParkingElement } from "../Map/MapData.ts";
 import { MapOverlayWindow } from "../Map/MapOverlayWindow.tsx";
+import { InfoboxBikeParking } from "./InfoboxBikeParking.tsx";
 
 export const CyclingMap: React.FC = () => {
 
@@ -27,7 +28,7 @@ export const CyclingMap: React.FC = () => {
         }
     });
 
-    const [selectedFeature, setSelectedFeature] = React.useState<{ id: string, type: "cycling-way" } & MapCyclingElement>();
+    const [selectedFeature, setSelectedFeature] = React.useState<MapCyclingElement | MapParkingElement>();
     const hoveredFeatureIdRef = React.useRef<string | undefined>(undefined);
 
     const handleMouseOver = React.useCallback((e: maplibregl.MapLayerEventType["mousemove"]) => {
@@ -69,32 +70,27 @@ export const CyclingMap: React.FC = () => {
         }
     }, [map]);
 
-    useMapLayerEvent("mousemove", "cycling_path_1", handleMouseOver);
-    useMapLayerEvent("mousemove", "cycling_path_2", handleMouseOver);
-    useMapLayerEvent("mousemove", "cycling_path_3", handleMouseOver);
-    useMapLayerEvent("mousemove", "cycling_path_4", handleMouseOver);
-    useMapLayerEvent("mousemove", "cycling_path_construction", handleMouseOver);
-    useMapLayerEvent("mouseleave", "cycling_path_1", handleMouseOut);
-    useMapLayerEvent("mouseleave", "cycling_path_2", handleMouseOut);
-    useMapLayerEvent("mouseleave", "cycling_path_3", handleMouseOut);
-    useMapLayerEvent("mouseleave", "cycling_path_4", handleMouseOut);
-    useMapLayerEvent("mouseleave", "cycling_path_construction", handleMouseOut);
+    useMapLayerEvent("mousemove", handleMouseOver, ...pathLayerIds, ...otherLayerIds);
+    useMapLayerEvent("mouseleave", handleMouseOut, ...pathLayerIds, ...otherLayerIds);
 
     const handleClick = React.useCallback((e: maplibregl.MapLayerEventType["click"]) => {
-        if (!map) return;
-        if (map.getZoom() < 13) return;
-        const feature = e.features![0];
+        const feature = e.features?.[0];
+        if (!map || map.getZoom() < 13 || !feature) return;
         setSelectedFeature(
-            feature === undefined ? undefined : // This won't happen because we limit the event to features on our cycling layer
-            { id: feature.id as string, type: "cycling-way", ...(feature.properties as MapCyclingElement) }
+            { id: feature.id as string, type: "cycling_way", ...feature.properties } as MapCyclingElement
         );
     }, [map]);
 
-    useMapLayerEvent("click", "cycling_path_1", handleClick);
-    useMapLayerEvent("click", "cycling_path_2", handleClick);
-    useMapLayerEvent("click", "cycling_path_3", handleClick);
-    useMapLayerEvent("click", "cycling_path_4", handleClick);
-    useMapLayerEvent("click", "cycling_path_construction", handleClick);
+    const handlePointClick = React.useCallback((e: maplibregl.MapLayerEventType["click"]) => {
+        const feature = e.features?.[0];
+        if (!map || map.getZoom() < 13 || !feature) return;
+        setSelectedFeature(
+            { id: feature.id as string, type: "bicycle_parking", ...(feature.properties as any) } as MapParkingElement
+        );
+    }, [map]);
+
+    useMapLayerEvent("click", handleClick, ...pathLayerIds);
+    useMapLayerEvent("click", handlePointClick, ...otherLayerIds);
 
     React.useEffect(() => {
         if (!map) return;
@@ -109,9 +105,11 @@ export const CyclingMap: React.FC = () => {
         }
     }, [map, selectedFeature]);
 
+    const closeInfobox = React.useCallback(() => setSelectedFeature(undefined), []);
+
     return <>
         {
-            selectedFeature ?
+            selectedFeature?.type === "cycling_way" ?
                 <MapOverlayWindow className="top-24">
                     <div className="flex">
                         <div className="flex-1">
@@ -122,7 +120,7 @@ export const CyclingMap: React.FC = () => {
                             }
                         </div>
                         <div className="flex-none">
-                            <button className="hover:bg-gray-200 px-2 rounded-lg" onClick={() => setSelectedFeature(undefined)}>x</button>
+                            <button className="hover:bg-gray-200 px-2 rounded-lg" onClick={closeInfobox}>x</button>
                         </div>
                     </div>
                     {selectedFeature.construction ? <span className="inline-block m-1 px-1 rounded-md bg-red-600 text-white">Under Construction</span> : null}
@@ -135,7 +133,12 @@ export const CyclingMap: React.FC = () => {
                                 <span className="inline-block m-1 px-1 rounded-md bg-yellow-200">bike lane on roadway</span>
                     }
                 </MapOverlayWindow>
-                : null
+            : selectedFeature?.type === "bicycle_parking" ?
+                <MapOverlayWindow className="top-24">
+                    {selectedFeature.osmNodeId && <InfoboxBikeParking featureType="node" osmId={parseInt(selectedFeature.osmNodeId, 10)} closeInfobox={closeInfobox} />}
+                    {selectedFeature.osmWayId && <InfoboxBikeParking featureType="way" osmId={parseInt(selectedFeature.osmWayId, 10)} closeInfobox={closeInfobox} />}
+                </MapOverlayWindow>
+            : null
         }
     </>
 }

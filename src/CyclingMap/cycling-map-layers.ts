@@ -3,12 +3,32 @@
 // Code license: MIT (see repository's LICENSE file) 
 // Design license: CC-BY 4.0 https://creativecommons.org/licenses/by/4.0/
 
-import type { LayerSpecification } from "maplibre-gl";
+import type { ExpressionSpecification, LayerSpecification } from "maplibre-gl";
 import { defaultLineLayout, interpolateZoom, mapSource as baseMapSource } from "../Map/basemap-layers.ts";
 
 // Which map "source" file (which .pmtiles file) the cycling data layers are found in
 export const mapSource = "transitopia-cycling";
 
+/** Layers with cycling paths, as opposed to other things like bike rack locations */
+export const pathLayerIds = [
+    "cycling_path_1",
+    "cycling_path_2",
+    "cycling_path_3",
+    "cycling_path_4",
+    "cycling_path_construction"
+];
+export const otherLayerIds = ["bike_parking_point"];
+
+/**
+ * Helper: the resulting color should normally be 'color',
+ * but make it salmon colored when hovered or selected.
+ */
+export const colorWithHoverAndSelectionStates = (color: string) => [
+    "case",
+    ["boolean", ["feature-state", "selected"], false], "rgba(200, 100, 100, 1)",
+    ["boolean", ["feature-state", "hover"], false], "rgba(200, 100, 100, 1)",
+    color,
+] satisfies ExpressionSpecification;
 
 export const layers: LayerSpecification[] = [
     {
@@ -27,12 +47,7 @@ export const layers: LayerSpecification[] = [
             "visibility": "visible",
         },
         "paint": {
-            "line-color": [
-                "case",
-                ["boolean", ["feature-state", "selected"], false], "rgba(50, 50, 200, 1)",
-                ["boolean", ["feature-state", "hover"], false], "rgba(200, 100, 100, 1)",
-                "rgba(226, 109, 35, 1)",
-            ],
+            "line-color": colorWithHoverAndSelectionStates("rgba(226, 109, 35, 1)"),
             "line-width": interpolateZoom({ z10: 3, z16: 4 }),
             "line-dasharray": [0.4, 1],
         },
@@ -50,12 +65,7 @@ export const layers: LayerSpecification[] = [
         ],
         layout: defaultLineLayout,
         "paint": {
-            "line-color": [
-                "case",
-                ["boolean", ["feature-state", "selected"], false], "rgba(50, 50, 200, 1)",
-                ["boolean", ["feature-state", "hover"], false], "rgba(200, 100, 100, 1)",
-                "rgba(26, 109, 35, 1)",
-            ],
+            "line-color": colorWithHoverAndSelectionStates("rgba(26, 109, 35, 1)"),
             "line-width": interpolateZoom({ z10: 2, z16: 8 }),
         },
     },
@@ -72,12 +82,7 @@ export const layers: LayerSpecification[] = [
         ],
         layout: defaultLineLayout,
         "paint": {
-            "line-color": [
-                "case",
-                ["boolean", ["feature-state", "selected"], false], "rgba(50, 50, 200, 1)",
-                ["boolean", ["feature-state", "hover"], false], "rgba(200, 100, 100, 1)",
-                "rgba(26, 109, 35, 1)",
-            ],
+            "line-color": colorWithHoverAndSelectionStates("rgba(26, 109, 35, 1)"),
             "line-width": interpolateZoom({ z10: 2, z16: 7 }),
         },
     },
@@ -114,12 +119,7 @@ export const layers: LayerSpecification[] = [
         ],
         layout: defaultLineLayout,
         "paint": {
-            "line-color": [
-                "case",
-                ["boolean", ["feature-state", "selected"], false], "rgba(50, 50, 200, 1)",
-                ["boolean", ["feature-state", "hover"], false], "rgba(200, 100, 100, 1)",
-                "rgba(26, 109, 35, 1)",
-            ],
+            "line-color": colorWithHoverAndSelectionStates("rgba(26, 109, 35, 1)"),
             "line-width": interpolateZoom({ z10: 3, z16: 6 }),
             // dashed lines when zoomed in greater than 12
             "line-dasharray": {
@@ -142,12 +142,7 @@ export const layers: LayerSpecification[] = [
         ],
         layout: defaultLineLayout,
         "paint": {
-            "line-color": [
-                "case",
-                ["boolean", ["feature-state", "selected"], false], "rgba(50, 50, 200, 1)",
-                ["boolean", ["feature-state", "hover"], false], "rgba(200, 100, 100, 1)",
-                "rgba(26, 50, 35, 1)",
-            ],
+            "line-color": colorWithHoverAndSelectionStates("rgba(26, 50, 35, 1)"),
             "line-width": interpolateZoom({ z10: 2, z16: 4 }),
             "line-dasharray": [0.3, 2],
         },
@@ -182,6 +177,29 @@ export const layers: LayerSpecification[] = [
             "text-halo-blur": 1,
             "text-halo-color": "rgba(231, 231, 131, 0.72)",
             "text-halo-width": 2,
+        },
+    },
+    // Bike parking (points)
+    {
+        id: "bike_parking_point",
+        type: "circle",
+        source: mapSource,
+        "source-layer": "transitopia_cycling",
+        "filter": [
+            "all",
+            ["==", "$type", "Point"],
+            ["==", "amenity", "bicycle_parking"],
+        ],
+        layout: {
+            visibility: "visible",
+            "circle-sort-key": 1,
+        },
+        "paint": {
+            "circle-radius": interpolateZoom({ z8: 1, z12: 1, z16: 3 }),
+            "circle-color": "rgba(231, 231, 131, 0.72)",
+            "circle-stroke-width": interpolateZoom({ z8: 0.5, z12: 0.5, z16: 2 }),
+            "circle-stroke-color": colorWithHoverAndSelectionStates("rgba(26, 109, 35, 1)"),
+            "circle-stroke-opacity": interpolateZoom({ z12: 0, z14: 0.5, z16: 0.8 }),
         },
     },
 ];
