@@ -24,4 +24,4 @@ dist-ssr
 *.sw?
 
 # Large .pmtiles files
-public/*.pmtiles
+*.pmtiles
