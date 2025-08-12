@@ -1,8 +1,0 @@
-@import 'tailwindcss';
-
-@theme {
-  --color-cyclist-green: #5cc88d;
-  --color-pedestrian-orange: #eea550;
-  --color-transit-blue: #31cddc;
-  --color-main-blue: #043760;
-}

@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg
+  width="100%"
+  height="100%"
+  viewBox="0 0 285 285"
+  version="1.1"
+  xmlns="http://www.w3.org/2000/svg"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xml:space="preserve"
+  xmlns:serif="http://www.serif.com/"
+  style="fill-rule: evenodd; clip-rule: evenodd; stroke-linecap: round; stroke-linejoin: round; stroke-miterlimit: 1.5"
+>
+  <g transform="matrix(1,0,0,1,-57.8981,-21.3894)">
+    <g
+      id="Grey-Background"
+      serif:id="Grey Background"
+      transform="matrix(0.950342,0,0,0.950342,-36.2432,-31.4803)"
+    >
+      <circle
+        cx="248.587"
+        cy="205.695"
+        r="138.897"
+        style="fill: rgb(204, 204, 204)"
+      />
+    </g>
+    <path
+      d="M270.247,97.814L312.806,98.573L335.055,156.337L318.951,222.701L276.944,271.493L223.571,292.23L225.177,151.867L263.637,149.644L279.026,135.998L270.247,97.814Z"
+      style="fill: rgb(92, 200, 141)"
+    />
+    <g transform="matrix(-1,0,0,1,397.166,0)">
+      <path
+        d="M270.247,97.814L312.806,98.573L335.055,156.337L318.951,222.701L276.944,271.493L223.571,292.23L225.177,151.867L263.637,149.644L279.026,135.998L270.247,97.814Z"
+        style="fill: rgb(238, 165, 80)"
+      />
+    </g>
+    <path
+      d="M171.991,35.962L211.035,33.627L244.326,40.385L292.203,68.323L310.702,96.881L87.285,95.166L110.342,68.075L142.233,43.925L171.991,35.962Z"
+      style="fill: rgb(49, 205, 220)"
+    />
+    <g transform="matrix(1,0,0,1,0,14)">
+      <path
+        d="M137.535,185.439L134.521,184.231L134.867,190.02L137.97,190.995L137.535,185.439Z"
+        style="fill: none"
+      />
+    </g>
+    <g transform="matrix(1,0,0,1,0,14)">
+      <path d="M134.521,184.231L134.867,190.02" style="fill: none" />
+    </g>
+    <g
+      id="T-top"
+      serif:id="T top"
+      transform="matrix(1.09384,0,0,0.994392,-47.4567,-3.14657)"
+    >
+      <path
+        d="M299.366,129.935C299.366,116.613 289.533,105.797 277.422,105.797L175.035,105.797C162.924,105.797 153.091,116.613 153.091,129.935C153.091,143.257 162.924,154.073 175.035,154.073L277.422,154.073C289.533,154.073 299.366,143.257 299.366,129.935Z"
+        style="fill: white; stroke: rgb(4, 55, 96); stroke-width: 17.22px"
+      />
+    </g>
+    <g transform="matrix(1.11276,0,0,0.976264,-19.0051,16.3563)">
+      <rect
+        x="162.743"
+        y="128.055"
+        width="62.907"
+        height="158.769"
+        style="fill: rgb(4, 55, 96)"
+      />
+    </g>
+    <g transform="matrix(0.598175,0,0,0.984374,80.9257,14.0303)">
+      <rect
+        x="162.743"
+        y="128.055"
+        width="62.907"
+        height="158.769"
+        style="fill: white"
+      />
+    </g>
+    <g
+      id="Train-Track"
+      serif:id="Train Track"
+      transform="matrix(1,0,0,1,-3.21974,15.3591)"
+    >
+      <path
+        d="M93.549,81.522L312.89,81.522"
+        style="fill: none; stroke: rgb(4, 55, 96); stroke-width: 14px"
+      />
+    </g>
+    <g transform="matrix(0.950342,0,0,0.950342,-36.2432,-31.4803)">
+      <circle
+        cx="248.587"
+        cy="205.695"
+        r="138.897"
+        style="fill: none; stroke: rgb(4, 55, 96); stroke-width: 19.99px"
+      />
+    </g>
+  </g>
+  <g id="Paths"> </g>
+  <g id="Outlines"> </g>
+</svg>

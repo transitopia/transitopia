@@ -1,0 +1,6 @@
+{
+  "java.sources.organizeImports.staticStarThreshold": 5,
+  "java.sources.organizeImports.starThreshold": 999,
+  "java.saveActions.organizeImports": true,
+  "java.compile.nullAnalysis.mode": "automatic"
+}

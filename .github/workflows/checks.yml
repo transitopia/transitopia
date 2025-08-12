@@ -1,33 +1,44 @@
-name: Project Checks
+name: Web UI Checks
 
 on:
   pull_request:
+    paths: 'web-ui/**'
   push:
     branches:
       - main
 
 jobs:
-  test:
+  test-web-ui:
+    name: Test and validate code
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./web-ui
     steps:
       - name: Check out code
         uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # We use Deno instead of Node for this step since it has an all-in-one linter, code formatter, test runner, etc.
+      - uses: denoland/setup-deno@v2
         with:
-          node-version: 24
+          deno-version: v2.x
       - name: Install dependencies
-        run: npm ci
-      - name: Install oxlint
-        run: npm i oxlint@latest
+        run: deno install --node-modules-dir=auto
       - name: Lint TypeScript code
-        run: npm run lint
-      - name: Check Types (TypeScript)
-        run: npm run types
-  build:
+        run: deno lint
+      - name: Check Types
+        run: deno run types
+      - name: Check Formatting
+        run: deno fmt --check
+  build-web-ui:
+    name: Build
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./web-ui
     steps:
       - name: Check out code
         uses: actions/checkout@v4
+      # We build with Node for now since that's what Cloudflare uses to deploy
       - uses: actions/setup-node@v4
         with:
           node-version: 24

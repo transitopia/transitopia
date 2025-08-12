@@ -1,7 +1,7 @@
 {
-    "deno.enable": false,
+    "deno.enable": true,
     "editor.tabSize": 4,
     "[typescript]": {
-        "editor.defaultFormatter": "vscode.typescript-language-features",
+        "editor.defaultFormatter": "denoland.vscode-deno",
     }
 }

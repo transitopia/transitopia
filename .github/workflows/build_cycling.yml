@@ -1,0 +1,64 @@
+name: Build Transitopia Cycling Layer
+
+on:
+  pull_request:
+    paths: 'map-layers/**'
+  schedule:
+    # Every day at 09:45 UTC
+    - cron:  '45 9 * * *'
+jobs:
+  Build-Cycling-Layer:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./map-layers
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Cache local Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Compile code
+        run: ./mvnw clean package
+      - name: Ensure fresh OSM data
+        run: rm -f data/sources/british_columbia.osm.pbf
+      - name: Build the map using planetiler
+        run: java -jar target/planetiler-*-with-deps.jar --force --download
+      - name: Store resulting artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-maps
+          path: data/*.pmtiles
+  Deploy:
+    # Only deploy this once per day in any case.
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./map-layers
+    needs: Build-Cycling-Layer
+    env:
+      RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_TYPE: s3
+      RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_PROVIDER: Cloudflare
+      RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_ENDPOINT: ${{ secrets.RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_ENDPOINT }}
+      RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_ACCESS_KEY_ID: ${{ secrets.RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_SECRET_ACCESS_KEY: ${{ secrets.RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Skip time-consuming man-db update on apt installs
+        run: sudo apt-get remove --purge man-db
+      - name: Install rclone
+        run: sudo apt install --yes rclone
+      - name: Download compiled maps
+        uses: actions/download-artifact@v4
+        with:
+          name: compiled-maps
+      - name: upload
+        run: rclone copy transitopia-cycling-british-columbia.pmtiles transitopia_maps_r2:transitopia-maps --s3-no-check-bucket

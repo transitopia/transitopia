@@ -24,4 +24,6 @@ dist-ssr
 *.sw?
 
 # Large .pmtiles files
-public/*.pmtiles
+*.pmtiles
+# Except this symlink:
+!public/transitopia-cycling-british-columbia.pmtiles
