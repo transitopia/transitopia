@@ -8,7 +8,7 @@ Command to upload the data file:
 
     cd web-ui/public
     rclone copy transitopia-base-british-columbia.pmtiles transitopia-maps-r2:transitopia-maps --s3-no-check-bucket
-    rclone copy transitopia-micromobility-british-columbia.pmtiles transitopia-maps-r2:transitopia-maps --s3-no-check-bucket
+    rclone copy transitopia-cycling-british-columbia.pmtiles transitopia-maps-r2:transitopia-maps --s3-no-check-bucket
 
 The changes will not be visible for a while (4 hours?) unless you purge the cache at
 https://dash.cloudflare.com AND view the site in an incognito window.
