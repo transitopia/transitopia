@@ -3,6 +3,9 @@ name: Build Transitopia Cycling Layer
 on:
   pull_request:
     paths: 'map-layers/**'
+  push:
+    branches:
+      - main
   schedule:
     # Every day at 09:45 UTC
     - cron:  '45 9 * * *'
@@ -36,7 +39,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: compiled-maps
-          path: data/*.pmtiles
+          path: map-layers/data/*.pmtiles
   Deploy:
     # Only deploy this once per day in any case.
     if: github.event_name == 'schedule'
