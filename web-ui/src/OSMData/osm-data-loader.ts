@@ -3,10 +3,11 @@ import * as z from "zod";
 import { osmFeatureSchema, OsmFeatureType } from "./osm-types.ts";
 
 /**
- * The API endpoint for the Overpass API server that we're using.
- * Overpass is a read-only optimized API for querying OpenStreetMap data.
+ * The OpenStreetMap API endpoint.
+ * We could also use the Overpass API, but it requires POST requests
+ * which are less cacheable.
  */
-const overpassEndpoint = "https://overpass-api.de/api/interpreter";
+const osmEndpoint = "https://api.openstreetmap.org/api/0.6";
 
 class OsmEntityNotFound extends Error {}
 
@@ -60,13 +61,7 @@ export function useOsmFeature<Schema extends z.ZodType>(
   return useQuery({
     queryKey: ["osmFeature", featureType, id],
     queryFn: async () => {
-      const response = await fetch(overpassEndpoint, {
-        method: "POST",
-        body: "data=" +
-          encodeURIComponent(
-            `[out:json][timeout:10]; ${featureType}(${id}); out;`,
-          ),
-      });
+      const response = await fetch(`${osmEndpoint}/${featureType}/${id}.json`);
       const fullData = await response.json();
       if (fullData.elements.length !== 1) {
         throw new OsmEntityNotFound();
