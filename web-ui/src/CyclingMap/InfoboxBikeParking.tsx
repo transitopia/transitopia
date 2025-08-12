@@ -1,7 +1,7 @@
 import React from "react";
 
 import { useOsmFeature } from "../OSMData/osm-data-loader.ts";
-import { bikeParkingSchema } from "../OSMData/osm-micromobility.ts";
+import { bikeParkingSchema } from "../OSMData/osm-cycling.ts";
 import { OsmFeatureType } from "../OSMData/osm-types.ts";
 
 interface Props {
