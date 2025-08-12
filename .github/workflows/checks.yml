@@ -16,7 +16,7 @@ jobs:
         working-directory: ./web-ui
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       # We use Deno instead of Node for this step since it has an all-in-one linter, code formatter, test runner, etc.
       - uses: denoland/setup-deno@v2
         with:
@@ -37,7 +37,7 @@ jobs:
         working-directory: ./web-ui
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       # We build with Node for now since that's what Cloudflare uses to deploy
       - uses: actions/setup-node@v4
         with:
