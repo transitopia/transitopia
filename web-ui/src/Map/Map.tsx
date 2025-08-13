@@ -46,19 +46,19 @@ export const Map: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       parseFloat(initialUrl.searchParams.get("z") ?? ""),
       5,
       20,
-      10,
+      13,
     );
     const initialLng = constrain(
       parseFloat(initialUrl.searchParams.get("lng") ?? ""),
       -140,
       -115,
-      -122.94536684722912,
+      -123.135,
     );
     const initialLat = constrain(
       parseFloat(initialUrl.searchParams.get("lat") ?? ""),
       47,
       60,
-      49.241584389313424,
+      49.272,
     );
 
     const map = new maplibregl.Map({

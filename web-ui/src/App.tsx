@@ -49,7 +49,9 @@ function App() {
           <Route path="/walking">
             <WalkingMap />
           </Route>
-          <Route path="/"></Route>
+          <Route path="/">
+            <Redirect to="/cycling" />
+          </Route>
           <Route>
             {/* Not found */}
             <Redirect to="/" />
