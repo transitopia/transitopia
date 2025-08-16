@@ -128,6 +128,30 @@ public class Cycling implements
                     .setAttr("oneway", 0)
                     .setAttr("class", "lane")
                     .setAttr("side", "both");
+
+                // Check for dooring risk:
+                if (feature.hasTag("parking", "lane", "street_side") || feature.hasTag("parking:both", "lane", "street_side")) {
+                    // should we ignore if "parking:[side]:orientation" is "diagonal" or "perpendicular" ?
+                    newLine.setAttr("comfort", COMFORT_LEAST).setAttr("dooring_risk", true);
+                } else if (feature.hasTag("parking:both", "separate")) {
+                    // The parking is a separate OSM way, so theoretically we'd need to implement
+                    // preprocessOsmWay() to create a list of nearby parking areas first similar to
+                    // https://github.com/onthegomap/planetiler/discussions/1071#discussioncomment-10988131
+                    // to identify the specific parking area and check if it has orientation=parallel and
+                    // parking=street_side or parking=lane... but so far I've only found a few instances
+                    // of this alongside bike lanes in BC and they're all dooring risks (no false
+                    // positives we need to filter out).
+                    newLine.setAttr("comfort", COMFORT_LEAST).setAttr("dooring_risk", true);
+                } else if (
+                    feature.hasTag("parking:right", "separate", "lane", "street_side") ||
+                    feature.hasTag("parking:left", "separate", "lane", "street_side")
+                ) {
+                    // This is a complex case that we don't yet handle well - the bike lane in one direction
+                    // is fine, but in the other direction has a dooring risk. So since we're only showing
+                    // one line for both directions, we downgrade this whole segment of the route.
+                    // Also see note above about how "separate" might need to be further filtered.
+                    newLine.setAttr("comfort", COMFORT_LEAST).setAttr("dooring_risk", true);
+                }
             } else if (feature.hasTag("highway") && !feature.hasTag("oneway", "yes") &&
                 ((feature.hasTag("cycleway:right", "lane") && feature.hasTag("cycleway:right:oneway", "no")) ||
                     (feature.hasTag("cycleway:left", "lane") && feature.hasTag("cycleway:left:oneway", "no")))) {
@@ -143,6 +167,7 @@ public class Cycling implements
                 (feature.hasTag("cycleway", "lane") ||
                     feature.hasTag("cycleway:right", "lane") ||
                     feature.hasTag("cycleway:left", "lane"))) {
+                final String side = feature.hasTag("cycleway:left", "lane") ? "left" : "right";
                 // A one-way bike lane on a one-way roadway, not separated from traffic
                 newLine = features.line(LAYER_NAME)
                     .setAttr("shared_with_pedestrians", false)
@@ -156,7 +181,19 @@ public class Cycling implements
                             1 // Default is one way like the "parent" roadway
                     )
                     .setAttr("class", "lane")
-                    .setAttr("side", feature.hasTag("cycleway:left", "lane") ? "left" : "right");
+                    .setAttr("side", side);
+                
+                if (feature.hasTag("parking:" + side, "separate", "lane", "street_side")) {
+                    // The bike lane is adjacent to parking
+                    // TODO: need some way to negate this if there is a buffer between the bike lane and
+                    // the parking lane. But https://wiki.openstreetmap.org/wiki/Key:cycleway:buffer is
+                    // explicitly only for a buffer between the bike lane and cars.
+                    // Can possibly use "cycleway:right:separation:right" etc. per 
+                    // https://wiki.openstreetmap.org/wiki/Proposal:Separation but this doesn't have
+                    // much adoption.
+                    // Also see note above about how "separate" might need to be further filtered.
+                    newLine.setAttr("comfort", COMFORT_LEAST).setAttr("dooring_risk", true);
+                }
             } else if (feature.hasTag("highway") && feature.hasTag("cycleway", "shared_lane", "shared") ||
                 feature.hasTag("cycleway:both", "shared_lane", "shared")) {
                 // A lane that is shared with motor vehicles
@@ -192,13 +229,21 @@ public class Cycling implements
             )) {
                 // The street is a two-way street but the bike lane is a one-way bike lane on one side only.
                 // "L2" on https://wiki.openstreetmap.org/wiki/Bicycle (highway=* + cycleway:right=lane)
+                final String side = feature.hasTag("cycleway:left", "lane") ? "left" : "right";
                 newLine = features.line(LAYER_NAME)
                     .setAttr("shared_with_pedestrians", false)
                     .setAttr("shared_with_vehicles", false)
                     .setAttr("comfort", COMFORT_LOW)
                     .setAttr("oneway", feature.hasTag("cycleway:left", "lane") ? -1 : 1)
                     .setAttr("class", "lane")
-                    .setAttr("side", feature.hasTag("cycleway:left", "lane") ? "left" : "right");
+                    .setAttr("side", side);
+
+                if (
+                    feature.hasTag("parking:both", "separate", "lane", "street_side") ||
+                    feature.hasTag("parking:" + side, "separate", "lane", "street_side")
+                ) {
+                    newLine.setAttr("comfort", COMFORT_LEAST).setAttr("dooring_risk", true);
+                }
             }
             // TODO: support other types of cycle paths
             // e.g. https://www.openstreetmap.org/way/74096518 (mixed lane + shared_lane)

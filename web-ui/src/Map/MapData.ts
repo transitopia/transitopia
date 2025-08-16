@@ -8,6 +8,7 @@ export interface MapCyclingElement {
   construction?: boolean;
   shared_with_pedestrians: boolean;
   shared_with_vehicles: boolean;
+  dooring_risk?: boolean;
   surface?: string;
   class: "lane" | "track";
   comfort: 4 | 3 | 2 | 1;
