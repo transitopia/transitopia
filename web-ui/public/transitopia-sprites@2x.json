@@ -1,0 +1,16 @@
+{
+  "chevron-green": {
+    "height": 20,
+    "pixelRatio": 2,
+    "width": 40,
+    "x": 0,
+    "y": 0
+  },
+  "chevron-white": {
+    "height": 20,
+    "pixelRatio": 2,
+    "width": 40,
+    "x": 0,
+    "y": 20
+  }
+}

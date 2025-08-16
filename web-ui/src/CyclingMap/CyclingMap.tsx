@@ -229,7 +229,7 @@ export const CyclingMap: React.FC = () => {
                 </span>
               )
               : null}
-            {selectedFeature.oneway == 1
+            {selectedFeature.oneway == 1 || selectedFeature.oneway == -1
               ? (
                 <span className="inline-block m-1 px-1 rounded-md bg-yellow-200">
                   one way

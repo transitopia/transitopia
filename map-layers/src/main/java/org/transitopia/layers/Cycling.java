@@ -186,9 +186,22 @@ public class Cycling implements
                             0
                     )
                     .setAttr("class", "lane");
+            } else if (feature.hasTag("highway") && (
+                (feature.hasTag("cycleway:right", "lane") && feature.hasTag("cycleway:left", "no")) ||
+                (feature.hasTag("cycleway:left", "lane") && feature.hasTag("cycleway:right", "no"))
+            )) {
+                // The street is a two-way street but the bike lane is a one-way bike lane on one side only.
+                // "L2" on https://wiki.openstreetmap.org/wiki/Bicycle (highway=* + cycleway:right=lane)
+                newLine = features.line(LAYER_NAME)
+                    .setAttr("shared_with_pedestrians", false)
+                    .setAttr("shared_with_vehicles", false)
+                    .setAttr("comfort", COMFORT_LOW)
+                    .setAttr("oneway", feature.hasTag("cycleway:left", "lane") ? -1 : 1)
+                    .setAttr("class", "lane")
+                    .setAttr("side", feature.hasTag("cycleway:left", "lane") ? "left" : "right");
             }
-            // TODO: support "L2" on https://wiki.openstreetmap.org/wiki/Bicycle (highway=* + cycleway:right=lane)
             // TODO: support other types of cycle paths
+            // e.g. https://www.openstreetmap.org/way/74096518 (mixed lane + shared_lane)
 
             if (newLine != null) {
                 newLine

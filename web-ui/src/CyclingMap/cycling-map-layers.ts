@@ -155,6 +155,60 @@ export const layers: LayerSpecification[] = [
     },
   },
   {
+    id: "cycling_path_oneway_arrows_white",
+    type: "symbol",
+    source: mapSource,
+    "source-layer": "transitopia_cycling",
+    minzoom: 8,
+    "filter": [
+      "all",
+      ["==", "$type", "LineString"],
+      ["any", ["==", "oneway", 1], ["==", "oneway", -1]],
+      [">=", "comfort", 3],
+      ["!=", "construction", true],
+    ],
+    paint: {
+      "icon-opacity": interpolateZoom({ z1: 0, z14: 0, z15: 0.9 }),
+    },
+    layout: {
+      "icon-image": "chevron-white",
+      "icon-rotate": 90,
+      "icon-size": 0.6,
+      "icon-allow-overlap": true,
+      "visibility": "visible",
+      "symbol-spacing": 40,
+      "symbol-placement": "line",
+    },
+  },
+  {
+    id: "cycling_path_oneway_arrows_green",
+    type: "symbol",
+    source: mapSource,
+    "source-layer": "transitopia_cycling",
+    minzoom: 8,
+    "filter": [
+      "all",
+      ["==", "$type", "LineString"],
+      ["any", ["==", "oneway", 1], ["==", "oneway", -1]],
+      ["<=", "comfort", 2],
+      ["!=", "construction", true],
+    ],
+    paint: {
+      "icon-opacity": interpolateZoom({ z1: 0, z14: 0, z15: 0.9 }),
+    },
+    layout: {
+      "icon-image": "chevron-green",
+      // Rotate the icon 90° for the common case, one way in the direction of the street.
+      // Rotate it 270° for the rare case, one way in the opposite direction of the street
+      "icon-rotate": ["case", ["==", ["get", "oneway"], 1], 90, 270],
+      "icon-size": 0.8,
+      "icon-allow-overlap": true,
+      "visibility": "visible",
+      "symbol-spacing": 40,
+      "symbol-placement": "line",
+    },
+  },
+  {
     id: "cycling_path_name",
     type: "symbol",
     // TODO: move the cycling path names into our Transitopia cycling layer
