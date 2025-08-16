@@ -4,10 +4,7 @@
 // Design license: CC-BY 4.0 https://creativecommons.org/licenses/by/4.0/
 
 import type { ExpressionSpecification, LayerSpecification } from "maplibre-gl";
-import {
-  defaultLineLayout,
-  interpolateZoom,
-} from "../Map/basemap-layers.ts";
+import { defaultLineLayout, interpolateZoom } from "../Map/basemap-layers.ts";
 
 // Which map "source" file (which .pmtiles file) the cycling data layers are found in
 export const mapSource = "transitopia-cycling";
@@ -217,6 +214,7 @@ export const layers: LayerSpecification[] = [
       ["==", "$type", "LineString"],
       ["any", ["==", "class", "track"], ["==", "class", "lane"]],
       ["has", "name"],
+      [">=", "comfort", 2],
     ],
     "layout": {
       "symbol-placement": "line",
