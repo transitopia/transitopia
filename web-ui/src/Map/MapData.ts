@@ -11,7 +11,7 @@ export interface MapCyclingElement {
   surface?: string;
   class: "lane" | "track";
   comfort: 4 | 3 | 2 | 1;
-  oneway: 0 | 1;
+  oneway: 0 | 1 | -1;
 
   // Mostly for things under construction:
   website?: string;

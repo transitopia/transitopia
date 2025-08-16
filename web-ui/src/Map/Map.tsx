@@ -69,7 +69,7 @@ export const Map: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         version: 8,
         name: "Transitopia",
         glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
-        sprite: "https://openmaptiles.github.io/positron-gl-style/sprite",
+        sprite: `${location.protocol}${location.host}/transitopia-sprites`,
         sources: {
           [mapSource]: {
             type: "vector",
