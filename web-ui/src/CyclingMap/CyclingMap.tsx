@@ -215,6 +215,13 @@ export const CyclingMap: React.FC = () => {
                 </span>
               )
               : null}
+            {selectedFeature.dooring_risk
+              ? (
+                <span className="inline-block m-1 px-1 rounded-md bg-red-600 text-white">
+                  risk of dooring (adjacent parking)
+                </span>
+              )
+              : null}
             {selectedFeature.shared_with_vehicles
               ? (
                 <span className="inline-block m-1 px-1 rounded-md bg-red-600 text-white">
