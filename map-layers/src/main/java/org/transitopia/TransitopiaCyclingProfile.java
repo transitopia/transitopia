@@ -1,11 +1,8 @@
 package org.transitopia;
 
-import com.onthegomap.planetiler.FeatureCollector;
 import com.onthegomap.planetiler.ForwardingProfile;
 import com.onthegomap.planetiler.Planetiler;
-import com.onthegomap.planetiler.Profile;
 import com.onthegomap.planetiler.config.PlanetilerConfig;
-import com.onthegomap.planetiler.reader.SourceFeature;
 import com.onthegomap.planetiler.reader.osm.OsmElement;
 import com.onthegomap.planetiler.stats.Stats;
 import com.onthegomap.planetiler.util.Translations;
@@ -72,16 +69,4 @@ public class TransitopiaCyclingProfile extends ForwardingProfile {
     // 20gb for a 67gb OSM file is safe, although less might be OK too
     return osmFileSize * 20 / 67;
   }
-
-  /** Layers should implement this interface to subscribe to every OSM element. */
-  public interface OsmAllProcessor {
-
-    /**
-     * Process an OSM element during the second pass through the OSM data file.
-     *
-     * @see Profile#processFeature(SourceFeature, FeatureCollector)
-     */
-    void processAllOsm(SourceFeature feature, FeatureCollector features);
-  }
-
 }
