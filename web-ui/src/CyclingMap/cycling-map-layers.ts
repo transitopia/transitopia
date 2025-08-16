@@ -7,7 +7,6 @@ import type { ExpressionSpecification, LayerSpecification } from "maplibre-gl";
 import {
   defaultLineLayout,
   interpolateZoom,
-  mapSource as baseMapSource,
 } from "../Map/basemap-layers.ts";
 
 // Which map "source" file (which .pmtiles file) the cycling data layers are found in
@@ -211,19 +210,18 @@ export const layers: LayerSpecification[] = [
   {
     id: "cycling_path_name",
     type: "symbol",
-    // TODO: move the cycling path names into our Transitopia cycling layer
-    source: baseMapSource,
-    "source-layer": "transportation_name",
+    source: mapSource,
+    "source-layer": "transitopia_cycling",
     "filter": [
       "all",
-      ["!=", "class", "motorway"],
       ["==", "$type", "LineString"],
-      ["==", "subclass", "cycleway"],
+      ["any", ["==", "class", "track"], ["==", "class", "lane"]],
+      ["has", "name"],
     ],
     "layout": {
       "symbol-placement": "line",
       "symbol-spacing": 350,
-      "text-field": "{name:latin} {name:nonlatin}",
+      "text-field": "{name}",
       "text-font": ["Metropolis Regular"],
       "text-max-angle": 30,
       "text-pitch-alignment": "viewport",
