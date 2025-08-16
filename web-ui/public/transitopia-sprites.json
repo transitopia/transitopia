@@ -4,13 +4,20 @@
     "pixelRatio": 1,
     "width": 20,
     "x": 0,
-    "y": 0
+    "y": 17
   },
   "chevron-white": {
     "height": 10,
     "pixelRatio": 1,
     "width": 20,
+    "x": 17,
+    "y": 0
+  },
+  "circle-11": {
+    "height": 17,
+    "pixelRatio": 1,
+    "width": 17,
     "x": 0,
-    "y": 10
+    "y": 0
   }
 }
