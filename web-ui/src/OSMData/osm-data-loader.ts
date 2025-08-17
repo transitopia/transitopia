@@ -72,7 +72,9 @@ export function useOsmFeature<Schema extends z.ZodType>(
         featureType,
         osmId: id,
         ...(nodeData.type === "way" ? { nodes: nodeData.nodes } : undefined),
-        ...(nodeData.type === "relation" ? { members: nodeData.members } : undefined),
+        ...(nodeData.type === "relation" ?
+          { members: nodeData.members }
+        : undefined),
       }) as Record<string, unknown>;
       // For any tags that didn't match the schema or weren't expected, put them in 'otherTags'
       const result = {

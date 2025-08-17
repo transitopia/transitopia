@@ -17,14 +17,14 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transportation",
-    "filter": [
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["==", "class", "path"],
       ["!=", "subclass", "cycleway"],
     ],
     layout: defaultLineLayout,
-    "paint": {
+    paint: {
       "line-color": "rgb(238, 165, 80)",
       // "line-opacity": 0.9,
       "line-width": interpolateZoom({ z13: 1, z20: 10 }),
@@ -35,13 +35,13 @@ export const layers: LayerSpecification[] = [
     type: "symbol",
     source: mapSource,
     "source-layer": "transportation_name",
-    "filter": [
+    filter: [
       "all",
       ["!=", "class", "motorway"],
       ["==", "$type", "LineString"],
       ["==", "subclass", "path"],
     ],
-    "layout": {
+    layout: {
       "symbol-placement": "line",
       "symbol-spacing": 350,
       "text-field": "{name:latin} {name:nonlatin}",
@@ -51,9 +51,9 @@ export const layers: LayerSpecification[] = [
       "text-rotation-alignment": "map",
       "text-size": 10,
       "text-transform": "uppercase",
-      "visibility": "visible",
+      visibility: "visible",
     },
-    "paint": {
+    paint: {
       "text-color": "rgb(50, 50, 50)",
       "text-halo-blur": 1,
       "text-halo-color": "rgba(238, 165, 80, 0.5)",
