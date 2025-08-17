@@ -170,7 +170,7 @@ export const CyclingMap: React.FC = () => {
   }, [map, selectedFeature]);
 
   const closeInfobox = React.useCallback(
-    () => setSelectedFeature(undefined),
+    () => { setSelectedFeature(undefined) },
     [],
   );
 

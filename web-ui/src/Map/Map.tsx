@@ -130,7 +130,7 @@ export const AsyncMapLibreGLLoader: React.FC<
   const [maplibregl, setMaplibregl] = React.useState<MapLibreGLType>();
 
   React.useEffect(() => {
-    (async function () {
+    void (async function () {
       const maplibregl = await import("maplibre-gl");
       setMaplibregl(maplibregl);
     })();
