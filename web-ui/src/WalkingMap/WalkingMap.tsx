@@ -27,13 +27,11 @@ export const WalkingMap: React.FC = () => {
         The Transitopia walking map is not yet developed, but for now you can
         see all the known pedestrian paths from OpenStreetMap.
       </MapOverlayWindow>
-      {zoom < 14
-        ? (
-          <MapOverlayWindow className="top-56 lg:top-48">
-            Zoom in to see walkways.
-          </MapOverlayWindow>
-        )
-        : null}
+      {zoom < 14 ?
+        <MapOverlayWindow className="top-56 lg:top-48">
+          Zoom in to see walkways.
+        </MapOverlayWindow>
+      : null}
     </>
   );
 };

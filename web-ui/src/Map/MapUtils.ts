@@ -2,9 +2,9 @@ import React from "react";
 import type * as MapLibreGL from "maplibre-gl";
 export type MapLibreGLType = typeof MapLibreGL;
 
-export const MapContext = React.createContext<
-  { map: maplibregl.Map | undefined }
->({ map: undefined });
+export const MapContext = React.createContext<{
+  map: maplibregl.Map | undefined;
+}>({ map: undefined });
 
 export const MapLibreGLContext: React.Context<{ maplibregl?: MapLibreGLType }> =
   React.createContext({});
@@ -30,8 +30,9 @@ export function useMapLayerEvent<
     layerNames.forEach((layerName) => map.on(eventName, layerName, handler));
     // Cleanup when the handler changes or the component is destroyed:
     return () => {
-      layerNames.forEach((layerName) =>
-        map?.off(eventName, layerName, handler)
+      layerNames.forEach(
+        // prettier-ignore https://github.com/prettier/prettier/issues/2856
+        (layerName) => map?.off(eventName, layerName, handler),
       );
     };
   }, [map, eventName, handler, ...layerNames]); // Note: without '...', layerNames would be shown as changing every time.

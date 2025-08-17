@@ -16,8 +16,7 @@ function App() {
         <div className="w-screen h-screen text-center bg-gray-200 leading-[100vh] text-gray-400 text-2xl">
           Loading Transitopia...
         </div>
-      }
-    >
+      }>
       <Map>
         <MapOverlayWindow className="top-5 flex items-center">
           <img
@@ -30,15 +29,13 @@ function App() {
           <LinkWithQuery
             href="/walking"
             className="mx-1 p-1 w-8 h-8 text-center rounded-full bg-gray-50 hover:bg-gray-100"
-            classNameActive="bg-pedestrian-orange!"
-          >
+            classNameActive="bg-pedestrian-orange!">
             <Icon icon="person-walking" altText="Walking" />
           </LinkWithQuery>
           <LinkWithQuery
             href="/cycling"
             className="mx-1 p-1  w-8 h-8 text-center rounded-full bg-gray-50 hover:bg-gray-100"
-            classNameActive="bg-cyclist-green!"
-          >
+            classNameActive="bg-cyclist-green!">
             <Icon icon="bicycle" altText="Cycling" />
           </LinkWithQuery>
         </MapOverlayWindow>

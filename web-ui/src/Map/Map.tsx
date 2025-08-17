@@ -10,15 +10,21 @@ import {
 
 /** Constrain a numeric value to a certain range */
 const constrain = (value: number, min: number, max: number, def: number) =>
-  isNaN(value) ? def : value > max ? max : value < min ? min : value;
+  isNaN(value) ? def
+  : value > max ? max
+  : value < min ? min
+  : value;
 /** Where we load our map tiles from */
-const sourceUrlBase = import.meta.env.VITE_BASE_MAP_TILES_CDN ??
-  "pmtiles://transitopia-base-bc.pmtiles";
-const sourceUrlCycling = import.meta.env.VITE_CYCLING_MAP_TILES_CDN ??
-  "pmtiles://transitopia-cycling-british-columbia.pmtiles";
+const sourceUrlBase =
+  import.meta.env.VITE_BASE_MAP_TILES_CDN
+  ?? "pmtiles://transitopia-base-bc.pmtiles";
+const sourceUrlCycling =
+  import.meta.env.VITE_CYCLING_MAP_TILES_CDN
+  ?? "pmtiles://transitopia-cycling-british-columbia.pmtiles";
 /** Do we need to load the PMTiles library? */
-const needPmTiles = [sourceUrlBase, sourceUrlCycling].some((url) =>
-  url.startsWith("pmtiles://")
+const needPmTiles = [sourceUrlBase, sourceUrlCycling].some(
+  // prettier-ignore https://github.com/prettier/prettier/issues/2856
+  (url) => url.startsWith("pmtiles://"),
 );
 // A global to track loading of pmtiles
 let pmTilesInitialized = false;
@@ -124,13 +130,14 @@ export const Map: React.FC<{ children: React.ReactNode }> = ({ children }) => {
  * MapLibreGL JS is a _huge_ dependency, so we load it asynchronously and display a loading message
  * while it's loading. Simply wrap any map components in this loader component.
  */
-export const AsyncMapLibreGLLoader: React.FC<
-  { children: React.ReactNode; loadingContent: React.ReactNode }
-> = ({ children, loadingContent }) => {
+export const AsyncMapLibreGLLoader: React.FC<{
+  children: React.ReactNode;
+  loadingContent: React.ReactNode;
+}> = ({ children, loadingContent }) => {
   const [maplibregl, setMaplibregl] = React.useState<MapLibreGLType>();
 
   React.useEffect(() => {
-    (async function () {
+    void (async function () {
       const maplibregl = await import("maplibre-gl");
       setMaplibregl(maplibregl);
     })();
@@ -138,9 +145,13 @@ export const AsyncMapLibreGLLoader: React.FC<
 
   if (maplibregl) {
     // MapLibreGL JS has loaded. Render the children, and make 'maplibregl' available to them via context:
-    return React.createElement(MapLibreGLContext.Provider, {
-      value: { maplibregl },
-    }, children);
+    return React.createElement(
+      MapLibreGLContext.Provider,
+      {
+        value: { maplibregl },
+      },
+      children,
+    );
   } else {
     // It hasn't loaded yet. Display the loading message.
     return loadingContent;

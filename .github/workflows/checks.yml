@@ -17,18 +17,17 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v5
-      # We use Deno instead of Node for this step since it has an all-in-one linter, code formatter, test runner, etc.
-      - uses: denoland/setup-deno@v2
+      - uses: actions/setup-node@v4
         with:
-          deno-version: v2.x
+          node-version: 24
       - name: Install dependencies
-        run: deno install --node-modules-dir=auto
-      - name: Lint TypeScript code
-        run: deno lint
+        run: npm ci
+      - name: Lint with Oxlint
+        run: npm run lint
       - name: Check Types
-        run: deno run types
+        run: npm run types
       - name: Check Formatting
-        run: deno fmt --check
+        run: npm run format-check
   build-web-ui:
     name: Build
     runs-on: ubuntu-latest
@@ -38,7 +37,6 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v5
-      # We build with Node for now since that's what Cloudflare uses to deploy
       - uses: actions/setup-node@v4
         with:
           node-version: 24

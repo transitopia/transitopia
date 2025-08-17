@@ -39,17 +39,17 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transitopia_cycling",
-    "filter": [
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["==", "construction", true],
     ],
-    "layout": {
+    layout: {
       "line-cap": "butt",
       "line-join": "bevel",
-      "visibility": "visible",
+      visibility: "visible",
     },
-    "paint": {
+    paint: {
       "line-color": colorWithHoverAndSelectionStates("rgba(226, 109, 35, 1)"),
       "line-width": interpolateZoom({ z10: 3, z16: 4 }),
       "line-dasharray": [0.4, 1],
@@ -60,14 +60,14 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transitopia_cycling",
-    "filter": [
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["==", "comfort", 4],
       ["!=", "construction", true],
     ],
     layout: defaultLineLayout,
-    "paint": {
+    paint: {
       "line-color": colorWithHoverAndSelectionStates("rgba(26, 109, 35, 1)"),
       "line-width": interpolateZoom({ z10: 2, z16: 8 }),
     },
@@ -77,14 +77,14 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transitopia_cycling",
-    "filter": [
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["==", "comfort", 3],
       ["!=", "construction", true],
     ],
     layout: defaultLineLayout,
-    "paint": {
+    paint: {
       "line-color": colorWithHoverAndSelectionStates("rgba(26, 109, 35, 1)"),
       "line-width": interpolateZoom({ z10: 2, z16: 7 }),
     },
@@ -95,15 +95,15 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transitopia_cycling",
-    "minzoom": 13,
-    "filter": [
+    minzoom: 13,
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["==", "comfort", 3],
       ["!=", "construction", true],
     ],
     layout: defaultLineLayout,
-    "paint": {
+    paint: {
       "line-color": "rgba(255, 255, 255, 0.6)",
       "line-width": 2,
       "line-dasharray": [2, 4],
@@ -114,20 +114,23 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transitopia_cycling",
-    "filter": [
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["==", "comfort", 2],
       ["!=", "construction", true],
     ],
     layout: defaultLineLayout,
-    "paint": {
+    paint: {
       "line-color": colorWithHoverAndSelectionStates("rgba(26, 109, 35, 1)"),
       "line-width": interpolateZoom({ z10: 3, z16: 6 }),
       // dashed lines when zoomed in greater than 12
       "line-dasharray": {
         type: "interval",
-        stops: [[0, [1]], [12, [0.4, 1.4]]],
+        stops: [
+          [0, [1]],
+          [12, [0.4, 1.4]],
+        ],
       },
     },
   },
@@ -137,14 +140,14 @@ export const layers: LayerSpecification[] = [
     source: mapSource,
     "source-layer": "transitopia_cycling",
     minzoom: 8,
-    "filter": [
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["==", "comfort", 1],
       ["!=", "construction", true],
     ],
     layout: defaultLineLayout,
-    "paint": {
+    paint: {
       "line-color": colorWithHoverAndSelectionStates("rgba(26, 50, 35, 1)"),
       "line-width": interpolateZoom({ z10: 2, z16: 4 }),
       "line-dasharray": [0.3, 2],
@@ -156,7 +159,7 @@ export const layers: LayerSpecification[] = [
     source: mapSource,
     "source-layer": "transitopia_cycling",
     minzoom: 8,
-    "filter": [
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["any", ["==", "oneway", 1], ["==", "oneway", -1]],
@@ -171,7 +174,7 @@ export const layers: LayerSpecification[] = [
       "icon-rotate": 90,
       "icon-size": 0.6,
       "icon-allow-overlap": true,
-      "visibility": "visible",
+      visibility: "visible",
       "symbol-spacing": 40,
       "symbol-placement": "line",
     },
@@ -182,7 +185,7 @@ export const layers: LayerSpecification[] = [
     source: mapSource,
     "source-layer": "transitopia_cycling",
     minzoom: 8,
-    "filter": [
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["any", ["==", "oneway", 1], ["==", "oneway", -1]],
@@ -199,7 +202,7 @@ export const layers: LayerSpecification[] = [
       "icon-rotate": ["case", ["==", ["get", "oneway"], 1], 90, 270],
       "icon-size": 0.8,
       "icon-allow-overlap": true,
-      "visibility": "visible",
+      visibility: "visible",
       "symbol-spacing": 40,
       "symbol-placement": "line",
     },
@@ -209,14 +212,14 @@ export const layers: LayerSpecification[] = [
     type: "symbol",
     source: mapSource,
     "source-layer": "transitopia_cycling",
-    "filter": [
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["any", ["==", "class", "track"], ["==", "class", "lane"]],
       ["has", "name"],
       [">=", "comfort", 2],
     ],
-    "layout": {
+    layout: {
       "symbol-placement": "line",
       "symbol-spacing": 350,
       "text-field": "{name}",
@@ -227,9 +230,9 @@ export const layers: LayerSpecification[] = [
       "text-offset": [0, 1.1],
       "text-size": 10,
       "text-transform": "uppercase",
-      "visibility": "visible",
+      visibility: "visible",
     },
-    "paint": {
+    paint: {
       "text-color": "rgba(24, 79, 19, 1)",
       "text-halo-blur": 1,
       "text-halo-color": "rgba(231, 231, 131, 0.72)",
@@ -242,7 +245,7 @@ export const layers: LayerSpecification[] = [
     type: "circle",
     source: mapSource,
     "source-layer": "transitopia_cycling",
-    "filter": [
+    filter: [
       "all",
       ["==", "$type", "Point"],
       ["==", "amenity", "bicycle_parking"],
@@ -251,7 +254,7 @@ export const layers: LayerSpecification[] = [
       visibility: "visible",
       "circle-sort-key": 1,
     },
-    "paint": {
+    paint: {
       "circle-radius": interpolateZoom({ z8: 1, z12: 1, z16: 3 }),
       "circle-color": "rgba(231, 231, 131, 0.72)",
       "circle-stroke-width": interpolateZoom({ z8: 0.5, z12: 0.5, z16: 2 }),

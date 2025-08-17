@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "npx oxlint@latest",
+    "format": "prettier --write src/",
+    "format-check": "prettier --check src/",
+    "lint": "oxlint --type-aware",
     "preview": "vite preview",
     "types": "tsc --noEmit"
   },
@@ -24,6 +26,9 @@
     "@types/react": "^19.1.9",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react-oxc": "^0.3.0",
+    "oxlint": "^1.12.0",
+    "oxlint-tsgolint": "^0.0.4",
+    "prettier": "^3.6.2",
     "tailwindcss": "^4.1.11",
     "typescript": "^5.9.2",
     "vite": "npm:rolldown-vite@^7.0.12"

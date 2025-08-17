@@ -19,16 +19,9 @@ import type {
 export const mapSource = "omt-transitopia";
 
 /** A linear interpolation of values based on the zoom level */
-export function interpolateZoom<T>(
-  stops: {
-    [zoom: `z${number}`]:
-      | T
-      | T[]
-      | ColorSpecification
-      | ExpressionSpecification;
-  },
-): DataDrivenPropertyValueSpecification<T> {
-  // deno-lint-ignore no-explicit-any
+export function interpolateZoom<T>(stops: {
+  [zoom: `z${number}`]: T | T[] | ColorSpecification | ExpressionSpecification;
+}): DataDrivenPropertyValueSpecification<T> {
   const spec: any[] = [];
   Object.entries(stops).forEach(([zoomValue, expr]) => {
     spec.push(Number(zoomValue.substring(1))); // Remove the 'z' prefix from the zoom value
@@ -43,17 +36,13 @@ export function interpolateZoom<T>(
  * more towards the high end of the range.
  * A base of '1' is equivalent to a linear interpolation.
  */
-export function interpolateZoomExp<T>(
-  { base, ...stops }: {
-    base: number;
-    [zoom: `z${number}`]:
-      | T
-      | T[]
-      | ColorSpecification
-      | ExpressionSpecification;
-  },
-): DataDrivenPropertyValueSpecification<T> {
-  // deno-lint-ignore no-explicit-any
+export function interpolateZoomExp<T>({
+  base,
+  ...stops
+}: {
+  base: number;
+  [zoom: `z${number}`]: T | T[] | ColorSpecification | ExpressionSpecification;
+}): DataDrivenPropertyValueSpecification<T> {
   const spec: any[] = [];
   Object.entries(stops).forEach(([zoomValue, expr]) => {
     spec.push(Number(zoomValue.substring(1))); // Remove the 'z' prefix from the zoom value
@@ -65,7 +54,7 @@ export function interpolateZoomExp<T>(
 export const defaultLineLayout = {
   "line-cap": "round",
   "line-join": "round",
-  "visibility": "visible",
+  visibility: "visible",
 } as const;
 
 export const layers: LayerSpecification[] = [
@@ -79,10 +68,10 @@ export const layers: LayerSpecification[] = [
     type: "fill",
     source: mapSource,
     "source-layer": "landcover",
-    "minzoom": 10,
-    "filter": ["all", ["==", "$type", "Polygon"], ["==", "class", "wood"]],
-    "layout": { "visibility": "visible" },
-    "paint": {
+    minzoom: 10,
+    filter: ["all", ["==", "$type", "Polygon"], ["==", "class", "wood"]],
+    layout: { visibility: "visible" },
+    paint: {
       "fill-color": "rgba(246, 248, 246, 1)",
       "fill-opacity": interpolateZoom({ z10: 0, z12: 1 }),
     },
@@ -92,39 +81,35 @@ export const layers: LayerSpecification[] = [
     type: "fill",
     source: mapSource,
     "source-layer": "park",
-    "filter": ["==", "$type", "Polygon"],
-    "layout": { "visibility": "visible" },
-    "paint": { "fill-color": "rgba(214, 219, 214, 1)" },
+    filter: ["==", "$type", "Polygon"],
+    layout: { visibility: "visible" },
+    paint: { "fill-color": "rgba(214, 219, 214, 1)" },
   },
   {
     id: "water",
     type: "fill",
     source: mapSource,
     "source-layer": "water",
-    "filter": [
-      "all",
-      ["==", "$type", "Polygon"],
-      ["!=", "brunnel", "tunnel"],
-    ],
-    "layout": { "visibility": "visible" },
-    "paint": { "fill-antialias": true, "fill-color": "rgba(203, 217, 243, 1)" },
+    filter: ["all", ["==", "$type", "Polygon"], ["!=", "brunnel", "tunnel"]],
+    layout: { visibility: "visible" },
+    paint: { "fill-antialias": true, "fill-color": "rgba(203, 217, 243, 1)" },
   },
   {
     id: "waterway",
     type: "line",
     source: mapSource,
     "source-layer": "waterway",
-    "filter": ["==", "$type", "LineString"],
-    "layout": { "visibility": "visible" },
-    "paint": { "line-color": "hsl(195, 17%, 78%)" },
+    filter: ["==", "$type", "LineString"],
+    layout: { visibility: "visible" },
+    paint: { "line-color": "hsl(195, 17%, 78%)" },
   },
   {
     id: "water_name",
     type: "symbol",
     source: mapSource,
     "source-layer": "water_name",
-    "filter": ["==", "$type", "LineString"],
-    "layout": {
+    filter: ["==", "$type", "LineString"],
+    layout: {
       "symbol-placement": "line",
       "symbol-spacing": 500,
       "text-field": "{name:latin}\n{name:nonlatin}",
@@ -132,7 +117,7 @@ export const layers: LayerSpecification[] = [
       "text-rotation-alignment": "map",
       "text-size": 12,
     },
-    "paint": {
+    paint: {
       "text-color": "rgb(157,169,177)",
       "text-halo-blur": 1,
       "text-halo-color": "rgb(242,243,240)",
@@ -158,18 +143,18 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transportation",
-    "minzoom": 6,
-    "filter": [
+    minzoom: 6,
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["all", ["==", "brunnel", "tunnel"], ["==", "class", "motorway"]],
     ],
-    "layout": {
+    layout: {
       "line-cap": "butt",
       "line-join": "miter",
-      "visibility": "visible",
+      visibility: "visible",
     },
-    "paint": {
+    paint: {
       "line-color": "rgb(213, 213, 213)",
       "line-opacity": 1,
       "line-width": interpolateZoomExp({
@@ -185,14 +170,14 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transportation",
-    "minzoom": 6,
-    "filter": [
+    minzoom: 6,
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["all", ["==", "brunnel", "tunnel"], ["==", "class", "motorway"]],
     ],
     layout: defaultLineLayout,
-    "paint": {
+    paint: {
       "line-color": "rgb(234,234,234)",
       "line-width": interpolateZoomExp({ base: 1.4, z4: 2, z6: 1.3, z20: 30 }),
     },
@@ -202,10 +187,10 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "aeroway",
-    "minzoom": 12,
-    "filter": ["all", ["in", "class", "taxiway"]],
+    minzoom: 12,
+    filter: ["all", ["in", "class", "taxiway"]],
     layout: defaultLineLayout,
-    "paint": {
+    paint: {
       "line-color": "hsl(0, 0%, 88%)",
       "line-opacity": 1,
       "line-width": interpolateZoomExp({ base: 1.55, z13: 1.8, z20: 20 }),
@@ -216,10 +201,10 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "aeroway",
-    "minzoom": 11,
-    "filter": ["all", ["in", "class", "runway"]],
+    minzoom: 11,
+    filter: ["all", ["in", "class", "runway"]],
     layout: defaultLineLayout,
-    "paint": {
+    paint: {
       "line-color": "hsl(0, 0%, 88%)",
       "line-opacity": 1,
       "line-width": interpolateZoomExp({ base: 1.5, z11: 6, z17: 55 }),
@@ -230,14 +215,14 @@ export const layers: LayerSpecification[] = [
     type: "fill",
     source: mapSource,
     "source-layer": "aeroway",
-    "minzoom": 4,
-    "filter": [
+    minzoom: 4,
+    filter: [
       "all",
       ["==", "$type", "Polygon"],
       ["in", "class", "runway", "taxiway"],
     ],
-    "layout": { "visibility": "visible" },
-    "paint": {
+    layout: { visibility: "visible" },
+    paint: {
       "fill-color": "rgba(255, 255, 255, 1)",
       "fill-opacity": interpolateZoom({ z13: 0, z14: 1 }),
     },
@@ -247,14 +232,10 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "aeroway",
-    "minzoom": 11,
-    "filter": [
-      "all",
-      ["in", "class", "runway"],
-      ["==", "$type", "LineString"],
-    ],
+    minzoom: 11,
+    filter: ["all", ["in", "class", "runway"], ["==", "$type", "LineString"]],
     layout: defaultLineLayout,
-    "paint": {
+    paint: {
       "line-color": "rgba(255, 255, 255, 1)",
       "line-opacity": 1,
       "line-width": interpolateZoomExp({ base: 1.5, z11: 4, z17: 50 }),
@@ -263,22 +244,22 @@ export const layers: LayerSpecification[] = [
   {
     id: "road_area_pier",
     type: "fill",
-    "metadata": {},
+    metadata: {},
     source: mapSource,
     "source-layer": "transportation",
-    "filter": ["all", ["==", "$type", "Polygon"], ["==", "class", "pier"]],
-    "layout": { "visibility": "visible" },
-    "paint": { "fill-antialias": true, "fill-color": "rgb(242,243,240)" },
+    filter: ["all", ["==", "$type", "Polygon"], ["==", "class", "pier"]],
+    layout: { visibility: "visible" },
+    paint: { "fill-antialias": true, "fill-color": "rgb(242,243,240)" },
   },
   {
     id: "road_pier",
     type: "line",
-    "metadata": {},
+    metadata: {},
     source: mapSource,
     "source-layer": "transportation",
-    "filter": ["all", ["==", "$type", "LineString"], ["in", "class", "pier"]],
-    "layout": { "line-cap": "round", "line-join": "round" },
-    "paint": {
+    filter: ["all", ["==", "$type", "LineString"], ["in", "class", "pier"]],
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: {
       "line-color": "rgb(242,243,240)",
       "line-width": interpolateZoomExp({ base: 1.2, z15: 1, z17: 4 }),
     },
@@ -290,13 +271,9 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transportation",
-    "filter": [
-      "all",
-      ["==", "$type", "LineString"],
-      ["==", "class", "path"],
-    ],
+    filter: ["all", ["==", "$type", "LineString"], ["==", "class", "path"]],
     layout: defaultLineLayout,
-    "paint": {
+    paint: {
       "line-color": "rgb(234, 234, 234)",
       "line-opacity": 0.9,
       "line-width": interpolateZoom({ z13: 1, z20: 10 }),
@@ -307,14 +284,14 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transportation",
-    "minzoom": 8,
-    "filter": [
+    minzoom: 8,
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["in", "class", "minor", "service", "track"],
     ],
     layout: defaultLineLayout,
-    "paint": {
+    paint: {
       "line-color": "hsl(0, 0%, 88%)",
       "line-opacity": 0.9,
       "line-width": interpolateZoomExp({ base: 1.55, z13: 1.8, z20: 20 }),
@@ -325,18 +302,18 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transportation",
-    "minzoom": 11,
-    "filter": [
+    minzoom: 11,
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["in", "class", "primary", "secondary", "tertiary", "trunk"],
     ],
-    "layout": {
+    layout: {
       "line-cap": "butt",
       "line-join": "miter",
-      "visibility": "visible",
+      visibility: "visible",
     },
-    "paint": {
+    paint: {
       "line-color": "rgb(213, 213, 213)",
       "line-dasharray": [12, 0],
       "line-width": interpolateZoomExp({ base: 1.3, z10: 3, z20: 23 }),
@@ -347,14 +324,14 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transportation",
-    "minzoom": 11,
-    "filter": [
+    minzoom: 11,
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["in", "class", "primary", "secondary", "tertiary", "trunk"],
     ],
     layout: defaultLineLayout,
-    "paint": {
+    paint: {
       "line-color": "#fff",
       "line-width": interpolateZoomExp({ base: 1.3, z10: 2, z20: 20 }),
     },
@@ -364,22 +341,22 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transportation",
-    "maxzoom": 11,
-    "filter": [
+    maxzoom: 11,
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["in", "class", "primary", "secondary", "tertiary", "trunk"],
     ],
     layout: defaultLineLayout,
-    "paint": { "line-color": "hsla(0, 0%, 85%, 0.69)", "line-width": 2 },
+    paint: { "line-color": "hsla(0, 0%, 85%, 0.69)", "line-width": 2 },
   },
   {
     id: "highway_motorway_casing",
     type: "line",
     source: mapSource,
     "source-layer": "transportation",
-    "minzoom": 6,
-    "filter": [
+    minzoom: 6,
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       [
@@ -388,12 +365,12 @@ export const layers: LayerSpecification[] = [
         ["==", "class", "motorway"],
       ],
     ],
-    "layout": {
+    layout: {
       "line-cap": "butt",
       "line-join": "miter",
-      "visibility": "visible",
+      visibility: "visible",
     },
-    "paint": {
+    paint: {
       "line-color": "rgb(213, 213, 213)",
       "line-dasharray": [2, 0],
       "line-opacity": 1,
@@ -410,8 +387,8 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transportation",
-    "minzoom": 6,
-    "filter": [
+    minzoom: 6,
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       [
@@ -421,7 +398,7 @@ export const layers: LayerSpecification[] = [
       ],
     ],
     layout: defaultLineLayout,
-    "paint": {
+    paint: {
       "line-color": interpolateZoom({
         "z5.8": "hsla(0, 0%, 85%, 0.53)",
         z6: "#fff",
@@ -434,14 +411,10 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transportation",
-    "maxzoom": 6,
-    "filter": [
-      "all",
-      ["==", "$type", "LineString"],
-      ["==", "class", "motorway"],
-    ],
+    maxzoom: 6,
+    filter: ["all", ["==", "$type", "LineString"], ["==", "class", "motorway"]],
     layout: defaultLineLayout,
-    "paint": {
+    paint: {
       "line-color": "hsla(0, 0%, 85%, 0.53)",
       "line-width": interpolateZoomExp({ base: 1.4, z4: 2, z6: 1.3 }),
     },
@@ -451,28 +424,28 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transportation",
-    "minzoom": 16,
-    "filter": [
+    minzoom: 16,
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["all", ["==", "class", "transit"], ["!in", "brunnel", "tunnel"]],
     ],
-    "layout": { "line-join": "round", "visibility": "visible" },
-    "paint": { "line-color": "#dddddd", "line-width": 3 },
+    layout: { "line-join": "round", visibility: "visible" },
+    paint: { "line-color": "#dddddd", "line-width": 3 },
   },
   {
     id: "railway_transit_dashline",
     type: "line",
     source: mapSource,
     "source-layer": "transportation",
-    "minzoom": 16,
-    "filter": [
+    minzoom: 16,
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["all", ["==", "class", "transit"], ["!in", "brunnel", "tunnel"]],
     ],
-    "layout": { "line-join": "round", "visibility": "visible" },
-    "paint": {
+    layout: { "line-join": "round", visibility: "visible" },
+    paint: {
       "line-color": "#fafafa",
       "line-dasharray": [3, 3],
       "line-width": 2,
@@ -483,29 +456,29 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transportation",
-    "minzoom": 16,
-    "filter": [
+    minzoom: 16,
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["all", ["==", "class", "rail"], ["has", "service"]],
     ],
-    "layout": { "line-join": "round", "visibility": "visible" },
-    "paint": { "line-color": "#dddddd", "line-width": 3 },
+    layout: { "line-join": "round", visibility: "visible" },
+    paint: { "line-color": "#dddddd", "line-width": 3 },
   },
   {
     id: "railway_service_dashline",
     type: "line",
     source: mapSource,
     "source-layer": "transportation",
-    "minzoom": 16,
-    "filter": [
+    minzoom: 16,
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["==", "class", "rail"],
       ["has", "service"],
     ],
-    "layout": { "line-join": "round", "visibility": "visible" },
-    "paint": {
+    layout: { "line-join": "round", visibility: "visible" },
+    paint: {
       "line-color": "#fafafa",
       "line-dasharray": [3, 3],
       "line-width": 2,
@@ -516,14 +489,14 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transportation",
-    "minzoom": 13,
-    "filter": [
+    minzoom: 13,
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["all", ["!has", "service"], ["==", "class", "rail"]],
     ],
-    "layout": { "line-join": "round", "visibility": "visible" },
-    "paint": {
+    layout: { "line-join": "round", visibility: "visible" },
+    paint: {
       "line-color": "#dddddd",
       "line-width": interpolateZoomExp({ base: 1.3, z16: 3, z20: 7 }),
     },
@@ -533,14 +506,14 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transportation",
-    "minzoom": 13,
-    "filter": [
+    minzoom: 13,
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["all", ["!has", "service"], ["==", "class", "rail"]],
     ],
-    "layout": { "line-join": "round", "visibility": "visible" },
-    "paint": {
+    layout: { "line-join": "round", visibility: "visible" },
+    paint: {
       "line-color": "#fafafa",
       "line-dasharray": [3, 3],
       "line-width": interpolateZoomExp({ base: 1.3, z16: 2, z20: 6 }),
@@ -551,18 +524,18 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transportation",
-    "minzoom": 6,
-    "filter": [
+    minzoom: 6,
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["all", ["==", "brunnel", "bridge"], ["==", "class", "motorway"]],
     ],
-    "layout": {
+    layout: {
       "line-cap": "butt",
       "line-join": "miter",
-      "visibility": "visible",
+      visibility: "visible",
     },
-    "paint": {
+    paint: {
       "line-color": "rgb(213, 213, 213)",
       "line-dasharray": [2, 0],
       "line-opacity": 1,
@@ -579,14 +552,14 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "transportation",
-    "minzoom": 6,
-    "filter": [
+    minzoom: 6,
+    filter: [
       "all",
       ["==", "$type", "LineString"],
       ["all", ["==", "brunnel", "bridge"], ["==", "class", "motorway"]],
     ],
     layout: defaultLineLayout,
-    "paint": {
+    paint: {
       "line-color": interpolateZoom({
         "z5.8": "hsla(0, 0%, 85%, 0.53)",
         z6: "#fff",
@@ -599,13 +572,13 @@ export const layers: LayerSpecification[] = [
     type: "symbol",
     source: mapSource,
     "source-layer": "transportation_name",
-    "filter": [
+    filter: [
       "all",
       ["!=", "class", "motorway"],
       ["==", "$type", "LineString"],
       ["!=", "subclass", "cycleway"],
     ],
-    "layout": {
+    layout: {
       "symbol-placement": "line",
       "symbol-spacing": 350,
       "text-field": "{name:latin} {name:nonlatin}",
@@ -615,9 +588,9 @@ export const layers: LayerSpecification[] = [
       "text-rotation-alignment": "map",
       "text-size": 10,
       "text-transform": "uppercase",
-      "visibility": "visible",
+      visibility: "visible",
     },
-    "paint": {
+    paint: {
       "text-color": "rgba(116, 108, 108, 1)",
       "text-halo-blur": 1,
       "text-halo-color": "rgba(255, 255, 255, 0.46)",
@@ -630,12 +603,8 @@ export const layers: LayerSpecification[] = [
     type: "symbol",
     source: mapSource,
     "source-layer": "transportation_name",
-    "filter": [
-      "all",
-      ["==", "$type", "LineString"],
-      ["==", "class", "motorway"],
-    ],
-    "layout": {
+    filter: ["all", ["==", "$type", "LineString"], ["==", "class", "motorway"]],
+    layout: {
       "symbol-placement": "line",
       "symbol-spacing": 350,
       "text-field": "{ref}",
@@ -643,9 +612,9 @@ export const layers: LayerSpecification[] = [
       "text-pitch-alignment": "viewport",
       "text-rotation-alignment": "viewport",
       "text-size": 10,
-      "visibility": "visible",
+      visibility: "visible",
     },
-    "paint": {
+    paint: {
       "text-color": "rgb(117, 129, 145)",
       "text-halo-blur": 1,
       "text-halo-color": "hsl(0, 0%, 100%)",
@@ -658,9 +627,9 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "boundary",
-    "filter": ["==", "admin_level", 4],
+    filter: ["==", "admin_level", 4],
     layout: defaultLineLayout,
-    "paint": {
+    paint: {
       "line-blur": 0.4,
       "line-color": "rgb(230, 204, 207)",
       "line-dasharray": [2, 2],
@@ -673,10 +642,10 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "boundary",
-    "maxzoom": 5,
-    "filter": ["all", ["==", "admin_level", 2], ["!has", "claimed_by"]],
-    "layout": { "line-cap": "round", "line-join": "round" },
-    "paint": {
+    maxzoom: 5,
+    filter: ["all", ["==", "admin_level", 2], ["!has", "claimed_by"]],
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: {
       "line-blur": interpolateZoom({ z0: 0.4, z22: 4 }),
       "line-color": "rgb(230, 204, 207)",
       "line-opacity": 1,
@@ -688,10 +657,10 @@ export const layers: LayerSpecification[] = [
     type: "line",
     source: mapSource,
     "source-layer": "boundary",
-    "minzoom": 5,
-    "filter": ["==", "admin_level", 2],
-    "layout": { "line-cap": "round", "line-join": "round" },
-    "paint": {
+    minzoom: 5,
+    filter: ["==", "admin_level", 2],
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: {
       "line-blur": interpolateZoom({ z0: 0.4, z22: 4 }),
       "line-color": "rgb(230, 204, 207)",
       "line-opacity": 1,
@@ -703,8 +672,8 @@ export const layers: LayerSpecification[] = [
     type: "symbol",
     source: mapSource,
     "source-layer": "place",
-    "maxzoom": 14,
-    "filter": [
+    maxzoom: 14,
+    filter: [
       "all",
       [
         "in",
@@ -716,7 +685,7 @@ export const layers: LayerSpecification[] = [
       ],
       ["==", "$type", "Point"],
     ],
-    "layout": {
+    layout: {
       "text-anchor": "center",
       "text-field": "{name:latin}\n{name:nonlatin}",
       "text-font": ["Metropolis Regular"],
@@ -724,9 +693,9 @@ export const layers: LayerSpecification[] = [
       "text-offset": [0.5, 0],
       "text-size": 10,
       "text-transform": "uppercase",
-      "visibility": "visible",
+      visibility: "visible",
     },
-    "paint": {
+    paint: {
       "text-color": "rgb(117, 129, 145)",
       "text-halo-blur": 1,
       "text-halo-color": "rgb(242,243,240)",
@@ -738,9 +707,9 @@ export const layers: LayerSpecification[] = [
     type: "symbol",
     source: mapSource,
     "source-layer": "place",
-    "maxzoom": 15,
-    "filter": ["all", ["==", "$type", "Point"], ["==", "class", "suburb"]],
-    "layout": {
+    maxzoom: 15,
+    filter: ["all", ["==", "$type", "Point"], ["==", "class", "suburb"]],
+    layout: {
       "text-anchor": "center",
       "text-field": "{name:latin}\n{name:nonlatin}",
       "text-font": ["Metropolis Regular"],
@@ -748,9 +717,9 @@ export const layers: LayerSpecification[] = [
       "text-offset": [0.5, 0],
       "text-size": 10,
       "text-transform": "uppercase",
-      "visibility": "visible",
+      visibility: "visible",
     },
-    "paint": {
+    paint: {
       "text-color": "rgb(117, 129, 145)",
       "text-halo-blur": 1,
       "text-halo-color": "rgb(242,243,240)",
@@ -762,9 +731,9 @@ export const layers: LayerSpecification[] = [
     type: "symbol",
     source: mapSource,
     "source-layer": "place",
-    "maxzoom": 14,
-    "filter": ["all", ["==", "$type", "Point"], ["==", "class", "village"]],
-    "layout": {
+    maxzoom: 14,
+    filter: ["all", ["==", "$type", "Point"], ["==", "class", "village"]],
+    layout: {
       "icon-size": 0.4,
       "text-anchor": "left",
       "text-field": "{name:latin}\n{name:nonlatin}",
@@ -773,9 +742,9 @@ export const layers: LayerSpecification[] = [
       "text-offset": [0.5, 0.2],
       "text-size": 10,
       "text-transform": "uppercase",
-      "visibility": "visible",
+      visibility: "visible",
     },
-    "paint": {
+    paint: {
       "icon-opacity": 0.7,
       "text-color": "rgb(117, 129, 145)",
       "text-halo-blur": 1,
@@ -788,21 +757,33 @@ export const layers: LayerSpecification[] = [
     type: "symbol",
     source: mapSource,
     "source-layer": "place",
-    "maxzoom": 15,
-    "filter": ["all", ["==", "$type", "Point"], ["==", "class", "town"]],
-    "layout": {
-      "icon-image": { type: "interval", stops: [[0, "circle-11"], [8, ""]] },
+    maxzoom: 15,
+    filter: ["all", ["==", "$type", "Point"], ["==", "class", "town"]],
+    layout: {
+      "icon-image": {
+        type: "interval",
+        stops: [
+          [0, "circle-11"],
+          [8, ""],
+        ],
+      },
       "icon-size": 0.4,
-      "text-anchor": { type: "interval", stops: [[0, "left"], [8, "center"]] },
+      "text-anchor": {
+        type: "interval",
+        stops: [
+          [0, "left"],
+          [8, "center"],
+        ],
+      },
       "text-field": "{name:latin}\n{name:nonlatin}",
       "text-font": ["Metropolis Regular"],
       "text-justify": "left",
       "text-offset": [0.5, 0.2],
       "text-size": 10,
       "text-transform": "uppercase",
-      "visibility": "visible",
+      visibility: "visible",
     },
-    "paint": {
+    paint: {
       "icon-opacity": 0.7,
       "text-color": "rgb(117, 129, 145)",
       "text-halo-blur": 1,
@@ -815,25 +796,37 @@ export const layers: LayerSpecification[] = [
     type: "symbol",
     source: mapSource,
     "source-layer": "place",
-    "maxzoom": 14,
-    "filter": [
+    maxzoom: 14,
+    filter: [
       "all",
       ["==", "$type", "Point"],
       ["all", ["!=", "capital", 2], ["==", "class", "city"], [">", "rank", 3]],
     ],
-    "layout": {
-      "icon-image": { type: "interval", stops: [[0, "circle-11"], [8, ""]] },
+    layout: {
+      "icon-image": {
+        type: "interval",
+        stops: [
+          [0, "circle-11"],
+          [8, ""],
+        ],
+      },
       "icon-size": 0.4,
-      "text-anchor": { type: "interval", stops: [[0, "left"], [8, "center"]] },
+      "text-anchor": {
+        type: "interval",
+        stops: [
+          [0, "left"],
+          [8, "center"],
+        ],
+      },
       "text-field": "{name:latin}\n{name:nonlatin}",
       "text-font": ["Metropolis Regular"],
       "text-justify": "left",
       "text-offset": [0.5, 0.2],
       "text-size": 10,
       "text-transform": "uppercase",
-      "visibility": "visible",
+      visibility: "visible",
     },
-    "paint": {
+    paint: {
       "icon-opacity": 0.7,
       "text-color": "rgb(117, 129, 145)",
       "text-halo-blur": 1,
@@ -846,25 +839,37 @@ export const layers: LayerSpecification[] = [
     type: "symbol",
     source: mapSource,
     "source-layer": "place",
-    "maxzoom": 12,
-    "filter": [
+    maxzoom: 12,
+    filter: [
       "all",
       ["==", "$type", "Point"],
       ["all", ["==", "capital", 2], ["==", "class", "city"]],
     ],
-    "layout": {
-      "icon-image": { type: "interval", stops: [[0, "star-11"], [8, ""]] },
+    layout: {
+      "icon-image": {
+        type: "interval",
+        stops: [
+          [0, "star-11"],
+          [8, ""],
+        ],
+      },
       "icon-size": 1,
-      "text-anchor": { type: "interval", stops: [[0, "left"], [8, "center"]] },
+      "text-anchor": {
+        type: "interval",
+        stops: [
+          [0, "left"],
+          [8, "center"],
+        ],
+      },
       "text-field": "{name:latin}\n{name:nonlatin}",
       "text-font": ["Metropolis Regular"],
       "text-justify": "left",
       "text-offset": [0.5, 0.2],
       "text-size": 14,
       "text-transform": "uppercase",
-      "visibility": "visible",
+      visibility: "visible",
     },
-    "paint": {
+    paint: {
       "icon-opacity": 0.7,
       "text-color": "rgb(117, 129, 145)",
       "text-halo-blur": 1,
@@ -877,30 +882,37 @@ export const layers: LayerSpecification[] = [
     type: "symbol",
     source: mapSource,
     "source-layer": "place",
-    "maxzoom": 12,
-    "filter": [
+    maxzoom: 12,
+    filter: [
       "all",
       ["==", "$type", "Point"],
-      [
-        "all",
-        ["!=", "capital", 2],
-        ["<=", "rank", 3],
-        ["==", "class", "city"],
-      ],
+      ["all", ["!=", "capital", 2], ["<=", "rank", 3], ["==", "class", "city"]],
     ],
-    "layout": {
-      "icon-image": { type: "interval", stops: [[0, "circle-11"], [8, ""]] },
+    layout: {
+      "icon-image": {
+        type: "interval",
+        stops: [
+          [0, "circle-11"],
+          [8, ""],
+        ],
+      },
       "icon-size": 0.4,
-      "text-anchor": { type: "interval", stops: [[0, "left"], [8, "center"]] },
+      "text-anchor": {
+        type: "interval",
+        stops: [
+          [0, "left"],
+          [8, "center"],
+        ],
+      },
       "text-field": "{name:latin}\n{name:nonlatin}",
       "text-font": ["Metropolis Regular"],
       "text-justify": "left",
       "text-offset": [0.5, 0.2],
       "text-size": 14,
       "text-transform": "uppercase",
-      "visibility": "visible",
+      visibility: "visible",
     },
-    "paint": {
+    paint: {
       "icon-opacity": 0.7,
       "text-color": "rgb(117, 129, 145)",
       "text-halo-blur": 1,
@@ -913,16 +925,16 @@ export const layers: LayerSpecification[] = [
     type: "symbol",
     source: mapSource,
     "source-layer": "place",
-    "maxzoom": 12,
-    "filter": ["all", ["==", "$type", "Point"], ["==", "class", "state"]],
-    "layout": {
+    maxzoom: 12,
+    filter: ["all", ["==", "$type", "Point"], ["==", "class", "state"]],
+    layout: {
       "text-field": "{name:latin}\n{name:nonlatin}",
       "text-font": ["Metropolis Regular"],
       "text-size": 10,
       "text-transform": "uppercase",
-      "visibility": "visible",
+      visibility: "visible",
     },
-    "paint": {
+    paint: {
       "text-color": "rgb(113, 129, 144)",
       "text-halo-blur": 1,
       "text-halo-color": "rgb(242,243,240)",
@@ -934,21 +946,21 @@ export const layers: LayerSpecification[] = [
     type: "symbol",
     source: mapSource,
     "source-layer": "place",
-    "maxzoom": 8,
-    "filter": [
+    maxzoom: 8,
+    filter: [
       "all",
       ["==", "$type", "Point"],
       ["==", "class", "country"],
       ["!has", "iso_a2"],
     ],
-    "layout": {
+    layout: {
       "text-field": "{name:latin}",
       "text-font": ["Metropolis Light Italic"],
       "text-size": interpolateZoom({ z0: 9, z6: 11 }),
       "text-transform": "uppercase",
-      "visibility": "visible",
+      visibility: "visible",
     },
-    "paint": {
+    paint: {
       "text-color": interpolateZoom({
         z3: "rgb(157,169,177)",
         z4: "rgb(153, 153, 153)",
@@ -962,22 +974,22 @@ export const layers: LayerSpecification[] = [
     type: "symbol",
     source: mapSource,
     "source-layer": "place",
-    "maxzoom": 8,
-    "filter": [
+    maxzoom: 8,
+    filter: [
       "all",
       ["==", "$type", "Point"],
       ["==", "class", "country"],
       [">=", "rank", 2],
       ["has", "iso_a2"],
     ],
-    "layout": {
+    layout: {
       "text-field": "{name:latin}",
       "text-font": ["Metropolis Regular"],
       "text-size": interpolateZoom({ z0: 10, z6: 12 }),
       "text-transform": "uppercase",
-      "visibility": "visible",
+      visibility: "visible",
     },
-    "paint": {
+    paint: {
       "text-color": interpolateZoom({
         z3: "rgb(157,169,177)",
         z4: "rgb(153, 153, 153)",

@@ -77,11 +77,14 @@ export const CyclingMap: React.FC = () => {
   const handleMouseOut = React.useCallback(() => {
     if (!map) return undefined;
     if (hoveredFeatureIdRef.current) {
-      map.removeFeatureState({
-        source: mapSource,
-        sourceLayer: "transitopia_cycling",
-        id: hoveredFeatureIdRef.current,
-      }, "hover");
+      map.removeFeatureState(
+        {
+          source: mapSource,
+          sourceLayer: "transitopia_cycling",
+          id: hoveredFeatureIdRef.current,
+        },
+        "hover",
+      );
       hoveredFeatureIdRef.current = undefined;
     }
     map.getCanvas().style.cursor = "default";
@@ -92,11 +95,14 @@ export const CyclingMap: React.FC = () => {
     return () => {
       if (!map) return;
       if (hoveredFeatureIdRef.current) {
-        map.removeFeatureState({
-          source: mapSource,
-          sourceLayer: "transitopia_cycling",
-          id: hoveredFeatureIdRef.current,
-        }, "hover");
+        map.removeFeatureState(
+          {
+            source: mapSource,
+            sourceLayer: "transitopia_cycling",
+            id: hoveredFeatureIdRef.current,
+          },
+          "hover",
+        );
       }
     };
   }, [map]);
@@ -118,13 +124,11 @@ export const CyclingMap: React.FC = () => {
     (e: maplibregl.MapLayerEventType["click"]) => {
       const feature = e.features?.[0];
       if (!map || map.getZoom() < 13 || !feature) return;
-      setSelectedFeature(
-        {
-          id: feature.id as string,
-          type: "cycling_way",
-          ...feature.properties,
-        } as MapCyclingElement,
-      );
+      setSelectedFeature({
+        id: feature.id as string,
+        type: "cycling_way",
+        ...feature.properties,
+      } as MapCyclingElement);
     },
     [map],
   );
@@ -133,14 +137,11 @@ export const CyclingMap: React.FC = () => {
     (e: maplibregl.MapLayerEventType["click"]) => {
       const feature = e.features?.[0];
       if (!map || map.getZoom() < 13 || !feature) return;
-      setSelectedFeature(
-        {
-          id: feature.id as string,
-          type: "bicycle_parking",
-          // deno-lint-ignore no-explicit-any
-          ...(feature.properties as any),
-        } as MapParkingElement,
-      );
+      setSelectedFeature({
+        id: feature.id as string,
+        type: "bicycle_parking",
+        ...(feature.properties as any),
+      } as MapParkingElement);
     },
     [map],
   );
@@ -160,129 +161,111 @@ export const CyclingMap: React.FC = () => {
         { selected: true },
       );
       return () => {
-        map.removeFeatureState({
-          source: mapSource,
-          sourceLayer: "transitopia_cycling",
-          id: selectedFeature.id,
-        }, "selected");
+        map.removeFeatureState(
+          {
+            source: mapSource,
+            sourceLayer: "transitopia_cycling",
+            id: selectedFeature.id,
+          },
+          "selected",
+        );
       };
     }
   }, [map, selectedFeature]);
 
-  const closeInfobox = React.useCallback(
-    () => setSelectedFeature(undefined),
-    [],
-  );
+  const closeInfobox = React.useCallback(() => {
+    setSelectedFeature(undefined);
+  }, []);
 
   return (
     <>
-      {selectedFeature?.type === "cycling_way"
-        ? (
-          <MapOverlayWindow className="top-24">
-            <div className="flex">
-              <div className="flex-1">
-                {selectedFeature.name
-                  ? (
-                    <>
-                      <strong>{selectedFeature.name}</strong>{" "}
-                      ({`Cycling ${
-                        selectedFeature.class == "lane" ? "Lane" : "Track"
-                      }`})
-                    </>
+      {selectedFeature?.type === "cycling_way" ?
+        <MapOverlayWindow className="top-24">
+          <div className="flex">
+            <div className="flex-1">
+              {selectedFeature.name ?
+                <>
+                  <strong>{selectedFeature.name}</strong> (
+                  {`Cycling ${
+                    selectedFeature.class == "lane" ? "Lane" : "Track"
+                  }`}
                   )
-                  : (
-                    <strong>
-                      {`Cycling ${
-                        selectedFeature.class == "lane" ? "Lane" : "Track"
-                      }`}
-                    </strong>
-                  )}
-              </div>
-              <div className="flex-none">
-                <button
-                  type="button"
-                  className="hover:bg-gray-200 px-2 rounded-lg"
-                  onClick={closeInfobox}
-                >
-                  x
-                </button>
-              </div>
+                </>
+              : <strong>
+                  {`Cycling ${
+                    selectedFeature.class == "lane" ? "Lane" : "Track"
+                  }`}
+                </strong>
+              }
             </div>
-            {selectedFeature.construction
-              ? (
-                <span className="inline-block m-1 px-1 rounded-md bg-red-600 text-white">
-                  Under Construction
-                </span>
-              )
-              : null}
-            {selectedFeature.dooring_risk
-              ? (
-                <span className="inline-block m-1 px-1 rounded-md bg-red-600 text-white">
-                  risk of dooring (adjacent parking)
-                </span>
-              )
-              : null}
-            {selectedFeature.shared_with_vehicles
-              ? (
-                <span className="inline-block m-1 px-1 rounded-md bg-red-600 text-white">
-                  shared with vehicles
-                </span>
-              )
-              : null}
-            {selectedFeature.shared_with_pedestrians
-              ? (
-                <span className="inline-block m-1 px-1 rounded-md bg-yellow-200">
-                  shared with pedestrians
-                </span>
-              )
-              : null}
-            {selectedFeature.oneway == 1 || selectedFeature.oneway == -1
-              ? (
-                <span className="inline-block m-1 px-1 rounded-md bg-yellow-200">
-                  one way
-                </span>
-              )
-              : null}
-            {selectedFeature.class === "track"
-              ? (
-                <span className="inline-block m-1 px-1 rounded-md bg-green-800 text-white">
-                  track (separated from roadway)
-                </span>
-              )
-              : selectedFeature.class === "lane" &&
-                  selectedFeature.shared_with_vehicles
-              ? (
-                <span className="inline-block m-1 px-1 rounded-md bg-red-600 text-white">
-                  shared lane
-                </span>
-              )
-              : (
-                <span className="inline-block m-1 px-1 rounded-md bg-yellow-200">
-                  bike lane on roadway
-                </span>
-              )}
-          </MapOverlayWindow>
-        )
-        : selectedFeature?.type === "bicycle_parking"
-        ? (
-          <MapOverlayWindow className="top-24">
-            {selectedFeature.osmNodeId && (
-              <InfoboxBikeParking
-                featureType="node"
-                osmId={parseInt(selectedFeature.osmNodeId, 10)}
-                closeInfobox={closeInfobox}
-              />
-            )}
-            {selectedFeature.osmWayId && (
-              <InfoboxBikeParking
-                featureType="way"
-                osmId={parseInt(selectedFeature.osmWayId, 10)}
-                closeInfobox={closeInfobox}
-              />
-            )}
-          </MapOverlayWindow>
-        )
-        : null}
+            <div className="flex-none">
+              <button
+                type="button"
+                className="hover:bg-gray-200 px-2 rounded-lg"
+                onClick={closeInfobox}>
+                x
+              </button>
+            </div>
+          </div>
+          {selectedFeature.construction ?
+            <span className="inline-block m-1 px-1 rounded-md bg-red-600 text-white">
+              Under Construction
+            </span>
+          : null}
+          {selectedFeature.dooring_risk ?
+            <span className="inline-block m-1 px-1 rounded-md bg-red-600 text-white">
+              risk of dooring (adjacent parking)
+            </span>
+          : null}
+          {selectedFeature.shared_with_vehicles ?
+            <span className="inline-block m-1 px-1 rounded-md bg-red-600 text-white">
+              shared with vehicles
+            </span>
+          : null}
+          {selectedFeature.shared_with_pedestrians ?
+            <span className="inline-block m-1 px-1 rounded-md bg-yellow-200">
+              shared with pedestrians
+            </span>
+          : null}
+          {selectedFeature.oneway == 1 || selectedFeature.oneway == -1 ?
+            <span className="inline-block m-1 px-1 rounded-md bg-yellow-200">
+              one way
+            </span>
+          : null}
+          {selectedFeature.class === "track" ?
+            <span className="inline-block m-1 px-1 rounded-md bg-green-800 text-white">
+              track (separated from roadway)
+            </span>
+          : (
+            selectedFeature.class === "lane"
+            && selectedFeature.shared_with_vehicles
+          ) ?
+            <span className="inline-block m-1 px-1 rounded-md bg-red-600 text-white">
+              shared lane
+            </span>
+          : <span className="inline-block m-1 px-1 rounded-md bg-yellow-200">
+              bike lane on roadway
+            </span>
+          }
+        </MapOverlayWindow>
+      : selectedFeature?.type === "bicycle_parking" ?
+        <MapOverlayWindow className="top-24">
+          {selectedFeature.osmNodeId && (
+            <InfoboxBikeParking
+              featureType="node"
+              osmId={parseInt(selectedFeature.osmNodeId, 10)}
+              closeInfobox={closeInfobox}
+            />
+          )}
+          {selectedFeature.osmWayId && (
+            <InfoboxBikeParking
+              featureType="way"
+              osmId={parseInt(selectedFeature.osmWayId, 10)}
+              closeInfobox={closeInfobox}
+            />
+          )}
+        </MapOverlayWindow>
+      : null}
     </>
   );
 };

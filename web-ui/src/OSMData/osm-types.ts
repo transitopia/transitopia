@@ -5,7 +5,8 @@ export const OsmFeatureType = {
   Way: "way",
   Relation: "relation",
 } as const;
-export type OsmFeatureType = typeof OsmFeatureType[keyof typeof OsmFeatureType];
+export type OsmFeatureType =
+  (typeof OsmFeatureType)[keyof typeof OsmFeatureType];
 
 /**
  * Base schema for information about any OpenStreetMap feature
