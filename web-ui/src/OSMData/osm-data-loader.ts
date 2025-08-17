@@ -38,7 +38,7 @@ interface RawOsmWay {
 interface RawOsmRelation {
   type: "relation";
   id: number;
-  members: { type: "way" | "node" | "relation"; ref: number; role: string };
+  members: { type: "way" | "node" | "relation"; ref: number; role: string }[];
   tags: Record<string, string>;
 }
 
@@ -71,8 +71,8 @@ export function useOsmFeature<Schema extends z.ZodType>(
         ...nodeData.tags,
         featureType,
         osmId: id,
-        ...(nodeData.type === "way" ? nodeData.nodes : undefined),
-        ...(nodeData.type === "relation" ? nodeData.members : undefined),
+        ...(nodeData.type === "way" ? { nodes: nodeData.nodes } : undefined),
+        ...(nodeData.type === "relation" ? { members: nodeData.members } : undefined),
       }) as Record<string, unknown>;
       // For any tags that didn't match the schema or weren't expected, put them in 'otherTags'
       const result = {
