@@ -140,7 +140,6 @@ export const CyclingMap: React.FC = () => {
       setSelectedFeature({
         id: feature.id as string,
         type: "bicycle_parking",
-        // deno-lint-ignore no-explicit-any
         ...(feature.properties as any),
       } as MapParkingElement);
     },

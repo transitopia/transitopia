@@ -13,6 +13,5 @@ export function removeUndefinedKeys<Shape extends Record<string, unknown>>(
 } {
   return Object.fromEntries(
     Object.entries(obj).filter(([_k, v]) => v !== undefined),
-    // deno-lint-ignore no-explicit-any
   ) as any;
 }

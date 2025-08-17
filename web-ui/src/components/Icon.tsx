@@ -2,7 +2,6 @@ import React from "react";
 
 /** Available SVG icons. To keep the build size small, this only contains icons we use. */
 const iconSvg = {
-  // deno-lint-ignore jsx-no-useless-fragment
   blank: <></>,
   // Icons from https://icons.getbootstrap.com/ :
   bicycle: (
