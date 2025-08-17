@@ -26,8 +26,8 @@ jobs:
         run: npm run lint
       - name: Check Types
         run: npm run types
-      # - name: Check Formatting
-      #   run: deno fmt --check
+      - name: Check Formatting
+        run: npm run format-check
   build-web-ui:
     name: Build
     runs-on: ubuntu-latest
