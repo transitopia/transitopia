@@ -10,15 +10,56 @@ import com.onthegomap.planetiler.reader.osm.OsmElement;
 import com.onthegomap.planetiler.reader.osm.OsmRelationInfo;
 import com.onthegomap.planetiler.util.MemoryEstimator;
 import com.onthegomap.planetiler.util.ZoomFunction;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+
+import org.graalvm.polyglot.Context;
+import org.graalvm.polyglot.Source;
+import org.graalvm.polyglot.Value;
+import org.graalvm.polyglot.proxy.ProxyObject;
 
 
 public class Cycling implements
     ForwardingProfile.LayerPostProcessor,
     ForwardingProfile.OsmRelationPreprocessor {
 
+    static String JS_CODE;
+    static {
+        // Load OsmProcessor.js and include it in the .jar file for this program.
+        try (InputStream in = Cycling.class.getResourceAsStream("/js/OsmProcessor.js")) {
+            if (in == null) {
+                throw new IllegalStateException("JS file not found on classpath");
+            }
+            JS_CODE = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    // ThreadLocal to hold per-thread JavaScript Context + function
+    private final ThreadLocal<Value> jsHighwayFn = ThreadLocal.withInitial(() -> {
+        try {
+            // Load our JavaScript file from 'common-lib'. Both the option() and the ".mjs" extension are
+            // required to access the 'exports' of the ES module.
+            final Context ctx = Context.newBuilder("js").option("js.esm-eval-returns-exports", "true").build();
+            final Source src = Source.newBuilder("js", JS_CODE, "script.mjs").build();
+            return ctx.eval(src);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    });
+
     private final PlanetilerConfig config;
     private double BUFFER_SIZE = 4.0;
+    // When zoomed out more than this, dont' encode any bike lane data whatsoever.
+    private int MIN_ZOOM = 6;
     // When zoomed out more than this, don't encode details of the cycling paths (makes tiles too big)
     private int MIN_ZOOM_ATTR = 13;
     // Hide things like bike parking areas below this zoom level.
@@ -30,15 +71,6 @@ public class Cycling implements
         .put(6, 100)
         .put(5, 500)
         .put(4, 1_000);
-
-    // A fully separated bike track that's off-street or has a physical barrier separating it from traffic
-    private static final int COMFORT_MOST = 4;
-    // e.g. shared lane on a quiet neighborhood street
-    private static final int COMFORT_HIGH = 3;
-    // e.g. a painted bike lane, but not separated from traffic
-    private static final int COMFORT_LOW = 2;
-    // e.g. a shared use lane on a busy street
-    private static final int COMFORT_LEAST = 1;
 
     public Cycling(PlanetilerConfig config) {
         this.config = config;
@@ -59,202 +91,25 @@ public class Cycling implements
 
     public void processAllOsm(SourceFeature feature, FeatureCollector features) {
         if (feature.canBeLine()) {
-            FeatureCollector.Feature newLine = null;
-
-            // "OSM distinguishes between cycle lanes and cycle tracks:
-            // A cycle *track* is separate from the road (off-road).
-            // Tracks are typically separated from the road by e.g. curbs, parking lots, grass verges, trees, etc."
-            if (feature.hasTag("highway", "cycleway")) {
-                final boolean shared_with_pedestrians =
-                    feature.hasTag("foot", "designated") && feature.hasTag("segregated", "no");
-                newLine = features.line(LAYER_NAME)
-                    .setAttr("shared_with_pedestrians", shared_with_pedestrians)
-                    .setAttr("shared_with_vehicles", false)
-                    .setAttr("comfort", shared_with_pedestrians ? COMFORT_HIGH : COMFORT_MOST)
-                    .setAttr("oneway", feature.hasTag("oneway", "yes") ? 1 : 0) // For now we don't support 'reverse' one-way with -1
-                    .setAttr("class", "track")
-                    .setAttr("subclass", "cycleway");
-            } else if (feature.hasTag("highway", "path", "pedestrian") && feature.hasTag("bicycle", "designated")) {
-                final boolean shared_with_pedestrians =
-                    (feature.hasTag("foot", "designated") || feature.hasTag("highway", "pedestrian")) &&
-                        !feature.hasTag("segregated", "yes");
-                newLine = features.line(LAYER_NAME)
-                    .setAttr("shared_with_pedestrians", shared_with_pedestrians)
-                    .setAttr("shared_with_vehicles", false)
-                    .setAttr("comfort", shared_with_pedestrians ? COMFORT_HIGH : COMFORT_MOST)
-                    .setAttr("oneway", feature.hasTag("oneway", "yes") ? 1 : 0) // For now we don't support 'reverse' one-way with -1
-                    .setAttr("class", "track")
-                    .setAttr("subclass", "path");
-            } else if (feature.hasTag("highway") && feature.hasTag("cycleway", "track")) {
-                final boolean shared_with_pedestrians =
-                    feature.hasTag("foot", "designated") && !feature.hasTag("segregated", "yes");
-                newLine = features.line(LAYER_NAME)
-                    .setAttr("shared_with_pedestrians", shared_with_pedestrians)
-                    .setAttr("shared_with_vehicles", false)
-                    .setAttr("comfort", shared_with_pedestrians ? COMFORT_HIGH : COMFORT_MOST)
-                    .setAttr("oneway", feature.hasTag("oneway", "yes") ? 1 : 0) // For now we don't support 'reverse' one-way with -1
-                    .setAttr("class", "track")
-                    .setAttr("subclass", "combined-" + feature.getTag("highway"));
-            } else if (feature.hasTag("highway", "construction") && feature.hasTag("construction", "cycleway")) {
-                // A new bike track under construction.
-                final boolean shared_with_pedestrians =
-                    feature.hasTag("foot", "designated") && !feature.hasTag("segregated", "yes");
-                newLine = features.line(LAYER_NAME)
-                    .setAttr("construction", true)
-                    .setAttr("shared_with_pedestrians", shared_with_pedestrians)
-                    .setAttr("shared_with_vehicles", false)
-                    .setAttr("comfort", shared_with_pedestrians ? COMFORT_HIGH : COMFORT_MOST)
-                    .setAttr("oneway", feature.hasTag("oneway", "yes") ? 1 : 0)
-                    .setAttr("class", "track")
-                    .setAttr("subclass", "cycleway");
-                if (feature.hasTag("website")) {
-                    newLine.setAttr("website", feature.getTag("website"));
-                }
-                if (feature.hasTag("opening_date")) {
-                    newLine.setAttr("opening_date", feature.getTag("opening_date"));
-                }
-            }
-            // TODO: support "T2 (alternative)" on https://wiki.openstreetmap.org/wiki/Bicycle (cycleway:right=track + cycleway:right:oneway=no)
-            // A cycle *lane* lies within the roadway itself (on-road):
-            else if (feature.hasTag("highway") && !feature.hasTag("oneway", "yes") &&
-                (feature.hasTag("cycleway", "lane") ||
-                    feature.hasTag("cycleway:both", "lane") ||
-                    (feature.hasTag("cycleway:left", "lane") && feature.hasTag("cycleway:right", "lane")))) {
-                // A bike lane on both sides of the roadway, not separated from traffic
-                newLine = features.line(LAYER_NAME)
-                    .setAttr("shared_with_pedestrians", false)
-                    .setAttr("shared_with_vehicles", false)
-                    .setAttr("comfort", COMFORT_LOW)
-                    .setAttr("oneway", 0)
-                    .setAttr("class", "lane")
-                    .setAttr("side", "both");
-
-                // Check for dooring risk:
-                if (feature.hasTag("parking", "lane", "street_side") || feature.hasTag("parking:both", "lane", "street_side")) {
-                    // should we ignore if "parking:[side]:orientation" is "diagonal" or "perpendicular" ?
-                    newLine.setAttr("comfort", COMFORT_LEAST).setAttr("dooring_risk", true);
-                } else if (feature.hasTag("parking:both", "separate")) {
-                    // The parking is a separate OSM way, so theoretically we'd need to implement
-                    // preprocessOsmWay() to create a list of nearby parking areas first similar to
-                    // https://github.com/onthegomap/planetiler/discussions/1071#discussioncomment-10988131
-                    // to identify the specific parking area and check if it has orientation=parallel and
-                    // parking=street_side or parking=lane... but so far I've only found a few instances
-                    // of this alongside bike lanes in BC and they're all dooring risks (no false
-                    // positives we need to filter out).
-                    newLine.setAttr("comfort", COMFORT_LEAST).setAttr("dooring_risk", true);
-                } else if (
-                    feature.hasTag("parking:right", "separate", "lane", "street_side") ||
-                    feature.hasTag("parking:left", "separate", "lane", "street_side")
-                ) {
-                    // This is a complex case that we don't yet handle well - the bike lane in one direction
-                    // is fine, but in the other direction has a dooring risk. So since we're only showing
-                    // one line for both directions, we downgrade this whole segment of the route.
-                    // Also see note above about how "separate" might need to be further filtered.
-                    newLine.setAttr("comfort", COMFORT_LEAST).setAttr("dooring_risk", true);
-                }
-            } else if (feature.hasTag("highway") && !feature.hasTag("oneway", "yes") &&
-                ((feature.hasTag("cycleway:right", "lane") && feature.hasTag("cycleway:right:oneway", "no")) ||
-                    (feature.hasTag("cycleway:left", "lane") && feature.hasTag("cycleway:left:oneway", "no")))) {
-                // A two-way bike lane on one side of the roadway, not separated from traffic
-                newLine = features.line(LAYER_NAME)
-                    .setAttr("shared_with_pedestrians", false)
-                    .setAttr("shared_with_vehicles", false)
-                    .setAttr("comfort", COMFORT_LOW)
-                    .setAttr("oneway", 0)
-                    .setAttr("class", "lane")
-                    .setAttr("side", feature.hasTag("cycleway:right", "lane") ? "right" : "left");
-            } else if (feature.hasTag("highway") && feature.hasTag("oneway", "yes") &&
-                (feature.hasTag("cycleway", "lane") ||
-                    feature.hasTag("cycleway:right", "lane") ||
-                    feature.hasTag("cycleway:left", "lane"))) {
-                final String side = feature.hasTag("cycleway:left", "lane") ? "left" : "right";
-                // A one-way bike lane on a one-way roadway, not separated from traffic
-                newLine = features.line(LAYER_NAME)
-                    .setAttr("shared_with_pedestrians", false)
-                    .setAttr("shared_with_vehicles", false)
-                    .setAttr("comfort", COMFORT_LOW)
-                    .setAttr("oneway",
-                        // In rare cases, there is a bike lane on both sides of a one way street.
-                        // In even rarer cases, there is some other exotic lane type on one side, but we ignore that for now.
-                        (feature.hasTag("cycleway:right", "lane") && feature.hasTag("cycleway:left", "lane")) ? 0 :
-                            (feature.hasTag("cycleway:left", "lane") && feature.hasTag("cycleway:right", "lane")) ? 0 :
-                            1 // Default is one way like the "parent" roadway
-                    )
-                    .setAttr("class", "lane")
-                    .setAttr("side", side);
-                
-                if (feature.hasTag("parking:" + side, "separate", "lane", "street_side")) {
-                    // The bike lane is adjacent to parking
-                    // TODO: need some way to negate this if there is a buffer between the bike lane and
-                    // the parking lane. But https://wiki.openstreetmap.org/wiki/Key:cycleway:buffer is
-                    // explicitly only for a buffer between the bike lane and cars.
-                    // Can possibly use "cycleway:right:separation:right" etc. per 
-                    // https://wiki.openstreetmap.org/wiki/Proposal:Separation but this doesn't have
-                    // much adoption.
-                    // Also see note above about how "separate" might need to be further filtered.
-                    newLine.setAttr("comfort", COMFORT_LEAST).setAttr("dooring_risk", true);
-                }
-            } else if (feature.hasTag("highway") && feature.hasTag("cycleway", "shared_lane", "shared") ||
-                feature.hasTag("cycleway:both", "shared_lane", "shared")) {
-                // A lane that is shared with motor vehicles
-                newLine = features.line(LAYER_NAME)
-                    .setAttr("shared_with_pedestrians", false)
-                    .setAttr("shared_with_vehicles", true)
-                    .setAttr("comfort",
-                        feature.hasTag("motor_vehicle", "private") ? COMFORT_HIGH :
-                            (feature.hasTag("maxspeed") && feature.getLong("maxspeed") <= 30) ? COMFORT_HIGH :
-                            COMFORT_LEAST)
-                    .setAttr("oneway",
-                        feature.hasTag("oneway:bicycle", "no") ? 0 :
-                            feature.hasTag("oneway", "yes") ? 1 :
-                            0
-                    )
-                    .setAttr("class", "lane");
-            } else if (feature.hasTag("highway", "residential") && feature.hasTag("bicycle", "yes", "designated") &&
-                (feature.hasTag("maxspeed") && feature.getLong("maxspeed") <= 30)) {
-                // A slow street that bicycles can use
-                newLine = features.line(LAYER_NAME)
-                    .setAttr("shared_with_pedestrians", feature.hasTag("foot", "yes"))
-                    .setAttr("shared_with_vehicles", true)
-                    .setAttr("comfort", COMFORT_HIGH)
-                    .setAttr("oneway",
-                        feature.hasTag("oneway:bicycle", "no") ? 0 :
-                            feature.hasTag("oneway", "yes") ? 1 :
-                            0
-                    )
-                    .setAttr("class", "lane");
-            } else if (feature.hasTag("highway") && (
-                (feature.hasTag("cycleway:right", "lane") && feature.hasTag("cycleway:left", "no")) ||
-                (feature.hasTag("cycleway:left", "lane") && feature.hasTag("cycleway:right", "no"))
-            )) {
-                // The street is a two-way street but the bike lane is a one-way bike lane on one side only.
-                // "L2" on https://wiki.openstreetmap.org/wiki/Bicycle (highway=* + cycleway:right=lane)
-                final String side = feature.hasTag("cycleway:left", "lane") ? "left" : "right";
-                newLine = features.line(LAYER_NAME)
-                    .setAttr("shared_with_pedestrians", false)
-                    .setAttr("shared_with_vehicles", false)
-                    .setAttr("comfort", COMFORT_LOW)
-                    .setAttr("oneway", feature.hasTag("cycleway:left", "lane") ? -1 : 1)
-                    .setAttr("class", "lane")
-                    .setAttr("side", side);
-
-                if (
-                    feature.hasTag("parking:both", "separate", "lane", "street_side") ||
-                    feature.hasTag("parking:" + side, "separate", "lane", "street_side")
-                ) {
-                    newLine.setAttr("comfort", COMFORT_LEAST).setAttr("dooring_risk", true);
-                }
-            }
-            // TODO: support other types of cycle paths
-            // e.g. https://www.openstreetmap.org/way/74096518 (mixed lane + shared_lane)
-
-            if (newLine != null) {
-                newLine
-                    // .setAttr("osmId", feature.id())
-                    .setAttrWithMinzoom("name", feature.getTag("name"), MIN_ZOOM_ATTR)
-                    .setAttrWithMinzoom("surface", feature.getTag("surface"), MIN_ZOOM_ATTR)
+            // Note: if we need to, we could do a preliminary filter here to see if this highway is cycling-ish, but it seems fine as-is.
+            // On my MacBook it can process 3M ways/s using pure Java or 1M ways/s using JS, and it only changes the total time to process
+            // the "british-columbia" region from 2s to 6s.
+            final Value osmProcessessor = this.jsHighwayFn.get();
+            final Value result = osmProcessessor.getMember("deriveCyclingTags").execute(feature.id(), ProxyObject.fromMap(feature.tags()));
+            if (!result.isNull()) {
+                // Create a linear feature in the new map tiles matching the current Way, with the computed tags:
+                final var bikePath = features.line(LAYER_NAME)
                     .setBufferPixels(BUFFER_SIZE)
-                    .setMinZoom(6);
+                    .setMinZoom(MIN_ZOOM);
+
+                @SuppressWarnings("unchecked")
+                Map<String, Object> tags = (Map<String, Object>) jsValueToJava(result);
+                // Write the simplified tags generated by our JavaScript code. When not zoomed in a lot, we only
+                // encode the "comfort" value since it's all that's needed to render the way on the map. At higher
+                // zooms, we encode the details so users can click on it and get info about it.
+                tags.forEach((k, v) -> bikePath.setAttrWithMinzoom(k, v, MIN_ZOOM_ATTR));
+                bikePath.setAttr("comfort", tags.get("comfort"));
+
                 // If this feature is a part of any routes, record that:
                 var partOfRoutes = feature.relationInfo(RouteRelationInfo.class);
                 if (!partOfRoutes.isEmpty()) {
@@ -263,7 +118,7 @@ public class Cycling implements
                         if (routeIdsString != "") routeIdsString += ",";
                         routeIdsString += relation.relation().id;
                     }
-                    newLine.setAttrWithMinzoom("routes", routeIdsString, MIN_ZOOM_ATTR);
+                    bikePath.setAttrWithMinzoom("routes", routeIdsString, MIN_ZOOM_ATTR);
                 }
             }
         } else if (feature.isPoint()) {
@@ -323,5 +178,44 @@ public class Cycling implements
 
     private static <T> T coalesce(T a, T b) {
         return a != null ? a : b;
+    }
+
+    private static Object jsValueToJava(Value v) {
+        if (v == null) {
+            return null;
+        }
+        if (v.isNull()) {
+            return null;
+        }
+        if (v.isBoolean()) {
+            return v.asBoolean();
+        }
+        if (v.isNumber()) {
+            double d = v.asDouble();
+            if (Math.floor(d) == d && d >= Long.MIN_VALUE && d <= Long.MAX_VALUE) {
+                return (long) d;
+            } else {
+                return d;
+            }
+        }
+        if (v.isString()) {
+            return v.asString();
+        }
+        if (v.hasArrayElements()) {
+            List<Object> list = new ArrayList<>();
+            for (long i = 0; i < v.getArraySize(); i++) {
+                list.add(jsValueToJava(v.getArrayElement(i)));
+            }
+            return list;
+        }
+        if (v.hasMembers()) {
+            Map<String, Object> map = new HashMap<>();
+            for (String key : v.getMemberKeys()) {
+                map.put(key, jsValueToJava(v.getMember(key)));
+            }
+            return map;
+        }
+        // fallback: just return as Object
+        return v.as(Object.class);
     }
 }

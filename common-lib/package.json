@@ -1,13 +1,23 @@
 {
   "name": "transitopia-lib",
+  "exports": {
+    "./FeatureId": {
+      "import": "./src/FeatureId.ts"
+    },
+    "./MapFeatures": {
+      "import": "./src/MapFeatures.ts"
+    }
+  },
   "peerDependencies": {
     "zod": "4"
   },
   "devDependencies": {
-    "@types/node": "^24.3.0"
+    "@types/node": "^24.3.0",
+    "tsdown": "^0.14.1"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "build": "tsdown src/OsmProcessor.ts"
   },
   "type": "module"
 }
