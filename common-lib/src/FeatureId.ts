@@ -7,7 +7,7 @@
  *
  * The basic format of a FeatureId is designed to exaclty match what users see in
  * the URL, e.g.
- *    /cycling/way/123890
+ *    cycling/way/123890
  * for a bike lane, which would be accessed at https://www.transitopia.org/cycling/way/123890
  *
  * The main thing about FeatureIds is that we always try to just re-use the "main"
@@ -18,16 +18,16 @@
  * come primarily from OpenStreetMap, but there are separate namespaces for them:
  * "node" bike parking spaces and "way" bike parking areas. Because the ID numbers
  * are only unique within each namespace, we have to distinguish them like this:
- *    /cycling/parking/node:123890
- *    /cycling/parking/way:123890   (a totally different bike parking area)
+ *    cycling/parking/node:123890
+ *    cycling/parking/way:123890   (a totally different bike parking area)
  *
  * And then, we may in the future have data coming in from other sources than the
  * "main" source for a given type, so we support a "source" prefix like this:
- *    /cycling/station/gbfs:vancouver:123325
- *    /cycling/station/other_source:vancouver:acbdef
+ *    cycling/station/gbfs:vancouver:123325
+ *    cycling/station/other_source:vancouver:acbdef
  *
  * So the full breakdown is:
- *    /domain/type/source:namespace:identifier
+ *    domain/type/source:namespace:identifier
  *
  * Where source and/or namespace are often optional, depending on the domain+type.
  * If source is included, namespace is always required.
