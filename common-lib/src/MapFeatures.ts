@@ -19,6 +19,11 @@ type CyclingComfort = (typeof CyclingComfort)[keyof typeof CyclingComfort];
 export interface MapCyclingWay {
   type: "cycling/way";
   osm_way_id?: number;
+  /**
+   * For features made from merging multiple similar OSM ways, this is a comma separated
+   * string of the constituent OSM Way IDs. e.g. `"5677418962,12079149472,12079149502"`
+   */
+  osm_way_ids?: string;
   name?: string;
   construction?: boolean;
   shared_with_pedestrians: boolean;
@@ -32,6 +37,11 @@ export interface MapCyclingWay {
   oneway: 0 | 1 | -1;
   /** If there's a cycle lane on only one side of the road, which side? */
   side?: "right" | "left";
+  /**
+   * IDs of OpenStreetMap relations that define routes that include this way.
+   * Comma separated string. e.g. `"1620209,19316878"`
+   */
+  routes?: string;
 
   // Mostly for things under construction:
   website?: string;

@@ -1,7 +1,6 @@
 package org.transitopia.layers;
 
 import com.onthegomap.planetiler.FeatureCollector;
-import com.onthegomap.planetiler.FeatureMerge;
 import com.onthegomap.planetiler.ForwardingProfile;
 import com.onthegomap.planetiler.VectorTile;
 import com.onthegomap.planetiler.config.PlanetilerConfig;
@@ -24,6 +23,7 @@ import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.Value;
 import org.graalvm.polyglot.proxy.ProxyObject;
+import org.transitopia.utils.FeatureMergeWithIds;
 
 
 public class Cycling implements
@@ -153,7 +153,7 @@ public class Cycling implements
     }
 
     @Override
-    public List<VectorTile.Feature> postProcess(int zoom, List<VectorTile.Feature> items) {
+    public List<VectorTile.Feature> postProcess(int zoom, List<VectorTile.Feature> features) {
         final String LIMIT_MERGE_TAG = "noMerge";
         double tolerance = config.tolerance(zoom);
         double minLength = coalesce(MIN_LENGTH.apply(zoom), 0).doubleValue();
@@ -161,17 +161,25 @@ public class Cycling implements
         // don't merge road segments with "oneway" tag
         // TODO: merge while preserving "oneway" instead ignoring
         int onewayId = 1;
-        for (var item : items) {
-            var oneway = item.tags().get("oneway");
+        for (var feature : features) {
+            var oneway = feature.tags().get("oneway");
             if (oneway instanceof Number n && n.intValue() == 1) {
-                item.tags().put(LIMIT_MERGE_TAG, onewayId++);
+                feature.tags().put(LIMIT_MERGE_TAG, onewayId++);
             }
+            // Delete the "osm_way_id" tag, which would prevent _any_ merging.
+            // The ID is available in the 'id' attribute (not a tag) anyways.
+            feature.tags().remove("osm_way_id");
         }
 
-        var merged = FeatureMerge.mergeLineStrings(items, minLength, tolerance, BUFFER_SIZE);
+        var merged = FeatureMergeWithIds.mergeLineStrings(features, minLength, tolerance, BUFFER_SIZE);
 
-        for (var item : merged) {
-            item.tags().remove(LIMIT_MERGE_TAG);
+        for (var feature : merged) {
+            feature.tags().remove(LIMIT_MERGE_TAG);
+            if (feature.hasTag("osm_way_ids")) {
+                // No action
+            } else {
+                feature.setTag("osm_way_id", feature.id());
+            }
         }
         return merged;
     }
