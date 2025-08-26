@@ -112,11 +112,16 @@ public class Cycling implements
 
                 // If this feature is a part of any routes, record that:
                 var partOfRoutes = feature.relationInfo(RouteRelationInfo.class);
+                // Sort by ID so that we can merge similar features later when comparing their tags, including "routes"
                 if (!partOfRoutes.isEmpty()) {
+                    List<Long> sortedRoutes = partOfRoutes.stream()
+                        .map(r -> r.relation().id())
+                        .sorted()
+                        .toList();
                     var routeIdsString = "";
-                    for (var relation : partOfRoutes) {
+                    for (var relationId : sortedRoutes) {
                         if (routeIdsString != "") routeIdsString += ",";
-                        routeIdsString += relation.relation().id;
+                        routeIdsString += relationId;
                     }
                     bikePath.setAttrWithMinzoom("routes", routeIdsString, MIN_ZOOM_ATTR);
                 }
