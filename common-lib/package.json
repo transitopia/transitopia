@@ -13,11 +13,18 @@
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
-    "tsdown": "^0.14.1"
+    "oxlint": "^1.12.0",
+    "oxlint-tsgolint": "^0.0.4",
+    "tsdown": "^0.14.1",
+    "prettier": "^3.6.2"
   },
   "scripts": {
     "test": "node --test",
-    "build": "tsdown src/OsmProcessor.ts"
+    "build": "tsdown src/OsmProcessor.ts",
+    "format": "prettier --write src/",
+    "format-check": "prettier --check src/",
+    "lint": "oxlint --type-aware",
+    "types": "tsc --noEmit"
   },
   "type": "module"
 }

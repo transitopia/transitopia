@@ -2,13 +2,13 @@ name: Build Transitopia Cycling Layer
 
 on:
   pull_request:
-    paths: 'map-layers/**'
+    paths: "map-layers/**"
   push:
     branches:
       - main
   schedule:
     # Every day at 09:45 UTC
-    - cron:  '45 9 * * *'
+    - cron: "45 9 * * *"
 jobs:
   Build-Cycling-Layer:
     runs-on: ubuntu-latest
@@ -21,7 +21,15 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: "21"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install dependencies to build common-lib
+        run: npm ci
+        working-directory: ./common-lib
+      - run: npm run build
+        working-directory: ./common-lib
       - name: Cache local Maven repository
         uses: actions/cache@v4
         with:
