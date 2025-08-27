@@ -1,17 +1,21 @@
 {
-    "deno.enable": false,
-    "editor.tabSize": 4,
-    "editor.defaultFormatter": "esbenp.prettier-vscode",
-    "prettier.configPath": "web-ui/prettier.config.js",
-    "prettier.prettierPath": "web-ui/node_modules/prettier",
-    "editor.formatOnSave": true,
-    "[typescript]": {
-        "editor.defaultFormatter": "esbenp.prettier-vscode"
-    },
-    "[javascript]": {
-        "editor.defaultFormatter": "esbenp.prettier-vscode"
-    },
-    "[json]": {
-        "editor.defaultFormatter": "esbenp.prettier-vscode"
-    }
+  "deno.enable": false,
+  "editor.tabSize": 4,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "oxc.typeAware": true,
+  "prettier.configPath": "web-ui/prettier.config.js",
+  "prettier.prettierPath": "web-ui/node_modules/prettier",
+  "editor.formatOnSave": true,
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  }
 }
