@@ -159,18 +159,10 @@ public class Cycling implements
 
     @Override
     public List<VectorTile.Feature> postProcess(int zoom, List<VectorTile.Feature> features) {
-        final String LIMIT_MERGE_TAG = "noMerge";
         double tolerance = config.tolerance(zoom);
         double minLength = coalesce(MIN_LENGTH.apply(zoom), 0).doubleValue();
 
-        // don't merge road segments with "oneway" tag
-        // TODO: merge while preserving "oneway" instead ignoring
-        int onewayId = 1;
         for (var feature : features) {
-            var oneway = feature.tags().get("oneway");
-            if (oneway instanceof Number n && n.intValue() == 1) {
-                feature.tags().put(LIMIT_MERGE_TAG, onewayId++);
-            }
             // Delete the "osm_way_id" tag, which would prevent _any_ merging.
             // The ID is available in the 'id' attribute (not a tag) anyways.
             feature.tags().remove("osm_way_id");
@@ -179,7 +171,6 @@ public class Cycling implements
         var merged = FeatureMergeWithIds.mergeLineStrings(features, minLength, tolerance, BUFFER_SIZE);
 
         for (var feature : merged) {
-            feature.tags().remove(LIMIT_MERGE_TAG);
             if (feature.hasTag("osm_way_ids")) {
                 // No action
             } else {
