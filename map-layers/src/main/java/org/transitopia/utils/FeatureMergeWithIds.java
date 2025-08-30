@@ -108,7 +108,7 @@ public class FeatureMergeWithIds {
           // So we convert it to a comma-separated string: `owm_way_id="1234,4567"`
           // Surprisingly, this is more efficient than a series of separate integer tags
           // like `osm_way_id_0=1234,osm_way_id_1=4567`.
-          final String mergedIdsStr = String.join(",", mergedIds.stream().map(String::valueOf).toList());
+          final String mergedIdsStr = String.join(",", mergedIds.stream().sorted().map(String::valueOf).toList());
           mergedFeature.setTag("osm_way_ids", mergedIdsStr);
           result.add(mergedFeature);
         }
