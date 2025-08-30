@@ -46,7 +46,7 @@ public class Cycling implements
     // ThreadLocal to hold per-thread JavaScript Context + function
     private final ThreadLocal<Value> jsHighwayFn = ThreadLocal.withInitial(() -> {
         try {
-            // Load our JavaScript file from 'common-lib'. Both the option() and the ".mjs" extension are
+            // Load our JavaScript file from 'transitopia-lib'. Both the option() and the ".mjs" extension are
             // required to access the 'exports' of the ES module.
             final Context ctx = Context.newBuilder("js").option("js.esm-eval-returns-exports", "true").build();
             final Source src = Source.newBuilder("js", JS_CODE, "script.mjs").build();

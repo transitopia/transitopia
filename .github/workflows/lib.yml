@@ -1,19 +1,19 @@
-name: common-lib checks
+name: transitopia-lib checks
 
 on:
   pull_request:
-    paths: "common-lib/**"
+    paths: "transitopia-lib/**"
   push:
     branches:
       - main
 
 jobs:
-  test-common-lib:
+  test-transitopia-lib:
     name: Test and validate transitopia-lib
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./common-lib
+        working-directory: ./transitopia-lib
     steps:
       - name: Check out code
         uses: actions/checkout@v5
@@ -30,12 +30,12 @@ jobs:
         run: npm run format-check
       - name: Run tests
         run: npm test
-  build-common-lib:
+  build-transitopia-lib:
     name: Build
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./common-lib
+        working-directory: ./transitopia-lib
     steps:
       - name: Check out code
         uses: actions/checkout@v5

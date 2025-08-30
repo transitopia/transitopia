@@ -1,1 +1,1 @@
-../../../../../common-lib/dist/OsmProcessor.js
+../../../../../transitopia-lib/dist/OsmProcessor.js

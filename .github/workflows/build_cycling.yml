@@ -25,11 +25,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Install dependencies to build common-lib
+      - name: Install dependencies to build transitopia-lib
         run: npm ci
-        working-directory: ./common-lib
+        working-directory: ./transitopia-lib
       - run: npm run build
-        working-directory: ./common-lib
+        working-directory: ./transitopia-lib
       - name: Cache local Maven repository
         uses: actions/cache@v4
         with:
