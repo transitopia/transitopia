@@ -102,14 +102,18 @@ public class FeatureMergeWithIds {
           outputSegments = sortByHilbertIndex(outputSegments);
           Geometry newGeometry = GeoUtils.combineLineStrings(outputSegments);
           VectorTile.Feature mergedFeature = feature1.copyWithNewGeometry(newGeometry);
-          // We want to store the list of OSM Way IDs, but the vector tile spec doesn't allow
-          // tag values to be a list:
-          // https://github.com/mapbox/vector-tile-spec/blob/5330dfc6ba/2.1/vector_tile.proto#L15-L28
-          // So we convert it to a comma-separated string: `owm_way_id="1234,4567"`
-          // Surprisingly, this is more efficient than a series of separate integer tags
-          // like `osm_way_id_0=1234,osm_way_id_1=4567`.
-          final String mergedIdsStr = String.join(",", mergedIds.stream().sorted().map(String::valueOf).toList());
-          mergedFeature.setTag("osm_way_ids", mergedIdsStr);
+          if (mergedIds.size() == 1) {
+            mergedFeature.setTag("osm_way_id", mergedIds.getFirst());
+          } else {
+            // We want to store the list of OSM Way IDs, but the vector tile spec doesn't allow
+            // tag values to be a list:
+            // https://github.com/mapbox/vector-tile-spec/blob/5330dfc6ba/2.1/vector_tile.proto#L15-L28
+            // So we convert it to a comma-separated string: `owm_way_id="1234,4567"`
+            // Surprisingly, this is more efficient than a series of separate integer tags
+            // like `osm_way_id_0=1234,osm_way_id_1=4567`.
+            final String mergedIdsStr = String.join(",", mergedIds.stream().sorted().map(String::valueOf).toList());
+            mergedFeature.setTag("osm_way_ids", mergedIdsStr);
+          }
           result.add(mergedFeature);
         }
       }

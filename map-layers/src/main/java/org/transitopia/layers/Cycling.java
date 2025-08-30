@@ -132,7 +132,7 @@ public class Cycling implements
                 features.point(LAYER_NAME)
                     .setAttr("amenity", "bicycle_parking")
                     .setAttr("name", feature.getTag("name"))
-                    .setAttr("osmNodeId", feature.id())
+                    .setAttr("osm_node_id", feature.id())
                     .setMinZoom(MIN_ZOOM_DETAILS);
             }
         }
@@ -143,7 +143,7 @@ public class Cycling implements
                 features.centroid(LAYER_NAME)
                     .setAttr("amenity", "bicycle_parking")
                     .setAttr("name", feature.getTag("name"))
-                    .setAttr("osmWayId", feature.id())
+                    .setAttr("osm_way_id", feature.id())
                     .setMinZoom(MIN_ZOOM_DETAILS);
             }
         }
@@ -163,17 +163,21 @@ public class Cycling implements
         double minLength = coalesce(MIN_LENGTH.apply(zoom), 0).doubleValue();
 
         for (var feature : features) {
-            // Delete the "osm_way_id" tag, which would prevent _any_ merging.
-            // The ID is available in the 'id' attribute (not a tag) anyways.
-            feature.tags().remove("osm_way_id");
+            // Temporarily make the "osm_way_id" tag non-unique; unique IDs would prevent _any_ merging.
+            // The ID is available in the 'id' attribute (not a tag) anyways, so we can restore it later.
+            if (feature.hasTag("osm_way_id")) {
+                feature.setTag("osm_way_id", "pending");
+            }
         }
 
         var merged = FeatureMergeWithIds.mergeLineStrings(features, minLength, tolerance, BUFFER_SIZE);
 
         for (var feature : merged) {
             if (feature.hasTag("osm_way_ids")) {
-                // No action
-            } else {
+                if (feature.hasTag("osm_way_id", "pending")) {
+                    feature.tags().remove("osm_way_id"); // This was merged and now has multiple IDs
+                }
+            } else if (feature.hasTag("osm_way_id", "pending")) {
                 feature.setTag("osm_way_id", feature.id());
             }
         }
