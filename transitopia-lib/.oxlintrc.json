@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "overrides": [
+    {
+      "files": ["**/*.test.*"],
+      "rules": {
+        // Until https://github.com/oxc-project/tsgolint/issues/135 is fixed.
+        "typescript/no-floating-promises": "off"
+      }
+    }
+  ]
+}

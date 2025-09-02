@@ -1,5 +1,6 @@
 import React from "react";
 
+import { type MapCyclingWay } from "transitopia-lib/MapFeatures";
 import {
   layers,
   mapSource,
@@ -7,10 +8,7 @@ import {
   pathLayerIds,
 } from "./cycling-map-layers.ts";
 import { useMap, useMapLayerEvent } from "../Map/MapUtils.ts";
-import {
-  type MapCyclingElement,
-  type MapParkingElement,
-} from "../Map/MapData.ts";
+import { type MapParkingElement } from "../Map/MapData.ts";
 import { MapOverlayWindow } from "../Map/MapOverlayWindow.tsx";
 import { InfoboxBikeParking } from "./InfoboxBikeParking.tsx";
 
@@ -39,7 +37,7 @@ export const CyclingMap: React.FC = () => {
   });
 
   const [selectedFeature, setSelectedFeature] = React.useState<
-    MapCyclingElement | MapParkingElement
+    (MapCyclingWay & { id: string }) | MapParkingElement
   >();
   const hoveredFeatureIdRef = React.useRef<string | undefined>(undefined);
 
@@ -126,9 +124,9 @@ export const CyclingMap: React.FC = () => {
       if (!map || map.getZoom() < 13 || !feature) return;
       setSelectedFeature({
         id: feature.id as string,
-        type: "cycling_way",
+        type: "cycling/way",
         ...feature.properties,
-      } as MapCyclingElement);
+      } as any as MapCyclingWay & { id: string });
     },
     [map],
   );
@@ -179,7 +177,7 @@ export const CyclingMap: React.FC = () => {
 
   return (
     <>
-      {selectedFeature?.type === "cycling_way" ?
+      {selectedFeature?.type === "cycling/way" ?
         <MapOverlayWindow className="top-24">
           <div className="flex">
             <div className="flex-1">

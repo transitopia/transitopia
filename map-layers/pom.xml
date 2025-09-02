@@ -11,6 +11,7 @@
     <maven.compiler.target>21</maven.compiler.target>
     <planetiler.version>0.9.1</planetiler.version>
     <junit.version>5.10.1</junit.version>
+    <graaljs.version>24.1.0</graaljs.version>
 
     <mainClass>org.transitopia.TransitopiaMain</mainClass>
     <image.version>${project.version}</image.version>
@@ -20,7 +21,7 @@
 
   <groupId>org.transitopia</groupId>
   <artifactId>planetiler-transitopia</artifactId>
-  <version>25.08.10</version>
+  <version>25.08.20</version>
 
   <name>Transitopia Vector Tile Schema implementation for Planetiler tool</name>
 
@@ -57,6 +58,17 @@
       <artifactId>planetiler-core</artifactId>
       <version>${planetiler.version}</version>
     </dependency>
+    <dependency>
+      <groupId>org.graalvm.polyglot</groupId>
+      <artifactId>polyglot</artifactId>
+      <version>${graaljs.version}</version>
+  </dependency>
+  <dependency>
+      <groupId>org.graalvm.polyglot</groupId>
+      <artifactId>js</artifactId>
+      <version>${graaljs.version}</version>
+      <type>pom</type>
+  </dependency>
   </dependencies>
 
   <scm>

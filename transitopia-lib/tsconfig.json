@@ -2,20 +2,18 @@
   "compilerOptions": {
     "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
-    "skipLibCheck": true,
-
-    /* Bundler mode */
     "moduleResolution": "bundler",
+    "noEmit": true, // We'll use tsdown if we need to bundle this
+    "skipLibCheck": true,
     "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "jsx": "react-jsx",
-
-    /* Linting */
     "strict": true,
+    "isolatedModules": true,
     "exactOptionalPropertyTypes": true, // Distinguish between {key?: value} and {key: value | undefined} strictly.
     "erasableSyntaxOnly": true, // Allow running code directly with Node.
     "verbatimModuleSyntax": true, // Allow running code directly with Node.
@@ -23,6 +21,7 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "include": [
+    "src"
+  ]
 }
