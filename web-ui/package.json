@@ -13,7 +13,7 @@
     "types": "tsc --noEmit"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.85.8",
+    "@tanstack/react-query": "^5.86.0",
     "maplibre-gl": "^5.7.0",
     "pmtiles": "^4.3.0",
     "react": "^19.1.1",
