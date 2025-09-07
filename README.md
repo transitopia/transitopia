@@ -14,8 +14,9 @@ Online at: **[www.transitopia.org](https://www.transitopia.org/cycling)**.
 
 This repository is a monorepo containing most of the parts you need to run and develop Transitopia locally. It consists of:
 
-* `web-ui`: The Single Page Application implements the website with the Transitopia map, seen at https://www.transitopia.org/
-* `map-layers`: A Transitopia profile for [Planetiler](https://github.com/onthegomap/planetiler) that generates our unique map layers/overlays, like the cycling/micromobility map.
+- `web-ui`: The Single Page Application implements the website with the Transitopia map, seen at https://www.transitopia.org/
+- `map-layers`: A Transitopia profile for [Planetiler](https://github.com/onthegomap/planetiler) that generates our unique map layers/overlays, like the cycling/micromobility map.
+- `transitopia-lib`: Common data models and functions shared by the `web-ui` and `map-layers` code.
 
 ## How to run Transitopia Locally
 
