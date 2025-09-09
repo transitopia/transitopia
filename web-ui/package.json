@@ -29,7 +29,7 @@
     "oxlint": "^1.13.0",
     "oxlint-tsgolint": "^0.0.4",
     "prettier": "^3.6.2",
-    "tailwindcss": "^4.1.12",
+    "tailwindcss": "^4.1.13",
     "typescript": "^5.9.2",
     "vite": "npm:rolldown-vite@^7.1.4"
   }
