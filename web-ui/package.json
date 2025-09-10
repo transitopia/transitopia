@@ -27,7 +27,7 @@
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.2",
     "oxlint": "^1.13.0",
-    "oxlint-tsgolint": "^0.0.4",
+    "oxlint-tsgolint": "^0.1.6",
     "prettier": "^3.6.2",
     "tailwindcss": "^4.1.13",
     "typescript": "^5.9.2",
