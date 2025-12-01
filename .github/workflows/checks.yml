@@ -16,7 +16,7 @@ jobs:
         working-directory: ./web-ui
     steps:
       - name: Check out code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -36,7 +36,7 @@ jobs:
         working-directory: ./web-ui
     steps:
       - name: Check out code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - uses: actions/setup-node@v5
         with:
           node-version: 24
