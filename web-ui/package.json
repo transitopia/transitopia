@@ -13,22 +13,22 @@
     "types": "tsc --noEmit"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.90.2",
-    "maplibre-gl": "^5.8.0",
+    "@tanstack/react-query": "^5.90.11",
+    "maplibre-gl": "^5.13.0",
     "pmtiles": "^4.3.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "wouter": "^3.7.1",
-    "zod": "^4.1.12"
+    "wouter": "^3.8.1",
+    "zod": "^4.1.13"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.1.14",
-    "@types/react": "^19.2.2",
-    "@types/react-dom": "^19.2.1",
-    "@vitejs/plugin-react": "^5.0.4",
-    "oxlint": "^1.20.0",
-    "oxlint-tsgolint": "^0.2.0",
-    "prettier": "^3.6.2",
+    "@tailwindcss/vite": "^4.1.17",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "oxlint": "^1.31.0",
+    "oxlint-tsgolint": "^0.8.3",
+    "prettier": "^3.7.4",
     "tailwindcss": "^4.1.13",
     "typescript": "^5.9.3",
     "vite": "npm:rolldown-vite@^7.1.5"
