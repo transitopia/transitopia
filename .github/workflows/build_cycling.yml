@@ -57,7 +57,7 @@ jobs:
       - name: Install rclone
         run: sudo apt install --yes rclone
       - name: Download compiled maps
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: compiled-maps
       - name: upload
