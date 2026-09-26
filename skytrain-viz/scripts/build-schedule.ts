@@ -10,7 +10,7 @@ import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { readCsv, readCsvAll, type Row } from './lib/gtfs-zip.ts';
 import { CONFIG_DIR, FEEDS_OUT_DIR, GTFS_RAW_DIR, PUBLIC_DATA_DIR, log, readJson, writeJson } from './lib/paths.ts';
-import { cumulativeLengths, projectOnto, round, simplify, type LonLat } from '../src/core/geo.ts';
+import { cumulativeLengths, distM, projectOnto, round, simplify, type LonLat } from '../src/core/geo.ts';
 import { parseGtfsTime, TIMEZONE } from '../src/core/time.ts';
 import type { CalendarEntry, CalendarException } from '../src/core/gtfs/calendar.ts';
 import type {
@@ -38,6 +38,8 @@ interface RouteConfig {
 const SIMPLIFY_M: Record<RouteKind, number> = { skytrain: 1, shape: 3, bus: 4 };
 /** Warn when a stop projects further than this from its trip's shape. */
 const STOP_OFFSET_WARN_M = 150;
+/** Same-named stations closer than this are one station on the map. */
+const STATION_MERGE_M = 400;
 
 async function exists(p: string): Promise<boolean> {
   try {
@@ -251,13 +253,23 @@ export async function buildPlan(zipPath: string): Promise<ServicePlan> {
     if (!row) continue;
     stations.push({
       id,
-      name: row.stop_name!.replace(/\s+Station$/, ''),
+      // "Waterfront Station", "Waterfront Station @ West Coast Express" → "Waterfront"
+      name: row.stop_name!.replace(/\s+Station\b.*$/, '').replace(/\s+@.*$/, ''),
       lon: Number(row.stop_lon),
       lat: Number(row.stop_lat),
       routes: [...rs],
     });
   }
-  stations.sort((a, b) => a.name.localeCompare(b.name));
+  // Merge same-named stations close together (e.g. standalone WCE stops beside the SkyTrain
+  // station of the same name), keeping the first (parent) station's position.
+  const merged: PlanStation[] = [];
+  for (const s of stations.sort((a, b) => b.routes.length - a.routes.length || a.id.localeCompare(b.id))) {
+    const twin = merged.find((m) => m.name === s.name && distM([m.lon, m.lat], [s.lon, s.lat]) < STATION_MERGE_M);
+    if (twin) twin.routes = [...new Set([...twin.routes, ...s.routes])];
+    else merged.push(s);
+  }
+  stations.length = 0;
+  stations.push(...merged.sort((a, b) => a.name.localeCompare(b.name)));
 
   // Calendar.
   const usedServices = new Set(trips.map((t) => t.service));

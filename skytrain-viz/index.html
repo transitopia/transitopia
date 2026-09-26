@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content="Live and schedule-based map of Vancouver's SkyTrain, SeaBus, West Coast Express and express buses." />
+    <meta name="color-scheme" content="light dark" />
+    <title>SkyTrain Viz</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='9' width='26' height='14' rx='4' fill='%230033a0'/%3E%3Crect x='7' y='12' width='5' height='5' rx='1' fill='%23fff'/%3E%3Crect x='14' y='12' width='5' height='5' rx='1' fill='%23fff'/%3E%3Crect x='21' y='12' width='5' height='5' rx='1' fill='%23fff'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div id="map" aria-label="Transit map"></div>
+
+    <section id="legend" class="panel legend">
+      <button class="legend-toggle" aria-expanded="true" aria-controls="legend-body">
+        <span class="legend-title">SkyTrain Viz</span><span class="chev" aria-hidden="true">▾</span>
+      </button>
+      <div class="legend-body" id="legend-body"></div>
+    </section>
+
+    <button id="theme-toggle" class="panel icon-btn" aria-label="Toggle theme"></button>
+
+    <aside id="inspect" class="panel inspect" hidden aria-live="polite"></aside>
+
+    <div id="error" class="panel error" hidden role="alert"></div>
+
+    <section id="timebar" class="panel timebar" aria-label="Time controls">
+      <div class="tb-row">
+        <button id="tb-play" class="tb-play" aria-label="Pause">❚❚</button>
+        <div class="tb-now">
+          <span id="tb-time" class="tb-time">--:--:--</span>
+          <span id="tb-service" class="tb-service"></span>
+        </div>
+        <input id="tb-date" class="tb-date" type="date" aria-label="Date" />
+        <select id="tb-rate" class="tb-rate" aria-label="Playback speed"></select>
+        <button id="tb-live" class="tb-live" aria-pressed="false">Live</button>
+      </div>
+      <div class="tb-slider-wrap">
+        <input id="tb-slider" class="tb-slider" type="range" aria-label="Time of day" />
+        <div id="tb-ticks" class="tb-ticks" aria-hidden="true"></div>
+      </div>
+    </section>
+
+    <script type="module" src="/src/app/main.ts"></script>
+  </body>
+</html>

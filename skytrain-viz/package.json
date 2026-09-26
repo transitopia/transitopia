@@ -22,18 +22,18 @@
     "server": "tsx server/main.ts"
   },
   "dependencies": {
-    "@deck.gl/core": "^9.4.0",
-    "@deck.gl/layers": "^9.4.0",
-    "@deck.gl/mapbox": "^9.4.0",
+    "@maplibre/maplibre-gl-style-spec": "^26.4.4",
     "@protomaps/basemaps": "^5.7.2",
     "maplibre-gl": "^6.11.2",
     "pmtiles": "^4.5.0"
   },
   "devDependencies": {
+    "@types/geojson": "^7946.0.16",
     "@types/node": "^26.6.3",
     "@types/yauzl": "^3.4.0",
     "csv-parse": "^7.0.3",
     "gtfs-realtime-bindings": "^2.2.0",
+    "playwright-core": "^1.63.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",

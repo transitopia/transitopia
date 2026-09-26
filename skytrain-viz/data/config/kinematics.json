@@ -1,0 +1,20 @@
+{
+  "$comment": "Vehicle motion and size assumptions. Keyed by route key, falling back to mode defaults. Sources: 'guess' unless noted; see docs/OPEN-QUESTIONS.md #9, #12, #13. accel/decel in m/s², speeds in km/h, lengths/widths in metres. 'minCruiseFraction': when the schedule allows more time than needed, run no slower than this fraction of maxSpeed and hold the remainder as extra dwell at the origin (PLAN.md §4.4). 'dwell' is used when GTFS arrival == departure (true for all SkyTrain stops).",
+  "modes": {
+    "skytrain": { "accel": 1.0, "decel": 1.0, "maxSpeed": 80, "minCruiseFraction": 0.6, "dwell": 25, "length": 68, "width": 3.0, "profile": "trapezoid" },
+    "rail":     { "accel": 0.5, "decel": 0.6, "maxSpeed": 120, "minCruiseFraction": 0.5, "dwell": 60, "length": 150, "width": 3.2, "profile": "trapezoid" },
+    "ferry":    { "accel": 0.08, "decel": 0.08, "maxSpeed": 24, "minCruiseFraction": 0.6, "dwell": 0, "length": 34, "width": 10.0, "profile": "trapezoid" },
+    "bus":      { "accel": 1.0, "decel": 1.0, "maxSpeed": 60, "minCruiseFraction": 0.0, "dwell": 0, "length": 18, "width": 2.6, "profile": "linear" }
+  },
+  "routes": {
+    "expo":       { "length": 80, "$comment": "guess: mix of 4/6-car Mk I, 4-car Mk II/III (OPEN-QUESTIONS #9)" },
+    "millennium": { "length": 68, "$comment": "guess: 4-car Mk II/III" },
+    "canada":     { "length": 41, "decel": 1.3, "$comment": "2-car Hyundai Rotem EMU" },
+    "wce":        { "length": 130, "$comment": "guess: typical 5-car consist plus locomotive" }
+  },
+  "sizing": {
+    "$comment": "Vehicles are drawn to true scale when zoomed in, but never smaller than this many pixels long, so they stay visible at city zoom.",
+    "minPixelLength": 14,
+    "minPixelWidth": 8
+  }
+}

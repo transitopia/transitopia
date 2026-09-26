@@ -5,7 +5,7 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 ## Scope
 
 - **Routes**: Expo, Millennium, and Canada Lines (track-level); SeaBus and West Coast Express (shape-level); buses 99, R1, R2, R3, R4, R5. **No other bus routes.**
-- **Stack**: TypeScript, Vite, and MapLibre GL JS with a PMTiles vector basemap (Protomaps). Vehicles are drawn with deck.gl interleaved into MapLibre. Plain TS with no UI framework. MIT licensed.
+- **Stack**: TypeScript, Vite, and MapLibre GL JS v6 with a PMTiles vector basemap (Protomaps). Vehicles are drawn by our own WebGL2 custom layer (`src/app/layers/gl-polygons.ts`) using only MapLibre's public API. Don't reintroduce deck.gl: its MapLibre integration depends on private internals that v6 removed. Plain TS with no UI framework. MIT licensed.
 - Desktop-first, but the map and time controls must work on phones. Keep chrome minimal.
 
 ## Ground rules
@@ -37,8 +37,10 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 
 ```sh
 npm run dev              # Vite + local RT service (poller, cache, recorder)
+npm run data:gtfs        # fetch latest GTFS + build plan.json and manifest (working)
 npm run data             # fetch-gtfs, fetch-osm, import-osm, build-schedule, infer-runs, build-movements
-npm run tiles            # build public/tiles/vancouver.pmtiles
+npm run tiles            # build public/tiles/vancouver.pmtiles + fonts/sprites (working)
+npx tsx scripts/screenshot.ts out.png "/?date=2026-09-28&t=08:00:00&paused=1#map=14/49.28/-123.11" [--mobile] [--dark] [--pick expo]
 npm run scenario <name>  # build a scenario from data/scenarios/<name>/
 npm run validate:infra   # track graph checks
 npm run validate:plan    # conflicts, continuity, fleet caps
@@ -48,7 +50,8 @@ npm run typecheck
 
 ## Workflow
 
-- Gitignored build and runtime output: `data/raw/`, `data/rt-history/`, `public/data/`, `public/tiles/`.
+- Gitignored build and runtime output: `data/raw/`, `data/rt-history/`, `public/data/`, `public/tiles/`, `public/basemap-assets/`.
+- Route colours and names are baked into `plan.json` from `data/config/routes.json`; rebuild with `npx tsx scripts/build-schedule.ts --force` after editing it.
 - After changing infrastructure, config, or pipeline code, rebuild and run both validators before calling the work done.
-- For visual changes, run the app and look at it, especially at station zoom around Waterfront, Columbia/Sapperton, Commercial–Broadway, Lougheed, Edmonds (OMC 1), and Bridgeport, where the track work is densest. Check the phone layout too.
+- For visual changes, run the app and look at it (`scripts/screenshot.ts` drives the local Chrome; `window.skytrain` is a debug handle with `map`, `clock`, `store`, `vehicles()`), especially at station zoom around Waterfront, Columbia/Sapperton, Commercial–Broadway, Lougheed, Edmonds (OMC 1), and Bridgeport, where the track work is densest. Check the phone layout too.
 - Prefer small, reviewable commits per milestone step.

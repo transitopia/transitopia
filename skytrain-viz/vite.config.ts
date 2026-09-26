@@ -5,4 +5,6 @@ export default defineConfig({
   plugins: [rtServicePlugin()],
   server: { port: 5173 },
   build: { target: 'es2022', sourcemap: true },
+  // maplibre-gl creates its worker with { type: 'module' }.
+  worker: { format: 'es' },
 });

@@ -252,7 +252,7 @@ A scenario is a directory in `data/scenarios/<name>/`:
 ### 4.9 Frontend
 
 - **Stack**: TypeScript + Vite, plain TS with a tiny reactive store, and **MapLibre GL JS** for all map rendering.
-- **Vehicles**: rendered with **deck.gl** interleaved into MapLibre's WebGL context (`@deck.gl/mapbox` `MapboxOverlay`, `interleaved: true`). This gives cheap per-frame updates for a few hundred moving, rotating, to-scale shapes. MapLibre still owns the map, camera, labels, and static layers.
+- **Vehicles**: rendered by a small WebGL2 layer (`src/app/layers/gl-polygons.ts`) through MapLibre's public `CustomLayerInterface`. Geometry is built on the CPU each frame (a few hundred to-scale shapes) relative to the viewport centre, and the offset is folded into the matrix in float64, so positions stay precise at station zoom. Picking is also done on the CPU. *(Decision, 2026-09-25: deck.gl's MapLibre integration reads private `map.transform` internals and breaks on maplibre-gl v6, so a dependency-free custom layer is more robust.)*
 - **Basemap**:
   - a **PMTiles** extract of the Protomaps basemap, clipped to Metro Vancouver (`pmtiles extract`, maxzoom 15, overzoomed above that), served as a static file with HTTP range requests through the `pmtiles` MapLibre protocol
   - styled with `@protomaps/basemaps` in muted light and dark flavours so transit layers stand out
