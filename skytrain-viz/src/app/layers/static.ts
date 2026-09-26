@@ -30,9 +30,10 @@ function routesGeoJson(plan: ServicePlan): FeatureCollection {
       geometry: { type: 'LineString', coordinates: sec.coords },
     });
   }
+  const used = new Set(plan.trips.map((t) => t.pattern));
   for (const p of plan.patterns) {
     const key = `${p.route}|${p.shape}`;
-    if (seen.has(key) || busRoutes.has(p.route)) continue;
+    if (seen.has(key) || busRoutes.has(p.route) || !used.has(p.id)) continue;
     seen.add(key);
     const route = plan.routes.find((r) => r.key === p.route)!;
     const coords = plan.shapes[p.shape];

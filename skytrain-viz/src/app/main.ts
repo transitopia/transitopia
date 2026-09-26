@@ -211,8 +211,9 @@ async function main(): Promise<void> {
   const frame = () => {
     const t = clock.now();
     const visible = legend.hidden.size ? new Set(routeKeys(shownFeed).filter((k) => !legend.hidden.has(k))) : undefined;
-    rt.update(t);
-    const live = rt.vehiclesAt(t, store.planFor(displayServiceDate(t)), visible);
+    // Scenarios are hypothetical: never mix in real bus positions.
+    if (!store.scenario) rt.update(t);
+    const live = store.scenario ? { mode: 'estimated' as const } : rt.vehiclesAt(t, store.planFor(displayServiceDate(t)), visible);
     const scheduled = store.vehiclesAt(t, visible);
     lastVehicles = live.vehicles ? [...scheduled.filter((v) => v.mode !== 'bus'), ...live.vehicles] : scheduled;
     const [badge, badgeTitle] = RT_BADGE[live.mode];

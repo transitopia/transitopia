@@ -106,3 +106,53 @@ describe('applyService extend', () => {
     expect(plan.trips[0]!.pattern).toBe(0); // base plan untouched
   });
 });
+
+describe('applyService truncate', () => {
+  // A bus route from W (x=0) to E (x=3000) with stops every 1 km, both directions.
+  const stop = (id: string, x: number) => ({ id, name: `Stop ${id}`, lon: pt(x)[0], lat: pt(x)[1] });
+  const plan: ServicePlan = {
+    schema: 1,
+    feedVersion: 'v',
+    feedStart: '20260901',
+    feedEnd: '20261231',
+    timezone: 'America/Vancouver',
+    builtAt: '',
+    routes: [{ key: '99', label: '99', kind: 'bus', mode: 'bus', color: '#f76707', textColor: '#fff', gtfsRouteId: '1' }],
+    stops: [stop('a', 0), stop('b', 1000), stop('c', 2000), stop('d', 3000), stop('e', 2500)],
+    stations: [],
+    shapes: { ew: [pt(0), pt(3000)], we: [pt(3000), pt(0)], east: [pt(2500), pt(3000)] },
+    patterns: [
+      { id: 0, route: '99', direction: 0, shape: 'ew', stops: [0, 1, 2, 3], dist: [0, 1000, 2000, 3000] },
+      { id: 1, route: '99', direction: 1, shape: 'we', stops: [3, 2, 1, 0], dist: [0, 1000, 2000, 3000] },
+      { id: 2, route: '99', direction: 0, shape: 'east', stops: [4, 3], dist: [0, 500] },
+    ],
+    trips: [
+      { id: 'out', pattern: 0, service: 's', headsign: '99/To D', start: 1000, arr: [0, 100, 200, 300] },
+      { id: 'back', pattern: 1, service: 's', headsign: '99/To A', start: 2000, arr: [0, 100, 200, 300] },
+      { id: 'short', pattern: 2, service: 's', headsign: '99/To D', start: 3000, arr: [0, 60] },
+    ],
+    calendar: { calendar: [], exceptions: [] },
+  };
+  const out = applyService(plan, [{ op: 'truncate', route: '99', at: pt(1000), keep: pt(0), terminusName: 'B Station' }], {} as KinematicsConfig, 't');
+  const names = (id: string) => {
+    const t = out.trips.find((x) => x.id === id)!;
+    return out.patterns[t.pattern]!.stops.map((si) => out.stops[si]!.id);
+  };
+  it('cuts outbound trips at the cut stop and renames their destination', () => {
+    expect(names('out')).toEqual(['a', 'b']);
+    const t = out.trips.find((x) => x.id === 'out')!;
+    expect(t.start).toBe(1000);
+    expect(t.arr).toEqual([0, 100]);
+    expect(t.headsign).toBe('99/To B Station');
+  });
+  it('starts inbound trips at the cut stop, keeping timetabled times', () => {
+    expect(names('back')).toEqual(['b', 'a']);
+    const t = out.trips.find((x) => x.id === 'back')!;
+    expect(t.start).toBe(2200);
+    expect(t.arr).toEqual([0, 100]);
+    expect(t.headsign).toBe('99/To A');
+  });
+  it('drops trips entirely beyond the cut', () => {
+    expect(out.trips.find((x) => x.id === 'short')).toBeUndefined();
+  });
+});

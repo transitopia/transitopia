@@ -32,7 +32,8 @@ export function routeSections(plan: ServicePlan, routeKeys: Set<string>, opts: C
 
   const out: RouteSection[] = [];
   for (const route of routeKeys) {
-    const patterns = plan.patterns.filter((p) => p.route === route);
+    // Patterns without trips (e.g. superseded by a scenario) aren't drawn.
+    const patterns = plan.patterns.filter((p) => p.route === route && (trips.get(p.id) ?? 0) > 0);
     // Samples per shape, and trips per grid cell (each pattern counts a cell once).
     const samples = new Map<string, { lon: number; lat: number; cell: string }[]>();
     const cellTrips = new Map<string, number>();

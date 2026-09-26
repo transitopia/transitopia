@@ -35,11 +35,16 @@ Custom track tips (draw it in geojson.io or QGIS):
 - **Turnbacks:** a free end becomes a dead end, where trains can reverse. Add a crossover before a stub terminus, or arriving trains can't get back to the other track.
 - **Checking:** the build prints unroutable hops and trip ends that can't turn back. `?debug=1` in the app shows segment ids and where platforms were mapped.
 
-Service operations so far: `extend` (continue a line past a terminus through new stations). Run times come from distance and kinematics (`data/config/kinematics.json`) × `padding`, plus `dwell`. More operations (headway patterns, short-turns, removing trips) are future work (see PLAN.md §4.8).
+Service operations so far:
+- `extend` (continue a line past a terminus through new stations).
+- `truncate` (`{ "op": "truncate", "route": "99", "at": [lon, lat], "keep": [lon, lat], "terminusName": "Arbutus Station" }`): cut every trip at its stop nearest `at` and keep the side toward `keep`. Trips entirely on the cut side are removed.
+
+Buses in scenarios are schedule-only: live and recorded positions are never mixed into a hypothetical network. Run times come from distance and kinematics (`data/config/kinematics.json`) × `padding`, plus `dwell`. More operations (headway patterns, short-turns, removing trips) are future work (see PLAN.md §4.8).
 
 ## broadway-subway
 
 The Millennium Line extended from VCC–Clark to Arbutus.
 - **Track:** OSM's future track near Great Northern Way, plus two sketched connectors at VCC–Clark and a sketched alignment under Broadway (`custom-track.geojson`, approximate).
 - **Stations:** positions are approximate.
+- **Buses:** the 99 B-Line is cut back to Arbutus. Eastbound buses end at W Broadway & Yew St, the eastbound stop nearest Arbutus, since today's route has no eastbound Arbutus stop.
 - **Result:** the weekday peak needs about 38 Millennium trains, up from 33.

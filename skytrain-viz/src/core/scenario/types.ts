@@ -48,7 +48,22 @@ export type ServiceOperation =
     padding?: number;
     /** Dwell at each new station, s (default 25). */
     dwell?: number;
-  };
+  }
+  /**
+   * Shorten a route: cut every trip at its stop nearest `at`, keeping the part on the side of
+   * `keep` (e.g. cut the 99 at Arbutus, keep the UBC side). Trips entirely on the cut side are
+   * removed. Kept stops keep their timetabled times.
+   */
+  | {
+      op: 'truncate';
+      route: string;
+      at: LonLat;
+      keep: LonLat;
+      /** Max distance from `at` to a route stop to count as the cut stop (m, default 300). */
+      radiusM?: number;
+      /** Headsign destination for trips that now end at the cut, e.g. "Arbutus Station". */
+      terminusName?: string;
+    };
 
 /** Published per scenario at public/data/scenarios/<name>/manifest.json. */
 export interface ScenarioManifest {
