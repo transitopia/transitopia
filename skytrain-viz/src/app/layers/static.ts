@@ -5,6 +5,7 @@ import type { FeatureCollection, Feature } from 'geojson';
 import type { GeoJSONSource, Map as MlMap } from 'maplibre-gl';
 import type { ExpressionSpecification, GeoJSONSourceSpecification } from '@maplibre/maplibre-gl-style-spec';
 import type { ServicePlan } from '../../core/plan/types.ts';
+import { routeSections } from '../../core/plan/coverage.ts';
 import type { Theme } from '../basemap.ts';
 
 export const ROUTES_SOURCE = 'transit-routes';
@@ -13,13 +14,25 @@ export const STATIONS_SOURCE = 'transit-stations';
 export const VEHICLES_BEFORE_LAYER = 'stations-label';
 
 const KIND_ORDER: Record<string, number> = { bus: 0, shape: 1, skytrain: 2 };
+const BUS_FREQUENT: ExpressionSpecification = ['all', ['==', ['get', 'kind'], 'bus'], ['!', ['get', 'limited']]];
+const BUS_LIMITED: ExpressionSpecification = ['all', ['==', ['get', 'kind'], 'bus'], ['get', 'limited']];
 
 function routesGeoJson(plan: ServicePlan): FeatureCollection {
   const features: Feature[] = [];
   const seen = new Set<string>();
+  // Buses: split into frequent and limited-service sections (drawn dashed).
+  const busRoutes = new Set(plan.routes.filter((r) => r.kind === 'bus').map((r) => r.key));
+  for (const sec of routeSections(plan, busRoutes)) {
+    const route = plan.routes.find((r) => r.key === sec.route)!;
+    features.push({
+      type: 'Feature',
+      properties: { route: route.key, kind: route.kind, mode: route.mode, color: route.color, order: 0, limited: sec.limited },
+      geometry: { type: 'LineString', coordinates: sec.coords },
+    });
+  }
   for (const p of plan.patterns) {
     const key = `${p.route}|${p.shape}`;
-    if (seen.has(key)) continue;
+    if (seen.has(key) || busRoutes.has(p.route)) continue;
     seen.add(key);
     const route = plan.routes.find((r) => r.key === p.route)!;
     const coords = plan.shapes[p.shape];
@@ -73,12 +86,25 @@ export function addStaticLayers(map: MlMap, plan: ServicePlan, theme: Theme, hid
     id: 'routes-bus',
     type: 'line',
     source: ROUTES_SOURCE,
-    filter: ['==', ['get', 'kind'], 'bus'],
+    filter: BUS_FREQUENT,
     layout: { 'line-join': 'round', 'line-cap': 'round' },
     paint: {
       'line-color': ['get', 'color'],
       'line-opacity': 0.55,
       'line-width': ['interpolate', ['linear'], ['zoom'], 9, 1, 13, 2, 16, 4],
+    },
+  });
+  map.addLayer({
+    id: 'routes-bus-limited',
+    type: 'line',
+    source: ROUTES_SOURCE,
+    filter: BUS_LIMITED,
+    layout: { 'line-join': 'round' },
+    paint: {
+      'line-color': ['get', 'color'],
+      'line-opacity': 0.5,
+      'line-width': ['interpolate', ['linear'], ['zoom'], 9, 1, 13, 2, 16, 4],
+      'line-dasharray': [1, 2],
     },
   });
   map.addLayer({
@@ -157,12 +183,13 @@ export function addStaticLayers(map: MlMap, plan: ServicePlan, theme: Theme, hid
 
 export function applyRouteFilter(map: MlMap, hidden: Set<string>): void {
   const visible: ExpressionSpecification = ['!', ['in', ['get', 'route'], ['literal', [...hidden]]]];
-  for (const [id, kind] of [
-    ['routes-bus', 'bus'],
-    ['routes-shape', 'shape'],
-    ['routes-skytrain-casing', 'skytrain'],
-    ['routes-skytrain', 'skytrain'],
-  ] as const) {
-    if (map.getLayer(id)) map.setFilter(id, ['all', ['==', ['get', 'kind'], kind], visible]);
+  for (const [id, base] of [
+    ['routes-bus', BUS_FREQUENT],
+    ['routes-bus-limited', BUS_LIMITED],
+    ['routes-shape', ['==', ['get', 'kind'], 'shape']],
+    ['routes-skytrain-casing', ['==', ['get', 'kind'], 'skytrain']],
+    ['routes-skytrain', ['==', ['get', 'kind'], 'skytrain']],
+  ] as [string, ExpressionSpecification][]) {
+    if (map.getLayer(id)) map.setFilter(id, ['all', base, visible]);
   }
 }

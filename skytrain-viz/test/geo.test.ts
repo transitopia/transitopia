@@ -49,3 +49,26 @@ describe('interpolateMissing', () => {
     expect(() => interpolateMissing([NaN, 10], [0, 1])).toThrow();
   });
 });
+
+describe('routeSections', () => {
+  it('marks sections served by few trips as limited', async () => {
+    const { routeSections } = await import('../src/core/plan/coverage.ts');
+    const plan = {
+      shapes: {
+        main: [[-123.1, 49.25], [-123.08, 49.25]],
+        ext: [[-123.1, 49.25], [-123.08, 49.25], [-123.06, 49.25]],
+      },
+      patterns: [
+        { id: 0, route: '99', direction: 0, shape: 'main', stops: [], dist: [] },
+        { id: 1, route: '99', direction: 0, shape: 'ext', stops: [], dist: [] },
+      ],
+      trips: [...Array.from({ length: 40 }, () => ({ pattern: 0 })), ...Array.from({ length: 5 }, () => ({ pattern: 1 }))],
+    } as unknown as Parameters<typeof routeSections>[0];
+    const secs = routeSections(plan, new Set(['99']));
+    const ext = secs.filter((s) => s.limited);
+    expect(ext.length).toBeGreaterThan(0);
+    // The limited part is the extension east of -123.08.
+    for (const s of ext) for (const [lon] of s.coords) expect(lon).toBeGreaterThan(-123.0815);
+    expect(secs.some((s) => !s.limited)).toBe(true);
+  });
+});

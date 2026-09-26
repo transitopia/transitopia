@@ -125,6 +125,12 @@ input {
 .swatch-shape {
   background: repeating-linear-gradient(90deg, var(--c) 0 6px, transparent 6px 9px);
 }
+.swatch-limited {
+  height: 3px;
+  vertical-align: 2px;
+  margin-right: 4px;
+  background: repeating-linear-gradient(90deg, var(--muted) 0 3px, transparent 3px 7px);
+}
 .legend-note {
   margin: 10px 0 0;
   font-size: 12px;

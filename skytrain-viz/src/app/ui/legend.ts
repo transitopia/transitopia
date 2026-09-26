@@ -66,7 +66,8 @@ export class Legend {
     const note = document.createElement('p');
     note.className = 'legend-note';
     note.innerHTML =
-      '<span class="prov prov-estimated"></span> estimated from schedule &nbsp; <span class="prov prov-observed"></span> observed';
+      '<span class="prov prov-estimated"></span> estimated from schedule &nbsp; <span class="prov prov-observed"></span> observed<br>' +
+      '<span class="swatch swatch-limited"></span> bus route: limited service';
     this.body.append(note);
   }
 }
