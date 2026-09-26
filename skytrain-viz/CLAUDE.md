@@ -26,6 +26,14 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 - Platform mapping (`src/core/infra/platforms.ts`) is a global optimisation, not a nearest-track snap: route consistency + distinct tracks per numbered platform (except terminal arrival/departure berths) + every trip end must turn back or pull in to a yard. Debug it with `?debug=1` (segment ids, platform markers) and `npm run validate:infra`.
 - Track with a future `opening_date` (e.g. the Broadway Extension) goes to `future.generated.geojson` for scenarios, not the base network.
 
+## Run inference notes (`src/core/movement/build.ts`)
+
+- Trip times: SkyTrain/WCE/SeaBus trips are re-timed within ±45 s of GTFS (minute-rounded) in proportion to each hop's physical minimum time (`retime` in `schedule/engine.ts`). Without this, some hops are impossibly fast.
+- Chaining: GTFS block successor first (only when it starts where the last trip ended), else FIFO earliest feasible departure. Turnbacks choose between the GTFS departure platform (via tail/pocket/main reversals) and reversing in place, by cost.
+- In-place turnbacks get stub berths by occupancy (`berth`/`arrive` overrides on trip events), pulled up to the buffer.
+- Playback (`playback.ts`) is pure: (movement file, prepared plan, graph, t) → positions. Keep it that way.
+- Debug with `npm run build:movements -- --verbose` (per-terminus chaining stats) and `npm run validate:plan` (conflict hot spots).
+
 ## GTFS gotchas (verified against feed 26SEP_20260925)
 
 - Times can exceed 24:00 and have a leading space: `" 5:05:00"`, `"25:30:00"`. Store as seconds since service-day start.
@@ -50,9 +58,10 @@ npm run tiles            # build public/tiles/vancouver.pmtiles + fonts/sprites 
 npm run data:osm         # fetch OSM tracks + import → data/infrastructure/*.generated.geojson (working)
 npm run build:infra      # publish tracks + per-feed platform mapping to public/data (working)
 npm run validate:infra   # graph / platform / routing / turnback / checklist checks (working)
+npm run build:movements  # infer train runs → public/data/feeds/<v>/movements/*.json [--verbose] (working)
+npm run validate:plan    # teleports (fail), terminus/yard conflicts (report), fleet peaks (working)
 npx tsx scripts/screenshot.ts out.png "/?date=2026-09-28&t=08:00:00&paused=1#map=14/49.28/-123.11" [--mobile] [--dark] [--pick expo]
 npm run scenario <name>  # build a scenario from data/scenarios/<name>/
-npm run validate:plan    # conflicts, continuity, fleet caps
 npm test                 # vitest
 npm run typecheck
 ```

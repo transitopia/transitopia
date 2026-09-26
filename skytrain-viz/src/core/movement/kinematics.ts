@@ -99,3 +99,11 @@ export function speedAt(p: LegProfile, t: number): number {
   if (tt < ta + tc) return p.v;
   return Math.max(0, p.v - p.b * (tt - ta - tc));
 }
+
+/** Shortest time to cover a distance from standstill to standstill (s), at `speedFactor` × max speed. */
+export function minLegTime(distance: number, k: Kinematics, speedFactor = 1): number {
+  if (distance <= 0) return 0;
+  const c = 1 / (2 * k.accel) + 1 / (2 * k.decel);
+  const v = Math.min((k.maxSpeed / 3.6) * speedFactor, Math.sqrt(distance / c));
+  return c * v + distance / v;
+}

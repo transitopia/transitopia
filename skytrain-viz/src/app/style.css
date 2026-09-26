@@ -170,6 +170,16 @@ input {
   cursor: pointer;
   color: var(--muted);
 }
+.inspect-locate {
+  position: absolute;
+  top: 6px;
+  right: 32px;
+  border: 0;
+  background: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: var(--muted);
+}
 .inspect-head {
   display: flex;
   align-items: center;

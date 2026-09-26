@@ -22,7 +22,9 @@
     "server": "tsx server/main.ts",
     "data:osm": "tsx scripts/fetch-osm.ts && tsx scripts/import-osm.ts",
     "build:infra": "tsx scripts/build-infra.ts",
-    "validate:infra": "tsx scripts/validate-infra.ts"
+    "validate:infra": "tsx scripts/validate-infra.ts",
+    "build:movements": "tsx scripts/build-movements.ts",
+    "validate:plan": "tsx scripts/validate-plan.ts"
   },
   "dependencies": {
     "@maplibre/maplibre-gl-style-spec": "^26.4.4",

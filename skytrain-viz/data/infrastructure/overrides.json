@@ -8,5 +8,22 @@
     "add": [],
     "remove": []
   },
-  "platforms": []
+  "platforms": [
+    {
+      "stop": "Waterfront Station @ Platform 5",
+      "near": [
+        -123.1132357,
+        49.2856543
+      ],
+      "note": "GTFS coordinate lies on the scissors crossover ~100 m south of the platform; pinned to the northbound stub (OSM way 923508922) 35 m from the buffer stop."
+    },
+    {
+      "stop": "Waterfront Station @ Platform 4",
+      "near": [
+        -123.1133613,
+        49.2857338
+      ],
+      "note": "As P5: pinned to the other stub (OSM way 923508923) 35 m from the buffer stop."
+    }
+  ]
 }

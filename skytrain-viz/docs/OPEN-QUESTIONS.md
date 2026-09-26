@@ -74,3 +74,13 @@ Evidence cited below comes from feed `26SEP_20260925`, OSM (2026-09-25), and the
 18. **Terminal berths.** At stub termini, GTFS uses separate arrival-only and departure-only platforms (e.g. Waterfront Expo arrive P1 / depart P2; Lafarge Lake–Douglas arrive P2 / depart P1). Do trains unload and load at the same berth and reverse in place, or shunt between berths via the tail tracks? Which berths do consecutive trains use (alternating)?
     - *Assumption:* the solver picks the cheapest feasible option. It currently maps Waterfront Expo P1 and P2 to one berth (reverse in place). Berth alternation is future work.
 19. **Diagram crossovers.** The Wikipedia diagram's crossovers haven't been transcribed into `data/infrastructure/diagram-checklist.json` yet, so OSM's crossovers are only validated indirectly: every timetabled move must be routable.
+20. **Expo short-turns at Braid.** GTFS has Expo trips ending at Braid Platform 2 and others starting at Braid Platform 1, but OSM shows no crossover near Braid that could turn a train. The nearest turnback would take three reversals over 3 km. A temporary crossover for the Braid–Lougheed works (#17) would explain it.
+    - *Assumption:* none. Those trains pull in to a yard instead of turning back. Adding a crossover near Braid via `turns.add` in `overrides.json` would fix it.
+
+## Operations (found while inferring runs)
+
+21. **Terminus capacity and layovers.** Waterfront (Expo) sees slightly more arrivals than departures from about 09:00 (a cumulative surplus of up to 4 trains), and Lafarge Lake–Douglas, Production Way and King George are busy too. With FIFO matching, surplus trains wait at the terminus, and at peak three trains can want two stub berths. `npm run validate:plan` counts these overlaps (Waterfront ≈ 570 conflicting pairs on a weekday). Where do surplus trains really go after the AM peak: back to OMC, into pocket tracks, or longer layovers elsewhere? How many trains can each terminus hold (tail tracks included)?
+    - *Assumption:* trains queue at the terminus. Berths alternate between stub tracks when free.
+22. **Pull-out and pull-in paths and timing.** Deadheads to and from OMC 1 run on main track at about 55 % of line speed and aren't slotted between service trains, so some overlap with trains in service near 22nd Street, New Westminster and Sapperton. Which way do trains enter and leave OMC 1, and at what times?
+    - *Assumption:* the nearest yard by track distance, timed to arrive 90 s before the first departure.
+23. **GTFS `block_id` for SkyTrain.** Blocks don't follow physical trains: a block reaching Waterfront at 06:23 continues from 22nd Street at 06:24. They're used only when the next trip starts where the last one ended.

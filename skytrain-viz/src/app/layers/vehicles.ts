@@ -92,6 +92,52 @@ function inset(poly: Float64Array, d: number): Float64Array {
   return out;
 }
 
+/**
+ * A ribbon along a tail→head polyline (absolute mercator), half-width `hw`, tapering to a nose over
+ * the last `nose` mercator units. Returns left and right edge vertices, tail first.
+ */
+function ribbon(line: Float64Array, hw: number, nose: number): { left: Float64Array; right: Float64Array } {
+  const n = line.length / 2;
+  const left = new Float64Array(n * 2);
+  const right = new Float64Array(n * 2);
+  // Distance from each vertex to the head, for the taper.
+  const toHead = new Float64Array(n);
+  for (let i = n - 2; i >= 0; i--) {
+    toHead[i] = toHead[i + 1]! + Math.hypot(line[(i + 1) * 2]! - line[i * 2]!, line[(i + 1) * 2 + 1]! - line[i * 2 + 1]!);
+  }
+  for (let i = 0; i < n; i++) {
+    const a = Math.max(0, i - 1);
+    const b = Math.min(n - 1, i + 1);
+    let dx = line[b * 2]! - line[a * 2]!;
+    let dy = line[b * 2 + 1]! - line[a * 2 + 1]!;
+    const len = Math.hypot(dx, dy) || 1;
+    dx /= len;
+    dy /= len;
+    const w = hw * Math.min(1, 0.2 + (0.8 * toHead[i]!) / Math.max(nose, 1e-12));
+    left[i * 2] = line[i * 2]! - dy * w;
+    left[i * 2 + 1] = line[i * 2 + 1]! + dx * w;
+    right[i * 2] = line[i * 2]! + dy * w;
+    right[i * 2 + 1] = line[i * 2 + 1]! - dx * w;
+  }
+  return { left, right };
+}
+
+function distToPolyline(line: Float64Array, x: number, y: number): number {
+  let best = Infinity;
+  for (let i = 0; i + 3 < line.length; i += 2) {
+    const ax = line[i]!;
+    const ay = line[i + 1]!;
+    const bx = line[i + 2]!;
+    const by = line[i + 3]!;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const l2 = dx * dx + dy * dy;
+    const f = l2 > 0 ? Math.min(1, Math.max(0, ((x - ax) * dx + (y - ay) * dy) / l2)) : 0;
+    best = Math.min(best, Math.hypot(ax + dx * f - x, ay + dy * f - y));
+  }
+  return best;
+}
+
 function pointInConvex(poly: Float64Array, x: number, y: number): boolean {
   const n = poly.length / 2;
   let sign = 0;
@@ -110,7 +156,7 @@ function pointInConvex(poly: Float64Array, x: number, y: number): boolean {
 export class VehicleLayer {
   private layer = new GlPolygonLayer(LAYER_ID);
   private colors = new Map<string, [number, number, number]>();
-  private hits: { v: VehicleState; poly: Float64Array }[] = [];
+  private hits: ({ v: VehicleState; poly: Float64Array } | { v: VehicleState; line: Float64Array; hw: number })[] = [];
   private mercPerPx = 0;
   selectedId: string | undefined;
 
@@ -145,9 +191,11 @@ export class VehicleLayer {
       ? [...vehicles].sort((a, b) => Number(a.id === this.selectedId) - Number(b.id === this.selectedId))
       : vehicles;
 
-    // Per vehicle: 5-vertex fan = 3 fill triangles, plus 5 edges × 2 outline triangles.
-    const VERTS_PER = (3 + 10) * 3;
-    const buf = new ArrayBuffer(ordered.length * VERTS_PER * VERTEX_BYTES);
+    // Per glyph vehicle: 5-vertex fan = 3 fill triangles + 5 edges × 2 outline triangles. Per ribbon
+    // vehicle: 2 ribbons × 2 triangles per polyline segment.
+    let verts = 0;
+    for (const v of ordered) verts += v.shape && v.length >= minL ? (v.shape.length - 1) * 12 : 39;
+    const buf = new ArrayBuffer(verts * VERTEX_BYTES);
     const f32 = new Float32Array(buf);
     const u8 = new Uint8Array(buf);
     let vi = 0;
@@ -164,10 +212,47 @@ export class VehicleLayer {
     };
 
     this.hits = [];
+    const quadStrip = (l: Float64Array, r: Float64Array, c: RGBA) => {
+      for (let i = 0; i + 3 < l.length; i += 2) {
+        put(l[i]!, l[i + 1]!, c);
+        put(r[i]!, r[i + 1]!, c);
+        put(l[i + 2]!, l[i + 3]!, c);
+        put(r[i]!, r[i + 1]!, c);
+        put(r[i + 2]!, r[i + 3]!, c);
+        put(l[i + 2]!, l[i + 3]!, c);
+      }
+    };
     for (const v of ordered) {
       const rgb = this.colors.get(v.routeKey) ?? [110, 110, 110];
       const estimated = v.provenance === 'estimated';
       const selected = v.id === this.selectedId;
+      if (v.shape && v.length >= minL) {
+        // Zoomed in: draw the train along the track.
+        const line = new Float64Array(v.shape.length * 2);
+        v.shape.forEach(([lon, lat], i) => {
+          line[i * 2] = mercX(lon);
+          line[i * 2 + 1] = mercY(lat);
+        });
+        const perM = 1 / (EARTH_CIRCUMFERENCE * Math.cos((v.lat * Math.PI) / 180));
+        const hw = (Math.max(v.width, minW) / 2) * perM;
+        const lineW = (selected ? 3 : 1.75) * this.mercPerPx;
+        const nose = Math.max(v.width, minW) * 0.9 * perM;
+        const outer = ribbon(line, hw + lineW, nose);
+        const inner = ribbon(line, hw, nose);
+        const fill: RGBA = estimated
+          ? [
+              rgb[0] + (outlineRgb[0] - rgb[0]) * ESTIMATED_TINT,
+              rgb[1] + (outlineRgb[1] - rgb[1]) * ESTIMATED_TINT,
+              rgb[2] + (outlineRgb[2] - rgb[2]) * ESTIMATED_TINT,
+              255,
+            ]
+          : [...rgb, 255];
+        const edge: RGBA = selected ? SELECTED : estimated ? [...rgb, 255] : [...outlineRgb, 255];
+        quadStrip(outer.left, outer.right, edge);
+        quadStrip(inner.left, inner.right, fill);
+        this.hits.push({ v, line, hw: hw + lineW });
+        continue;
+      }
       const scale = Math.max(1, minL / v.length);
       const outer = vehicleOutline(v, v.length * scale, Math.max(v.width * Math.min(scale, 3), minW));
       const inner = inset(outer, (selected ? 3 : 1.75) * this.mercPerPx);
@@ -204,20 +289,21 @@ export class VehicleLayer {
     const ll = this.map.unproject([x, y]);
     const mx = mercX(ll.lng);
     const my = mercY(ll.lat);
+    const tol = PICK_TOLERANCE_PX * this.mercPerPx;
     for (let i = this.hits.length - 1; i >= 0; i--) {
       const h = this.hits[i]!;
-      if (pointInConvex(h.poly, mx, my)) return h.v;
+      if ('poly' in h ? pointInConvex(h.poly, mx, my) : distToPolyline(h.line, mx, my) <= h.hw) return h.v;
     }
-    // Near miss: nearest vertex within tolerance (helps on touch screens and tiny vehicles).
+    // Near miss: nearest vehicle within tolerance (helps on touch screens and tiny vehicles).
     let best: VehicleState | undefined;
-    let bestD = PICK_TOLERANCE_PX * this.mercPerPx;
+    let bestD = tol;
     for (const h of this.hits) {
-      for (let k = 0; k < h.poly.length; k += 2) {
-        const d = Math.hypot(h.poly[k]! - mx, h.poly[k + 1]! - my);
-        if (d < bestD) {
-          bestD = d;
-          best = h.v;
-        }
+      let d = Infinity;
+      if ('poly' in h) for (let k = 0; k < h.poly.length; k += 2) d = Math.min(d, Math.hypot(h.poly[k]! - mx, h.poly[k + 1]! - my));
+      else d = distToPolyline(h.line, mx, my) - h.hw;
+      if (d < bestD) {
+        bestD = d;
+        best = h.v;
       }
     }
     return best;

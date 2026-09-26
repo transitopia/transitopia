@@ -85,6 +85,10 @@ async function main(): Promise<void> {
   const inspect = new InspectCard('inspect');
   let selected: string | undefined = url.vehicle;
   vehicles.selectedId = selected;
+  inspect.onLocate = () => {
+    const v = lastVehicles.find((x) => x.id === selected);
+    if (v) map.easeTo({ center: [v.lon, v.lat], zoom: Math.max(map.getZoom(), 15), duration: 600 });
+  };
   inspect.onClose = () => {
     selected = vehicles.selectedId = undefined;
     writeUrl(clock, selected);
@@ -116,6 +120,7 @@ async function main(): Promise<void> {
   let tracks: InfraCollection | undefined;
   void loadTracks().then((t) => {
     tracks = t;
+    if (t) store.setTrackGraph(TrackGraph.fromCollection(t));
     syncStatic(true);
   });
 

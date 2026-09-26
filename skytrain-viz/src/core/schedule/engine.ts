@@ -5,10 +5,19 @@
 import { bearingDeg, cumulativeLengths, pointAlong, type LonLat } from '../geo.ts';
 import { indexCalendar } from '../gtfs/calendar.ts';
 import type { PlanPattern, PlanRoute, PlanStop, PlanTrip, ServicePlan } from '../plan/types.ts';
-import { distanceAt, kinematicsFor, solveLeg, speedAt, type Kinematics, type KinematicsConfig, type LegProfile } from '../movement/kinematics.ts';
+import {
+  distanceAt,
+  kinematicsFor,
+  minLegTime,
+  solveLeg,
+  speedAt,
+  type Kinematics,
+  type KinematicsConfig,
+  type LegProfile,
+} from '../movement/kinematics.ts';
 
 export type Provenance = 'observed' | 'interpolated' | 'estimated';
-export type VehicleStatus = 'moving' | 'dwell' | 'layover';
+export type VehicleStatus = 'moving' | 'dwell' | 'layover' | 'turnback' | 'pullout' | 'pullin';
 
 export interface VehicleState {
   /** Stable across consecutive trips of the same vehicle, where known. */
@@ -35,6 +44,12 @@ export interface VehicleState {
   delay?: number;
   /** Epoch ms of the real-time fix this position is based on (observed/interpolated only). */
   observedAt?: number;
+  /** Inferred physical train run (SkyTrain), e.g. "expo-012". */
+  runId?: string;
+  /** Tail-to-head polyline along the track, for drawing trains around curves. */
+  shape?: [number, number][];
+  /** Position on the track graph (track-level playback only). */
+  track?: { seg: string; offset: number };
   length: number;
   width: number;
 }
@@ -91,6 +106,7 @@ export function preparePlan(plan: ServicePlan, kinCfg: KinematicsConfig): Prepar
       arr[i] = i === 0 ? a : a - half;
       dep[i] = i === n - 1 ? d : d + half;
     }
+    if (kin.profile === 'trapezoid' && n > 2) retime(trip, pattern.dist, kin, arr, dep);
     // Keep legs non-negative if dwell carving over-ran a very short scheduled hop.
     for (let i = 1; i < n; i++) {
       if (arr[i]! < dep[i - 1]!) {
@@ -154,6 +170,59 @@ export function preparePlan(plan: ServicePlan, kinCfg: KinematicsConfig): Prepar
     tripsByService,
     maxSpanByService,
   };
+}
+
+/** GTFS rail times are rounded to the minute; retimed stops stay within this of the timetable (s). */
+const RETIME_TOLERANCE_S = 45;
+
+/**
+ * Re-time a trip within its fixed first departure and last arrival so each hop gets time in
+ * proportion to its physical minimum (distance, acceleration, top speed) plus modelled dwell.
+ * Minute-rounded GTFS times otherwise make some hops impossibly short and others slack. Each stop
+ * stays within RETIME_TOLERANCE_S of its timetabled time. Mutates arr/dep.
+ */
+function retime(trip: PlanTrip, dist: number[], kin: Kinematics, arr: Float64Array, dep: Float64Array): void {
+  const n = arr.length;
+  const sched = (i: number) => trip.start + (trip.arr[i]! + (trip.dep ?? trip.arr)[i]!) / 2;
+  const dwell = (i: number) => (i === 0 || i === n - 1 ? 0 : Math.max(kin.dwell, (trip.dep ?? trip.arr)[i]! - trip.arr[i]!));
+  const move: number[] = [];
+  for (let i = 0; i + 1 < n; i++) move.push(minLegTime(Math.max(0, dist[i + 1]! - dist[i]!), kin));
+  const t0 = dep[0]!;
+  let need = 0;
+  for (let i = 0; i + 1 < n; i++) need += move[i]! + (i + 1 < n - 1 ? dwell(i + 1) : 0);
+  if (need <= 0) return;
+  // The final arrival is minute-rounded too: let it slip a little rather than race the last hop.
+  arr[n - 1] = Math.max(arr[n - 1]!, Math.min(arr[n - 1]! + RETIME_TOLERANCE_S / 1.5, t0 + need));
+  dep[n - 1] = Math.max(dep[n - 1]!, arr[n - 1]!);
+  const total = arr[n - 1]! - t0;
+  const k = total / need;
+  let t = t0;
+  for (let i = 1; i < n - 1; i++) {
+    t += move[i - 1]! * k;
+    const d = dwell(i) * k;
+    // Keep the dwell's centre near the timetabled time.
+    const centre = Math.min(sched(i) + RETIME_TOLERANCE_S, Math.max(sched(i) - RETIME_TOLERANCE_S, t + d / 2));
+    arr[i] = centre - d / 2;
+    dep[i] = centre + d / 2;
+    t = dep[i]!;
+  }
+  // Tolerance clamps can squeeze later hops: walk backwards pulling stops earlier (within
+  // tolerance) until each hop has at least its (proportionally scaled) minimum time.
+  const kk = Math.min(1, k);
+  for (let i = n - 2; i >= 1; i--) {
+    const latestDep = arr[i + 1]! - move[i]! * kk;
+    if (dep[i]! <= latestDep) continue;
+    const floor = sched(i) - RETIME_TOLERANCE_S - (dep[i]! - arr[i]!) / 2;
+    const shift = Math.min(dep[i]! - latestDep, Math.max(0, arr[i]! - Math.max(floor, dep[i - 1]!)));
+    arr[i] = arr[i]! - shift;
+    dep[i] = dep[i]! - shift;
+  }
+  // Last resort for the final hop: arrive a little later.
+  const lastNeed = dep[n - 2]! + move[n - 2]! * kk;
+  if (arr[n - 1]! < lastNeed) {
+    arr[n - 1] = Math.min(lastNeed, arr[n - 1]! + RETIME_TOLERANCE_S / 1.5);
+    dep[n - 1] = Math.max(dep[n - 1]!, arr[n - 1]!);
+  }
 }
 
 function sameStation(a: PlanStop, b: PlanStop): boolean {

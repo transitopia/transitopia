@@ -8,6 +8,9 @@ const STATUS: Record<VehicleState['status'], string> = {
   moving: 'Next stop',
   dwell: 'At',
   layover: 'Layover at',
+  turnback: 'Turning back',
+  pullout: 'Leaving yard',
+  pullin: 'To yard',
 };
 
 const PROVENANCE: Record<VehicleState['provenance'], string> = {
@@ -24,11 +27,14 @@ export class InspectCard {
   private root: HTMLElement;
   private lastHtml = '';
   onClose: (() => void) | undefined;
+  onLocate: (() => void) | undefined;
 
   constructor(id: string) {
     this.root = document.getElementById(id)!;
     this.root.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).closest('.inspect-close')) this.onClose?.();
+      const target = e.target as HTMLElement;
+      if (target.closest('.inspect-close')) this.onClose?.();
+      if (target.closest('.inspect-locate')) this.onLocate?.();
     });
   }
 
@@ -49,7 +55,8 @@ export class InspectCard {
     const ago = v.observedAt !== undefined ? Math.max(0, Math.round((now - v.observedAt) / 1000)) : undefined;
     const rows = [
       [STATUS[v.status], cleanStopName(v.stopName)],
-      ['Trip', v.tripId],
+      v.tripId ? ['Trip', v.tripId] : undefined,
+      v.runId ? ['Train (inferred)', v.runId] : undefined,
       v.label ? ['Vehicle', v.label] : undefined,
       speed ? ['Speed', speed] : undefined,
       delay ? ['Schedule', delay] : undefined,
@@ -57,6 +64,7 @@ export class InspectCard {
     ].filter(Boolean) as [string, string][];
     this.set(`
       <button class="inspect-close" aria-label="Close">×</button>
+      <button class="inspect-locate" aria-label="Centre map on this vehicle" title="Centre map on this vehicle">⌖</button>
       <div class="inspect-head"><span class="swatch swatch-${route.kind}" style="--c:${route.color}"></span>
         <strong>${escapeHtml(route.label)}</strong></div>
       <div class="inspect-headsign">${escapeHtml(v.headsign.replace(/^.*?\bTo\s+/i, 'To '))}</div>

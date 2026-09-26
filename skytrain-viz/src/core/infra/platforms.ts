@@ -59,6 +59,8 @@ const MAX_TURNBACK_M = 4000;
 /** A trip may instead end by pulling in to a yard within this distance (m). */
 const MAX_PULL_IN_M = 12_000;
 const YARD = new Set<SegmentKind>(['yard']);
+/** Platforms sit on running track, never on crossovers, spurs or in yards. */
+const PLATFORM_KINDS = new Set<SegmentKind>(['main', 'pocket', 'tail', 'siding']);
 
 type Cand = TrackPos & { dist: number };
 type Pins = Map<number, Set<number>>;
@@ -97,7 +99,7 @@ export function mapPlatforms(
     if (c) return c;
     const s = plan.stops[si]!;
     const o = overrideByName.get(s.name);
-    const near = g.nearest(o ? o.near : [s.lon, s.lat], o ? 15 : CANDIDATE_RADIUS_M);
+    const near = g.nearest(o ? o.near : [s.lon, s.lat], o ? 15 : CANDIDATE_RADIUS_M, PLATFORM_KINDS);
     const seen = new Set<string>();
     c = near.filter((n) => (seen.has(n.seg) ? false : (seen.add(n.seg), true))).slice(0, o ? 1 : MAX_CANDIDATES);
     candidates.set(si, c);

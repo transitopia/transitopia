@@ -7,7 +7,7 @@
 // only where configured: at dead ends, inside pocket/tail/siding tracks, or explicitly at the start
 // or target (e.g. a stub-ended terminus platform).
 
-import { cumulativeLengths, distM, localProjector, pointAlong, projectOnto, type LonLat } from '../geo.ts';
+import { bearingDeg as bearingOf, cumulativeLengths, distM, localProjector, pointAlong, projectOnto, type LonLat } from '../geo.ts';
 import type { InfraCollection, NodeProps, Segment, SegmentEnd, SegmentKind, StopPosition, TrackNode } from './types.ts';
 
 export type Dir = 1 | -1;
@@ -54,6 +54,12 @@ export interface RouteOptions {
   maxLength?: number;
   /** With a null target: finish on entering any segment of these kinds (e.g. reach a yard). */
   goalKinds?: Set<SegmentKind>;
+  /**
+   * Also allow reversing on main track just past a switch (run in, stop, reverse back through it) —
+   * how trains short-turn at through stations without a pocket. Costs `mainReversalPenalty`.
+   */
+  allowMainReversals?: boolean;
+  mainReversalPenalty?: number;
 }
 
 const REVERSAL_KINDS = new Set<SegmentKind>(['pocket', 'tail', 'siding']);
@@ -167,6 +173,54 @@ export class TrackGraph {
     return { lon: p.lon, lat: p.lat, bearing: dir === 1 ? p.bearing : (p.bearing + 180) % 360 };
   }
 
+  /**
+   * Points along the track from `pos` for `dist` metres in `dir`, following the straightest
+   * continuation at switches (for drawing trains along curves). Stops early at dead ends.
+   */
+  walk(pos: TrackPos, dir: Dir, dist: number, step = 8): LonLat[] {
+    const out: LonLat[] = [];
+    let seg = this.segment(pos.seg);
+    let offset = pos.offset;
+    let d = dir;
+    let remaining = dist;
+    const push = () => {
+      const p = pointAlong(seg.coords, seg.cum, offset);
+      out.push([p.lon, p.lat]);
+    };
+    push();
+    for (let guard = 0; guard < 200 && remaining > 1e-6; guard++) {
+      const toEnd = d === 1 ? seg.length - offset : offset;
+      const stepLen = Math.min(step, remaining, toEnd);
+      if (stepLen > 1e-6) {
+        offset += d * stepLen;
+        remaining -= stepLen;
+        push();
+        continue;
+      }
+      // At the segment end: continue onto the straightest successor.
+      const nexts = this.successors(seg.id, d);
+      if (!nexts.length) break;
+      const here = pointAlong(seg.coords, seg.cum, offset);
+      let best = nexts[0]!;
+      let bestDiff = Infinity;
+      for (const n of nexts) {
+        const ns = this.segment(n.seg);
+        const p = pointAlong(ns.coords, ns.cum, n.dir === 1 ? Math.min(ns.length, 10) : Math.max(0, ns.length - 10));
+        const b = bearingOf([here.lon, here.lat], [p.lon, p.lat]);
+        const want = d === 1 ? here.bearing : (here.bearing + 180) % 360;
+        const diff = Math.abs(((b - want + 540) % 360) - 180);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          best = n;
+        }
+      }
+      seg = this.segment(best.seg);
+      d = best.dir;
+      offset = d === 1 ? 0 : seg.length;
+    }
+    return out;
+  }
+
   /** Track positions near a point, nearest first. */
   nearest(p: LonLat, maxDist: number, kinds = DEFAULT_KINDS): (TrackPos & { dist: number })[] {
     const proj = localProjector(p[1]);
@@ -274,10 +328,11 @@ export class TrackGraph {
           consider(cost + partial, t.dir, k);
         }
         push(t.seg, t.dir, cost + ts.length, 'turn');
-        // Run into a reversal track, reverse, come back out.
-        if (opts.allowReversals && REVERSAL_KINDS.has(ts.kind)) {
+        // Run into a reversal track (or, if allowed, onto main track past a switch), reverse, come back out.
+        const mainRev = opts.allowMainReversals && ts.kind === 'main' && nexts.length > 1;
+        if (opts.allowReversals && (REVERSAL_KINDS.has(ts.kind) || mainRev)) {
           const x = Math.min(ts.length, runIn);
-          push(t.seg, -t.dir as Dir, cost + 2 * x + penalty, 'pocket');
+          push(t.seg, -t.dir as Dir, cost + 2 * x + (mainRev ? (opts.mainReversalPenalty ?? 1500) : penalty), 'pocket');
         }
       }
       if (opts.allowReversals && nexts.length === 0) push(rec.seg, -rec.dir as Dir, cost + penalty + len(rec.seg), 'deadend');
