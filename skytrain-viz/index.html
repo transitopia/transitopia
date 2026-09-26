@@ -29,13 +29,14 @@
         <button id="tb-play" class="tb-play" aria-label="Pause">❚❚</button>
         <div class="tb-now">
           <span id="tb-time" class="tb-time">--:--:--</span>
-          <span id="tb-service" class="tb-service"></span>
+          <span class="tb-sub"><span id="tb-service" class="tb-service"></span><span id="tb-rt" class="tb-rt"></span></span>
         </div>
         <input id="tb-date" class="tb-date" type="date" aria-label="Date" />
         <select id="tb-rate" class="tb-rate" aria-label="Playback speed"></select>
         <button id="tb-live" class="tb-live" aria-pressed="false">Live</button>
       </div>
       <div class="tb-slider-wrap">
+        <div id="tb-coverage" class="tb-coverage" title="Shaded: real bus positions recorded"></div>
         <input id="tb-slider" class="tb-slider" type="range" aria-label="Time of day" />
         <div id="tb-ticks" class="tb-ticks" aria-hidden="true"></div>
       </div>

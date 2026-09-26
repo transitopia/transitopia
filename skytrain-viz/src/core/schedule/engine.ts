@@ -33,6 +33,8 @@ export interface VehicleState {
   label?: string;
   /** Seconds late (+) or early (−), when known. */
   delay?: number;
+  /** Epoch ms of the real-time fix this position is based on (observed/interpolated only). */
+  observedAt?: number;
   length: number;
   width: number;
 }
@@ -40,7 +42,7 @@ export interface VehicleState {
 /** Layover at a terminus is shown only if the vehicle's next trip starts within this many seconds. */
 const MAX_LAYOVER_S = 45 * 60;
 
-interface PreparedTrip {
+export interface PreparedTrip {
   trip: PlanTrip;
   pattern: PlanPattern;
   route: PlanRoute;
@@ -57,6 +59,8 @@ interface PreparedTrip {
 export interface PreparedPlan {
   plan: ServicePlan;
   routes: Map<string, PlanRoute>;
+  tripIndex: Map<string, PreparedTrip>;
+  stopById: Map<string, PlanStop>;
   shapeCum: Map<string, Float64Array>;
   servicesOn: (date: string) => Set<string>;
   /** Per service_id, trips sorted by start time. */
@@ -137,7 +141,19 @@ export function preparePlan(plan: ServicePlan, kinCfg: KinematicsConfig): Prepar
     maxSpanByService.set(service, maxSpan);
   }
 
-  return { plan, routes, shapeCum, servicesOn: indexCalendar(plan.calendar), tripsByService, maxSpanByService };
+  const tripIndex = new Map<string, PreparedTrip>();
+  for (const list of tripsByService.values()) for (const t of list) tripIndex.set(t.trip.id, t);
+  const stopById = new Map(plan.stops.map((s) => [s.id, s]));
+  return {
+    plan,
+    routes,
+    tripIndex,
+    stopById,
+    shapeCum,
+    servicesOn: indexCalendar(plan.calendar),
+    tripsByService,
+    maxSpanByService,
+  };
 }
 
 function sameStation(a: PlanStop, b: PlanStop): boolean {

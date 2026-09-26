@@ -32,8 +32,13 @@ const report = (msg: string) => {
   seen.set(msg, n);
   if (n === 1) console.log(msg);
 };
-page.on('console', (m) => {
-  if (m.type() === 'error' || m.type() === 'warning') report(`[browser ${m.type()}] ${m.text()}`);
+page.on('console', async (m) => {
+  if (m.type() !== 'error' && m.type() !== 'warning') return;
+  // Error objects stringify to just "Error"; include their stacks.
+  const details = await Promise.all(
+    m.args().map((a) => a.evaluate((x: unknown) => (x instanceof Error ? (x.stack ?? x.message) : '')).catch(() => '')),
+  );
+  report(`[browser ${m.type()}] ${m.text()}${details.filter(Boolean).map((d) => `\n  ${d}`).join('')}`);
 });
 page.on('pageerror', (e) => report(`[page error] ${e.message}\n${e.stack ?? ''}`));
 await page.goto(base + path, { waitUntil: 'load' });

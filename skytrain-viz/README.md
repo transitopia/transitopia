@@ -6,14 +6,14 @@ An interactive, to-scale vector map of Vancouver's SkyTrain network. It animates
 - **Express bus** positions are *observed* from TransLink's GTFS-realtime feed when live or when recorded history exists, and *estimated* from the schedule otherwise. The map shows which is which.
 - Time plays in real time by default. You can pause, rewind, fast-forward, or jump to any date in the current or any future published timetable. Different days get different schedules (weekday, Mon–Thu extras, Saturday, Sunday/holiday).
 
-> **Status:** planning. See [PLAN.md](PLAN.md) and [docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md).
+> **Status:** in development. Working so far: timetables, basemap, schedule-based vehicles on GTFS shapes, time controls, and live plus recorded bus positions. Next: track-level SkyTrain. See [PLAN.md](PLAN.md) and [docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md).
 
 ## Quick start
 
 ```sh
 npm install
 npm run tiles       # build the Metro Vancouver PMTiles basemap (one-time)
-npm run data        # fetch GTFS + OSM, build schedule, track graph, train movements
+npm run data:gtfs   # fetch the latest GTFS feed and build the timetable data
 npm run dev         # app at http://localhost:5173, plus the local RT service
 ```
 
@@ -25,7 +25,7 @@ TRANSLINK_API_KEY=your-key-here
 
 Without a key, everything runs in schedule-only (estimated) mode.
 
-While `npm run dev` is running, the RT service polls TransLink once every 20–30 s, however many browser tabs are open. It records bus positions to `data/rt-history/`, so rewinding shows real positions for any time it was running.
+While `npm run dev` is running, the RT service polls TransLink every 20 s for positions and every 60 s for delays, however many browser tabs are open. It records bus positions to `data/rt-history/`, so rewinding shows real positions for any time it was running. A red strip above the time slider marks those periods, and the "Buses: live / recorded / estimated" badge says which you're seeing. To keep recording without the app open, run `npm run server`.
 
 ## How it works (short version)
 

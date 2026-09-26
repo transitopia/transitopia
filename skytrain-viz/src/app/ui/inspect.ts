@@ -32,7 +32,7 @@ export class InspectCard {
     });
   }
 
-  show(v: VehicleState | undefined, route: PlanRoute | undefined, missing: boolean): void {
+  show(v: VehicleState | undefined, route: PlanRoute | undefined, missing: boolean, now = 0): void {
     if (!v || !route) {
       this.root.hidden = !missing;
       if (missing) this.set('<button class="inspect-close" aria-label="Close">×</button><p class="muted">Vehicle not in service at this time.</p>');
@@ -46,12 +46,14 @@ export class InspectCard {
         : v.delay !== undefined
           ? 'on time'
           : '';
+    const ago = v.observedAt !== undefined ? Math.max(0, Math.round((now - v.observedAt) / 1000)) : undefined;
     const rows = [
       [STATUS[v.status], cleanStopName(v.stopName)],
       ['Trip', v.tripId],
       v.label ? ['Vehicle', v.label] : undefined,
       speed ? ['Speed', speed] : undefined,
       delay ? ['Schedule', delay] : undefined,
+      ago !== undefined ? ['Last fix', ago < 90 ? `${ago} s before shown time` : `${Math.round(ago / 60)} min before shown time`] : undefined,
     ].filter(Boolean) as [string, string][];
     this.set(`
       <button class="inspect-close" aria-label="Close">×</button>

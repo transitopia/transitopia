@@ -43,6 +43,9 @@ export class Timebar {
   private service = el<HTMLElement>('tb-service');
   private live = el<HTMLButtonElement>('tb-live');
   private slider = el<HTMLInputElement>('tb-slider');
+  private coverage = el<HTMLElement>('tb-coverage');
+  private rtBadge = el<HTMLElement>('tb-rt');
+  private lastCoverageKey = '';
   private scrubbing = false;
   private lastDate = '';
 
@@ -109,6 +112,38 @@ export class Timebar {
       s.textContent = String(h % 24).padStart(2, '0');
       ticks.append(s);
     }
+  }
+
+  /** Slider span of the displayed service day, as epoch ms. */
+  sliderRange(t: number): [number, number] {
+    const start = serviceDayStart(displayServiceDate(t));
+    return [start + SLIDER_START_S * 1000, start + SLIDER_END_S * 1000];
+  }
+
+  /** Shade the slider where real bus positions exist (epoch-ms intervals). */
+  setCoverage(t: number, intervals: [number, number][]): void {
+    const [lo, hi] = this.sliderRange(t);
+    const segs = intervals
+      .map(([a, b]) => [Math.max(a, lo), Math.min(b, hi)] as const)
+      .filter(([a, b]) => b > a)
+      .map(([a, b]) => [((a - lo) / (hi - lo)) * 100, ((b - a) / (hi - lo)) * 100] as const);
+    const key = segs.map(([l, w]) => `${l.toFixed(2)}:${w.toFixed(2)}`).join(',');
+    if (key === this.lastCoverageKey) return;
+    this.lastCoverageKey = key;
+    this.coverage.replaceChildren(
+      ...segs.map(([left, width]) => {
+        const d = document.createElement('span');
+        d.style.left = `${left}%`;
+        d.style.width = `max(2px, ${width}%)`;
+        return d;
+      }),
+    );
+  }
+
+  setRtBadge(text: string, mode: string, title: string): void {
+    if (this.rtBadge.textContent !== text) this.rtBadge.textContent = text;
+    this.rtBadge.dataset.mode = mode;
+    this.rtBadge.title = title;
   }
 
   /** Recompute date-dependent labels (e.g. once a timetable finishes loading). */

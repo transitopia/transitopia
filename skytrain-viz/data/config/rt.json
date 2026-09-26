@@ -1,0 +1,15 @@
+{
+  "$comment": "Real-time (GTFS-RT) service settings; see PLAN.md §4.6. Upstream request rate is fixed by these intervals no matter how many clients connect.",
+  "positionsIntervalS": 20,
+  "tripUpdatesIntervalS": 60,
+  "$staleAfterS": "Clients treat live data older than this as unavailable and fall back to schedule estimates.",
+  "staleAfterS": 120,
+  "$coverageGapS": "Recorder coverage breaks when consecutive snapshots are further apart than this.",
+  "coverageGapS": 75,
+  "$maxInterpolateS": "Interpolate a vehicle between two observations only when they are at most this far apart.",
+  "maxInterpolateS": 180,
+  "$maxExtrapolateS": "At the live edge, dead-reckon a vehicle forward along its route for at most this long.",
+  "maxExtrapolateS": 90,
+  "clientPollS": 10,
+  "serverPort": 8787
+}

@@ -243,12 +243,34 @@ input {
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
 }
+.tb-sub {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
 .tb-service {
   font-size: 12px;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.tb-rt {
+  font-size: 11px;
+  white-space: nowrap;
+  padding: 0 6px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  color: var(--muted);
+}
+.tb-rt[data-mode='live'],
+.tb-rt[data-mode='recorded'] {
+  color: var(--text);
+  border-color: var(--text);
+}
+.tb-rt:empty {
+  display: none;
 }
 .tb-date,
 .tb-rate {
@@ -296,9 +318,26 @@ input {
   margin-top: 6px;
 }
 .tb-slider {
+  position: relative;
   width: 100%;
   margin: 0;
   accent-color: var(--accent);
+}
+/* Recorder coverage: where real bus positions exist for this service day. */
+.tb-coverage {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -3px;
+  height: 3px;
+  pointer-events: none;
+}
+.tb-coverage span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--live);
+  border-radius: 2px;
 }
 .tb-ticks {
   position: absolute;

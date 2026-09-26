@@ -14,6 +14,7 @@ import { Timebar } from './ui/timebar.ts';
 import { Legend } from './ui/legend.ts';
 import { InspectCard } from './ui/inspect.ts';
 import { readUrl, writeUrl } from './url.ts';
+import { RtClient, type RtMode } from './rt.ts';
 import { loadPref, savePref } from './prefs.ts';
 import { makeServiceDescriber, type ServiceDayInfo } from '../core/gtfs/describe.ts';
 import { feedForDate } from '../core/plan/types.ts';
@@ -159,18 +160,38 @@ async function main(): Promise<void> {
   clock.subscribe(() => writeUrl(clock, selected));
   let lastUrlWrite = 0;
 
+  // Real-time buses: replace schedule estimates wherever RT data covers the instant.
+  const rt = new RtClient();
+  const RT_BADGE: Record<RtMode, [string, string]> = {
+    live: ['Buses: live', 'Bus positions from TransLink real-time data'],
+    recorded: ['Buses: recorded', 'Bus positions replayed from recorded real-time data'],
+    estimated: ['Buses: estimated', 'No real-time data recorded for this time: bus positions estimated from the schedule'],
+    unavailable: ['Buses: estimated', 'Real-time service unavailable: bus positions estimated from the schedule'],
+  };
+  let lastCoverageUpdate = 0;
+
   // Render loop.
   let lastVehicles: VehicleState[] = [];
   const frame = () => {
     const t = clock.now();
     const visible = legend.hidden.size ? new Set(routeKeys(shownFeed).filter((k) => !legend.hidden.has(k))) : undefined;
-    lastVehicles = store.vehiclesAt(t, visible);
+    rt.update(t);
+    const live = rt.vehiclesAt(t, store.planFor(displayServiceDate(t)), visible);
+    const scheduled = store.vehiclesAt(t, visible);
+    lastVehicles = live.vehicles ? [...scheduled.filter((v) => v.mode !== 'bus'), ...live.vehicles] : scheduled;
+    const [badge, badgeTitle] = RT_BADGE[live.mode];
+    timebar.setRtBadge(badge, live.mode, rt.liveStatus() ? `${badgeTitle} (${rt.liveStatus()})` : badgeTitle);
+    if (performance.now() - lastCoverageUpdate > 1000) {
+      lastCoverageUpdate = performance.now();
+      const [lo, hi] = timebar.sliderRange(t);
+      timebar.setCoverage(t, rt.coverageFor(lo, hi));
+    }
     vehicles.update(lastVehicles, theme === 'dark');
     timebar.tick(t);
     syncStatic();
     if (selected) {
       const v = lastVehicles.find((x) => x.id === selected);
-      inspect.show(v, v ? shownFeed?.routes.get(v.routeKey) : undefined, !v);
+      inspect.show(v, v ? shownFeed?.routes.get(v.routeKey) : undefined, !v, t);
     } else inspect.show(undefined, undefined, false);
     const now = performance.now();
     if (now - lastUrlWrite > 2000 && clock.playing && !clock.isLive()) {
@@ -182,7 +203,7 @@ async function main(): Promise<void> {
   requestAnimationFrame(frame);
 
   // Debug handle for the console.
-  Object.assign(window, { skytrain: { map, clock, store, vehicles: () => lastVehicles } });
+  Object.assign(window, { skytrain: { map, clock, store, rt, vehicles: () => lastVehicles } });
 }
 
 function routeKeys(pp: PreparedPlan | undefined): string[] {

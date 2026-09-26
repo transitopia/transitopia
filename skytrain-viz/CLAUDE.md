@@ -11,7 +11,7 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 ## Ground rules
 
 - **Never print, log, commit, or bundle the API key.** It lives in `.secrets` (`TRANSLINK_API_KEY=...`, gitignored). Only `server/` (and later `worker/`) reads it. Browser code must never see it.
-- **Never let client requests trigger TransLink API calls.** A single poller fetches upstream on a fixed interval. Clients only read the cached snapshot.
+- **Never let client requests trigger TransLink API calls.** A single poller fetches upstream on a fixed interval. Clients only read the cached snapshot. Only one process per machine polls and records: the leader holds `data/rt-history/.lock` ({pid, port}), and any other RT service instance forwards `/rt/*` to it.
 - **Positions are a pure function of (plan, overlays, t).** Don't introduce frame-stepped simulation state. Seek, rewind, and fast-forward depend on this.
 - **Every vehicle state carries provenance** (`observed | interpolated | estimated`) and a source. Never render an estimate as if it were observed.
 - **`src/core/` stays DOM-free.** It's shared by build scripts, tests, and workers.
@@ -36,7 +36,8 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 (Planned; update as they become real.)
 
 ```sh
-npm run dev              # Vite + local RT service (poller, cache, recorder)
+npm run dev              # Vite + local RT service at /rt/* (poller, cache, recorder) (working)
+npm run server           # standalone RT service on :8787, e.g. to keep recording (working)
 npm run data:gtfs        # fetch latest GTFS + build plan.json and manifest (working)
 npm run data             # fetch-gtfs, fetch-osm, import-osm, build-schedule, infer-runs, build-movements
 npm run tiles            # build public/tiles/vancouver.pmtiles + fonts/sprites (working)
