@@ -15,6 +15,15 @@
         ]
       },
       "note": "Train to Waterfront arrived 13:57:02 and dwelled ~27 s (time above is the dwell midpoint). Mark III; 409 is the lead car number (confirmed). Car count not recorded."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-26",
+      "stop": "Waterfront",
+      "line": "expo",
+      "time": "2026-09-26T14:02:02-07:00",
+      "source": "Braden, on board",
+      "note": "Same train (Mk III, lead car 409) arrived 14:02:02 at Platform 2 (left side when arriving). No other trains in the station or tail tracks. It went straight to Platform 2, boarded and departed the opposite way, instead of the usual pattern (drop off at Platform 1, reverse in the tail tracks, board at Platform 2)."
     }
   ]
 }

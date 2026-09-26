@@ -38,6 +38,22 @@
         49.2792249
       ],
       "note": "Platform 2 is the middle track (OSM way 809550055). The westernmost track (OSM siding 809550056) is Platform 3: closed to passengers, used only to park trains (Braden, 2026-09-26). The GTFS coordinate is closer to it."
+    },
+    {
+      "stop": "Waterfront Station @ Platform 1",
+      "near": [
+        -123.1120779,
+        49.2860635
+      ],
+      "note": "Waterfront Expo: OSM platform ways ref 1/2 put Platform 1 on the south approach track and Platform 2 on the north one (left when arriving), west of the throat switches; the stubs beyond are tail tracks. Usual pattern: drop off at P1, reverse in the tail, board at P2; when quiet, trains may go straight to P2 and turn there (Braden, 2026-09-26). GTFS coordinates sit near the switches, hence the pins."
+    },
+    {
+      "stop": "Waterfront Station @ Platform 2",
+      "near": [
+        -123.1120121,
+        49.2861423
+      ],
+      "note": "Waterfront Expo: OSM platform ways ref 1/2 put Platform 1 on the south approach track and Platform 2 on the north one (left when arriving), west of the throat switches; the stubs beyond are tail tracks. Usual pattern: drop off at P1, reverse in the tail, board at P2; when quiet, trains may go straight to P2 and turn there (Braden, 2026-09-26). GTFS coordinates sit near the switches, hence the pins."
     }
   ],
   "patternPlatforms": [

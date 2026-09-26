@@ -278,8 +278,7 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
    * Surplus trains at stub termini go back to the yard rather than queue for a far-off departure
    * (operators run them empty between scheduled trains; OPEN-QUESTIONS #21).
    */
-  const tooLongAtStub = (a: TripInfo, link: Link) =>
-    (link.berthHop !== undefined || link.path.length <= 1) && link.d.dep - a.arr > ops.turnback.stubMaxLayoverS && atStubTerminus(a);
+  const tooLongAtStub = (a: TripInfo, link: Link) => link.d.dep - a.arr > ops.turnback.stubMaxLayoverS && atStubTerminus(a);
 
   // --- chaining (FIFO per terminus, preferring the GTFS block) ---
   type Link = { d: TripInfo; path: Path; berthHop?: Path };
