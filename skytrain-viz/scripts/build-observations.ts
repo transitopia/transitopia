@@ -10,7 +10,7 @@ import type { Observation, ObservationFile, ObservationIndex } from '../src/core
 
 const SRC = join(ROOT, 'data', 'observations');
 const OUT = join(PUBLIC_DATA_DIR, 'observations');
-const KINDS = new Set(['at_platform', 'delay', 'cancel', 'consist']);
+const KINDS = new Set(['at_platform', 'delay', 'cancel', 'consist', 'parked']);
 
 function problems(o: Observation): string[] {
   const p: string[] = [];
@@ -19,6 +19,9 @@ function problems(o: Observation): string[] {
   if (!o.source) p.push('source is required');
   if (o.kind === 'at_platform') {
     if (!o.stop) p.push('stop is required');
+    if (!o.time || Number.isNaN(Date.parse(o.time))) p.push('time must be ISO 8601 with offset');
+  } else if (o.kind === 'parked') {
+    if (!Array.isArray(o.at) || o.at.length !== 2) p.push('at must be [lon, lat]');
     if (!o.time || Number.isNaN(Date.parse(o.time))) p.push('time must be ISO 8601 with offset');
   } else if (!('trip' in o) || !o.trip) p.push('trip is required');
   if (o.kind === 'delay' && !Number.isFinite(o.seconds)) p.push('seconds must be a number');

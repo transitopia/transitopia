@@ -28,7 +28,12 @@ export type Observation =
   /** `trip` did not run. */
   | (Base & { kind: 'cancel'; trip: string })
   /** The train running `trip` is this consist (applies to its whole inferred run). */
-  | (Base & { kind: 'consist'; trip: string; consist: Consist });
+  | (Base & { kind: 'consist'; trip: string; consist: Consist })
+  /**
+   * A train standing out of service (e.g. parked on a siding) on the track nearest `at`, seen at
+   * `time`. Shown from `from` to `until` (default ±15 min around `time`).
+   */
+  | (Base & { kind: 'parked'; at: [number, number]; time: string; from?: string; until?: string; line?: string; consist?: Consist });
 
 export interface ObservationFile {
   $comment?: string;

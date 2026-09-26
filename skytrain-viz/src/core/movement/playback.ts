@@ -7,8 +7,8 @@ import type { Dir, TrackGraph, TrackPos } from '../infra/graph.ts';
 import type { PreparedPlan, VehicleState, VehicleStatus } from '../schedule/engine.ts';
 import { distanceAt, kinematicsFor, solveLeg, speedAt, type Kinematics, type KinematicsConfig, type LegProfile } from './kinematics.ts';
 import type { MovementsFile, Run, RunEvent } from './types.ts';
-import { OBSERVED_WINDOW_S, warp, type ReconcileResult } from '../corrections/reconcile.ts';
-import { serviceDayStart } from '../time.ts';
+import { OBSERVED_WINDOW_S, warp, type ParkedTrain, type ReconcileResult } from '../corrections/reconcile.ts';
+import { formatServiceTime, serviceDayStart } from '../time.ts';
 
 interface DecodedPath {
   segs: string[];
@@ -44,6 +44,7 @@ export class TrainPlayback {
   private paths: DecodedPath[];
   private runs: PreparedRun[];
   private legCache = new Map<string, LegProfile>();
+  private kin: (line: string) => Kinematics;
 
   constructor(
     readonly file: MovementsFile,
@@ -52,6 +53,7 @@ export class TrainPlayback {
     kin: KinematicsConfig,
     private opts: PlaybackOptions,
   ) {
+    this.kin = (line) => kinematicsFor(kin, 'skytrain', line);
     this.paths = file.paths.map((packed) => {
       const segs: string[] = [];
       const from: number[] = [];
@@ -115,7 +117,43 @@ export class TrainPlayback {
       }
       out.push(v);
     }
+    for (const [i, p] of (corrections?.parked ?? []).entries()) {
+      if (sec < p.from || sec > p.until || (routes && !routes.has(p.line))) continue;
+      const v = this.parkedAt(p, i, sec, serviceDate);
+      if (v) out.push(v);
+    }
     return out;
+  }
+
+  private parkedAt(p: ParkedTrain, i: number, sec: number, serviceDate: string): VehicleState | undefined {
+    const track = this.g.nearest(p.at, 15)[0];
+    if (!track) return undefined;
+    const k = this.kin(p.line);
+    const pos = { seg: track.seg, offset: track.offset };
+    const pt = this.g.pointAt(pos, 1);
+    const near = Math.abs(sec - p.seen) <= OBSERVED_WINDOW_S;
+    const v: VehicleState = {
+      id: `${serviceDate}:parked-${i}`,
+      routeKey: p.line,
+      mode: 'skytrain',
+      tripId: '',
+      headsign: 'Not in service · parked',
+      lon: pt.lon,
+      lat: pt.lat,
+      bearing: pt.bearing,
+      speed: 0,
+      status: 'layover',
+      provenance: near ? 'observed' : 'interpolated',
+      source: `${p.source} (seen ${formatServiceTime(p.seen)})`,
+      serviceDate,
+      length: k.length,
+      width: k.width,
+      observedAt: serviceDayStart(serviceDate) + p.seen * 1000,
+      track: pos,
+    };
+    if (p.consist) v.consist = p.consist;
+    if (this.opts.shapes) v.shape = [...this.g.walk(pos, -1, k.length / 2).reverse(), ...this.g.walk(pos, 1, k.length / 2).slice(1)] as LonLat[];
+    return v;
   }
 
   private runAt(r: PreparedRun, sec: number, serviceDate: string): VehicleState | undefined {

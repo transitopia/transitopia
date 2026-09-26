@@ -200,6 +200,22 @@ describe('corrections (reconcile + playback)', () => {
     expect(pb.vehiclesAt(8 * 3600 + 420, date, undefined, corr)[0]!.provenance).toBe('estimated');
   });
 
+  it('shows parked trains around their sighting, observed near the time and inferred otherwise', () => {
+    const seen = 9 * 3600;
+    const corr = reconcile(
+      file,
+      pp,
+      [{ kind: 'parked', date: '2026-09-28', at: pt(500), time: iso(seen), source: 'rider', consist: { type: 'Mk I', carNumbers: ['125'] } }],
+      date,
+    );
+    const at = (t: number) => pb.vehiclesAt(t, date, undefined, corr).filter((v) => v.headsign.includes('parked'));
+    expect(at(seen)[0]!.provenance).toBe('observed');
+    expect(at(seen)[0]!.consist?.carNumbers).toEqual(['125']);
+    expect(at(seen + 10 * 60)[0]!.provenance).toBe('interpolated');
+    expect(at(seen + 20 * 60)).toHaveLength(0);
+    expect(Math.abs(x(at(seen)[0]!) - 500)).toBeLessThan(1);
+  });
+
   it('ignores observations for other dates', () => {
     const corr = reconcile(file, pp, [{ kind: 'cancel', date: '2026-09-29', trip: 't2', source: 'x' }], date);
     expect(corr.runs.size).toBe(0);

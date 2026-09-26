@@ -25,14 +25,29 @@ export interface RunCorrection {
   sources: Set<string>;
 }
 
+export interface ParkedTrain {
+  at: [number, number];
+  line: string;
+  /** Service-day seconds. */
+  seen: number;
+  from: number;
+  until: number;
+  source: string;
+  consist?: Consist;
+}
+
 export interface ReconcileResult {
   runs: Map<string, RunCorrection>;
+  /** Out-of-service trains seen standing somewhere (parked observations). */
+  parked: ParkedTrain[];
   /** Observations that couldn't be matched to a trip or run, with the reason. */
   unmatched: { obs: Observation; reason: string }[];
 }
 
 /** Positions within this of an observation count as observed (s). */
 export const OBSERVED_WINDOW_S = 90;
+/** A parked train seen once is shown this long either side of the sighting (s). */
+const PARKED_DEFAULT_WINDOW_S = 15 * 60;
 /** Minimum turnaround when absorbing delay at a terminus (s). */
 const MIN_TURN_S = 60;
 /** How far an at_platform observation may be from the scheduled time to match without a trip (s). */
@@ -45,6 +60,7 @@ export function reconcile(file: MovementsFile, pp: PreparedPlan, observations: O
   for (const r of file.runs) for (const e of r.events) if (e.k === 'trip') runOfTrip.set(e.trip, r.id);
   const runs = new Map<string, RunCorrection>();
   const unmatched: ReconcileResult['unmatched'] = [];
+  const parked: ParkedTrain[] = [];
   const get = (runId: string) => {
     let c = runs.get(runId);
     if (!c) runs.set(runId, (c = { shifts: [], cancelled: new Set(), observed: [], sources: new Set() }));
@@ -55,6 +71,23 @@ export function reconcile(file: MovementsFile, pp: PreparedPlan, observations: O
 
   for (const obs of observations) {
     if (obs.date !== isoDate) continue;
+    if (obs.kind === 'parked') {
+      const seen = toSec(obs.time);
+      if (!Number.isFinite(seen)) {
+        unmatched.push({ obs, reason: 'unparseable time' });
+        continue;
+      }
+      parked.push({
+        at: obs.at,
+        line: obs.line ?? 'expo',
+        seen,
+        from: obs.from ? toSec(obs.from) : seen - PARKED_DEFAULT_WINDOW_S,
+        until: obs.until ? toSec(obs.until) : seen + PARKED_DEFAULT_WINDOW_S,
+        source: obs.source,
+        ...(obs.consist ? { consist: obs.consist } : {}),
+      });
+      continue;
+    }
     if (obs.kind === 'at_platform') {
       const t = toSec(obs.time);
       if (!Number.isFinite(t)) {
@@ -120,7 +153,7 @@ export function reconcile(file: MovementsFile, pp: PreparedPlan, observations: O
     });
     get(runId).shifts = shifts.filter((s) => s.t1 > s.t0).sort((a, b) => a.t0 - b.t0);
   }
-  return { runs, unmatched };
+  return { runs, parked, unmatched };
 }
 
 function matchAtPlatform(
