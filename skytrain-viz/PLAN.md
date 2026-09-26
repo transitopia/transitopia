@@ -243,7 +243,7 @@ type Observation =
 A **reconciler** adjusts a run's timeline from observations:
 
 - Anchoring times shift subsequent stops, decaying back toward the schedule at later termini.
-- Timetable-based vehicles (SeaBus, WCE, buses without real-time data) use a simpler reconciler, `reconcileScheduled`. A sighting shifts its trip, and the terminal layover stretches to the next trip's corrected departure. A consist or vessel name applies to the whole GTFS block.
+- Timetable-based vehicles (SeaBus, WCE, buses without real-time data) use a simpler reconciler, `reconcileScheduled`. A sighting shifts its trip (linearly between several sightings), and the terminal layover stretches to the next trip's corrected departure. A consist or vessel name applies to the whole GTFS block.
 - Cancellations drop trips and re-chain the affected runs.
 - Consist data attaches to runs.
 - Affected spans get `provenance: observed | interpolated`.

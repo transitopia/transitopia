@@ -28,4 +28,4 @@ Ground-truth corrections to the schedule-inferred SkyTrain trains and to timetab
 
 A `parked` observation places an out-of-service train on the track nearest `at` (a point on that track, e.g. a siding). It's shown from `from` to `until`, defaulting to ±15 min around `time`: *observed* within 90 s of the sighting, *interpolated* otherwise.
 
-Effects: a delay shifts the train's run from that point and is absorbed by later terminus layovers (keeping a 60 s turnaround). A cancelled trip hides the train during that trip. A consist applies to the whole inferred run. For timetable vehicles, a sighting shifts that trip, and the wait at the terminal stretches until the next trip's corrected departure.
+Effects: a delay shifts the train's run from that point and is absorbed by later terminus layovers (keeping a 60 s turnaround). A cancelled trip hides the train during that trip. A consist applies to the whole inferred run. For timetable vehicles, a sighting shifts that trip (with several sightings, the delay changes linearly between them, e.g. time made up crossing), and the wait at the terminal stretches until the next trip's corrected departure.

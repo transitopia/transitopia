@@ -259,7 +259,12 @@ export interface ScheduleQuery {
 /** All scheduled vehicles visible at the given service-day time. */
 /** Observation-based adjustments for timetable vehicles (see reconcileScheduled). */
 export interface ScheduleCorrections {
-  trips: Map<string, { shift: number; observed: { t: number; source: string }[] }>;
+  /**
+   * trip_id → time anchors (scheduled service seconds → shift), sorted by `sched`. The shift is
+   * linear between anchors and constant beyond them, so a vessel that leaves late and makes up time
+   * crossing is late by less on arrival.
+   */
+  trips: Map<string, { anchors: { sched: number; shift: number }[]; observed: { t: number; source: string }[] }>;
   cancelled: Set<string>;
   consists: Map<string, NonNullable<VehicleState['consist']>>;
 }
@@ -275,6 +280,36 @@ function specialTrips(pp: PreparedPlan, corr: ScheduleCorrections): Set<Prepared
     specialCache.set(corr, s);
   }
   return s;
+}
+
+type Anchors = { sched: number; shift: number }[];
+
+/** Shift (s) at scheduled time `s`. */
+export function shiftAt(anchors: Anchors | undefined, s: number): number {
+  if (!anchors?.length) return 0;
+  if (s <= anchors[0]!.sched) return anchors[0]!.shift;
+  for (let i = 1; i < anchors.length; i++) {
+    const a = anchors[i - 1]!;
+    const b = anchors[i]!;
+    if (s <= b.sched) return a.shift + ((b.shift - a.shift) * (s - a.sched)) / (b.sched - a.sched);
+  }
+  return anchors[anchors.length - 1]!.shift;
+}
+
+/** Scheduled time whose corrected time is `real` (inverse of s ↦ s + shiftAt(s)). */
+export function schedAt(anchors: Anchors | undefined, real: number): number {
+  if (!anchors?.length) return real;
+  const first = anchors[0]!;
+  if (real <= first.sched + first.shift) return real - first.shift;
+  for (let i = 1; i < anchors.length; i++) {
+    const a = anchors[i - 1]!;
+    const b = anchors[i]!;
+    const ra = a.sched + a.shift;
+    const rb = b.sched + b.shift;
+    if (real <= rb) return rb > ra ? a.sched + ((b.sched - a.sched) * (real - ra)) / (rb - ra) : b.sched;
+  }
+  const last = anchors[anchors.length - 1]!;
+  return real - last.shift;
 }
 
 /** Positions within this of an observation count as observed (s). */
@@ -303,13 +338,16 @@ export function scheduledVehicles(pp: PreparedPlan, q: ScheduleQuery, corr?: Sch
     for (const t of special) {
       if (t.trip.service !== service || corr.cancelled.has(t.trip.id) || (q.routes && !q.routes.has(t.route.key))) continue;
       const c = corr.trips.get(t.trip.id);
-      const shift = c?.shift ?? 0;
       const lastArr = t.arr[t.arr.length - 1]!;
-      // Real-time window: shifted trip, then (if chained) layover until the next trip's corrected start.
-      const nextShift = t.next ? (corr.trips.get(t.next.trip.id)?.shift ?? 0) : 0;
-      const until = t.next ? Math.max(lastArr + shift, t.next.trip.start + nextShift) : Math.max(lastArr + shift, t.visibleUntil + shift);
-      if (q.sec < t.trip.start + shift || q.sec > until) continue;
-      const v = positionOnTrip(pp, t, Math.min(q.sec - shift, q.sec > lastArr + shift ? lastArr : Infinity), q.serviceDate);
+      const startShift = shiftAt(c?.anchors, t.trip.start);
+      const endShift = shiftAt(c?.anchors, lastArr);
+      // Real-time window: warped trip, then (if chained) layover until the next trip's corrected start.
+      const nextShift = t.next ? shiftAt(corr.trips.get(t.next.trip.id)?.anchors, t.next.trip.start) : 0;
+      const until = t.next ? Math.max(lastArr + endShift, t.next.trip.start + nextShift) : Math.max(lastArr + endShift, t.visibleUntil + endShift);
+      if (q.sec < t.trip.start + startShift || q.sec > until) continue;
+      const sched = q.sec > lastArr + endShift ? lastArr : schedAt(c?.anchors, q.sec);
+      const shift = shiftAt(c?.anchors, sched);
+      const v = positionOnTrip(pp, t, sched, q.serviceDate);
       const obs = c?.observed.find((o) => Math.abs(o.t - q.sec) <= OBSERVED_S);
       const nextObs = t.next ? corr.trips.get(t.next.trip.id)?.observed.find((o) => Math.abs(o.t - q.sec) <= OBSERVED_S) : undefined;
       const seen = obs ?? nextObs;
@@ -318,7 +356,7 @@ export function scheduledVehicles(pp: PreparedPlan, q: ScheduleQuery, corr?: Sch
         const sources = [...new Set([...(c?.observed ?? []), ...(t.next ? (corr.trips.get(t.next.trip.id)?.observed ?? []) : [])].map((o) => o.source))];
         v.source = `${sources.join(', ') || 'observation'} + ${v.source}`;
         if (seen) v.observedAt = serviceDayStart(q.serviceDate) + seen.t * 1000;
-        if (shift !== 0 && q.sec <= lastArr + shift) v.delay = shift;
+        if (shift !== 0 && q.sec <= lastArr + endShift) v.delay = Math.round(shift);
       }
       const consist = corr.consists.get(t.vehicleId);
       if (consist) v.consist = consist;

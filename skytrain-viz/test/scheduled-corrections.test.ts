@@ -43,6 +43,7 @@ const pp = preparePlan(plan, kin);
 const obs: Observation[] = [
   { kind: 'at_platform', date: '2026-09-26', stop: 'Waterfront', line: 'seabus', event: 'arrive', time: '2026-09-26T14:15:38-07:00', source: 'test', consist: { name: 'Burrard Pacific Breeze' } },
   { kind: 'at_platform', date: '2026-09-26', stop: 'Waterfront', line: 'seabus', event: 'depart', time: '2026-09-26T14:18:25-07:00', source: 'test' },
+  { kind: 'at_platform', date: '2026-09-26', stop: 'Lonsdale Quay', line: 'seabus', event: 'arrive', time: '2026-09-26T14:29:17-07:00', source: 'test' },
 ];
 const corr = reconcileScheduled(pp, obs, '20260926');
 const at = (sec: number) => scheduledVehicles(pp, { serviceDate: '20260926', sec }, corr);
@@ -50,8 +51,8 @@ const at = (sec: number) => scheduledVehicles(pp, { serviceDate: '20260926', sec
 describe('reconcileScheduled', () => {
   it('matches arrival and departure sightings to the right trips at a terminus', () => {
     expect(corr.unmatched).toHaveLength(0);
-    expect(corr.trips.get('down')?.shift).toBe(98);
-    expect(corr.trips.get('up')?.shift).toBe(145);
+    expect(corr.trips.get('down')?.anchors.map((a) => a.shift)).toEqual([98]);
+    expect(corr.trips.get('up')?.anchors.map((a) => a.shift)).toEqual([145, 77]);
     expect(corr.consists.size).toBe(1);
   });
 
@@ -71,9 +72,12 @@ describe('reconcileScheduled', () => {
     const back = at(H14 + 1200);
     expect(back).toHaveLength(1);
     expect(back[0]!.tripId).toBe('up');
-    expect(back[0]!.delay).toBe(145);
-    // Past the (shifted) end.
-    expect(at(H14 + 1680 + 146)).toHaveLength(0);
+    // Late by 145 s at departure, 77 s on arrival: in between, part-way.
+    expect(back[0]!.delay).toBeLessThan(145);
+    expect(back[0]!.delay).toBeGreaterThan(77);
+    expect(at(H14 + 1680 + 70)[0]!.status).not.toBe('stopped');
+    // Past the corrected end.
+    expect(at(H14 + 1680 + 78)).toHaveLength(0);
   });
 
   it('leaves other days alone', () => {
