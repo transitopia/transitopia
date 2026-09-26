@@ -69,13 +69,14 @@ Evidence cited below comes from feed `26SEP_20260925`, OSM (2026-09-25), and the
 
 ## Infrastructure (found while building the track graph)
 
-17. **Braid–Lougheed Expo track "under works".** OSM tags one Expo track between Braid and Lougheed (ways 87493028, 87493029, 392377336, 923211605) as `railway=construction`/`disused` with `opening_date=2027-06`, although it has a 2002 `start_date` and is still in the route relations. GTFS keeps scheduling westbound trains through Braid Platform 1, which needs that track. Is this track in service today, or is the section single-tracked?
-    - *Assumption:* in service. It's drawn dashed. If it's single-tracked, add its way ids to `osm.excludeWays` in `data/infrastructure/overrides.json`.
+17. ✅ **Braid–Lougheed Expo track.** Closed until about 2027 for the OMC4 flyover works (Braden, 2026-09-26). The other track is single-tracked. The closed ways are excluded via `osm.excludeWays`.
 18. **Terminal berths.** At stub termini, GTFS uses separate arrival-only and departure-only platforms (e.g. Waterfront Expo arrive P1 / depart P2; Lafarge Lake–Douglas arrive P2 / depart P1). Do trains unload and load at the same berth and reverse in place, or shunt between berths via the tail tracks? Which berths do consecutive trains use (alternating)?
     - *Assumption:* the solver picks the cheapest feasible option. It currently maps Waterfront Expo P1 and P2 to one berth (reverse in place). Berth alternation is future work.
 19. **Diagram crossovers.** The Wikipedia diagram's crossovers haven't been transcribed into `data/infrastructure/diagram-checklist.json` yet, so OSM's crossovers are only validated indirectly: every timetabled move must be routable.
-20. **Expo short-turns at Braid.** GTFS has Expo trips ending at Braid Platform 2 and others starting at Braid Platform 1, but OSM shows no crossover near Braid that could turn a train. The nearest turnback would take three reversals over 3 km. A temporary crossover for the Braid–Lougheed works (#17) would explain it.
-    - *Assumption:* none. Those trains pull in to a yard instead of turning back. Adding a crossover near Braid via `turns.add` in `overrides.json` would fix it.
+20. **Crossovers at Braid (provisional).** Since 2024-02-25 Braid short-turns use Platform 2 and depart toward Waterfront, and trains from Production Way–University use Platform 1. That needs two crossovers OSM doesn't have, added provisionally in `data/infrastructure/added-track.geojson`:
+    - **South:** between the south end of Braid's platforms and Sapperton (lat 49.2255–49.2328), modelled at about 49.2320, -122.8825.
+    - **North:** between the north end of Braid's platforms and where the closed track diverges (lat 49.2337–49.2370), modelled at about 49.2367, -122.8843.
+    - *To verify:* satellite imagery or on the ground. Then move the coordinates in `added-track.geojson` and run `npm run data -- --osm`.
 
 ## Operations (found while inferring runs)
 

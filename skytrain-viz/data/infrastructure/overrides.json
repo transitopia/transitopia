@@ -1,8 +1,14 @@
 {
-  "$comment": "Hand fixes applied on top of the OSM import (PLAN.md §4.1). Survives re-imports: refer to OSM ids and coordinates, never to generated segment ids. osm.includeWays/excludeWays: OSM way ids to force in/out of the in-service network (applied by import-osm). turns.add/remove: {node: [lon, lat], a: [lon, lat], b: [lon, lat], note} — at the node nearest `node` (≤5 m), allow/forbid passing between the incident tracks nearest `a` and `b`. platforms: {stop: GTFS stop_name, near: [lon, lat], note} pins that stop to the track nearest `near`.",
+  "$comment": "Hand fixes applied on top of the OSM import (PLAN.md §4.1). Survives re-imports: refer to OSM ids and coordinates, never to generated segment ids. osm.includeWays/excludeWays: OSM way ids to force in/out of the in-service network (applied by import-osm). turns.add/remove: {node: [lon, lat], a: [lon, lat], b: [lon, lat], note} — at the node nearest `node` (≤5 m), allow/forbid passing between the incident tracks nearest `a` and `b`. platforms: {stop: GTFS stop_name, near: [lon, lat], note} pins that stop to the track nearest `near`. addTrack: GeoJSON of track missing from OSM (joined to existing track within 4 m of its endpoints).",
   "osm": {
     "includeWays": [],
-    "excludeWays": []
+    "excludeWays": [
+      87493028,
+      87493029,
+      392377336,
+      923211605
+    ],
+    "$excludeWaysNote": "Braid–Lougheed Expo track closed until ~2027 for the OMC4 flyover works (confirmed by Braden, 2026-09-26); the other track is single-tracked. OPEN-QUESTIONS #17."
   },
   "turns": {
     "add": [],
@@ -25,5 +31,6 @@
       ],
       "note": "As P5: pinned to the other stub (OSM way 923508923) 35 m from the buffer stop."
     }
-  ]
+  ],
+  "addTrack": "added-track.geojson"
 }

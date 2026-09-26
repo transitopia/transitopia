@@ -1,0 +1,52 @@
+{
+ "type": "FeatureCollection",
+ "$comment": "Track missing from OpenStreetMap, added via overrides.json addTrack. Crossovers here are PROVISIONAL (inferred from operations, not verified on the ground) — see docs/OPEN-QUESTIONS.md #20.",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Braid south crossover (provisional)",
+    "kind": "crossover",
+    "lines": [
+     "expo"
+    ]
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -122.8825347,
+      49.2322
+     ],
+     [
+      -122.8825064,
+      49.2318
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Braid north crossover to single track (provisional)",
+    "kind": "crossover",
+    "lines": [
+     "expo"
+    ]
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -122.8844689,
+      49.2369
+     ],
+     [
+      -122.8840756,
+      49.2365
+     ]
+    ]
+   }
+  }
+ ]
+}

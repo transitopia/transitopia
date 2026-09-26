@@ -9,6 +9,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { ROOT, RAW_DIR, log } from './lib/paths.ts';
 import { loadOverrides } from './lib/infra.ts';
 import { buildNetwork, type OsmNode, type OsmWay } from '../src/core/infra/network.ts';
+import { composeNetwork } from '../src/core/scenario/network.ts';
 import type { LineKey } from '../src/core/infra/types.ts';
 
 const INFRA_DIR = join(ROOT, 'data', 'infrastructure');
@@ -96,7 +97,15 @@ async function main() {
   };
   await mkdir(INFRA_DIR, { recursive: true });
 
-  const base = buildNetwork(current, nodes, wayLines, stopNodes, meta);
+  let base = buildNetwork(current, nodes, wayLines, stopNodes, meta);
+  // Track missing from OSM (overrides.addTrack), joined by coordinates like scenario track.
+  const { addTrack } = await loadOverrides();
+  if (addTrack) {
+    const custom = JSON.parse(await readFile(join(INFRA_DIR, addTrack), 'utf8'));
+    const composed = composeNetwork({ base: base.fc, custom });
+    composed.fc.metadata = { ...meta, note: `Includes ${custom.features.length} added track pieces from ${addTrack}` };
+    base = composed;
+  }
   await writeFile(join(INFRA_DIR, 'tracks.generated.geojson'), `${JSON.stringify(base.fc)}\n`);
   log(`tracks.generated.geojson: ${JSON.stringify(base.stats)}`);
 

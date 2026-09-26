@@ -2,12 +2,12 @@
 // rebuild topology with the same code as the OSM import (PLAN.md §4.8). Pieces are joined wherever
 // they share a coordinate; custom track endpoints snap to existing track within a few metres.
 
-import { distM, type LonLat } from '../geo.ts';
+import { distM, localProjector, type LonLat } from '../geo.ts';
 import { buildNetwork, type OsmNode, type OsmWay } from '../infra/network.ts';
 import type { InfraCollection, LineKey, SegmentProps } from '../infra/types.ts';
 import type { CustomTrackProps } from './types.ts';
 
-/** Custom track endpoints within this distance of existing track vertices join them (m). */
+/** Custom track endpoints within this distance of existing track join it (m). */
 const SNAP_M = 4;
 
 export interface ComposeInput {
@@ -74,8 +74,10 @@ export function composeNetwork(input: ComposeInput): { fc: InfraCollection; stat
     futureCount++;
   }
 
-  // Custom track: snap endpoints to nearby existing vertices.
+  // Custom track: snap endpoints to nearby existing vertices, or else split the nearest existing
+  // track there (so crossovers can attach mid-segment).
   const allCoords = [...idByCoord.keys()].map((k) => k.split(',').map(Number) as LonLat);
+  const coordOf = (id: number): LonLat => [nodes.get(id)!.lon, nodes.get(id)!.lat];
   const snap = (c: LonLat): LonLat => {
     let best: LonLat = c;
     let bd = SNAP_M;
@@ -86,7 +88,30 @@ export function composeNetwork(input: ComposeInput): { fc: InfraCollection; stat
         best = e;
       }
     }
-    return best;
+    if (bd < SNAP_M) return best;
+    // Nearest point on any existing way; insert it as a vertex.
+    const proj = localProjector(c[1]);
+    const [px, py] = proj.toXY(c);
+    let hit: { way: OsmWay; i: number; at: LonLat; d: number } | undefined;
+    for (const w of ways) {
+      for (let i = 0; i + 1 < w.nodes.length; i++) {
+        const [ax, ay] = proj.toXY(coordOf(w.nodes[i]!));
+        const [bx, by] = proj.toXY(coordOf(w.nodes[i + 1]!));
+        const dx = bx - ax;
+        const dy = by - ay;
+        const l2 = dx * dx + dy * dy;
+        const f = l2 > 0 ? Math.min(1, Math.max(0, ((px - ax) * dx + (py - ay) * dy) / l2)) : 0;
+        const d = Math.hypot(ax + dx * f - px, ay + dy * f - py);
+        if (d < SNAP_M && (!hit || d < hit.d) && f > 0 && f < 1) {
+          const ll = proj.toLonLat(ax + dx * f, ay + dy * f);
+          hit = { way: w, i, at: [Number(ll[0].toFixed(7)), Number(ll[1].toFixed(7))], d };
+        }
+      }
+    }
+    if (!hit) return c;
+    hit.way.nodes.splice(hit.i + 1, 0, nodeFor(hit.at));
+    allCoords.push(hit.at);
+    return hit.at;
   };
   let customCount = 0;
   for (const f of input.custom?.features ?? []) {
