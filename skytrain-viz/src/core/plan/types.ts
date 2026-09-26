@@ -84,6 +84,8 @@ export interface FeedManifestEntry {
   end: string;
   path: string;
   builtAt: string;
+  /** Movements index (relative to public/); default data/feeds/<version>/movements/index.json. */
+  movements?: string;
 }
 
 export interface FeedManifest {

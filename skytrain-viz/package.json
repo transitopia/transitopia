@@ -25,7 +25,8 @@
     "validate:infra": "tsx scripts/validate-infra.ts",
     "build:movements": "tsx scripts/build-movements.ts",
     "validate:plan": "tsx scripts/validate-plan.ts",
-    "build:observations": "tsx scripts/build-observations.ts"
+    "build:observations": "tsx scripts/build-observations.ts",
+    "scenario": "tsx scripts/scenario.ts"
   },
   "dependencies": {
     "@maplibre/maplibre-gl-style-spec": "^26.4.4",

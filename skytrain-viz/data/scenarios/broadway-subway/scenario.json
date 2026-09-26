@@ -1,0 +1,26 @@
+{
+  "name": "Broadway Subway",
+  "description": "Millennium Line extended from VCC–Clark to Arbutus (Broadway Subway). Uses the future track already in OpenStreetMap near Great Northern Way plus a sketched alignment under Broadway (custom-track.geojson: approximate, ±20 m). Station positions are approximate. Every Millennium trip ending at VCC–Clark continues to Arbutus; trips starting there start from Arbutus. Run times are estimated from distance.",
+  "infrastructure": {
+    "includeFuture": true,
+    "futureLines": ["millennium"],
+    "customTrack": "custom-track.geojson"
+  },
+  "service": {
+    "operations": [
+      {
+        "op": "extend",
+        "route": "millennium",
+        "at": "VCC-Clark",
+        "stations": [
+          { "name": "Great Northern Way–Emily Carr", "at": [-123.0880, 49.26753] },
+          { "name": "Mount Pleasant", "at": [-123.1008, 49.2631] },
+          { "name": "Broadway–City Hall (Millennium)", "at": [-123.1150, 49.2631] },
+          { "name": "Oak–VGH", "at": [-123.1266, 49.2632] },
+          { "name": "South Granville", "at": [-123.1386, 49.2634] },
+          { "name": "Arbutus", "at": [-123.1527, 49.26385] }
+        ]
+      }
+    ]
+  }
+}

@@ -47,6 +47,8 @@ export function writeUrl(clock: Clock, vehicle: string | undefined): void {
     if (!clock.playing) q.set('paused', '1');
   }
   if (vehicle) q.set('v', vehicle);
+  const scenario = new URLSearchParams(location.search).get('scenario');
+  if (scenario) q.set('scenario', scenario);
   const search = q.toString();
   const url = `${location.pathname}${search ? `?${search}` : ''}${location.hash}`;
   if (url !== `${location.pathname}${location.search}${location.hash}`) history.replaceState(null, '', url);

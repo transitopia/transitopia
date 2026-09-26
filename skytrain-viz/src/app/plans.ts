@@ -9,6 +9,7 @@ import { TrainPlayback } from '../core/movement/playback.ts';
 import { serviceKey, type MovementsFile, type MovementsIndex } from '../core/movement/types.ts';
 import { reconcile, type ReconcileResult } from '../core/corrections/reconcile.ts';
 import type { Observation, ObservationFile, ObservationIndex } from '../core/corrections/types.ts';
+import type { ScenarioManifest } from '../core/scenario/types.ts';
 import { preparePlan, scheduledVehicles, type PreparedPlan, type VehicleState } from '../core/schedule/engine.ts';
 import { feedForDate, manifestRange, type FeedManifest, type ServicePlan } from '../core/plan/types.ts';
 import { addDays, localDate, serviceDayStart } from '../core/time.ts';
@@ -30,7 +31,11 @@ export class PlanStore {
   private observationFiles = new Map<string, Observation[] | null>();
   private reconciled = new Map<string, ReconcileResult>();
 
-  private constructor(readonly manifest: FeedManifest) {}
+  private constructor(
+    readonly manifest: FeedManifest,
+    /** Set when viewing a scenario (?scenario=<name>). */
+    readonly scenario?: ScenarioManifest,
+  ) {}
 
   /** Enable track-level SkyTrain playback (movement files need the track graph). */
   setTrackGraph(g: TrackGraph): void {
@@ -102,7 +107,9 @@ export class PlanStore {
     const version = pp.plan.feedVersion;
     const index = this.movementIndexes.get(version);
     if (index === undefined) {
-      this.fetchOnce(version, `${BASE}data/feeds/${version}/movements/index.json`, this.movementIndexes, (j) => j as MovementsIndex);
+      const entry = this.manifest.feeds.find((f) => f.version === version);
+      const url = `${BASE}${entry?.movements ?? `data/feeds/${version}/movements/index.json`}`;
+      this.fetchOnce(version, url, this.movementIndexes, (j) => j as MovementsIndex);
       return undefined;
     }
     if (!index) return undefined;
@@ -123,10 +130,21 @@ export class PlanStore {
     return pb ?? undefined;
   }
 
-  static async load(): Promise<PlanStore> {
+  static async load(scenario?: string): Promise<PlanStore> {
+    if (scenario) {
+      const res = await fetch(`${BASE}data/scenarios/${encodeURIComponent(scenario)}/manifest.json`);
+      if (!res.ok) throw new Error(`Scenario "${scenario}" isn't built (HTTP ${res.status}). Run "npm run scenario -- ${scenario}".`);
+      const sm = (await res.json()) as ScenarioManifest;
+      return new PlanStore({ schema: 1, generatedAt: sm.builtAt, feeds: sm.feeds }, sm);
+    }
     const res = await fetch(`${BASE}data/manifest.json`);
     if (!res.ok) throw new Error(`No timetable data (HTTP ${res.status}). Run "npm run data" first.`);
     return new PlanStore((await res.json()) as FeedManifest);
+  }
+
+  /** Track network to draw and route on. */
+  get tracksPath(): string {
+    return this.scenario?.tracks ?? 'data/infra/tracks.geojson';
   }
 
   /** Instants covered by the available feeds: first service day start to end of last service day. */

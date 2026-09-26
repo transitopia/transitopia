@@ -40,6 +40,12 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 - `reconcile()` turns them into per-run time warps (delays absorbed by later layovers), cancellations, consists, and observed windows. Playback evaluates each run at its warped time and sets provenance: observed within 90 s of a sighting, interpolated while a delay applies.
 - A future rail real-time adapter should emit `Observation`s rather than touch playback.
 
+## Scenarios
+
+- `src/core/infra/network.ts` builds topology for both the OSM import and scenarios. `composeNetwork` rebuilds base + future + custom track by shared coordinates. Keep them on the same code path.
+- Service operations live in `src/core/scenario/service.ts` and must not mutate the base plan (it's `structuredClone`d).
+- Scenario outputs go to `public/data/scenarios/<name>/` (gitignored). Only the spec and custom geometry are committed.
+
 ## GTFS gotchas (verified against feed 26SEP_20260925)
 
 - Times can exceed 24:00 and have a leading space: `" 5:05:00"`, `"25:30:00"`. Store as seconds since service-day start.
@@ -67,8 +73,8 @@ npm run validate:infra   # graph / platform / routing / turnback / checklist che
 npm run build:movements  # infer train runs → public/data/feeds/<v>/movements/*.json [--verbose] (working)
 npm run validate:plan    # teleports (fail), terminus/yard conflicts (report), fleet peaks (working)
 npm run build:observations # validate + publish data/observations/*.json (working; format in data/observations/README.md)
+npm run scenario -- <name> # build data/scenarios/<name>/ → view at /?scenario=<name> (working; see data/scenarios/README.md)
 npx tsx scripts/screenshot.ts out.png "/?date=2026-09-28&t=08:00:00&paused=1#map=14/49.28/-123.11" [--mobile] [--dark] [--pick expo]
-npm run scenario <name>  # build a scenario from data/scenarios/<name>/
 npm test                 # vitest
 npm run typecheck
 ```

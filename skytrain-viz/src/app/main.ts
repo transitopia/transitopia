@@ -51,7 +51,8 @@ async function main(): Promise<void> {
   const protocol = new Protocol();
   addProtocol('pmtiles', protocol.tile);
 
-  const store = await PlanStore.load();
+  const scenarioName = new URLSearchParams(location.search).get('scenario') ?? undefined;
+  const store = await PlanStore.load(scenarioName);
   const range = store.range();
   if (!range) throw new Error('The timetable manifest lists no feeds. Run "npm run data".');
 
@@ -82,6 +83,12 @@ async function main(): Promise<void> {
 
   const vehicles = new VehicleLayer(map, kinematics.sizing);
   const legend = new Legend('legend');
+  if (store.scenario) {
+    const title = document.querySelector('.legend-title')!;
+    title.textContent = `Scenario: ${store.scenario.name}`;
+    title.setAttribute('title', store.scenario.description);
+    document.documentElement.classList.add('scenario');
+  }
   const inspect = new InspectCard('inspect');
   let selected: string | undefined = url.vehicle;
   vehicles.selectedId = selected;
@@ -118,7 +125,7 @@ async function main(): Promise<void> {
   // Track infrastructure (optional: without it, SkyTrain falls back to GTFS shapes).
   const debug = new URLSearchParams(location.search).has('debug');
   let tracks: InfraCollection | undefined;
-  void loadTracks().then((t) => {
+  void loadTracks(store.tracksPath).then((t) => {
     tracks = t;
     if (t) store.setTrackGraph(TrackGraph.fromCollection(t));
     syncStatic(true);

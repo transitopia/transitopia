@@ -24,9 +24,9 @@ export interface PlatformsFile {
   platforms: Record<string, { seg: string; offset: number; dist: number; method: string }>;
 }
 
-export async function loadTracks(): Promise<InfraCollection | undefined> {
+export async function loadTracks(path = 'data/infra/tracks.geojson'): Promise<InfraCollection | undefined> {
   try {
-    const res = await fetch(`${BASE}data/infra/tracks.geojson`);
+    const res = await fetch(`${BASE}${path}`);
     return res.ok ? ((await res.json()) as InfraCollection) : undefined;
   } catch {
     return undefined;
