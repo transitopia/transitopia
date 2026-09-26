@@ -107,9 +107,10 @@ export function reconcile(file: MovementsFile, pp: PreparedPlan, observations: O
         shifts.push({ t0: start, t1: Math.min(end, until), shift: d });
         const next = trips[k + 1];
         if (!next) break;
-        // Layover absorbs lateness (keeping a minimum turnaround); earliness isn't absorbed.
+        // Layover absorbs lateness (keeping a minimum turnaround); an early train simply waits for
+        // its scheduled departure, so earliness never carries into the next trip.
         const slack = next.dep[0]! - t.arr[t.arr.length - 1]! - MIN_TURN_S;
-        const nd = d > 0 ? Math.max(0, d - Math.max(0, slack)) : d;
+        const nd = d > 0 ? Math.max(0, d - Math.max(0, slack)) : 0;
         // During the layover the train waits at the terminus: show the schedule's layover position.
         if (end < next.dep[0]! + nd) shifts.push({ t0: end, t1: Math.min(next.dep[0]! + nd, until), shift: Math.max(0, Math.min(d, nd)) });
         d = nd;

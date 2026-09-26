@@ -192,6 +192,14 @@ describe('corrections (reconcile + playback)', () => {
     ]);
   });
 
+  it('does not carry early running past the terminus', () => {
+    const corr = reconcile(file, pp, [{ kind: 'delay', date: '2026-09-28', trip: 't1', seconds: -30, source: 'test' }], date);
+    const shifts = corr.runs.values().next().value!.shifts;
+    const t2start = pp.tripIndex.get('t2')!.dep[0]!;
+    expect(shifts.every((s) => s.t0 < t2start)).toBe(true);
+    expect(pb.vehiclesAt(8 * 3600 + 420, date, undefined, corr)[0]!.provenance).toBe('estimated');
+  });
+
   it('ignores observations for other dates', () => {
     const corr = reconcile(file, pp, [{ kind: 'cancel', date: '2026-09-29', trip: 't2', source: 'x' }], date);
     expect(corr.runs.size).toBe(0);
