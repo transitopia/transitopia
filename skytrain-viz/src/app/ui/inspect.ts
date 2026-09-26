@@ -58,7 +58,8 @@ export class InspectCard {
       v.tripId ? ['Trip', v.tripId] : undefined,
       v.runId ? ['Train (inferred)', v.runId] : undefined,
       v.label ? ['Vehicle', v.label] : undefined,
-      v.consist
+      v.consist?.name ? ['Name', v.consist.name] : undefined,
+      v.consist && (v.consist.cars || v.consist.type || v.consist.carNumbers?.length)
         ? ['Consist', [v.consist.cars ? `${v.consist.cars}-car` : '', v.consist.type ?? '', v.consist.carNumbers?.length ? `(${v.consist.carNumbers.join(' ')})` : ''].filter(Boolean).join(' ')]
         : undefined,
       speed ? ['Speed', speed] : undefined,

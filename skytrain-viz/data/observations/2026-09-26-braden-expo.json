@@ -41,7 +41,33 @@
           "125"
         ]
       },
-      "note": "Mark I train parked on the spare track (Platform 3, westernmost, not used by passengers) at Stadium–Chinatown at 13:56. Car 125 seen; not necessarily the lead car. How long it was parked is unknown (shown ±15 min by default)."
+      "note": "Mark I train parked on the spare track (Platform 3, westernmost, not used by passengers) at Stadium\u2013Chinatown at 13:56. Car 125 seen; not necessarily the lead car. How long it was parked is unknown (shown \u00b115 min by default)."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-26",
+      "stop": "Waterfront",
+      "line": "seabus",
+      "event": "arrive",
+      "time": "2026-09-26T14:15:38-07:00",
+      "source": "Braden",
+      "consist": {
+        "name": "Burrard Pacific Breeze"
+      },
+      "note": "SeaBus at Waterfront: used the West berth (berths aren't modelled; the SeaBus is drawn along its GTFS shape)."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-26",
+      "stop": "Waterfront",
+      "line": "seabus",
+      "event": "depart",
+      "time": "2026-09-26T14:18:25-07:00",
+      "source": "Braden",
+      "consist": {
+        "name": "Burrard Pacific Breeze"
+      },
+      "note": "SeaBus at Waterfront: used the West berth (berths aren't modelled; the SeaBus is drawn along its GTFS shape)."
     }
   ]
 }

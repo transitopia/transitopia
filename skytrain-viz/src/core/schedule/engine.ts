@@ -4,6 +4,7 @@
 
 import { bearingDeg, cumulativeLengths, pointAlong, type LonLat } from '../geo.ts';
 import { indexCalendar } from '../gtfs/calendar.ts';
+import { serviceDayStart } from '../time.ts';
 import type { PlanPattern, PlanRoute, PlanStop, PlanTrip, ServicePlan } from '../plan/types.ts';
 import {
   distanceAt,
@@ -50,8 +51,8 @@ export interface VehicleState {
   shape?: [number, number][];
   /** Position on the track graph (track-level playback only). */
   track?: { seg: string; offset: number };
-  /** Observed consist (corrections), e.g. { type: 'Mk III', cars: 4 }. */
-  consist?: { type?: string; cars?: number; carNumbers?: string[] };
+  /** Observed consist (corrections), e.g. { type: 'Mk III', cars: 4 } or { name: 'Burrard Pacific Breeze' }. */
+  consist?: { name?: string; type?: string; cars?: number; carNumbers?: string[] };
   length: number;
   width: number;
 }
@@ -60,6 +61,8 @@ export interface VehicleState {
 const MAX_LAYOVER_S = 45 * 60;
 
 export interface PreparedTrip {
+  /** The same vehicle's next trip, when it lays over for it at this trip's last stop. */
+  next?: PreparedTrip;
   trip: PlanTrip;
   pattern: PlanPattern;
   route: PlanRoute;
@@ -151,7 +154,10 @@ export function preparePlan(plan: ServicePlan, kinCfg: KinematicsConfig): Prepar
         const lastStop = plan.stops[cur.pattern.stops[cur.pattern.stops.length - 1]!]!;
         const firstStop = plan.stops[next.pattern.stops[0]!]!;
         const gap = next.dep[0]! - cur.visibleUntil;
-        if (gap >= 0 && gap <= MAX_LAYOVER_S && sameStation(lastStop, firstStop)) cur.visibleUntil = next.trip.start;
+        if (gap >= 0 && gap <= MAX_LAYOVER_S && sameStation(lastStop, firstStop)) {
+          cur.visibleUntil = next.trip.start;
+          cur.next = next;
+        }
       }
     }
     let maxSpan = 0;
@@ -251,8 +257,33 @@ export interface ScheduleQuery {
 }
 
 /** All scheduled vehicles visible at the given service-day time. */
-export function scheduledVehicles(pp: PreparedPlan, q: ScheduleQuery): VehicleState[] {
+/** Observation-based adjustments for timetable vehicles (see reconcileScheduled). */
+export interface ScheduleCorrections {
+  trips: Map<string, { shift: number; observed: { t: number; source: string }[] }>;
+  cancelled: Set<string>;
+  consists: Map<string, NonNullable<VehicleState['consist']>>;
+}
+
+const specialCache = new WeakMap<ScheduleCorrections, Set<PreparedTrip>>();
+/** Trips drawn by the corrected pass: corrected or cancelled, or laying over for a corrected trip. */
+function specialTrips(pp: PreparedPlan, corr: ScheduleCorrections): Set<PreparedTrip> {
+  let s = specialCache.get(corr);
+  if (!s) {
+    s = new Set();
+    for (const list of pp.tripsByService.values())
+      for (const t of list) if (corr.trips.has(t.trip.id) || corr.cancelled.has(t.trip.id) || (t.next && corr.trips.has(t.next.trip.id))) s.add(t);
+    specialCache.set(corr, s);
+  }
+  return s;
+}
+
+/** Positions within this of an observation count as observed (s). */
+const OBSERVED_S = 90;
+
+export function scheduledVehicles(pp: PreparedPlan, q: ScheduleQuery, corr?: ScheduleCorrections): VehicleState[] {
   const out: VehicleState[] = [];
+  // A trip is handled separately when it, or the trip it lays over for, is corrected.
+  const special = corr ? specialTrips(pp, corr) : new Set<PreparedTrip>();
   for (const service of pp.servicesOn(q.serviceDate)) {
     const list = pp.tripsByService.get(service);
     if (!list) continue;
@@ -262,7 +293,36 @@ export function scheduledVehicles(pp: PreparedPlan, q: ScheduleQuery): VehicleSt
       const t = list[i]!;
       if (q.sec > t.visibleUntil) continue;
       if (q.routes && !q.routes.has(t.route.key)) continue;
-      out.push(positionOnTrip(pp, t, q.sec, q.serviceDate));
+      if (special.has(t)) continue;
+      const v = positionOnTrip(pp, t, q.sec, q.serviceDate);
+      const consist = corr?.consists.get(t.vehicleId);
+      if (consist) v.consist = consist;
+      out.push(v);
+    }
+    if (!corr) continue;
+    for (const t of special) {
+      if (t.trip.service !== service || corr.cancelled.has(t.trip.id) || (q.routes && !q.routes.has(t.route.key))) continue;
+      const c = corr.trips.get(t.trip.id);
+      const shift = c?.shift ?? 0;
+      const lastArr = t.arr[t.arr.length - 1]!;
+      // Real-time window: shifted trip, then (if chained) layover until the next trip's corrected start.
+      const nextShift = t.next ? (corr.trips.get(t.next.trip.id)?.shift ?? 0) : 0;
+      const until = t.next ? Math.max(lastArr + shift, t.next.trip.start + nextShift) : Math.max(lastArr + shift, t.visibleUntil + shift);
+      if (q.sec < t.trip.start + shift || q.sec > until) continue;
+      const v = positionOnTrip(pp, t, Math.min(q.sec - shift, q.sec > lastArr + shift ? lastArr : Infinity), q.serviceDate);
+      const obs = c?.observed.find((o) => Math.abs(o.t - q.sec) <= OBSERVED_S);
+      const nextObs = t.next ? corr.trips.get(t.next.trip.id)?.observed.find((o) => Math.abs(o.t - q.sec) <= OBSERVED_S) : undefined;
+      const seen = obs ?? nextObs;
+      if (seen || shift !== 0 || nextShift !== 0) {
+        v.provenance = seen ? 'observed' : 'interpolated';
+        const sources = [...new Set([...(c?.observed ?? []), ...(t.next ? (corr.trips.get(t.next.trip.id)?.observed ?? []) : [])].map((o) => o.source))];
+        v.source = `${sources.join(', ') || 'observation'} + ${v.source}`;
+        if (seen) v.observedAt = serviceDayStart(q.serviceDate) + seen.t * 1000;
+        if (shift !== 0 && q.sec <= lastArr + shift) v.delay = shift;
+      }
+      const consist = corr.consists.get(t.vehicleId);
+      if (consist) v.consist = consist;
+      out.push(v);
     }
   }
   return out;

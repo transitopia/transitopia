@@ -1,6 +1,6 @@
 # Observations
 
-Ground-truth corrections to the schedule-inferred SkyTrain trains (PLAN.md §4.7). Put JSON files here, e.g. `2026-09-28-rider-reports.json`, then run `npm run build:observations` (it also runs as part of `npm run data`). The app applies them on the matching service dates.
+Ground-truth corrections to the schedule-inferred SkyTrain trains and to timetable vehicles (SeaBus, WCE, buses without real-time data) (PLAN.md §4.7). Put JSON files here, e.g. `2026-09-28-rider-reports.json`, then run `npm run build:observations` (it also runs as part of `npm run data`). The app applies them on the matching service dates.
 
 ```json
 {
@@ -22,8 +22,10 @@ Ground-truth corrections to the schedule-inferred SkyTrain trains (PLAN.md §4.7
 - Identify trains by **GTFS trip_id** or by **stop + time** (`at_platform` without `trip` matches the train scheduled at that stop within ±10 min). Never use inferred run ids like `expo-012`: they change when runs are rebuilt.
 - `stop` can be a GTFS stop_id, a stop name ("Waterfront Station @ Platform 1"), or a station name ("Waterfront").
 - `time` is ISO 8601 with a UTC offset.
+- `event` (`"arrive"` or `"depart"`, on `at_platform`) says what `time` marks. Leave it out for a sighting while stopped. Use it at termini, where one vehicle both arrives and departs.
+- For SeaBus, WCE and buses, give `line` (e.g. `"seabus"`). A `consist` can carry a `name` (e.g. a SeaBus vessel), which applies to the vehicle's whole GTFS block.
 - Every observation needs a `source`. The app shows it, and marks positions within 90 s of an observation as *observed* and delay-shifted positions as *interpolated*.
 
 A `parked` observation places an out-of-service train on the track nearest `at` (a point on that track, e.g. a siding). It's shown from `from` to `until`, defaulting to ±15 min around `time`: *observed* within 90 s of the sighting, *interpolated* otherwise.
 
-Effects: a delay shifts the train's run from that point and is absorbed by later terminus layovers (keeping a 60 s turnaround). A cancelled trip hides the train during that trip. A consist applies to the whole inferred run.
+Effects: a delay shifts the train's run from that point and is absorbed by later terminus layovers (keeping a 60 s turnaround). A cancelled trip hides the train during that trip. A consist applies to the whole inferred run. For timetable vehicles, a sighting shifts that trip, and the wait at the terminal stretches until the next trip's corrected departure.

@@ -7,7 +7,7 @@ import operationsConfig from '../../data/config/operations.json';
 import type { TrackGraph } from '../core/infra/graph.ts';
 import { TrainPlayback } from '../core/movement/playback.ts';
 import { serviceKey, type MovementsFile, type MovementsIndex } from '../core/movement/types.ts';
-import { reconcile, type ReconcileResult } from '../core/corrections/reconcile.ts';
+import { reconcile, reconcileScheduled, type ReconcileResult, type ScheduledCorrections } from '../core/corrections/reconcile.ts';
 import type { Observation, ObservationFile, ObservationIndex } from '../core/corrections/types.ts';
 import type { ScenarioManifest } from '../core/scenario/types.ts';
 import { preparePlan, scheduledVehicles, type PreparedPlan, type VehicleState } from '../core/schedule/engine.ts';
@@ -30,6 +30,7 @@ export class PlanStore {
   private observationIndex: ObservationIndex | null | undefined;
   private observationFiles = new Map<string, Observation[] | null>();
   private reconciled = new Map<string, ReconcileResult>();
+  private reconciledScheduled = new Map<string, ScheduledCorrections | undefined>();
 
   private constructor(
     readonly manifest: FeedManifest,
@@ -99,6 +100,19 @@ export class PlanStore {
       this.reconciled.set(key, r);
     }
     return r;
+  }
+
+  /** Observations applied to a date's timetable vehicles (SeaBus, WCE, buses), cached. */
+  private scheduledCorrectionsFor(date: string, pp: PreparedPlan): ScheduledCorrections | undefined {
+    const obs = this.observationsFor(date);
+    if (!obs?.length) return undefined;
+    const key = `${date}|${pp.plan.feedVersion}`;
+    if (!this.reconciledScheduled.has(key)) {
+      const r = reconcileScheduled(pp, obs, date);
+      for (const u of r.unmatched) console.warn(`Observation not applied (${u.reason}):`, u.obs);
+      this.reconciledScheduled.set(key, r.trips.size || r.cancelled.size || r.consists.size ? r : undefined);
+    }
+    return this.reconciledScheduled.get(key);
   }
 
   /** Track-level playback for a service date, or undefined (not built / still loading). */
@@ -203,8 +217,8 @@ export class PlanStore {
       if (pb) {
         out.push(...pb.vehiclesAt(sec, date, routes, this.correctionsFor(date, pb, pp)));
         const nonRail = new Set([...(routes ?? pp.routes.keys())].filter((k) => pp.routes.get(k)?.kind !== 'skytrain'));
-        out.push(...scheduledVehicles(pp, { serviceDate: date, sec, routes: nonRail }));
-      } else out.push(...scheduledVehicles(pp, { serviceDate: date, sec, routes }));
+        out.push(...scheduledVehicles(pp, { serviceDate: date, sec, routes: nonRail }, this.scheduledCorrectionsFor(date, pp)));
+      } else out.push(...scheduledVehicles(pp, { serviceDate: date, sec, routes }, this.scheduledCorrectionsFor(date, pp)));
     }
     return out;
   }

@@ -5,6 +5,8 @@
 // ISO 8601 with an offset, e.g. "2026-09-28T08:15:30-07:00". Every observation names its source.
 
 export interface Consist {
+  /** Vessel or train name, e.g. "Burrard Pacific Breeze". */
+  name?: string;
   /** e.g. "Mk III", "Mk I", "Canada Line EMU". */
   type?: string;
   cars?: number;
@@ -21,8 +23,12 @@ interface Base {
 }
 
 export type Observation =
-  /** The train running `trip` was seen at `stop` (GTFS stop_id or stop name) at `time`. */
-  | (Base & { kind: 'at_platform'; trip?: string; stop: string; time: string; line?: string; consist?: Consist })
+  /**
+   * The vehicle running `trip` was seen at `stop` (GTFS stop_id or stop name) at `time`. `event`
+   * says whether that time is its arrival or departure there (default: while stopped), which matters
+   * at termini where one vehicle both arrives and departs.
+   */
+  | (Base & { kind: 'at_platform'; trip?: string; stop: string; time: string; line?: string; event?: 'arrive' | 'depart'; consist?: Consist })
   /** `trip` ran `seconds` late (+) or early (−) from `time` (default: its start). */
   | (Base & { kind: 'delay'; trip: string; seconds: number; time?: string })
   /** `trip` did not run. */

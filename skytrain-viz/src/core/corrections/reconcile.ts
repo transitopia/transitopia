@@ -69,8 +69,12 @@ export function reconcile(file: MovementsFile, pp: PreparedPlan, observations: O
   const isoDate = `${serviceDate.slice(0, 4)}-${serviceDate.slice(4, 6)}-${serviceDate.slice(6, 8)}`;
   const delays = new Map<string, { trip: string; fromT: number; seconds: number }[]>();
 
+  const railRoutes = new Set([...pp.routes.values()].filter((r) => r.kind === 'skytrain').map((r) => r.key));
   for (const obs of observations) {
     if (obs.date !== isoDate) continue;
+    // Other modes (SeaBus, WCE, buses) are reconciled by reconcileScheduled.
+    if ('line' in obs && obs.line && !railRoutes.has(obs.line)) continue;
+    if ('trip' in obs && obs.trip && !runOfTrip.has(obs.trip) && pp.tripIndex.has(obs.trip) && !railRoutes.has(pp.tripIndex.get(obs.trip)!.route.key)) continue;
     if (obs.kind === 'parked') {
       const seen = toSec(obs.time);
       if (!Number.isFinite(seen)) {
@@ -174,7 +178,10 @@ function matchAtPlatform(
     if (obs.line && pt.route.key !== obs.line) return;
     pt.pattern.stops.forEach((si, i) => {
       if (!stopMatches(pp.plan.stops[si]!.id)) return;
-      const scheduled = (pt.arr[i]! + pt.dep[i]!) / 2;
+      const n = pt.arr.length;
+      if (obs.event === 'arrive' && i === 0) return;
+      if (obs.event === 'depart' && i === n - 1) return;
+      const scheduled = obs.event === 'arrive' ? pt.arr[i]! : obs.event === 'depart' ? pt.dep[i]! : (pt.arr[i]! + pt.dep[i]!) / 2;
       const err = Math.abs(scheduled - t);
       if ((obs.trip || err <= MATCH_WINDOW_S) && (!best || err < best.err)) best = { run, trip: tripId, scheduled, err };
     });
@@ -189,4 +196,64 @@ export function warp(c: RunCorrection | undefined, t: number): number {
   if (!c) return t;
   for (const s of c.shifts) if (t >= s.t0 && t < s.t1) return t - s.shift;
   return t;
+}
+
+/** Corrections for timetable-based vehicles (SeaBus, WCE, buses without real-time data). */
+export interface ScheduledCorrections {
+  /** trip_id → time shift and observation instants (service-day seconds). */
+  trips: Map<string, { shift: number; observed: { t: number; source: string }[] }>;
+  cancelled: Set<string>;
+  /** Vehicle chain (PreparedTrip.vehicleId) → consist / vessel name. */
+  consists: Map<string, Consist>;
+  unmatched: { obs: Observation; reason: string }[];
+}
+
+export function reconcileScheduled(pp: PreparedPlan, observations: Observation[], serviceDate: string): ScheduledCorrections {
+  const dayStart = serviceDayStart(serviceDate);
+  const toSec = (iso: string) => (Date.parse(iso) - dayStart) / 1000;
+  const isoDate = `${serviceDate.slice(0, 4)}-${serviceDate.slice(4, 6)}-${serviceDate.slice(6, 8)}`;
+  const out: ScheduledCorrections = { trips: new Map(), cancelled: new Set(), consists: new Map(), unmatched: [] };
+  const services = pp.servicesOn(serviceDate);
+  const isScheduled = (routeKey: string) => pp.routes.get(routeKey)?.kind !== 'skytrain';
+  const candidates = [...services].flatMap((s) => pp.tripsByService.get(s) ?? []).filter((t) => isScheduled(t.route.key));
+  const note = (tripId: string, shift: number, t: number | undefined, source: string) => {
+    const c = out.trips.get(tripId) ?? { shift: 0, observed: [] };
+    c.shift = shift;
+    if (t !== undefined) c.observed.push({ t, source });
+    out.trips.set(tripId, c);
+  };
+  for (const obs of observations) {
+    if (obs.date !== isoDate || obs.kind === 'parked') continue;
+    if (obs.kind === 'at_platform') {
+      if (obs.line && !isScheduled(obs.line)) continue;
+      if (!obs.line && !obs.trip) continue; // ambiguous across modes: SkyTrain reconciler handles it
+      const t = toSec(obs.time);
+      let best: { trip: string; vehicle: string; scheduled: number; err: number } | undefined;
+      for (const pt of obs.trip ? candidates.filter((c) => c.trip.id === obs.trip) : candidates) {
+        if (obs.line && pt.route.key !== obs.line) continue;
+        const n = pt.arr.length;
+        pt.pattern.stops.forEach((si, i) => {
+          const s = pp.plan.stops[si]!;
+          const matches = s.id === obs.stop || s.name === obs.stop || s.parent === obs.stop || s.name.replace(/\s+Station.*$/, '') === obs.stop;
+          if (!matches || (obs.event === 'arrive' && i === 0) || (obs.event === 'depart' && i === n - 1)) return;
+          const scheduled = obs.event === 'arrive' ? pt.arr[i]! : obs.event === 'depart' ? pt.dep[i]! : (pt.arr[i]! + pt.dep[i]!) / 2;
+          const err = Math.abs(scheduled - t);
+          if ((obs.trip || err <= MATCH_WINDOW_S) && (!best || err < best.err)) best = { trip: pt.trip.id, vehicle: pt.vehicleId, scheduled, err };
+        });
+      }
+      if (!best) {
+        out.unmatched.push({ obs, reason: 'no scheduled vehicle at that stop near that time' });
+        continue;
+      }
+      note(best.trip, t - best.scheduled, t, obs.source);
+      if (obs.consist) out.consists.set(best.vehicle, obs.consist);
+      continue;
+    }
+    const trip = pp.tripIndex.get(obs.trip);
+    if (!trip || !isScheduled(trip.route.key)) continue;
+    if (obs.kind === 'cancel') out.cancelled.add(obs.trip);
+    else if (obs.kind === 'delay') note(obs.trip, obs.seconds, undefined, obs.source);
+    else out.consists.set(trip.vehicleId, obs.consist);
+  }
+  return out;
 }
