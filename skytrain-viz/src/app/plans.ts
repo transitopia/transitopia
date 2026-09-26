@@ -7,6 +7,8 @@ import operationsConfig from '../../data/config/operations.json';
 import type { TrackGraph } from '../core/infra/graph.ts';
 import { TrainPlayback } from '../core/movement/playback.ts';
 import { serviceKey, type MovementsFile, type MovementsIndex } from '../core/movement/types.ts';
+import { reconcile, type ReconcileResult } from '../core/corrections/reconcile.ts';
+import type { Observation, ObservationFile, ObservationIndex } from '../core/corrections/types.ts';
 import { preparePlan, scheduledVehicles, type PreparedPlan, type VehicleState } from '../core/schedule/engine.ts';
 import { feedForDate, manifestRange, type FeedManifest, type ServicePlan } from '../core/plan/types.ts';
 import { addDays, localDate, serviceDayStart } from '../core/time.ts';
@@ -24,6 +26,9 @@ export class PlanStore {
   private movementIndexes = new Map<string, MovementsIndex | null>();
   private playbacks = new Map<string, TrainPlayback | null>();
   private pending = new Set<string>();
+  private observationIndex: ObservationIndex | null | undefined;
+  private observationFiles = new Map<string, Observation[] | null>();
+  private reconciled = new Map<string, ReconcileResult>();
 
   private constructor(readonly manifest: FeedManifest) {}
 
@@ -48,6 +53,47 @@ export class PlanStore {
         this.pending.delete(key);
         this.emit();
       });
+  }
+
+  /** Observations for a service date (empty until loaded or if there are none). */
+  private observationsFor(date: string): Observation[] | undefined {
+    if (this.observationIndex === undefined) {
+      this.observationIndex = null;
+      fetch(`${BASE}data/observations/index.json`)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null)
+        .then((idx) => {
+          this.observationIndex = idx as ObservationIndex | null;
+          this.emit();
+        });
+      return undefined;
+    }
+    const paths = this.observationIndex?.byDate[date];
+    if (!paths?.length) return [];
+    const out: Observation[] = [];
+    for (const path of paths) {
+      const obs = this.observationFiles.get(path);
+      if (obs === undefined) {
+        this.fetchOnce(path, `${BASE}${path}`, this.observationFiles, (j) => (j as ObservationFile).observations);
+        return undefined;
+      }
+      if (obs) out.push(...obs);
+    }
+    return out;
+  }
+
+  /** Observations reconciled with a date's inferred runs (cached). */
+  private correctionsFor(date: string, pb: TrainPlayback, pp: PreparedPlan): ReconcileResult | undefined {
+    const obs = this.observationsFor(date);
+    if (!obs?.length) return undefined;
+    const key = `${date}|${pb.file.feedVersion}|${pb.file.services.join('+')}`;
+    let r = this.reconciled.get(key);
+    if (!r) {
+      r = reconcile(pb.file, pp, obs, date);
+      for (const u of r.unmatched) console.warn(`Observation not applied (${u.reason}):`, u.obs);
+      this.reconciled.set(key, r);
+    }
+    return r;
   }
 
   /** Track-level playback for a service date, or undefined (not built / still loading). */
@@ -137,7 +183,7 @@ export class PlanStore {
       if (sec < 0) continue;
       const pb = this.playbackFor(date, pp);
       if (pb) {
-        out.push(...pb.vehiclesAt(sec, date, routes));
+        out.push(...pb.vehiclesAt(sec, date, routes, this.correctionsFor(date, pb, pp)));
         const nonRail = new Set([...(routes ?? pp.routes.keys())].filter((k) => pp.routes.get(k)?.kind !== 'skytrain'));
         out.push(...scheduledVehicles(pp, { serviceDate: date, sec, routes: nonRail }));
       } else out.push(...scheduledVehicles(pp, { serviceDate: date, sec, routes }));

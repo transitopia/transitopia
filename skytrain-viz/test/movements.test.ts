@@ -8,6 +8,8 @@ import type { PlatformAssignment } from '../src/core/infra/platforms.ts';
 import type { ServicePlan } from '../src/core/plan/types.ts';
 import type { KinematicsConfig } from '../src/core/movement/kinematics.ts';
 import { distM, type LonLat } from '../src/core/geo.ts';
+import { reconcile } from '../src/core/corrections/reconcile.ts';
+import { serviceDayStart } from '../src/core/time.ts';
 
 // A single line with stub ends and a yard branching off the middle:
 //
@@ -130,5 +132,68 @@ describe('buildMovements + TrainPlayback', () => {
     ]);
     expect(subs).toHaveLength(2);
     expect(subs[1]).toHaveLength(2);
+  });
+});
+
+describe('corrections (reconcile + playback)', () => {
+  const file = buildMovements({ graph: g, pp, platforms, services: new Set(['wk']), ops, kin });
+  const pb = new TrainPlayback(file, pp, g, kin, { deadheadSpeedFactor: ops.yard.deadheadSpeedFactor });
+  const date = '20260928';
+  const iso = (sec: number) => new Date(serviceDayStart(date) + sec * 1000).toISOString();
+  const x = (v: { lon: number }) => (v.lon - pt(0)[0]) * M_PER_DEG_LON;
+
+  it('shifts a delayed trip, marks it interpolated, and absorbs the delay at the terminus', () => {
+    const corr = reconcile(file, pp, [{ kind: 'delay', date: '2026-09-28', trip: 't1', seconds: 60, source: 'test' }], date);
+    const t = 8 * 3600 + 90;
+    const late = pb.vehiclesAt(t, date, undefined, corr)[0]!;
+    const onTime = pb.vehiclesAt(t - 60, date)[0]!;
+    expect(x(late)).toBeCloseTo(x(onTime), 0);
+    expect(late.provenance).toBe('interpolated');
+    expect(late.delay).toBe(60);
+    // t2 departs 180 s after t1's scheduled arrival: enough slack to absorb 60 s.
+    const t2 = pb.vehiclesAt(8 * 3600 + 420, date, undefined, corr)[0]!;
+    expect(t2.provenance).toBe('estimated');
+    expect(x(t2)).toBeCloseTo(x(pb.vehiclesAt(8 * 3600 + 420, date)[0]!), 3);
+  });
+
+  it('matches an at-platform sighting to the right trip and marks nearby positions observed', () => {
+    const t = 8 * 3600 + 180 + 40;
+    const corr = reconcile(
+      file,
+      pp,
+      [{ kind: 'at_platform', date: '2026-09-28', stop: 'B', time: iso(t), source: 'rider', consist: { type: 'Mk III', cars: 4 } }],
+      date,
+    );
+    expect(corr.unmatched).toHaveLength(0);
+    const v = pb.vehiclesAt(t, date, undefined, corr)[0]!;
+    expect(v.provenance).toBe('observed');
+    expect(v.consist).toEqual({ type: 'Mk III', cars: 4 });
+    expect(v.source).toMatch(/^rider/);
+    // The consist sticks to the whole run.
+    expect(pb.vehiclesAt(8 * 3600 + 500, date, undefined, corr)[0]!.consist?.cars).toBe(4);
+  });
+
+  it('hides cancelled trips and reports observations it cannot match', () => {
+    const corr = reconcile(
+      file,
+      pp,
+      [
+        { kind: 'cancel', date: '2026-09-28', trip: 't2', source: 'alert' },
+        { kind: 'delay', date: '2026-09-28', trip: 'nope', seconds: 30, source: 'x' },
+        { kind: 'at_platform', date: '2026-09-28', stop: 'A', time: iso(12 * 3600), source: 'x' },
+      ],
+      date,
+    );
+    expect(pb.vehiclesAt(8 * 3600 + 420, date, undefined, corr)).toHaveLength(0);
+    expect(pb.vehiclesAt(8 * 3600 + 90, date, undefined, corr)).toHaveLength(1);
+    expect(corr.unmatched.map((u) => u.reason)).toEqual([
+      "trip nope isn't in a train run for this date",
+      'no scheduled train at that stop near that time',
+    ]);
+  });
+
+  it('ignores observations for other dates', () => {
+    const corr = reconcile(file, pp, [{ kind: 'cancel', date: '2026-09-29', trip: 't2', source: 'x' }], date);
+    expect(corr.runs.size).toBe(0);
   });
 });

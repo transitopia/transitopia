@@ -58,9 +58,12 @@ export class InspectCard {
       v.tripId ? ['Trip', v.tripId] : undefined,
       v.runId ? ['Train (inferred)', v.runId] : undefined,
       v.label ? ['Vehicle', v.label] : undefined,
+      v.consist
+        ? ['Consist', [v.consist.cars ? `${v.consist.cars}-car` : '', v.consist.type ?? '', v.consist.carNumbers?.length ? `(${v.consist.carNumbers.join(' ')})` : ''].filter(Boolean).join(' ')]
+        : undefined,
       speed ? ['Speed', speed] : undefined,
       delay ? ['Schedule', delay] : undefined,
-      ago !== undefined ? ['Last fix', ago < 90 ? `${ago} s before shown time` : `${Math.round(ago / 60)} min before shown time`] : undefined,
+      ago !== undefined ? ['Last fix', ago < 90 ? `${ago} s from shown time` : `${Math.round(ago / 60)} min from shown time`] : undefined,
     ].filter(Boolean) as [string, string][];
     this.set(`
       <button class="inspect-close" aria-label="Close">×</button>

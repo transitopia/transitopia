@@ -7,6 +7,8 @@ import type { Dir, TrackGraph, TrackPos } from '../infra/graph.ts';
 import type { PreparedPlan, VehicleState, VehicleStatus } from '../schedule/engine.ts';
 import { distanceAt, kinematicsFor, solveLeg, speedAt, type Kinematics, type KinematicsConfig, type LegProfile } from './kinematics.ts';
 import type { MovementsFile, Run, RunEvent } from './types.ts';
+import { OBSERVED_WINDOW_S, warp, type ReconcileResult } from '../corrections/reconcile.ts';
+import { serviceDayStart } from '../time.ts';
 
 interface DecodedPath {
   segs: string[];
@@ -86,14 +88,32 @@ export class TrainPlayback {
       .sort((a, b) => a.start - b.start);
   }
 
-  /** Trains visible at `sec` (service-day seconds) of this file's service day. */
-  vehiclesAt(sec: number, serviceDate: string, routes?: Set<string>): VehicleState[] {
+  /**
+   * Trains visible at `sec` (service-day seconds) of this file's service day, with observations
+   * applied (PLAN.md §4.7): each run is evaluated at its warped schedule time.
+   */
+  vehiclesAt(sec: number, serviceDate: string, routes?: Set<string>, corrections?: ReconcileResult): VehicleState[] {
     const out: VehicleState[] = [];
     for (const r of this.runs) {
-      if (r.start > sec) break;
-      if (sec > r.end) continue;
-      const v = this.runAt(r, sec, serviceDate);
-      if (v && (!routes || routes.has(v.routeKey))) out.push(v);
+      const c = corrections?.runs.get(r.run.id);
+      if (!c && r.start > sec) break;
+      const s = warp(c, sec);
+      if (s < r.start || s > r.end) continue;
+      const v = this.runAt(r, s, serviceDate);
+      if (!v || (routes && !routes.has(v.routeKey))) continue;
+      if (c) {
+        if (v.tripId && c.cancelled.has(v.tripId)) continue;
+        const near = c.observed.find((o) => Math.abs(o.t - sec) <= OBSERVED_WINDOW_S);
+        const shifted = s !== sec;
+        if (near || shifted) {
+          v.provenance = near ? 'observed' : 'interpolated';
+          v.source = `${[...c.sources].join(', ')} + ${v.source}`;
+          if (near) v.observedAt = serviceDayStart(serviceDate) + near.t * 1000;
+          if (shifted) v.delay = sec - s;
+        }
+        if (c.consist) v.consist = c.consist;
+      }
+      out.push(v);
     }
     return out;
   }

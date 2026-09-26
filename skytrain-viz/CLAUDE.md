@@ -34,6 +34,12 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 - Playback (`playback.ts`) is pure: (movement file, prepared plan, graph, t) → positions. Keep it that way.
 - Debug with `npm run build:movements -- --verbose` (per-terminus chaining stats) and `npm run validate:plan` (conflict hot spots).
 
+## Corrections
+
+- Observations (`src/core/corrections/`) reference **service date + GTFS trip_id** or **stop + time**, never inferred run ids.
+- `reconcile()` turns them into per-run time warps (delays absorbed by later layovers), cancellations, consists, and observed windows. Playback evaluates each run at its warped time and sets provenance: observed within 90 s of a sighting, interpolated while a delay applies.
+- A future rail real-time adapter should emit `Observation`s rather than touch playback.
+
 ## GTFS gotchas (verified against feed 26SEP_20260925)
 
 - Times can exceed 24:00 and have a leading space: `" 5:05:00"`, `"25:30:00"`. Store as seconds since service-day start.
@@ -60,6 +66,7 @@ npm run build:infra      # publish tracks + per-feed platform mapping to public/
 npm run validate:infra   # graph / platform / routing / turnback / checklist checks (working)
 npm run build:movements  # infer train runs → public/data/feeds/<v>/movements/*.json [--verbose] (working)
 npm run validate:plan    # teleports (fail), terminus/yard conflicts (report), fleet peaks (working)
+npm run build:observations # validate + publish data/observations/*.json (working; format in data/observations/README.md)
 npx tsx scripts/screenshot.ts out.png "/?date=2026-09-28&t=08:00:00&paused=1#map=14/49.28/-123.11" [--mobile] [--dark] [--pick expo]
 npm run scenario <name>  # build a scenario from data/scenarios/<name>/
 npm test                 # vitest

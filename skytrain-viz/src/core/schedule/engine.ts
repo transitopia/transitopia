@@ -50,6 +50,8 @@ export interface VehicleState {
   shape?: [number, number][];
   /** Position on the track graph (track-level playback only). */
   track?: { seg: string; offset: number };
+  /** Observed consist (corrections), e.g. { type: 'Mk III', cars: 4 }. */
+  consist?: { type?: string; cars?: number; carNumbers?: string[] };
   length: number;
   width: number;
 }
