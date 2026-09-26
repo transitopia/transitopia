@@ -403,6 +403,10 @@ input {
   .tb-now {
     flex: 1 1 40%;
   }
+  .tb-sub {
+    flex-wrap: wrap;
+    gap: 2px 8px;
+  }
   .tb-date {
     order: 5;
     flex: 1 1 auto;

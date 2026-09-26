@@ -1,6 +1,20 @@
 # SkyTrain Viz: Implementation Plan
 
-Status: **revision 2, ready to implement** (2026-09-25). Operations questions still open are tracked in [docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md). They refine config values and don't block implementation.
+Status: **implemented through M7** (2026-09-25). Operations questions still open are tracked in [docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md). They refine config values and don't block anything.
+
+## Implementation status
+
+| Milestone | State | Notes / deviations from the plan below |
+|---|---|---|
+| M0 scaffold + timetables | ✅ | Feed discovery, per-feed plans, manifest, service-day resolver (DST-safe). |
+| M1 first light | ✅ | Vehicles are drawn by a small WebGL custom layer, not deck.gl: deck.gl's MapLibre integration breaks on maplibre-gl v6. |
+| M2 RT service | ✅ | One poller per machine (lock file with follower forwarding), hourly NDJSON recorder, coverage index, live/recorded/estimated provenance. |
+| M3 track graph | ✅ | Platforms are mapped by global optimisation (route consistency, distinct tracks, feasible turnbacks), not nearest-track. Two Canada Line Waterfront platforms are pinned by override. OSM "under works" Expo track near Braid is treated as in service (OPEN-QUESTIONS #17). |
+| M4 trains on tracks | ✅ | SkyTrain trips are re-timed within GTFS minute rounding. Trips are chained FIFO (GTFS blocks only where they're physically continuous). Stub-berth allocation. Known limitation: terminus overlaps at peak and pull-out interference, reported by `validate:plan` (OPEN-QUESTIONS #21–22). |
+| M5 Canada Line | ✅ | Came with M3/M4: the graph covers all lines, including Capstan and the Bridgeport OMC. |
+| M6 corrections | ✅ | Observations reference service date + trip, or stop + time. Delays are absorbed at layovers. Cancellations, consists and provenance are shown. |
+| M7 scenarios | ✅ | Future OSM track, custom GeoJSON track, `extend` service operation. Demo: `broadway-subway`. |
+| Public deploy | ⏳ | Not started (Cloudflare Worker + Durable Object poller, R2 for tiles/history).
 
 ## 1. Goal
 
