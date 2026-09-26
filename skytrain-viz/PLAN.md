@@ -14,7 +14,8 @@ Status: **implemented through M7** (2026-09-25). Operations questions still open
 | M5 Canada Line | ✅ | Came with M3/M4: the graph covers all lines, including Capstan and the Bridgeport OMC. |
 | M6 corrections | ✅ | Observations reference service date + trip, or stop + time. Delays are absorbed at layovers. Cancellations, consists and provenance are shown. |
 | M7 scenarios | ✅ | Future OSM track, custom GeoJSON track, `extend` service operation. Demo: `broadway-subway`. |
-| Public deploy | ⏳ | Not started (Cloudflare Worker + Durable Object poller, R2 for tiles/history).
+| Public deploy | ⏳ | Not started (Cloudflare Worker + Durable Object poller, R2 for tiles/history). |
+| **TODO: service alerts → schedule overrides** | ⏳ | Needed: planned SkyTrain changes (e.g. nightly single-tracking) exist only in the GTFS-RT alerts feed, not in static GTFS or trip updates. See §4.10. |
 
 ## 1. Goal
 
@@ -283,6 +284,29 @@ A scenario is a directory in `data/scenarios/<name>/`:
 - **Inspect**: tap or hover a vehicle to see line, run id, current or next trip, next stop, status (in service, deadhead, or in yard), consist (or "unknown"), and provenance. On phones this appears in a small popover.
 - **Layer toggles**: a collapsible legend with each line and route, plus debug layers (conflicts, run ids).
 - **Performance targets**: 60 fps on desktop and ≥30 fps on a mid-range phone with ~300 vehicles.
+
+### 4.10 TODO: service alerts as dated schedule overrides
+
+**Why:** planned SkyTrain disruptions are published only as GTFS-RT **alerts**. They aren't in static GTFS (normal service_ids stay active) and there are no SkyTrain trip updates. Verified 2026-09-26 for Canada Line maintenance: "Trains will single-track between Bridgeport Station and Richmond-Brighouse Station" on Sep 27–30 from 9 or 11 PM, with reduced headways. On those nights the app currently shows the regular timetable, which a single track can't carry: opposite-direction trains are scheduled in the section 4–5 times an hour. Riders see all trains board at Lansdowne Platform 1. The long-running Braid/OMC4 arrangement is also announced only by an alert ("temporary platform assignments … between Braid & Lougheed", since 2024-02-25).
+
+**What the alert gives us:**
+- *Structured:* route (`13686`), informed stops (the platform stop_ids of the affected section), cause `MAINTENANCE`, effect `REDUCED_SERVICE`, exact active periods.
+- *Free text only:* the operating change ("single-track between X Station and Y Station"), headways per section ("Waterfront Station - Bridgeport Station - 10 minutes"), and notes such as "last trains will depart … approximately 5 minutes later".
+
+**Sketch:**
+1. **Record alerts.** The RT service already has the key. Poll `gtfsalerts` (slowly, e.g. every 5 min), keep SkyTrain/SeaBus/WCE alerts, and archive them by active period, like the recorder. Past dates keep the overrides that applied then.
+2. **Parse to typed overrides.** Formulaic phrases map via tested regexes, and anything unrecognised is kept as "unparsed" and shown to the user:
+   - `single-track between A and B` → close one track in that section for the active period (graph edits like scenario infrastructure diffs).
+   - `A - B - N minutes` → replace the timetable in that section with a generated N-minute pattern for the period (scenario-style service operation).
+   - platform reassignments → role-based pins (like `patternPlatforms`).
+3. **Apply per date.** A service date with active overrides gets its own movement build: base plan + overrides → platform mapping → run inference. The same pipeline as scenarios, keyed by date instead of name, built on demand or ahead for announced dates.
+4. **Show it.** A banner or badge when the displayed time has an active alert, the alert text in the inspect card, and provenance "adjusted by TransLink alert" on affected trains.
+5. **Hand overrides.** The same override format should also accept manual entries (`data/observations/` or a sibling), for disruptions without a parseable alert.
+
+**Open points:**
+- Which track is closed when an alert says only "single-track": needs ground truth, as at Braid.
+- How to time the reduced-headway pattern relative to the rest of the line.
+- How to treat alerts whose text changes between polls.
 
 ## 5. Repository layout
 
