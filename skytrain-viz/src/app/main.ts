@@ -10,6 +10,9 @@ import { PlanStore, displayServiceDate, kinematics } from './plans.ts';
 import { basemapStyle, type Theme } from './basemap.ts';
 import { addStaticLayers, applyRouteFilter } from './layers/static.ts';
 import { VehicleLayer } from './layers/vehicles.ts';
+import { addTrackLayers, applyTrackFilter, loadPlatforms, loadTracks, setDebugPlatforms } from './layers/tracks.ts';
+import { TrackGraph } from '../core/infra/graph.ts';
+import type { InfraCollection } from '../core/infra/types.ts';
 import { Timebar } from './ui/timebar.ts';
 import { Legend } from './ui/legend.ts';
 import { InspectCard } from './ui/inspect.ts';
@@ -108,6 +111,14 @@ async function main(): Promise<void> {
     },
   });
 
+  // Track infrastructure (optional: without it, SkyTrain falls back to GTFS shapes).
+  const debug = new URLSearchParams(location.search).has('debug');
+  let tracks: InfraCollection | undefined;
+  void loadTracks().then((t) => {
+    tracks = t;
+    syncStatic(true);
+  });
+
   // Static layers follow the feed of the displayed date.
   let shownFeed: PreparedPlan | undefined;
   const syncStatic = (force = false) => {
@@ -116,6 +127,16 @@ async function main(): Promise<void> {
     if (pp === shownFeed && !force) return;
     shownFeed = pp;
     addStaticLayers(map, pp.plan, theme, legend.hidden);
+    if (tracks) {
+      addTrackLayers(map, tracks, pp.plan, theme, debug);
+      applyTrackFilter(map, legend.hidden);
+      // Tracks replace the GTFS SkyTrain shapes.
+      for (const id of ['routes-skytrain', 'routes-skytrain-casing']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
+      if (debug) {
+        const plan = pp.plan;
+        void loadPlatforms(plan.feedVersion).then((p) => p && tracks && setDebugPlatforms(map, TrackGraph.fromCollection(tracks), plan, p));
+      }
+    }
     vehicles.attach();
     vehicles.setRouteColors(pp.plan.routes);
     legend.render(pp.plan.routes);
@@ -125,7 +146,10 @@ async function main(): Promise<void> {
     syncStatic();
     timebar.invalidate();
   });
-  legend.onChange = () => applyRouteFilter(map, legend.hidden);
+  legend.onChange = () => {
+    applyRouteFilter(map, legend.hidden);
+    applyTrackFilter(map, legend.hidden);
+  };
 
   // Theme toggle: auto → light → dark.
   const themeBtn = document.getElementById('theme-toggle') as HTMLButtonElement;

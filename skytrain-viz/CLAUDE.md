@@ -20,6 +20,12 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 - Select GTFS routes **by name** (`route_long_name` "Expo Line", `route_short_name` "099"/"R1"/"WCE", etc.), never by `route_id`. IDs change between feeds.
 - Timetables: support the current feed and every future feed. Pick the feed for a date via the manifest (newest feed covering that date).
 
+## Track model notes
+
+- Segments are OSM ways split at junctions (`w<wayId>.<n>`). Turns are derived from geometry (≤35° deviation passes straight through), so no per-switch tagging is needed; fix mistakes with `turns` in `overrides.json`.
+- Platform mapping (`src/core/infra/platforms.ts`) is a global optimisation, not a nearest-track snap: route consistency + distinct tracks per numbered platform (except terminal arrival/departure berths) + every trip end must turn back or pull in to a yard. Debug it with `?debug=1` (segment ids, platform markers) and `npm run validate:infra`.
+- Track with a future `opening_date` (e.g. the Broadway Extension) goes to `future.generated.geojson` for scenarios, not the base network.
+
 ## GTFS gotchas (verified against feed 26SEP_20260925)
 
 - Times can exceed 24:00 and have a leading space: `" 5:05:00"`, `"25:30:00"`. Store as seconds since service-day start.
@@ -41,9 +47,11 @@ npm run server           # standalone RT service on :8787, e.g. to keep recordin
 npm run data:gtfs        # fetch latest GTFS + build plan.json and manifest (working)
 npm run data             # fetch-gtfs, fetch-osm, import-osm, build-schedule, infer-runs, build-movements
 npm run tiles            # build public/tiles/vancouver.pmtiles + fonts/sprites (working)
+npm run data:osm         # fetch OSM tracks + import → data/infrastructure/*.generated.geojson (working)
+npm run build:infra      # publish tracks + per-feed platform mapping to public/data (working)
+npm run validate:infra   # graph / platform / routing / turnback / checklist checks (working)
 npx tsx scripts/screenshot.ts out.png "/?date=2026-09-28&t=08:00:00&paused=1#map=14/49.28/-123.11" [--mobile] [--dark] [--pick expo]
 npm run scenario <name>  # build a scenario from data/scenarios/<name>/
-npm run validate:infra   # track graph checks
 npm run validate:plan    # conflicts, continuity, fleet caps
 npm test                 # vitest
 npm run typecheck

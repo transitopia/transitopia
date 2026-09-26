@@ -19,7 +19,10 @@
     "data": "tsx scripts/data.ts",
     "data:gtfs": "tsx scripts/fetch-gtfs.ts && tsx scripts/build-schedule.ts",
     "tiles": "tsx scripts/tiles.ts",
-    "server": "tsx server/main.ts"
+    "server": "tsx server/main.ts",
+    "data:osm": "tsx scripts/fetch-osm.ts && tsx scripts/import-osm.ts",
+    "build:infra": "tsx scripts/build-infra.ts",
+    "validate:infra": "tsx scripts/validate-infra.ts"
   },
   "dependencies": {
     "@maplibre/maplibre-gl-style-spec": "^26.4.4",

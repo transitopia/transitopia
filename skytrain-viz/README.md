@@ -6,7 +6,7 @@ An interactive, to-scale vector map of Vancouver's SkyTrain network. It animates
 - **Express bus** positions are *observed* from TransLink's GTFS-realtime feed when live or when recorded history exists, and *estimated* from the schedule otherwise. The map shows which is which.
 - Time plays in real time by default. You can pause, rewind, fast-forward, or jump to any date in the current or any future published timetable. Different days get different schedules (weekday, Mon–Thu extras, Saturday, Sunday/holiday).
 
-> **Status:** in development. Working so far: timetables, basemap, schedule-based vehicles on GTFS shapes, time controls, and live plus recorded bus positions. Next: track-level SkyTrain. See [PLAN.md](PLAN.md) and [docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md).
+> **Status:** in development. Working so far: timetables, basemap, schedule-based vehicles on GTFS shapes, time controls, and live plus recorded bus positions, and the track-level SkyTrain network (every track, switch, pocket and yard, with GTFS platforms mapped onto tracks). Next: trains running on those tracks. See [PLAN.md](PLAN.md) and [docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md).
 
 ## Quick start
 
@@ -14,6 +14,8 @@ An interactive, to-scale vector map of Vancouver's SkyTrain network. It animates
 npm install
 npm run tiles       # build the Metro Vancouver PMTiles basemap (one-time)
 npm run data:gtfs   # fetch the latest GTFS feed and build the timetable data
+npm run data:osm    # fetch SkyTrain tracks from OpenStreetMap and import them
+npm run build:infra # publish the track network and platform mapping
 npm run dev         # app at http://localhost:5173, plus the local RT service
 ```
 

@@ -1,0 +1,104 @@
+{
+  "$comment": "Independent checks of the track graph against the Wikipedia 'Vancouver SkyTrain track diagram v3' (mid-2021) and TransLink facts, so OSM errors surface in `npm run validate:infra`. Each item: a track feature that must exist within `radius` metres of `near` ([lon, lat]). kinds: which segment kinds satisfy it. Coordinates are approximate (±100 m). Extend this list as more of the diagram is transcribed. Terminus turnbacks are checked automatically for every GTFS pattern, so they aren't listed here. TODO: transcribe the diagram's crossovers (thin diagonal links between tracks) station by station; an earlier draft wrongly read the red bracket symbols as crossovers — they mark tunnel portals.",
+  "items": [
+    {
+      "name": "Metrotown pocket",
+      "near": [
+        -123.0,
+        49.225
+      ],
+      "radius": 1200,
+      "kinds": [
+        "pocket",
+        "siding"
+      ]
+    },
+    {
+      "name": "Holdom pocket",
+      "near": [
+        -122.982,
+        49.265
+      ],
+      "radius": 1200,
+      "kinds": [
+        "pocket",
+        "siding"
+      ]
+    },
+    {
+      "name": "Moody Centre pocket",
+      "near": [
+        -122.85,
+        49.278
+      ],
+      "radius": 1200,
+      "kinds": [
+        "pocket",
+        "siding"
+      ]
+    },
+    {
+      "name": "Vanness pocket",
+      "near": [
+        -123.06,
+        49.252
+      ],
+      "radius": 1500,
+      "kinds": [
+        "pocket",
+        "siding"
+      ]
+    },
+    {
+      "name": "OMC 1 lead between Edmonds and 22nd Street ('To OMC' on the diagram)",
+      "near": [
+        -122.959,
+        49.206
+      ],
+      "radius": 900,
+      "kinds": [
+        "yard"
+      ]
+    },
+    {
+      "name": "Canada Line OMC lead at Bridgeport ('To OMC' on the diagram)",
+      "near": [
+        -123.12,
+        49.198
+      ],
+      "radius": 800,
+      "kinds": [
+        "yard"
+      ]
+    },
+    {
+      "name": "Coquitlam storage yard ('extra storage facility in Coquitlam')",
+      "near": [
+        -122.82,
+        49.278
+      ],
+      "radius": 1500,
+      "kinds": [
+        "yard"
+      ]
+    },
+    {
+      "name": "Mainline Pocket south of Edmonds (OMC 1 area)",
+      "near": [
+        -122.9572,
+        49.2093
+      ],
+      "radius": 600,
+      "kinds": [
+        "pocket",
+        "siding"
+      ]
+    }
+  ],
+  "stations": {
+    "$comment": "Every GTFS SkyTrain platform must map to a track; Capstan opened after the diagram and must be present.",
+    "required": [
+      "Capstan"
+    ]
+  }
+}

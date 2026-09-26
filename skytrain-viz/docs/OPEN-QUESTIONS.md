@@ -66,3 +66,11 @@ Evidence cited below comes from feed `26SEP_20260925`, OSM (2026-09-25), and the
 
 16. **Show buses outside revenue trips** (layover, deadhead) when RT reports them?
     - *Assumption:* show only vehicles assigned to a trip on our routes.
+
+## Infrastructure (found while building the track graph)
+
+17. **Braid–Lougheed Expo track "under works".** OSM tags one Expo track between Braid and Lougheed (ways 87493028, 87493029, 392377336, 923211605) as `railway=construction`/`disused` with `opening_date=2027-06`, although it has a 2002 `start_date` and is still in the route relations. GTFS keeps scheduling westbound trains through Braid Platform 1, which needs that track. Is this track in service today, or is the section single-tracked?
+    - *Assumption:* in service. It's drawn dashed. If it's single-tracked, add its way ids to `osm.excludeWays` in `data/infrastructure/overrides.json`.
+18. **Terminal berths.** At stub termini, GTFS uses separate arrival-only and departure-only platforms (e.g. Waterfront Expo arrive P1 / depart P2; Lafarge Lake–Douglas arrive P2 / depart P1). Do trains unload and load at the same berth and reverse in place, or shunt between berths via the tail tracks? Which berths do consecutive trains use (alternating)?
+    - *Assumption:* the solver picks the cheapest feasible option. It currently maps Waterfront Expo P1 and P2 to one berth (reverse in place). Berth alternation is future work.
+19. **Diagram crossovers.** The Wikipedia diagram's crossovers haven't been transcribed into `data/infrastructure/diagram-checklist.json` yet, so OSM's crossovers are only validated indirectly: every timetabled move must be routable.

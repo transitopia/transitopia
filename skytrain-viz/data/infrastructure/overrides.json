@@ -1,0 +1,12 @@
+{
+  "$comment": "Hand fixes applied on top of the OSM import (PLAN.md §4.1). Survives re-imports: refer to OSM ids and coordinates, never to generated segment ids. osm.includeWays/excludeWays: OSM way ids to force in/out of the in-service network (applied by import-osm). turns.add/remove: {node: [lon, lat], a: [lon, lat], b: [lon, lat], note} — at the node nearest `node` (≤5 m), allow/forbid passing between the incident tracks nearest `a` and `b`. platforms: {stop: GTFS stop_name, near: [lon, lat], note} pins that stop to the track nearest `near`.",
+  "osm": {
+    "includeWays": [],
+    "excludeWays": []
+  },
+  "turns": {
+    "add": [],
+    "remove": []
+  },
+  "platforms": []
+}
