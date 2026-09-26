@@ -22,6 +22,7 @@ export interface OperationsConfig {
     minLayoverS: number;
     maxLayoverS: number;
     maxTurnbackM: number;
+    stubMaxLayoverS: number;
     unloadS: number;
     reversalS: number;
     blockBonusS: number;
@@ -244,6 +245,42 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
     return p;
   };
 
+  /** On a dead-ended segment, pull the berth up to the buffer so the train clears the switch behind it. */
+  const pullUp = (pos: TrackPos, len: number): TrackPos => {
+    const s = g.segment(pos.seg);
+    const margin = 10;
+    if (g.isDeadEnd(pos.seg, -1)) return { seg: pos.seg, offset: Math.min(s.length - len / 2, len / 2 + margin) };
+    if (g.isDeadEnd(pos.seg, 1)) return { seg: pos.seg, offset: Math.max(len / 2, s.length - len / 2 - margin) };
+    return pos;
+  };
+  /** This line's dead-ended running tracks within 150 m of a stop (cached per stop and line). */
+  const stubCache = new Map<string, string[]>();
+  const stubsNear = (stop: PlanStop, line: string) => {
+    const key = `${stop.id}|${line}`;
+    let list = stubCache.get(key);
+    if (!list) {
+      list = [...g.segments.values()]
+        .filter(
+          (sg) =>
+            PLATFORM_KINDS.has(sg.kind) &&
+            sg.lines.includes(line as LineKey) &&
+            (g.isDeadEnd(sg.id, 1) || g.isDeadEnd(sg.id, -1)) &&
+            sg.coords.some((c) => distM(c, [stop.lon, stop.lat]) < 150),
+        )
+        .map((sg) => sg.id);
+      stubCache.set(key, list);
+    }
+    return list;
+  };
+  /** Stub terminus: the line has dead-ended platform tracks here, so waiting trains block a berth. */
+  const atStubTerminus = (a: TripInfo) => stubsNear(plan.stops[a.t.pattern.stops[a.t.pattern.stops.length - 1]!]!, a.line).length > 0;
+  /**
+   * Surplus trains at stub termini go back to the yard rather than queue for a far-off departure
+   * (operators run them empty between scheduled trains; OPEN-QUESTIONS #21).
+   */
+  const tooLongAtStub = (a: TripInfo, link: Link) =>
+    (link.berthHop !== undefined || link.path.length <= 1) && link.d.dep - a.arr > ops.turnback.stubMaxLayoverS && atStubTerminus(a);
+
   // --- chaining (FIFO per terminus, preferring the GTFS block) ---
   type Link = { d: TripInfo; path: Path; berthHop?: Path };
   const next = new Map<TripInfo, Link>();
@@ -305,6 +342,7 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
     if (bn && !hasPrev.has(bn) && bn.station0 === a.station1 && bn.fleet === a.fleet) {
       const gap = bn.dep - a.arr;
       if (gap >= BLOCK_MIN_LAYOVER_S && gap <= ops.turnback.maxLayoverS) chosen = tryLink(a, bn, gap, true);
+      if (chosen && tooLongAtStub(a, chosen)) chosen = undefined;
     }
     // 2. Otherwise first come, first served: the earliest feasible departure.
     for (const d of chosen ? [] : list) {
@@ -317,6 +355,10 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
       if (!link) {
         lastReason = turnback(a, d) ? 'turnback too slow' : 'no turnback path or berth route';
         continue;
+      }
+      if (tooLongAtStub(a, link)) {
+        lastReason = 'surplus at stub terminus: returns to yard';
+        break;
       }
       chosen = link;
       break;
@@ -395,33 +437,6 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
   const noRev = (a: TrackPos, dir: Dir | undefined, b: TrackPos) => {
     const p = g.route(a, b, { fromDir: dir, allowReversals: false, maxLength: 12_000 });
     return p && p.reversals === 0 ? p : null;
-  };
-  /** On a dead-ended segment, pull the berth up to the buffer so the train clears the switch behind it. */
-  const pullUp = (pos: TrackPos, len: number): TrackPos => {
-    const s = g.segment(pos.seg);
-    const margin = 10;
-    if (g.isDeadEnd(pos.seg, -1)) return { seg: pos.seg, offset: Math.min(s.length - len / 2, len / 2 + margin) };
-    if (g.isDeadEnd(pos.seg, 1)) return { seg: pos.seg, offset: Math.max(len / 2, s.length - len / 2 - margin) };
-    return pos;
-  };
-  /** This line's dead-ended running tracks within 150 m of a stop (cached per stop and line). */
-  const stubCache = new Map<string, string[]>();
-  const stubsNear = (stop: PlanStop, line: string) => {
-    const key = `${stop.id}|${line}`;
-    let list = stubCache.get(key);
-    if (!list) {
-      list = [...g.segments.values()]
-        .filter(
-          (sg) =>
-            PLATFORM_KINDS.has(sg.kind) &&
-            sg.lines.includes(line as LineKey) &&
-            (g.isDeadEnd(sg.id, 1) || g.isDeadEnd(sg.id, -1)) &&
-            sg.coords.some((c) => distM(c, [stop.lon, stop.lat]) < 150),
-        )
-        .map((sg) => sg.id);
-      stubCache.set(key, list);
-    }
-    return list;
   };
   for (const a of arrivals) {
     const link = next.get(a);

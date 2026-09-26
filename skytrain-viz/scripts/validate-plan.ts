@@ -95,7 +95,7 @@ async function main() {
       if (jumps.size > 10) console.log(`  … ${jumps.size - 10} more teleports`);
       if (conflicts.size) {
         console.log(`  ${conflicts.size} conflicting pairs (two trains overlapping on one track); top places:`);
-        for (const [where, n] of [...byPlace].sort((x, y) => y[1] - x[1]).slice(0, 8)) console.log(`    ${String(n).padStart(4)}  ${where}`);
+        for (const [where, n] of [...byPlace].sort((x, y) => y[1] - x[1]).slice(0, Number(arg('--top') ?? 8))) console.log(`    ${String(n).padStart(4)}  ${where}`);
       }
       if (process.argv.includes('--verbose')) {
         for (const [pair, c] of conflicts) console.log(`  conflict: ${pair} (${Math.round(c.d)} m between centres) at ${formatServiceTime(c.t, true)}`);
