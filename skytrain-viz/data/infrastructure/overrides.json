@@ -30,6 +30,14 @@
         49.2857338
       ],
       "note": "As P5: pinned to the other stub (OSM way 923508923) 35 m from the buffer stop."
+    },
+    {
+      "stop": "Stadium-Chinatown Station @ Platform 2",
+      "near": [
+        -123.1091419,
+        49.2792249
+      ],
+      "note": "Platform 2 is the middle track (OSM way 809550055). The westernmost track (OSM siding 809550056) is Platform 3: closed to passengers, used only to park trains (Braden, 2026-09-26). The GTFS coordinate is closer to it."
     }
   ],
   "patternPlatforms": [
