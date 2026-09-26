@@ -4,7 +4,7 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 
 ## Scope
 
-- **Routes**: Expo, Millennium, and Canada Lines (track-level); SeaBus and West Coast Express (shape-level); buses 99, R1, R2, R3, R4, R5. **No other bus routes.**
+- **Routes**: Expo, Millennium, and Canada Lines (track-level); SeaBus and West Coast Express (shape-level); buses 99, R1, R2, R3, R4, R5, R6. **No other bus routes.**
 - **Stack**: TypeScript, Vite, and MapLibre GL JS v6 with a PMTiles vector basemap (Protomaps). Vehicles are drawn by our own WebGL2 custom layer (`src/app/layers/gl-polygons.ts`) using only MapLibre's public API. Don't reintroduce deck.gl: its MapLibre integration depends on private internals that v6 removed. Plain TS with no UI framework. MIT licensed.
 - Desktop-first, but the map and time controls must work on phones. Keep chrome minimal.
 

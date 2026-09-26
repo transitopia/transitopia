@@ -1,6 +1,6 @@
 # SkyTrain Viz
 
-An interactive, to-scale vector map of Vancouver's SkyTrain network. It animates every train on the correct track, including switches, pocket tracks, turnbacks, and moves to and from the Operations & Maintenance Centres. It also shows the SeaBus, the West Coast Express, and the express bus routes 99, R1, R2, R3, R4, and R5.
+An interactive, to-scale vector map of Vancouver's SkyTrain network. It animates every train on the correct track, including switches, pocket tracks, turnbacks, and moves to and from the Operations & Maintenance Centres. It also shows the SeaBus, the West Coast Express, and the express bus routes 99, R1, R2, R3, R4, R5, and R6.
 
 - **SkyTrain, SeaBus, and West Coast Express** positions are *estimated* from TransLink's published GTFS schedule. No public real-time feed exists for them.
 - **Express bus** positions are *observed* from TransLink's GTFS-realtime feed when live or when recorded history exists, and *estimated* from the schedule otherwise. The map shows which is which.

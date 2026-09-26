@@ -105,6 +105,16 @@
       "kind": "bus",
       "mode": "bus",
       "color": "#c92a2a"
+    },
+    {
+      "key": "R6",
+      "label": "R6 Scott Road",
+      "match": {
+        "route_short_name": "R6"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "color": "#5c7cfa"
     }
   ]
 }

@@ -10,7 +10,7 @@
 // Only one process per machine polls and records (the "leader", holding data/rt-history/.lock);
 // any other instance (e.g. `npm run dev` while `npm run server` runs) forwards /rt/* to the leader.
 
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import rtConfig from '../../data/config/rt.json' with { type: 'json' };
 import type { FeedManifest, ServicePlan } from '../../src/core/plan/types.ts';
@@ -50,6 +50,7 @@ export class RtService {
   private latest: RtSnapshot | null = null;
   private delays: TripDelays = new Map();
   private routeKeyById = new Map<string, string>();
+  private routesLoadedFrom: number | undefined;
   private timers: ReturnType<typeof setTimeout>[] = [];
   private running = false;
   private lastError: string | undefined;
@@ -162,14 +163,25 @@ export class RtService {
     void tick();
   }
 
-  /** Map GTFS route_id → our route key, from every built feed (route IDs can differ between feeds). */
+  /**
+   * Map GTFS route_id → our route key, from every built feed (route IDs can differ between feeds).
+   * Reloaded whenever the manifest changes, so routes added to the config (and rebuilt with
+   * `npm run data`) are picked up without restarting the service.
+   */
   private async loadRoutes(): Promise<void> {
     try {
-      const manifest = JSON.parse(await readFile(join(PUBLIC_DATA_DIR, 'manifest.json'), 'utf8')) as FeedManifest;
+      const manifestPath = join(PUBLIC_DATA_DIR, 'manifest.json');
+      const mtime = (await stat(manifestPath)).mtimeMs;
+      if (mtime === this.routesLoadedFrom) return;
+      const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as FeedManifest;
+      const map = new Map<string, string>();
       for (const f of manifest.feeds) {
         const plan = JSON.parse(await readFile(join(ROOT, 'public', f.path), 'utf8')) as Pick<ServicePlan, 'routes'>;
-        for (const r of plan.routes) if (r.kind === 'bus') this.routeKeyById.set(r.gtfsRouteId, r.key);
+        for (const r of plan.routes) if (r.kind === 'bus') map.set(r.gtfsRouteId, r.key);
       }
+      if (this.routesLoadedFrom !== undefined) this.log(`Timetable data changed: now tracking ${[...new Set(map.values())].join(', ')}`);
+      this.routeKeyById = map;
+      this.routesLoadedFrom = mtime;
     } catch (e) {
       this.log(`Could not read timetable manifest (${e instanceof Error ? e.message : e}); run "npm run data:gtfs".`);
     }
@@ -181,6 +193,7 @@ export class RtService {
   }
 
   private async pollPositions(): Promise<void> {
+    await this.loadRoutes();
     this.upstreamCalls++;
     const fetchedAt = Date.now();
     const decoded = await fetchPositions(this.apiKey!, AbortSignal.timeout(15_000));

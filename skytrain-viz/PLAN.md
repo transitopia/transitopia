@@ -22,7 +22,7 @@ A web page with a zoomable, to-scale, vector map of Metro Vancouver that animate
 
 - **SkyTrain** (Expo, Millennium, Canada Lines): every train, on the correct track, through switches, pocket tracks, and turnbacks, and moving to and from the Operations & Maintenance Centres (OMCs) and storage yards as trains enter and leave service. Positions are **inferred from the schedule**.
 - **SeaBus** and **West Coast Express**: inferred from the schedule, with simpler geometry (GTFS shapes).
-- **Express buses 99, R1, R2, R3, R4, R5**: real positions from GTFS-realtime when live or when recorded history exists, schedule estimates otherwise. Every vehicle shows whether its position is **observed** or **estimated**.
+- **Express buses 99, R1–R6**: real positions from GTFS-realtime when live or when recorded history exists, schedule estimates otherwise. Every vehicle shows whether its position is **observed** or **estimated**.
 
 It plays in real time by default and can pause, rewind, fast-forward, and jump to any date in the current or any future published timetable. The architecture needs to support three later additions:
 
@@ -57,7 +57,7 @@ Scenarios are edited as config files. There is no editing UI.
 | Times go past 24:00 and have leading spaces (`" 5:05:00"`). `shape_dist_traveled` is in km. | Parser details. |
 | West Coast Express: 10 trips per weekday (5 each way), no weekend service. SeaBus: 8 blocks. | Both are simple. |
 | The undated URL `gtfs-static.translink.ca/gtfs/google_transit.zip` serves the same file as the dated `History/<date>/` snapshot. | This makes detecting new or future timetables easy (§4.2). |
-| Route IDs today: Expo `30053`, Millennium `30052`, Canada `13686`, WCE `6770`, SeaBus `6771`, 99 `6641`, R1 `37808`, R2 `38311`, R3 `37809`, R4 `37810`, R5 `37807`. | Route IDs can change between feeds. Select routes by name. |
+| Route IDs today: Expo `30053`, Millennium `30052`, Canada `13686`, WCE `6770`, SeaBus `6771`, 99 `6641`, R1 `37808`, R2 `38311`, R3 `37809`, R4 `37810`, R5 `37807`, R6 `46604`. | Route IDs can change between feeds. Select routes by name. |
 
 ### TransLink GTFS-realtime
 
@@ -151,7 +151,7 @@ Scripts: `scripts/fetch-gtfs.ts` and `scripts/build-schedule.ts`.
 
 - **Feed discovery**: fetch the undated `google_transit.zip` and read `feed_info.txt` (`feed_version`, `feed_start_date`, `feed_end_date`). If the version is new, archive it to `data/raw/gtfs/<feed_version>/` and build it. Previously built versions are kept (cheap), and there's no backfill of historical feeds. Run this on demand locally; later, on a schedule.
 - **Manifest**: `public/data/manifest.json` lists the feed versions with their validity ranges. `feedFor(date)` picks the newest feed whose range covers the date. That handles "current plus future timetables", including a newer feed superseding the tail of an older one. The date picker is bounded by the union of the ranges.
-- **Filter** to the target routes **by name**: 3 SkyTrain lines, SeaBus, WCE, 99, R1–R5.
+- **Filter** to the target routes **by name**: 3 SkyTrain lines, SeaBus, WCE, 99, R1–R6.
 - **Normalize** into a compact service plan per feed version:
   - trips, each with route, direction, headsign, service_id, block_id, shape_id, and `(stop_id, arr, dep)` in seconds since service-day start
   - stops with platform→parent mapping
@@ -189,7 +189,7 @@ Script: `scripts/build-movements.ts`. The same code runs in a Worker for scenari
 ### 4.5 SeaBus, West Coast Express, and buses
 
 - **SeaBus and WCE** are schedule-based, interpolated along GTFS shapes with ease-in/out between stops. Vessels and trainsets are chained by block_id. No infrastructure model. WCE mid-day and overnight storage is an open question: whether to show parked trainsets at all.
-- **Buses (99, R1–R5)** are resolved per vehicle, in priority order:
+- **Buses (99, R1–R6)** are resolved per vehicle, in priority order:
   1. **Observed**: a live or recorded snapshot position at (or within one poll interval of) *t*.
   2. **Interpolated**: between two observations of the same vehicle less than ~3 min apart, moved along the trip's shape rather than in a straight line.
   3. **Estimated**: scheduled trip interpolation along the shape. This is used when no RT data covers *t*: the recorder wasn't running, future times, or a gap.
