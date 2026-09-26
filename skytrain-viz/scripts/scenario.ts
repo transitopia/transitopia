@@ -57,16 +57,16 @@ async function main() {
 
   // 3. Platforms and routing checks.
   const railKeys = new Set(plan.routes.filter((r) => r.kind === 'skytrain').map((r) => r.key));
-  const report = mapPlatforms(graph, plan, railKeys, overrides.platforms);
+  const report = mapPlatforms(graph, plan, railKeys, overrides.platforms, overrides.patternPlatforms);
   for (const b of report.breaks) log(`  warn: not routable without reversing: ${b}`);
   for (const t of report.turnbackFailures) log(`  warn: no turnback or yard from ${t}`);
   for (const u of report.unmapped) log(`  warn: platform not near any track: ${u}`);
   let failures = 0;
-  for (const p of plan.patterns.filter((x) => railKeys.has(x.route))) failures += routePattern(graph, plan, report.assignments, p).failures.length;
+  for (const p of plan.patterns.filter((x) => railKeys.has(x.route))) failures += routePattern(graph, plan, report.assignments, p, report.patternPositions).failures.length;
   log(`Platforms: ${report.assignments.size} mapped; ${failures} unroutable hops`);
 
   // 4. Movements.
-  const { index } = await buildAllMovements({ plan, graph, platforms: report.assignments, kin, ops, outDir: join(out, 'movements'), relDir: `${rel}/movements` });
+  const { index } = await buildAllMovements({ plan, graph, platforms: report.assignments, patternPositions: report.patternPositions, kin, ops, outDir: join(out, 'movements'), relDir: `${rel}/movements` });
 
   // 5. Publish.
   await writeJson(join(out, 'plan.json'), plan);

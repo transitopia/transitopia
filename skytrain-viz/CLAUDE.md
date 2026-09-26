@@ -25,6 +25,7 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 - Segments are OSM ways split at junctions (`w<wayId>.<n>`). Turns are derived from geometry (≤35° deviation passes straight through), so no per-switch tagging is needed; fix mistakes with `turns` in `overrides.json`.
 - Platform mapping (`src/core/infra/platforms.ts`) is a global optimisation, not a nearest-track snap: route consistency + distinct tracks per numbered platform (except terminal arrival/departure berths) + every trip end must turn back or pull in to a yard. Debug it with `?debug=1` (segment ids, platform markers) and `npm run validate:infra`.
 - Track with a future `opening_date` (e.g. the Broadway Extension) goes to `future.generated.geojson` for scenarios, not the base network.
+- `overrides.json` also supports `addTrack` (GeoJSON track missing from OSM) and `patternPlatforms` (role-based pins for trips that terminate at vs pass through a station, for temporary operations such as the OMC4 works at Braid). Verify any added infrastructure on imagery before relying on it.
 
 ## Run inference notes (`src/core/movement/build.ts`)
 

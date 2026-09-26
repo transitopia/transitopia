@@ -79,7 +79,7 @@ async function main() {
   }
 
   // 2. Platforms.
-  const report = mapPlatforms(g, plan, railKeys, overrides.platforms);
+  const report = mapPlatforms(g, plan, railKeys, overrides.platforms, overrides.patternPlatforms);
   for (const u of report.unmapped) err(`Platform not near any track: ${u}`);
   for (const b of report.breaks) err(`Stop pair not routable without reversing: ${b}`);
   for (const t of report.turnbackFailures) err(`No turnback at ${t}: arriving trains can reach neither a departure platform nor a yard`);
@@ -98,7 +98,7 @@ async function main() {
 
   // 3. Every pattern routes, with lengths close to GTFS shape distances.
   const railPatterns = plan.patterns.filter((p) => railKeys.has(p.route));
-  const routes = railPatterns.map((p) => routePattern(g, plan, report.assignments, p));
+  const routes = railPatterns.map((p) => routePattern(g, plan, report.assignments, p, report.patternPositions));
   let hops = 0;
   const lengthWarnings = new Set<string>();
   for (const r of routes) {

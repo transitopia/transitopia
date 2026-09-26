@@ -1,5 +1,5 @@
 {
-  "$comment": "Hand fixes applied on top of the OSM import (PLAN.md §4.1). Survives re-imports: refer to OSM ids and coordinates, never to generated segment ids. osm.includeWays/excludeWays: OSM way ids to force in/out of the in-service network (applied by import-osm). turns.add/remove: {node: [lon, lat], a: [lon, lat], b: [lon, lat], note} — at the node nearest `node` (≤5 m), allow/forbid passing between the incident tracks nearest `a` and `b`. platforms: {stop: GTFS stop_name, near: [lon, lat], note} pins that stop to the track nearest `near`. addTrack: GeoJSON of track missing from OSM (joined to existing track within 4 m of its endpoints).",
+  "$comment": "Hand fixes applied on top of the OSM import (PLAN.md §4.1). Survives re-imports: refer to OSM ids and coordinates, never to generated segment ids. osm.includeWays/excludeWays: OSM way ids to force in/out of the in-service network (applied by import-osm). turns.add/remove: {node: [lon, lat], a: [lon, lat], b: [lon, lat], note} — at the node nearest `node` (≤5 m), allow/forbid passing between the incident tracks nearest `a` and `b`. platforms: {stop: GTFS stop_name, near: [lon, lat], note} pins that stop to the track nearest `near`. addTrack: optional GeoJSON of track missing from OSM (joined to existing track within 4 m of its endpoints). patternPlatforms: role-based pins — for patterns that start/end at (or pass through) a station, use the track nearest each given point at the listed stations (for temporary operations GTFS platform numbers don't describe).",
   "osm": {
     "includeWays": [],
     "excludeWays": [
@@ -32,5 +32,36 @@
       "note": "As P5: pinned to the other stub (OSM way 923508923) 35 m from the buffer stop."
     }
   ],
-  "addTrack": "added-track.geojson"
+  "patternPlatforms": [
+    {
+      "station": "Braid",
+      "patterns": "terminating",
+      "pins": {
+        "Braid": [
+          -122.8828349,
+          49.2332356
+        ],
+        "Sapperton": [
+          -122.8894012,
+          49.2246884
+        ]
+      },
+      "note": "OMC4 works (Feb 2024–~2027): Braid short-turns use the west track, dead-ended just north of Braid (Platform 2 per TransLink), running in both directions between Braid and the crossover south of Sapperton. Satellite imagery 2026 shows no crossover near Braid (Braden, 2026-09-26)."
+    },
+    {
+      "station": "Braid",
+      "patterns": "through",
+      "pins": {
+        "Braid": [
+          -122.882772,
+          49.2332415
+        ],
+        "Sapperton": [
+          -122.8893491,
+          49.2246624
+        ]
+      },
+      "note": "Trains to/from Lougheed and Production Way–University use the east track in both directions (single-track north of Braid; Platform 1 per TransLink)."
+    }
+  ]
 }

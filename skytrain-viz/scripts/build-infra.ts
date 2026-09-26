@@ -20,7 +20,7 @@ async function main() {
   log(`Wrote infra/tracks.geojson (${graph.segments.size} segments)`);
   for (const plan of await loadAllPlans()) {
     const railKeys = new Set(plan.routes.filter((r) => r.kind === 'skytrain').map((r) => r.key));
-    const report = mapPlatforms(graph, plan, railKeys, overrides.platforms);
+    const report = mapPlatforms(graph, plan, railKeys, overrides.platforms, overrides.patternPlatforms);
     const out: PlatformsFile = { feedVersion: plan.feedVersion, platforms: {} };
     for (const a of report.assignments.values()) {
       out.platforms[a.stopId] = { seg: a.pos.seg, offset: Math.round(a.pos.offset * 100) / 100, dist: Math.round(a.dist * 10) / 10, method: a.method };

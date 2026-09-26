@@ -2,7 +2,7 @@
 
 import { join } from 'node:path';
 import { log, writeJson } from './paths.ts';
-import type { TrackGraph } from '../../src/core/infra/graph.ts';
+import type { TrackGraph, TrackPos } from '../../src/core/infra/graph.ts';
 import type { PlatformAssignment } from '../../src/core/infra/platforms.ts';
 import { preparePlan } from '../../src/core/schedule/engine.ts';
 import { buildMovements, type OperationsConfig } from '../../src/core/movement/build.ts';
@@ -15,6 +15,7 @@ export interface BuildAllInput {
   plan: ServicePlan;
   graph: TrackGraph;
   platforms: Map<string, PlatformAssignment>;
+  patternPositions?: Map<number, Map<number, TrackPos>>;
   kin: KinematicsConfig;
   ops: OperationsConfig;
   /** Absolute output directory for movement files. */
@@ -25,7 +26,7 @@ export interface BuildAllInput {
 }
 
 export async function buildAllMovements(input: BuildAllInput): Promise<{ index: MovementsIndex; files: Map<string, MovementsFile> }> {
-  const { plan, graph, platforms, kin, ops } = input;
+  const { plan, graph, platforms, patternPositions, kin, ops } = input;
   const pp = preparePlan(plan, kin);
   const railKeys = new Set(plan.routes.filter((r) => r.kind === 'skytrain').map((r) => r.key));
   const railServices = new Set(plan.trips.filter((t) => railKeys.has(plan.patterns[t.pattern]!.route)).map((t) => t.service));
@@ -43,7 +44,7 @@ export async function buildAllMovements(input: BuildAllInput): Promise<{ index: 
   const files = new Map<string, MovementsFile>();
   for (const [key, { services, dates }] of sets) {
     const t0 = performance.now();
-    const file = buildMovements({ graph, pp, platforms, services, ops, kin });
+    const file = buildMovements({ graph, pp, platforms, patternPositions, services, ops, kin });
     await writeJson(join(input.outDir, `${key}.json`), file);
     index.files[key] = `${input.relDir}/${key}.json`;
     files.set(key, file);

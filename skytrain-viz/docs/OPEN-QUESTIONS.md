@@ -73,10 +73,7 @@ Evidence cited below comes from feed `26SEP_20260925`, OSM (2026-09-25), and the
 18. **Terminal berths.** At stub termini, GTFS uses separate arrival-only and departure-only platforms (e.g. Waterfront Expo arrive P1 / depart P2; Lafarge Lake–Douglas arrive P2 / depart P1). Do trains unload and load at the same berth and reverse in place, or shunt between berths via the tail tracks? Which berths do consecutive trains use (alternating)?
     - *Assumption:* the solver picks the cheapest feasible option. It currently maps Waterfront Expo P1 and P2 to one berth (reverse in place). Berth alternation is future work.
 19. **Diagram crossovers.** The Wikipedia diagram's crossovers haven't been transcribed into `data/infrastructure/diagram-checklist.json` yet, so OSM's crossovers are only validated indirectly: every timetabled move must be routable.
-20. **Crossovers at Braid (provisional).** Since 2024-02-25 Braid short-turns use Platform 2 and depart toward Waterfront, and trains from Production Way–University use Platform 1. That needs two crossovers OSM doesn't have, added provisionally in `data/infrastructure/added-track.geojson`:
-    - **South:** between the south end of Braid's platforms and Sapperton (lat 49.2255–49.2328), modelled at about 49.2320, -122.8825.
-    - **North:** between the north end of Braid's platforms and where the closed track diverges (lat 49.2337–49.2370), modelled at about 49.2367, -122.8843.
-    - *To verify:* satellite imagery or on the ground. Then move the coordinates in `added-track.geojson` and run `npm run data -- --osm`.
+20. ✅ **Braid short-turns (OMC4 works).** 2026 satellite imagery shows no crossover near Braid, and the west track is blocked just north of the station (Braden, 2026-09-26). Short-turns use that west-track stub (TransLink calls it Platform 2) in both directions, between Braid and the crossover just south of Sapperton. Trains to and from Lougheed and Production Way–University use the east track in both directions (Platform 1). GTFS platform numbers at Braid and Sapperton don't reflect this, so it's modelled with role-based `patternPlatforms` rules in `overrides.json`. Remove them when the works finish (~2027).
 
 ## Operations (found while inferring runs)
 

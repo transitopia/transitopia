@@ -24,13 +24,16 @@ export function routePattern(
   plan: ServicePlan,
   platforms: Map<string, PlatformAssignment>,
   pattern: PlanPattern,
+  /** Per-pattern overrides (PlatformReport.patternPositions). */
+  patternPositions?: Map<number, Map<number, TrackPos>>,
 ): PatternRoute {
   const positions: TrackPos[] = [];
   const failures: string[] = [];
-  for (const si of pattern.stops) {
+  const pins = patternPositions?.get(pattern.id);
+  pattern.stops.forEach((si, i) => {
     const a = platforms.get(plan.stops[si]!.id);
-    positions.push(a ? a.pos : { seg: '', offset: 0 });
-  }
+    positions.push(pins?.get(i) ?? (a ? a.pos : { seg: '', offset: 0 }));
+  });
   const hops: (Path | undefined)[] = [];
   // Try both initial directions; keep the one that routes the whole pattern best.
   let best: { hops: (Path | undefined)[]; fails: number; len: number; startDir?: Dir } | undefined;

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { ROOT, PUBLIC_DATA_DIR, readJson } from './paths.ts';
 import { TrackGraph } from '../../src/core/infra/graph.ts';
 import type { InfraCollection } from '../../src/core/infra/types.ts';
-import type { PlatformOverride } from '../../src/core/infra/platforms.ts';
+import type { PatternPlatformRule, PlatformOverride } from '../../src/core/infra/platforms.ts';
 import type { FeedManifest, ServicePlan } from '../../src/core/plan/types.ts';
 import type { LonLat } from '../../src/core/geo.ts';
 
@@ -24,6 +24,8 @@ export interface Overrides {
   addTrack?: string;
   turns: { add: TurnOverride[]; remove: TurnOverride[] };
   platforms: PlatformOverride[];
+  /** Role-based platform pins (see PatternPlatformRule). */
+  patternPlatforms?: PatternPlatformRule[];
 }
 
 export async function loadOverrides(): Promise<Overrides> {

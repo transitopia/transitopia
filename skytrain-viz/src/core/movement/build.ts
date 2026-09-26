@@ -95,12 +95,14 @@ export interface BuildInput {
   graph: TrackGraph;
   pp: PreparedPlan;
   platforms: Map<string, PlatformAssignment>;
+  /** Per-pattern platform positions from role-based rules. */
+  patternPositions?: Map<number, Map<number, TrackPos>>;
   services: Set<string>;
   ops: OperationsConfig;
   kin: KinematicsConfig;
 }
 
-export function buildMovements({ graph: g, pp, platforms, services, ops, kin }: BuildInput): MovementsFile {
+export function buildMovements({ graph: g, pp, platforms, patternPositions, services, ops, kin }: BuildInput): MovementsFile {
   const plan = pp.plan;
   const railRoutes = new Set(plan.routes.filter((r) => r.kind === 'skytrain').map((r) => r.key));
   const fleetOf = new Map<string, number>();
@@ -138,7 +140,7 @@ export function buildMovements({ graph: g, pp, platforms, services, ops, kin }: 
   const patternsOut: MovementsFile['patterns'] = {};
   for (const p of plan.patterns) {
     if (!railRoutes.has(p.route)) continue;
-    const r = routePattern(g, plan, platforms, p);
+    const r = routePattern(g, plan, platforms, p, patternPositions);
     if (r.failures.length) continue;
     patternRoutes.set(p.id, r);
     patternsOut[p.id] = { hops: r.hops.map((h) => addPath(h!.pieces)) };

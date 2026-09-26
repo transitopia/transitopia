@@ -19,11 +19,12 @@ async function main() {
   const ops = await readJson<OperationsConfig>(join(CONFIG_DIR, 'operations.json'));
   for (const plan of await loadAllPlans()) {
     const railKeys = new Set(plan.routes.filter((r) => r.kind === 'skytrain').map((r) => r.key));
-    const report = mapPlatforms(graph, plan, railKeys, overrides.platforms);
+    const report = mapPlatforms(graph, plan, railKeys, overrides.platforms, overrides.patternPlatforms);
     await buildAllMovements({
       plan,
       graph,
       platforms: report.assignments,
+      patternPositions: report.patternPositions,
       kin,
       ops,
       outDir: join(FEEDS_OUT_DIR, plan.feedVersion, 'movements'),

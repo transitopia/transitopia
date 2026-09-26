@@ -28,6 +28,19 @@ export interface PlatformOverride {
   note?: string;
 }
 
+/**
+ * Pin stops by the role of the trip's pattern, when GTFS platform numbers don't say which track a
+ * train uses (e.g. temporary single-track working). Applies to patterns that start or end at
+ * `station` ('terminating') or pass through it ('through'); `pins` maps station names to a point on
+ * the track those patterns use there.
+ */
+export interface PatternPlatformRule {
+  station: string;
+  patterns: 'terminating' | 'through';
+  pins: Record<string, LonLat>;
+  note?: string;
+}
+
 export interface PlatformAssignment {
   stopId: string;
   name: string;
@@ -46,6 +59,8 @@ export interface PlatformReport {
   breaks: string[];
   /** Termini (stop name + route) where arriving trains can reach neither a departure platform nor a yard. */
   turnbackFailures: string[];
+  /** Per-pattern positions from PatternPlatformRules: pattern id → stop index → track position. */
+  patternPositions: Map<number, Map<number, TrackPos>>;
 }
 
 const CANDIDATE_RADIUS_M = 60;
@@ -68,8 +83,8 @@ type Pins = Map<number, Set<number>>;
 interface PatternEnds {
   route: string;
   weight: number;
-  first: { si: number; ci: number; dir: Dir };
-  last: { si: number; ci: number; dir: Dir };
+  first: { si: number; ci: number; dir: Dir; pin?: TrackPos };
+  last: { si: number; ci: number; dir: Dir; pin?: TrackPos };
 }
 
 interface Solution {
@@ -85,6 +100,7 @@ export function mapPlatforms(
   plan: ServicePlan,
   routeKeys: Set<string>,
   overrides: PlatformOverride[] = [],
+  patternRules: PatternPlatformRule[] = [],
 ): PlatformReport {
   const railPatterns = plan.patterns.filter((p) => routeKeys.has(p.route));
   const tripsPerPattern = new Map<number, number>();
@@ -104,6 +120,35 @@ export function mapPlatforms(
     c = near.filter((n) => (seen.has(n.seg) ? false : (seen.add(n.seg), true))).slice(0, o ? 1 : MAX_CANDIDATES);
     candidates.set(si, c);
     return c;
+  };
+
+  // --- per-pattern pins (role-based rules) ---
+  const stationName = (si: number) => {
+    const s = plan.stops[si]!;
+    return plan.stations.find((x) => x.id === s.parent)?.name ?? s.name.replace(/\s+Station.*$/, '');
+  };
+  const pinned = new Map<number, Map<number, Cand>>();
+  for (const p of railPatterns) {
+    const ends = new Set([stationName(p.stops[0]!), stationName(p.stops[p.stops.length - 1]!)]);
+    const names = p.stops.map(stationName);
+    for (const rule of patternRules) {
+      const applies = rule.patterns === 'terminating' ? ends.has(rule.station) : names.includes(rule.station) && !ends.has(rule.station);
+      if (!applies) continue;
+      names.forEach((n, i) => {
+        const pin = rule.pins[n];
+        if (!pin) return;
+        const c = g.nearest(pin, 10, PLATFORM_KINDS)[0];
+        if (!c) return;
+        const s = plan.stops[p.stops[i]!]!;
+        const m = pinned.get(p.id) ?? pinned.set(p.id, new Map()).get(p.id)!;
+        m.set(i, { ...c, dist: g.nearest([s.lon, s.lat], 200, PLATFORM_KINDS).find((x) => x.seg === c.seg)?.dist ?? 0 });
+      });
+    }
+  }
+  /** Candidates for stop i of a pattern: its pin if any, else the stop's candidates. */
+  const candsAt = (patId: number, i: number, si: number): Cand[] => {
+    const pin = pinned.get(patId)?.get(i);
+    return pin ? [pin] : candidatesFor(si);
   };
 
   // --- cached routing ---
@@ -194,13 +239,14 @@ export function mapPlatforms(
       type Cell = { cost: number; back?: [number, number] };
       const layers: Cell[][][] = [];
       const inf = (): Cell[] => [{ cost: Infinity }, { cost: Infinity }];
-      const c0 = candidatesFor(stops[0]!);
-      const a0 = new Set(allowed(stops[0]!));
+      const c0 = candsAt(pat.id, 0, stops[0]!);
+      const a0 = new Set(pinned.get(pat.id)?.has(0) ? [0] : allowed(stops[0]!));
       layers.push(c0.map((c, i) => (a0.has(i) ? [{ cost: c.dist * DIST_WEIGHT }, { cost: c.dist * DIST_WEIGHT }] : inf())));
       let broken = false;
       for (let i = 1; i < stops.length && !broken; i++) {
-        const prevC = candidatesFor(stops[i - 1]!);
-        const curC = candidatesFor(stops[i]!);
+        const prevC = candsAt(pat.id, i - 1, stops[i - 1]!);
+        const curC = candsAt(pat.id, i, stops[i]!);
+        const curAllowed = pinned.get(pat.id)?.has(i) ? [0] : allowed(stops[i]!);
         const layer: Cell[][] = curC.map(inf);
         for (let a = 0; a < prevC.length; a++) {
           for (let da = 0; da < 2; da++) {
@@ -208,7 +254,7 @@ export function mapPlatforms(
             if (!Number.isFinite(base)) continue;
             // At the first stop the direction is free; afterwards it is the arrival direction.
             const dir: Dir | undefined = i === 1 ? undefined : da === 0 ? 1 : -1;
-            for (const b of allowed(stops[i]!)) {
+            for (const b of curAllowed) {
               const r = hop(prevC[a]!, dir, curC[b]!);
               if (!r) continue;
               const db = r.endDir === 1 ? 0 : 1;
@@ -240,18 +286,21 @@ export function mapPlatforms(
       for (let i = layers.length - 1; i >= 0; i--) {
         chosen[i] = bi;
         const si = stops[i]!;
-        const v = votes.get(si) ?? new Array(candidatesFor(si).length).fill(0);
-        v[bi] += weight;
-        votes.set(si, v);
+        if (!pinned.get(pat.id)?.has(i)) {
+          const v = votes.get(si) ?? new Array(candidatesFor(si).length).fill(0);
+          v[bi] += weight;
+          votes.set(si, v);
+        }
         const back = layers[i]![bi]![bd]!.back;
         if (back) [bi, bd] = back;
       }
-      const firstHop = hop(candidatesFor(stops[0]!)[chosen[0]!]!, undefined, candidatesFor(stops[1]!)[chosen[1]!]!)!;
+      const n = stops.length;
+      const firstHop = hop(candsAt(pat.id, 0, stops[0]!)[chosen[0]!]!, undefined, candsAt(pat.id, 1, stops[1]!)[chosen[1]!]!)!;
       ends.push({
         route: pat.route,
         weight,
-        first: { si: stops[0]!, ci: chosen[0]!, dir: firstHop.startDir },
-        last: { si: stops[stops.length - 1]!, ci: chosen[stops.length - 1]!, dir: lastDir },
+        first: { si: stops[0]!, ci: chosen[0]!, dir: firstHop.startDir, pin: pinned.get(pat.id)?.get(0) },
+        last: { si: stops[n - 1]!, ci: chosen[n - 1]!, dir: lastDir, pin: pinned.get(pat.id)?.get(n - 1) },
       });
     }
 
@@ -261,14 +310,14 @@ export function mapPlatforms(
     const deps = new Map<string, { pos: TrackPos; dir: Dir }[]>();
     for (const e of ends) {
       const k = `${e.route}|${stationOf(e.first.si)}`;
-      (deps.get(k) ?? deps.set(k, []).get(k)!).push({ pos: posOf(e.first.si), dir: e.first.dir });
+      (deps.get(k) ?? deps.set(k, []).get(k)!).push({ pos: e.first.pin ?? posOf(e.first.si), dir: e.first.dir });
     }
     const checked = new Map<string, boolean>();
     for (const e of ends) {
       const k = `${e.route}|${stationOf(e.last.si)}`;
       const ds = deps.get(k);
       if (!ds) continue; // trips end where none of this line start (e.g. heading to a yard)
-      const a = posOf(e.last.si);
+      const a = e.last.pin ?? posOf(e.last.si);
       const ck = `${k}|${posKey(a)}|${e.last.dir}`;
       let ok = checked.get(ck);
       if (ok === undefined) checked.set(ck, (ok = ds.some((d) => canTurn(a, e.last.dir, d.pos, d.dir)) || canPullIn(a, e.last.dir)));
@@ -407,5 +456,7 @@ export function mapPlatforms(
       agreement: total ? v![chosen]! / total : 0,
     });
   }
-  return { assignments, unmapped, breaks: [...sol.breaks], turnbackFailures: [...sol.turnbackFailures] };
+  const patternPositions = new Map<number, Map<number, TrackPos>>();
+  for (const [pid, m] of pinned) patternPositions.set(pid, new Map([...m].map(([i, c]) => [i, { seg: c.seg, offset: c.offset }])));
+  return { assignments, unmapped, breaks: [...sol.breaks], turnbackFailures: [...sol.turnbackFailures], patternPositions };
 }
