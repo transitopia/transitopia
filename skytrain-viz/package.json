@@ -1,0 +1,43 @@
+{
+  "name": "skytrain-viz",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Interactive to-scale map of Vancouver's SkyTrain, SeaBus, West Coast Express, and express buses with schedule-inferred and real-time positions.",
+  "author": "Braden MacDonald",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "data": "tsx scripts/data.ts",
+    "data:gtfs": "tsx scripts/fetch-gtfs.ts && tsx scripts/build-schedule.ts",
+    "tiles": "tsx scripts/tiles.ts",
+    "server": "tsx server/main.ts"
+  },
+  "dependencies": {
+    "@deck.gl/core": "^9.4.0",
+    "@deck.gl/layers": "^9.4.0",
+    "@deck.gl/mapbox": "^9.4.0",
+    "@protomaps/basemaps": "^5.7.2",
+    "maplibre-gl": "^6.11.2",
+    "pmtiles": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@types/yauzl": "^3.4.0",
+    "csv-parse": "^7.0.3",
+    "gtfs-realtime-bindings": "^2.2.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2",
+    "yauzl": "^3.4.0"
+  }
+}

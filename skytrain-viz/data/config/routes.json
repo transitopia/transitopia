@@ -1,0 +1,110 @@
+{
+  "$comment": "Routes shown on the map. Matched against GTFS routes.txt by name (never route_id, which changes between feeds). 'kind' drives how vehicles are modelled: 'skytrain' = track-level (PLAN.md §4.1–4.4), 'shape' = interpolated along GTFS shapes, 'bus' = GTFS-RT with schedule fallback. 'color' is optional; when omitted the GTFS route_color is used. GTFS has no colours for buses, so each gets a distinct colour for legibility.",
+  "routes": [
+    {
+      "key": "expo",
+      "label": "Expo Line",
+      "match": {
+        "route_long_name": "Expo Line"
+      },
+      "kind": "skytrain",
+      "mode": "skytrain"
+    },
+    {
+      "key": "millennium",
+      "label": "Millennium Line",
+      "match": {
+        "route_long_name": "Millennium Line"
+      },
+      "kind": "skytrain",
+      "mode": "skytrain"
+    },
+    {
+      "key": "canada",
+      "label": "Canada Line",
+      "match": {
+        "route_long_name": "Canada Line"
+      },
+      "kind": "skytrain",
+      "mode": "skytrain"
+    },
+    {
+      "key": "seabus",
+      "label": "SeaBus",
+      "match": {
+        "route_long_name": "SeaBus"
+      },
+      "kind": "shape",
+      "mode": "ferry"
+    },
+    {
+      "key": "wce",
+      "label": "West Coast Express",
+      "match": {
+        "route_short_name": "WCE"
+      },
+      "kind": "shape",
+      "mode": "rail"
+    },
+    {
+      "key": "99",
+      "label": "99 B-Line",
+      "match": {
+        "route_short_name": "099"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "color": "#e2711d"
+    },
+    {
+      "key": "R1",
+      "label": "R1 King George Blvd",
+      "match": {
+        "route_short_name": "R1"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "color": "#2a9d8f"
+    },
+    {
+      "key": "R2",
+      "label": "R2 Marine-Willingdon",
+      "match": {
+        "route_short_name": "R2"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "color": "#8e5ac8"
+    },
+    {
+      "key": "R3",
+      "label": "R3 Lougheed Hwy",
+      "match": {
+        "route_short_name": "R3"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "color": "#c2410c"
+    },
+    {
+      "key": "R4",
+      "label": "R4 41st Avenue",
+      "match": {
+        "route_short_name": "R4"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "color": "#0f766e"
+    },
+    {
+      "key": "R5",
+      "label": "R5 Hastings St",
+      "match": {
+        "route_short_name": "R5"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "color": "#b5179e"
+    }
+  ]
+}
