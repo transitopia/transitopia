@@ -6,12 +6,16 @@ import type { GeoJSONSource, Map as MlMap } from 'maplibre-gl';
 import type { ExpressionSpecification, GeoJSONSourceSpecification } from '@maplibre/maplibre-gl-style-spec';
 import type { ServicePlan } from '../../core/plan/types.ts';
 import { routeSections } from '../../core/plan/coverage.ts';
-import { busStopMarkers } from '../../core/plan/bus-stops.ts';
+import { busStopMarkers, busStopTicks } from '../../core/plan/bus-stops.ts';
 import type { Theme } from '../basemap.ts';
 
 export const ROUTES_SOURCE = 'transit-routes';
 export const STATIONS_SOURCE = 'transit-stations';
 export const BUS_STOPS_SOURCE = 'transit-bus-stops';
+export const BUS_TICKS_SOURCE = 'transit-bus-stop-ticks';
+const TICK_IMAGE = 'bus-stop-tick';
+/** Text anchor for a label placed in each compass direction (N, NE, E, …) from its point. */
+const ANCHORS = ['bottom', 'bottom-left', 'left', 'top-left', 'top', 'top-right', 'right', 'bottom-right'];
 /** Vehicles are inserted beneath this layer, so stop and station labels stay readable above them. */
 export const VEHICLES_BEFORE_LAYER = 'bus-stops-label';
 
@@ -59,11 +63,50 @@ function busStopsGeoJson(plan: ServicePlan): FeatureCollection {
         // ",99,R4," so filters can test membership with a substring match.
         routes: `,${s.routes.join(',')},`,
         n: s.routes.length,
-        color: plan.routes.find((r) => r.key === s.routes[0])?.color ?? '#888',
+        // Text anchor opposite the tick's direction, so the label sits beyond the tick's end.
+        anchor: ANCHORS[Math.round(s.bearing / 45) % 8],
       },
       geometry: { type: 'Point' as const, coordinates: [s.lon, s.lat] },
     })),
   };
+}
+
+function busTicksGeoJson(plan: ServicePlan): FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: busStopTicks(plan).map((t) => ({
+      type: 'Feature' as const,
+      properties: { route: t.route, bearing: t.bearing, color: plan.routes.find((r) => r.key === t.route)?.color ?? '#888' },
+      geometry: { type: 'Point' as const, coordinates: [t.lon, t.lat] },
+    })),
+  };
+}
+
+/**
+ * A bar from the icon's centre to its top edge, as a signed distance field so MapLibre can colour it
+ * per route (icon-color). Rotated by bearing, it juts from the route line toward the stop.
+ */
+function tickImage(): { width: number; height: number; data: Uint8Array } {
+  const pad = 4;
+  const barW = 6;
+  const barH = 20;
+  const width = barW + 2 * pad;
+  const height = 2 * (barH + pad);
+  const data = new Uint8Array(width * height * 4);
+  const cy = height / 2;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      // Signed distance (px) to the bar [pad, pad+barW] × [cy-barH, cy], positive outside.
+      const dx = Math.max(pad - (x + 0.5), x + 0.5 - (pad + barW));
+      const dy = Math.max(cy - barH - (y + 0.5), y + 0.5 - cy);
+      const d = dx > 0 && dy > 0 ? Math.hypot(dx, dy) : Math.max(dx, dy);
+      const i = (y * width + x) * 4;
+      data[i] = data[i + 1] = data[i + 2] = 255;
+      // MapLibre's SDF edge is at 192/255; one step ≈ 1/8 px of buffer.
+      data[i + 3] = Math.max(0, Math.min(255, Math.round(192 - d * 64)));
+    }
+  }
+  return { width, height, data };
 }
 
 function stationsGeoJson(plan: ServicePlan): FeatureCollection {
@@ -93,12 +136,15 @@ export function addStaticLayers(map: MlMap, plan: ServicePlan, theme: Theme, hid
     (map.getSource(ROUTES_SOURCE) as GeoJSONSource).setData(routes.data as FeatureCollection);
     (map.getSource(STATIONS_SOURCE) as GeoJSONSource).setData(stations.data as FeatureCollection);
     (map.getSource(BUS_STOPS_SOURCE) as GeoJSONSource).setData(busStopsGeoJson(plan));
+    (map.getSource(BUS_TICKS_SOURCE) as GeoJSONSource).setData(busTicksGeoJson(plan));
     applyRouteFilter(map, hiddenRoutes);
     return;
   }
   map.addSource(ROUTES_SOURCE, routes);
   map.addSource(STATIONS_SOURCE, stations);
   map.addSource(BUS_STOPS_SOURCE, { type: 'geojson', data: busStopsGeoJson(plan) });
+  map.addSource(BUS_TICKS_SOURCE, { type: 'geojson', data: busTicksGeoJson(plan) });
+  if (!map.hasImage(TICK_IMAGE)) map.addImage(TICK_IMAGE, tickImage(), { sdf: true, pixelRatio: 2 });
   const dark = theme === 'dark';
   const casing = dark ? '#111418' : '#ffffff';
   const text = dark ? '#e6e8eb' : '#1f2328';
@@ -163,18 +209,23 @@ export function addStaticLayers(map: MlMap, plan: ServicePlan, theme: Theme, hid
       'line-width': ['interpolate', ['linear'], ['zoom'], 9, 2, 13, 4.5, 15, 5, 18, 3.5],
     },
   });
-  // Express bus stops: smaller than stations, ringed in the route colour, labelled only close in.
+  // Express bus stops: a tick in the route colour toward the stop's side of the street (opposite
+  // stops make a "+"), labelled only close in.
   map.addLayer({
     id: 'bus-stops',
-    type: 'circle',
-    source: BUS_STOPS_SOURCE,
+    type: 'symbol',
+    source: BUS_TICKS_SOURCE,
     minzoom: 12,
-    paint: {
-      'circle-color': casing,
-      'circle-stroke-color': ['get', 'color'],
-      'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 12, 1, 16, 2],
-      'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 1.5, 14, 3, 17, 5],
+    layout: {
+      'icon-image': TICK_IMAGE,
+      'icon-rotate': ['get', 'bearing'],
+      'icon-rotation-alignment': 'map',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+      // Bar ≈ line width thick, ≈ 2.5× line width long (the bus line is 2 px at z13, 4 px at z16).
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.45, 14, 0.8, 16, 1.2, 18, 1.5],
     },
+    paint: { 'icon-color': ['get', 'color'], 'icon-opacity': 0.85 },
   });
   map.addLayer({
     id: 'stations',
@@ -223,8 +274,8 @@ export function addStaticLayers(map: MlMap, plan: ServicePlan, theme: Theme, hid
         'text-field': ['get', 'name'],
         'text-font': ['Noto Sans Regular'],
         'text-size': ['interpolate', ['linear'], ['zoom'], 14, 9, 17, 11],
-        'text-offset': [0, 0.8],
-        'text-anchor': 'top',
+        'text-radial-offset': ['interpolate', ['linear'], ['zoom'], 14, 0.9, 18, 1.5],
+        'text-anchor': ['get', 'anchor'],
         'text-optional': true,
       },
       paint: { 'text-color': mutedText, 'text-halo-color': halo, 'text-halo-width': 1.2 },
@@ -248,5 +299,6 @@ export function applyRouteFilter(map: MlMap, hidden: Set<string>): void {
   // A bus stop shows while any of its routes is visible.
   const hiddenAtStop: ExpressionSpecification = ['+', 0, 0, ...[...hidden].map((r) => ['case', ['in', `,${r},`, ['get', 'routes']], 1, 0] as ExpressionSpecification)];
   const stopVisible: ExpressionSpecification = ['<', hiddenAtStop, ['get', 'n']];
-  for (const id of ['bus-stops', VEHICLES_BEFORE_LAYER]) if (map.getLayer(id)) map.setFilter(id, stopVisible);
+  if (map.getLayer(VEHICLES_BEFORE_LAYER)) map.setFilter(VEHICLES_BEFORE_LAYER, stopVisible);
+  if (map.getLayer('bus-stops')) map.setFilter('bus-stops', visible);
 }

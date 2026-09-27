@@ -1,19 +1,23 @@
-// Map markers for express bus stops: one per location (GTFS has a stop per direction, e.g.
-// "Eastbound W Broadway @ Alma St" and "Westbound W Broadway @ Alma St"), labelled by cross street
-// or exchange name, leaving out stops at stations (the station marker already covers them).
+// Map markers for express bus stops, leaving out stops at stations (the station marker covers them):
+// - a tick per GTFS stop (one per direction), jutting from the route line toward the side of the
+//   street the stop is on, so opposite stops make a "+";
+// - a label per location (both directions merged), by cross street or exchange name.
 
-import { distM, type LonLat } from '../geo.ts';
+import { cumulativeLengths, distM, localProjector, pointAlong, type LonLat } from '../geo.ts';
 import type { ServicePlan } from './types.ts';
 
 export interface BusStopMarker {
   name: string;
+  /** Base of one of its ticks, on the route line. */
   lon: number;
   lat: number;
+  /** That tick's direction: the label goes beyond its end. */
+  bearing: number;
   /** Route keys serving the stop. */
   routes: string[];
 }
 
-/** Same-named stops within this distance merge into one marker (far-side pairs can be ~200 m apart) (m). */
+/** Same-named stops whose ticks are within this distance share a label (far-side pairs can be ~200 m apart) (m). */
 const MERGE_M = 250;
 /** Stops within this distance of a station aren't shown (m). */
 const STATION_M = 200;
@@ -28,34 +32,75 @@ export function busStopLabel(name: string): string | undefined {
   return after.replace(/[-\s]+$/, '');
 }
 
-export function busStopMarkers(plan: ServicePlan): BusStopMarker[] {
+export interface BusStopTick {
+  route: string;
+  /** Label (cross street or exchange). */
+  name: string;
+  /** Point on the route line. */
+  lon: number;
+  lat: number;
+  /** Direction the tick points, toward the stop's side of the street (degrees clockwise from north). */
+  bearing: number;
+}
+
+/** A stop closer than this to the route line is assumed to be on the right, as traffic drives (m). */
+const ON_LINE_M = 2;
+
+function stationPoints(plan: ServicePlan): LonLat[] {
+  return plan.stations.map((s) => [s.lon, s.lat]);
+}
+
+function shownAt(name: string, at: LonLat, stations: LonLat[]): string | undefined {
+  const label = busStopLabel(name);
+  return label && !stations.some((st) => distM(st, at) < STATION_M) ? label : undefined;
+}
+
+export function busStopTicks(plan: ServicePlan): BusStopTick[] {
   const busRoutes = new Set(plan.routes.filter((r) => r.kind === 'bus').map((r) => r.key));
   const used = new Set(plan.trips.map((t) => t.pattern));
-  const routesAt = new Map<number, Set<string>>();
+  const stations = stationPoints(plan);
+  const cums = new Map<string, Float64Array>();
+  const seen = new Set<string>();
+  const out: BusStopTick[] = [];
   for (const p of plan.patterns) {
     if (!busRoutes.has(p.route) || !used.has(p.id)) continue;
-    for (const si of p.stops) {
-      if (!routesAt.has(si)) routesAt.set(si, new Set());
-      routesAt.get(si)!.add(p.route);
-    }
+    const shape = plan.shapes[p.shape] as LonLat[] | undefined;
+    if (!shape || shape.length < 2) continue;
+    let cum = cums.get(p.shape);
+    if (!cum) cums.set(p.shape, (cum = cumulativeLengths(shape)));
+    p.stops.forEach((si, i) => {
+      const s = plan.stops[si]!;
+      const key = `${s.id}|${p.route}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const at: LonLat = [s.lon, s.lat];
+      const name = shownAt(s.name, at, stations);
+      if (!name) return;
+      const q = pointAlong(shape, cum!, p.dist[i]!);
+      // Which side of the direction of travel is the stop on?
+      const proj = localProjector(q.lat);
+      const [qx, qy] = proj.toXY([q.lon, q.lat]);
+      const [sx, sy] = proj.toXY(at);
+      const tx = Math.sin((q.bearing * Math.PI) / 180);
+      const ty = Math.cos((q.bearing * Math.PI) / 180);
+      const cross = tx * (sy - qy) - ty * (sx - qx); // > 0: stop is left of travel
+      const left = Math.hypot(sx - qx, sy - qy) >= ON_LINE_M && cross > 0;
+      out.push({ route: p.route, name, lon: q.lon, lat: q.lat, bearing: (q.bearing + (left ? 270 : 90)) % 360 });
+    });
   }
-  const stations: LonLat[] = plan.stations.map((s) => [s.lon, s.lat]);
-  const groups: { name: string; pts: LonLat[]; routes: Set<string> }[] = [];
-  for (const [si, routes] of routesAt) {
-    const s = plan.stops[si]!;
-    const name = busStopLabel(s.name);
-    const at: LonLat = [s.lon, s.lat];
-    if (!name || stations.some((st) => distM(st, at) < STATION_M)) continue;
-    const g = groups.find((x) => x.name === name && x.pts.some((q) => distM(q, at) < MERGE_M));
+  return out;
+}
+
+export function busStopMarkers(plan: ServicePlan): BusStopMarker[] {
+  const groups: { name: string; ticks: BusStopTick[]; routes: Set<string> }[] = [];
+  for (const t of busStopTicks(plan)) {
+    const at: LonLat = [t.lon, t.lat];
+    const g = groups.find((x) => x.name === t.name && x.ticks.some((q) => distM([q.lon, q.lat], at) < MERGE_M));
     if (g) {
-      g.pts.push(at);
-      for (const r of routes) g.routes.add(r);
-    } else groups.push({ name, pts: [at], routes: new Set(routes) });
+      g.ticks.push(t);
+      g.routes.add(t.route);
+    } else groups.push({ name: t.name, ticks: [t], routes: new Set([t.route]) });
   }
-  return groups.map((g) => ({
-    name: g.name,
-    lon: g.pts.reduce((a, p) => a + p[0], 0) / g.pts.length,
-    lat: g.pts.reduce((a, p) => a + p[1], 0) / g.pts.length,
-    routes: [...g.routes].sort(),
-  }));
+  // Label at the first tick, on its side of the line.
+  return groups.map((g) => ({ name: g.name, lon: g.ticks[0]!.lon, lat: g.ticks[0]!.lat, bearing: g.ticks[0]!.bearing, routes: [...g.routes].sort() }));
 }

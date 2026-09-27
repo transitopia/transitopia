@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { busStopLabel, busStopMarkers } from '../src/core/plan/bus-stops.ts';
+import { busStopLabel, busStopMarkers, busStopTicks } from '../src/core/plan/bus-stops.ts';
 import type { ServicePlan } from '../src/core/plan/types.ts';
 
 describe('busStopLabel', () => {
@@ -30,10 +30,15 @@ describe('busStopMarkers', () => {
       { id: 'd', name: 'Rupert Station @ Platform 1', lon: -123.0328, lat: 49.2606 },
     ],
     stations: [{ id: 's', name: 'Rupert', lon: -123.0328, lat: 49.2606, routes: ['expo'] }],
+    // Broadway runs east–west along lat 49.2644; the eastbound stop is on the south curb, westbound north.
+    shapes: {
+      east: [[-123.19, 49.2644], [-123.03, 49.2644]],
+      west: [[-123.03, 49.2644], [-123.19, 49.2644]],
+    },
     patterns: [
-      { id: 0, route: '99', stops: [0, 2] },
-      { id: 1, route: '99', stops: [2, 1] },
-      { id: 2, route: 'expo', stops: [3] },
+      { id: 0, route: '99', shape: 'east', stops: [0, 2], dist: [393, 11_500] },
+      { id: 1, route: '99', shape: 'west', stops: [2, 1], dist: [0, 11_070] },
+      { id: 2, route: 'expo', shape: 'east', stops: [3], dist: [0] },
     ],
     trips: [{ pattern: 0 }, { pattern: 1 }, { pattern: 2 }],
   } as unknown as ServicePlan;
@@ -42,6 +47,12 @@ describe('busStopMarkers', () => {
     const m = busStopMarkers(plan);
     expect(m.map((x) => x.name)).toEqual(['Alma St']);
     expect(m[0]!.routes).toEqual(['99']);
-    expect(m[0]!.lon).toBeCloseTo(-123.1852, 4);
+  });
+
+  it('points each tick toward the side of the street its stop is on', () => {
+    const t = busStopTicks(plan);
+    expect(t).toHaveLength(2);
+    expect(t.map((x) => Math.round(x.bearing)).sort((a, b) => a - b)).toEqual([0, 180]);
+    for (const x of t) expect(x.lat).toBeCloseTo(49.2644, 6);
   });
 });
