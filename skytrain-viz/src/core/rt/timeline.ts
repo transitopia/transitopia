@@ -120,6 +120,30 @@ export class RtTimeline {
       }
     }
     this.fixTimes.sort((a, b) => a - b);
+    for (const tr of this.tracks.values()) this.dropSpikes(tr);
+  }
+
+  /**
+   * Drops lone fixes that jump ahead along the route and are contradicted by the next one (it's
+   * back behind by more than GPS jitter, in line with the fix before). Seen: a 99 short-turning at
+   * Broadway & Commercial reported once from 60 m up Commercial Dr, then from the corner again, and
+   * was drawn driving backwards. Needs the following fix, so live it's the glide/hold that copes.
+   */
+  private dropSpikes(tr: Track): void {
+    const n = tr.obs.length;
+    if (n < 3) return;
+    this.alongOf(tr, n - 1);
+    const spike = (k: number) => {
+      const [a, b, c] = [tr.obs[k - 1]!, tr.obs[k]!, tr.obs[k + 1]!];
+      if (a.v.tripId !== b.v.tripId || b.v.tripId !== c.v.tripId) return false;
+      const [da, db, dc] = [tr.along[k - 1]!, tr.along[k]!, tr.along[k + 1]!];
+      return db - dc > JITTER_M && dc >= da - JITTER_M;
+    };
+    const keep = tr.obs.filter((_, k) => k === 0 || k === n - 1 || !spike(k));
+    if (keep.length === n) return;
+    tr.obs = keep;
+    tr.along = [];
+    tr.shift = [];
   }
 
   /**
@@ -315,8 +339,10 @@ export class RtTimeline {
     const lon = o0.v.lon + (o1.v.lon - o0.v.lon) * f;
     const lat = o0.v.lat + (o1.v.lat - o0.v.lat) * f;
     // E.g. a bus switching trips while laying over: fixes metres apart say nothing about heading.
+    // Nor does a jump backwards along the same trip: buses don't reverse along their route.
     const close = distM([o0.v.lon, o0.v.lat], [o1.v.lon, o1.v.lat]) < HEADING_MIN_M;
-    const bearing = o0.v.bearing ?? (close ? (this.routeBearing(tr, i + 1) ?? this.routeBearing(tr, i)) : undefined) ?? headingOf(o0.v, o1.v);
+    const backwards = sameTrip && this.alongOf(tr, i + 1) < this.alongOf(tr, i);
+    const bearing = o0.v.bearing ?? (close || backwards ? (this.routeBearing(tr, i + 1) ?? this.routeBearing(tr, i)) : undefined) ?? headingOf(o0.v, o1.v);
     return this.state(id, o0.v, lon, lat, bearing, undefined, 'interpolated', t, o0, undefined, this.offRoute(o0.v));
   }
 

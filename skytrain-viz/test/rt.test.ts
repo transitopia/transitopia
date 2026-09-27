@@ -304,6 +304,16 @@ describe('headings of standing buses', () => {
     expect(v.status).toBe('dwell');
   });
 
+  it('ignores a lone fix that jumps ahead and is contradicted by the next', () => {
+    // 300 m, then 360 m (spike), then back at 305 m and 310 m.
+    const tl = new RtTimeline([fix(0, pt(300)), fix(30, pt(360)), fix(60, pt(305)), fix(90, pt(310))], pp, kin, opts);
+    for (const s of [20, 30, 45, 60]) {
+      const v = tl.vehiclesAt(T0 + s * 1000)[0]!;
+      expect(projectOnto(L, cum, [v.lon, v.lat]).along).toBeLessThan(310);
+      expect(eastish(v.bearing)).toBe(true);
+    }
+  });
+
   it('faces along the route when a parked bus switches trips', () => {
     const tl = new RtTimeline([fix(0, pt(300)), fix(30, pt(296, 8), 'next-trip')], pp, kin, opts);
     expect(eastish(tl.vehiclesAt(T0 + 15_000)[0]!.bearing)).toBe(true);

@@ -103,8 +103,11 @@ export function projectOnto(
     const l2 = dx * dx + dy * dy;
     let f = l2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / l2 : 0;
     f = Math.min(1, Math.max(0, f));
-    const along = cum[i]! + (cum[i + 1]! - cum[i]!) * f;
-    if (along < fromAlong) continue;
+    // Not before fromAlong: clamp within the segment containing it (skipping the segment would
+    // match a point just behind fromAlong to some distant part of the line instead).
+    const segLen = cum[i + 1]! - cum[i]!;
+    if (cum[i]! + segLen * f < fromAlong) f = segLen > 0 ? Math.min(1, (fromAlong - cum[i]!) / segLen) : 1;
+    const along = cum[i]! + segLen * f;
     const off = Math.hypot(ax + dx * f - px, ay + dy * f - py);
     if (off < best.offset) best = { along, offset: off };
     else if (best.offset < acceptM && off > best.offset + 500) break;
