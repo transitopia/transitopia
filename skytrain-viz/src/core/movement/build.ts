@@ -7,7 +7,7 @@
 // pull-ins → emit events, splitting deadheads at reversals so playback only handles one-direction moves.
 
 import type { Dir, Path, PathPiece, TrackGraph, TrackPos } from '../infra/graph.ts';
-import { routePattern } from '../infra/patterns.ts';
+import { REVENUE_KIND_PENALTY, routePattern } from '../infra/patterns.ts';
 import type { PlatformAssignment } from '../infra/platforms.ts';
 import type { PreparedPlan, PreparedTrip } from '../schedule/engine.ts';
 import { kinematicsFor, minLegTime, type KinematicsConfig } from './kinematics.ts';
@@ -239,7 +239,7 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
     const key = `${pk(a.pos1)}|${dir}|${pk(second)}`;
     let p = berthCache.get(key);
     if (p !== undefined) return p;
-    p = g.route(a.pos1, second, { fromDir: dir, allowReversals: false, maxLength: 12_000 });
+    p = g.route(a.pos1, second, { fromDir: dir, allowReversals: false, maxLength: 12_000, kindPenalty: REVENUE_KIND_PENALTY });
     if (p && p.reversals > 0) p = null;
     berthCache.set(key, p);
     return p;
@@ -434,7 +434,7 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
   const isFree = (pos: TrackPos, from: number, to: number, len: number) =>
     !(occupied.get(pos.seg) ?? []).some((o) => o.from < to && from < o.to && Math.abs(o.offset - pos.offset) < len);
   const noRev = (a: TrackPos, dir: Dir | undefined, b: TrackPos) => {
-    const p = g.route(a, b, { fromDir: dir, allowReversals: false, maxLength: 12_000 });
+    const p = g.route(a, b, { fromDir: dir, allowReversals: false, maxLength: 12_000, kindPenalty: REVENUE_KIND_PENALTY });
     return p && p.reversals === 0 ? p : null;
   };
   for (const a of arrivals) {

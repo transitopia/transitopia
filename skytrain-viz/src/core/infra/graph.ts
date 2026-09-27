@@ -50,6 +50,8 @@ export interface RouteOptions {
   reversalRunIn?: number;
   /** Segment kinds the route may use (default: all but yard). */
   kinds?: Set<SegmentKind>;
+  /** Extra distance-equivalent cost for entering a segment of these kinds (m), e.g. to keep revenue running on main track. */
+  kindPenalty?: Partial<Record<SegmentKind, number>>;
   /** Give up beyond this distance (m). */
   maxLength?: number;
   /** With a null target: finish on entering any segment of these kinds (e.g. reach a yard). */
@@ -280,6 +282,16 @@ export class TrackGraph {
       if (!goal || c < goal.cost) goal = { cost: c, key, direct, endDir: reverseAtTarget ? (-dir as Dir) : dir, reverseAtTarget };
     };
 
+    // A goal pseudo-state keeps its cheapest arrival: overwriting it with a costlier one (while the
+    // goal kept the cheaper cost) rebuilt paths through the wrong approach, e.g. through Metrotown's
+    // centre pocket instead of the main line past it.
+    const setGoal = (k: Key, rec: Rec) => {
+      const prev = best.get(k);
+      if (prev && prev.cost <= rec.cost) return;
+      best.set(k, rec);
+      consider(rec.cost, rec.dir, k);
+    };
+
     const startDirs: Dir[] = opts.fromDir === undefined ? [1, -1] : opts.allowReverseAtStart ? [opts.fromDir, -opts.fromDir as Dir] : [opts.fromDir];
     for (const d of startDirs) {
       const extra = opts.fromDir !== undefined && d !== opts.fromDir ? penalty : 0;
@@ -314,20 +326,18 @@ export class TrackGraph {
         if (!to && opts.goalKinds?.has(ts.kind)) {
           // Reached a goal-kind segment: finish at its entry.
           const k = `${t.seg}|${t.dir}|goal`;
-          best.set(k, { cost, seg: t.seg, dir: t.dir, parent: key, via: 'turn' });
-          consider(cost, t.dir, k);
+          setGoal(k, { cost, seg: t.seg, dir: t.dir, parent: key, via: 'turn' });
           continue;
         }
         if (!kinds.has(ts.kind)) continue;
+        const kp = opts.kindPenalty?.[ts.kind] ?? 0;
         // Entering the target segment: finish partway along it.
         if (to && t.seg === to.seg) {
           const partial = t.dir === 1 ? to.offset : ts.length - to.offset;
           // Record a pseudo-state for reconstruction.
-          const k = `${t.seg}|${t.dir}|goal`;
-          best.set(k, { cost: cost + partial, seg: t.seg, dir: t.dir, parent: key, via: 'turn' });
-          consider(cost + partial, t.dir, k);
+          setGoal(`${t.seg}|${t.dir}|goal`, { cost: cost + kp + partial, seg: t.seg, dir: t.dir, parent: key, via: 'turn' });
         }
-        push(t.seg, t.dir, cost + ts.length, 'turn');
+        push(t.seg, t.dir, cost + kp + ts.length, 'turn');
         // Run into a reversal track (or, if allowed, onto main track past a switch), reverse, come back out.
         const mainRev = opts.allowMainReversals && ts.kind === 'main' && nexts.length > 1;
         if (opts.allowReversals && (REVERSAL_KINDS.has(ts.kind) || mainRev)) {

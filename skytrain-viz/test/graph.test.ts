@@ -104,3 +104,38 @@ describe('TrackGraph.route', () => {
     expect(g2.route({ seg: 's1', offset: 500 }, { seg: 's2', offset: 500 }, { fromDir: 1 })).toBeNull();
   });
 });
+
+describe('route through a centre pocket', () => {
+  //  a ── S ─────── m (main, 200 m) ─────── E ── t (target)
+  //        \── k1 ── k2 (pocket) ── k3 ──/        (≈ 208 m)
+  const fc2: InfraCollection = {
+    type: 'FeatureCollection',
+    metadata: { source: 'test', generatedAt: '' },
+    features: [
+      seg('a', 'main', 'A', 'S', [pt(0), pt(100)]),
+      seg('m', 'main', 'S', 'E', [pt(100), pt(300)]),
+      seg('k1', 'siding', 'S', 'K', [pt(100), pt(150, 20)]),
+      seg('k2', 'pocket', 'K', 'L', [pt(150, 20), pt(250, 20)]),
+      seg('k3', 'siding', 'L', 'E', [pt(250, 20), pt(300)]),
+      seg('t', 'main', 'E', 'T', [pt(300), pt(1300)]),
+      node('A', 'end', pt(0), []),
+      node('S', 'switch', pt(100), [
+        ['a:1', 'm:0'],
+        ['a:1', 'k1:0'],
+      ]),
+      node('K', 'link', pt(150, 20), [['k1:1', 'k2:0']]),
+      node('L', 'link', pt(250, 20), [['k2:1', 'k3:0']]),
+      node('E', 'switch', pt(300), [
+        ['m:1', 't:0'],
+        ['k3:1', 't:0'],
+      ]),
+      node('T', 'end', pt(1300), []),
+    ],
+  };
+  const g2 = TrackGraph.fromCollection(fc2);
+
+  it('keeps the shorter approach into the target segment (a later, longer arrival must not replace it)', () => {
+    const p = g2.route({ seg: 'a', offset: 50 }, { seg: 't', offset: 500 }, { fromDir: 1 })!;
+    expect(p.pieces.map((x) => x.seg)).toEqual(['a', 'm', 't']);
+  });
+});

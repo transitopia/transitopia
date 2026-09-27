@@ -6,6 +6,13 @@ import type { PlanPattern, ServicePlan } from '../plan/types.ts';
 import type { Dir, Path, TrackGraph, TrackPos } from './graph.ts';
 import type { PlatformAssignment } from './platforms.ts';
 
+/**
+ * Revenue trains run through on main track: entering a pocket, siding or tail costs this much
+ * extra (m), so they're used only when a hop needs them. Without it, near-equal lengths let hops
+ * cut through centre pockets (Metrotown's pocket was 0.4 m longer than the main line past it).
+ */
+export const REVENUE_KIND_PENALTY = { pocket: 500, siding: 200, tail: 500 } as const;
+
 export interface PatternRoute {
   pattern: PlanPattern;
   /** Track position of each stop. */
@@ -46,7 +53,7 @@ export function routePattern(
     for (let i = 0; i + 1 < positions.length; i++) {
       const a = positions[i]!;
       const b = positions[i + 1]!;
-      const p: Path | null = a.seg && b.seg ? g.route(a, b, { fromDir: dir, allowReversals: false, maxLength: 12_000 }) : null;
+      const p: Path | null = a.seg && b.seg ? g.route(a, b, { fromDir: dir, allowReversals: false, maxLength: 12_000, kindPenalty: REVENUE_KIND_PENALTY }) : null;
       if (!p || p.reversals > 0) {
         hs.push(undefined);
         fails++;
