@@ -10,6 +10,11 @@
 //    time, while TransLink's stop matching stalled) and placed on the route at their along-route
 //    position, as interpolated, with a note; when TransLink's next stop is left behind like that, the
 //    next stop and delay are worked out from the position instead;
+//  - between trips (a fix before its trip's scheduled departure, or a late start still short of
+//    its second stop): at its next trip's first stop (on the route, within BETWEEN_NEAR_START_M)
+//    it's drawn there, as a layover; elsewhere it isn't drawn until it starts the trip. Buses lay over and reposition off their route, or their GPS says so (seen: a 99 whose
+//    next trip was westbound reported driving east along Broadway, sitting 15 min, looping via
+//    Victoria and starting at Commercial–Broadway Bay 5);
 //  - otherwise the vehicle is not shown (the caller falls back to schedule estimates when the
 //    instant isn't covered by RT data at all).
 // Pure given its inputs: the same snapshots and t always give the same answer. A fix counts as
@@ -45,6 +50,10 @@ interface Track {
   along: number[];
   /** Per obs: how far (m, north/east) the fix is from its along-route position, when it's shifted GPS. */
   shift: ({ n: number; e: number } | undefined)[];
+  /** Per obs: the furthest along its trip reached so far (buses don't reverse), filled lazily. */
+  held: number[];
+  /** Per obs: whether its bus is between trips (not yet running the trip), filled lazily. */
+  between: boolean[];
   /** Fetch times of snapshots that included this vehicle, sorted. */
   seenAt: number[];
 }
@@ -79,6 +88,30 @@ const SHIFT_SCHEDULE_S = 1200;
  * N Grandview Hwy: 478 of 2806 fix pairs): moving back less than this is standing still (m).
  */
 const JITTER_M = 25;
+/**
+ * A fix up to this far behind the furthest point its bus has reached on the trip holds the bus there
+ * (standing) rather than moving it back: e.g. a 99 at Commercial–Broadway jumped 29–50 m back along
+ * its route beside the SkyTrain guideway. Further back is a real correction and resets it (m).
+ */
+const BACKTRACK_MAX_M = 150;
+/** A bus still heading for its first stop this long after its departure time is running the trip (s). */
+const LATE_START_S = 900;
+/**
+ * Between trips, a bus is drawn only on its next trip's route (within BETWEEN_ON_ROUTE_M) and within
+ * BETWEEN_NEAR_START_M along it of the trip's first stop (e.g. 99s parked on N Grandview Hwy up to
+ * ~70 m past the layover stop) (m).
+ */
+const BETWEEN_ON_ROUTE_M = 30;
+const BETWEEN_NEAR_START_M = 100;
+/** Before its second stop, a bus this far off its route, or advancing less than ADVANCING_M, isn't running its trip yet (m). */
+const OFF_ROUTE_M = 30;
+const ADVANCING_M = 10;
+/** ... and within this of its first stop (a bus stopped at a light 1 km along isn't repositioning) (m). */
+const NEAR_START_M = 500;
+/** A late bus within this of its previous between-trips fix hasn't left its layover spot (m). */
+const STILL_M = 30;
+/** Between trips, a bus moving at least this far faces the way it moves (less: GPS jitter at a layover) (m). */
+const TRIP_CHANGE_MOVE_M = 15;
 /** Fixes closer than this give no usable heading; the bus faces along its route instead (m). */
 const HEADING_MIN_M = 30;
 /** TransLink's next stop is stuck when the bus is this far past it along the route (m). */
@@ -109,7 +142,7 @@ export class RtTimeline {
       this.fetchTimes.push(s.fetchedAt);
       for (const v of s.vehicles) {
         let tr = this.tracks.get(v.id);
-        if (!tr) this.tracks.set(v.id, (tr = { obs: [], along: [], shift: [], seenAt: [] }));
+        if (!tr) this.tracks.set(v.id, (tr = { obs: [], along: [], shift: [], held: [], between: [], seenAt: [] }));
         tr.seenAt.push(s.fetchedAt);
         const last = tr.obs[tr.obs.length - 1];
         if (last && last.v.ts === v.ts) continue; // unchanged fix repeated across polls
@@ -144,6 +177,8 @@ export class RtTimeline {
     tr.obs = keep;
     tr.along = [];
     tr.shift = [];
+    tr.held = [];
+    tr.between = [];
   }
 
   /**
@@ -197,9 +232,19 @@ export class RtTimeline {
     for (const [id, tr] of this.tracks) {
       const i = floorIndex(tr.obs, t);
       const o0 = i >= 0 ? tr.obs[i] : undefined;
-      const o1 = tr.obs[i + 1];
-      if (!o0) continue;
+      if (!o0 || this.hidden(tr, i)) continue;
       if (routes && !routes.has(o0.v.routeKey)) continue;
+      const next = tr.obs[i + 1];
+      if (next && this.hidden(tr, i + 1)) {
+        // Known to be off its route next (between trips): stand where it was, rather than head there
+        // or predict on past it.
+        if ((next.v.ts - o0.v.ts) / 1000 <= this.opts.maxInterpolateS) {
+          const st = this.standing(id, tr, i, t);
+          if (st) out.push(st);
+        }
+        continue;
+      }
+      const o1 = next;
       if (o1 && (o1.v.ts - o0.v.ts) / 1000 <= this.opts.maxInterpolateS) {
         out.push(this.interpolate(id, tr, i, t));
         continue;
@@ -239,7 +284,13 @@ export class RtTimeline {
       const prev = prevOk ? tr.along[j]! : NaN;
       let along = NaN;
       let shift: { n: number; e: number } | undefined;
-      if (s) {
+      const trip = this.trip(o.v.tripId);
+      if (s && trip && this.isBetween(tr, k)) {
+        // Between trips: placed on the route only at its official first stop (else not drawn, see
+        // hidden()); GPS elsewhere between trips is as likely to be wrong as the bus is to be there.
+        const p = projectOnto(s.coords, s.cum, [o.v.lon, o.v.lat]);
+        if (p.offset <= BETWEEN_ON_ROUTE_M && Math.abs(p.along - trip.pattern.dist[0]!) <= BETWEEN_NEAR_START_M) along = Math.max(trip.pattern.dist[0]!, p.along);
+      } else if (s) {
         const p = projectOnto(s.coords, s.cum, [o.v.lon, o.v.lat], prevOk ? Math.max(0, prev - 50) : 0);
         if (p.offset < MAX_SNAP_OFFSET) along = p.along;
         else if (p.offset <= MAX_SHIFTED_GPS) {
@@ -266,6 +317,73 @@ export class RtTimeline {
       tr.shift.push(shift);
     }
     return tr.along[i]!;
+  }
+
+  /**
+   * Whether obs k's bus is between trips: before its trip's scheduled departure, or TransLink's
+   * next stop is still the trip's first stop and it hasn't reached the second stop, or it hasn't
+   * moved from where it was between trips, at most LATE_START_S past departure (e.g. a late bus
+   * leaving its layover spot and repositioning to the start). The limits keep out buses whose stop
+   * matching stalled at stop 1 while running the trip (shifted GPS).
+   */
+  private isBetween(tr: Track, k: number): boolean {
+    const cached = tr.between[k];
+    if (cached !== undefined) return cached;
+    const o = tr.obs[k]!;
+    const trip = this.trip(o.v.tripId);
+    const s = this.shape(o.v.tripId);
+    let between = false;
+    if (trip && s) {
+      const { sec } = this.serviceTime(trip, o.v.ts);
+      if (sec < trip.dep[0]!) between = true;
+      else if (sec - trip.dep[0]! <= LATE_START_S) {
+        const prev = k > 0 ? tr.obs[k - 1]! : undefined;
+        if (o.v.stopId === this.pp!.plan.stops[trip.pattern.stops[0]!]!.id && trip.pattern.dist.length > 1) {
+          // TransLink's next stop lags on a long first stretch (e.g. the R2 leaving Park Royal, 1.3 km
+          // to its second stop), so also require it not to be making progress along its route: off
+          // it, or not advancing since the last fix.
+          const p = projectOnto(s.coords, s.cum, [o.v.lon, o.v.lat]);
+          let progressing = false;
+          if (prev && prev.v.tripId === o.v.tripId) {
+            const q = projectOnto(s.coords, s.cum, [prev.v.lon, prev.v.lat]);
+            progressing = p.along - q.along >= ADVANCING_M;
+          } else progressing = true;
+          const first = this.pp!.plan.stops[trip.pattern.stops[0]!]!;
+          const nearStart = distM([first.lon, first.lat], [o.v.lon, o.v.lat]) <= NEAR_START_M;
+          between = nearStart && p.along < trip.pattern.dist[1]! && (p.offset > OFF_ROUTE_M || !progressing);
+        } else if (prev && prev.v.tripId === o.v.tripId && this.isBetween(tr, k - 1)) {
+          // Hasn't left its layover spot yet (past its departure time, running late).
+          between = distM([prev.v.lon, prev.v.lat], [o.v.lon, o.v.lat]) < STILL_M;
+        }
+      }
+    }
+    tr.between[k] = between;
+    return between;
+  }
+
+  /** Obs i's bus standing where it's drawn for that fix (on its route), or undefined if it can't be placed. */
+  private standing(id: string, tr: Track, i: number, t: number): VehicleState | undefined {
+    const o = tr.obs[i]!;
+    const s = this.shape(o.v.tripId);
+    const along = this.heldAlong(tr, i);
+    if (!s || Number.isNaN(along)) return undefined;
+    const p = pointAlong(s.coords, s.cum, along);
+    const between = this.isBetween(tr, i) ? o.v : undefined;
+    return this.state(id, o.v, p.lon, p.lat, this.routeBearing(tr, i) ?? p.bearing, 0, 'interpolated', t, o, between ? undefined : { tr, i, along, shifted: tr.shift[i] }, undefined, between);
+  }
+
+  /** Between trips and not at its next trip's first stop: not drawn. */
+  private hidden(tr: Track, k: number): boolean {
+    return this.isBetween(tr, k) && Number.isNaN(this.alongOf(tr, k));
+  }
+
+  /** Where obs k is drawn on its route (at its held along), if it can be placed there. */
+  private shownPoint(tr: Track, k: number): [number, number] | undefined {
+    const s = this.shape(tr.obs[k]!.v.tripId);
+    const along = this.heldAlong(tr, k);
+    if (!s || Number.isNaN(along)) return undefined;
+    const p = pointAlong(s.coords, s.cum, along);
+    return [p.lon, p.lat];
   }
 
   /** Heading of obs k's trip route where the fix sits on it, if it does. */
@@ -295,6 +413,20 @@ export class RtTimeline {
     return Math.abs(pr.predictor.delayAt(trip, along, sec, date)) <= SHIFT_SCHEDULE_S;
   }
 
+  /**
+   * Where obs k puts its bus along the trip for display: never behind the furthest point reached on
+   * the same trip (within BACKTRACK_MAX_M), so buses don't drive backwards on GPS jitter. NaN when
+   * the fix can't be placed on its route.
+   */
+  private heldAlong(tr: Track, k: number): number {
+    for (let j = tr.held.length; j <= k; j++) {
+      const d = this.alongOf(tr, j);
+      const prev = j > 0 && tr.obs[j - 1]!.v.tripId === tr.obs[j]!.v.tripId ? tr.held[j - 1]! : NaN;
+      tr.held.push(Number.isNaN(d) || Number.isNaN(prev) || prev - d > BACKTRACK_MAX_M ? d : Math.max(prev, d));
+    }
+    return tr.held[k]!;
+  }
+
   /** Service date and service-day second of a fix on a trip (after-midnight trips: previous day). */
   private serviceTime(trip: PreparedTrip, ts: number): { date: string; sec: number } {
     let date = localDate(ts);
@@ -313,12 +445,12 @@ export class RtTimeline {
     const sameTrip = o0.v.tripId !== undefined && o0.v.tripId === o1.v.tripId;
     const s = sameTrip ? this.shape(o0.v.tripId) : null;
     if (s) {
-      const d0 = this.alongOf(tr, i);
-      const d1 = this.alongOf(tr, i + 1);
-      if (!Number.isNaN(d0) && !Number.isNaN(d1) && d1 >= d0 - JITTER_M) {
+      const d0 = this.heldAlong(tr, i);
+      const d1 = this.heldAlong(tr, i + 1);
+      if (!Number.isNaN(d0) && !Number.isNaN(d1) && d1 >= d0 - BACKTRACK_MAX_M) {
         const dt = (o1.v.ts - o0.v.ts) / 1000;
-        // Slightly backwards = standing still (GPS jitter).
-        let along = d1 >= d0 ? d0 + (d1 - d0) * f : d0;
+        // d1 == d0: standing (including fixes that fell back behind where the bus had got to).
+        let along = d0 + (d1 - d0) * f;
         let speed = Math.max(0, d1 - d0) / dt;
         // Paced by the profile, scaled to take exactly as long as the bus did.
         const trip = this.trip(o0.v.tripId);
@@ -333,16 +465,30 @@ export class RtTimeline {
           }
         }
         const p = pointAlong(s.coords, s.cum, along);
-        return this.state(id, o0.v, p.lon, p.lat, p.bearing, speed, 'interpolated', t, o0, { tr, i, along, shifted: tr.shift[i] ?? tr.shift[i + 1] });
+        const between = this.isBetween(tr, i) ? o0.v : undefined;
+        return this.state(id, o0.v, p.lon, p.lat, p.bearing, speed, 'interpolated', t, o0, between ? undefined : { tr, i, along, shifted: tr.shift[i] ?? tr.shift[i + 1] }, undefined, between);
       }
     }
-    const lon = o0.v.lon + (o1.v.lon - o0.v.lon) * f;
-    const lat = o0.v.lat + (o1.v.lat - o0.v.lat) * f;
+    // Straight line between where each fix is shown (on its route where it can be placed), so e.g.
+    // a bus switching trips moves from where it was drawn rather than jumping to the raw fix.
+    const [lon0, lat0] = this.shownPoint(tr, i) ?? [o0.v.lon, o0.v.lat];
+    const [lon1, lat1] = this.shownPoint(tr, i + 1) ?? [o1.v.lon, o1.v.lat];
+    const lon = lon0 + (lon1 - lon0) * f;
+    const lat = lat0 + (lat1 - lat0) * f;
     // E.g. a bus switching trips while laying over: fixes metres apart say nothing about heading.
     // Nor does a jump backwards along the same trip: buses don't reverse along their route.
     const close = distM([o0.v.lon, o0.v.lat], [o1.v.lon, o1.v.lat]) < HEADING_MIN_M;
     const backwards = sameTrip && this.alongOf(tr, i + 1) < this.alongOf(tr, i);
-    const bearing = o0.v.bearing ?? (close || backwards ? (this.routeBearing(tr, i + 1) ?? this.routeBearing(tr, i)) : undefined) ?? headingOf(o0.v, o1.v);
+    // Switching trips with a real move between them (e.g. round from the end of one route to the
+    // start of the next): face the way it's moving; neither route's direction describes it.
+    const moved = distM([lon0, lat0], [lon1, lat1]);
+    const manoeuvre = !sameTrip && moved >= TRIP_CHANGE_MOVE_M;
+    const along = (a: [number, number]) => ({ lon: a[0], lat: a[1] }) as RtVehicle;
+    const bearing =
+      o0.v.bearing ??
+      (manoeuvre ? headingOf(along([lon0, lat0]), along([lon1, lat1])) : undefined) ??
+      (close || backwards || !sameTrip ? (this.routeBearing(tr, i) ?? this.routeBearing(tr, i + 1)) : undefined) ??
+      headingOf(o0.v, o1.v);
     return this.state(id, o0.v, lon, lat, bearing, undefined, 'interpolated', t, o0, undefined, this.offRoute(o0.v));
   }
 
@@ -350,7 +496,9 @@ export class RtTimeline {
   private predicted(tr: Track, i: number, t: number): { along: number; speed: number } | undefined {
     const o0 = tr.obs[i]!;
     const s = this.shape(o0.v.tripId);
-    const d0 = this.alongOf(tr, i);
+    const d0 = this.heldAlong(tr, i);
+    // Laying over: stays put until its next fix (it leaves when a fix shows it has).
+    if (this.isBetween(tr, i) && !Number.isNaN(d0)) return { along: d0, speed: 0 };
     if (!s || Number.isNaN(d0)) return undefined;
     const dt = Math.max(0, (t - o0.v.ts) / 1000);
     const length = s.cum[s.cum.length - 1]!;
@@ -421,7 +569,8 @@ export class RtTimeline {
     if (s && shown) {
       const p = pointAlong(s.coords, s.cum, shown.along);
       const shifted = tr.shift[i];
-      return this.state(id, o0.v, p.lon, p.lat, p.bearing, shown.speed, shifted ? 'interpolated' : provenance, t, o0, { tr, i, along: shown.along, shifted });
+      const between = this.isBetween(tr, i) ? o0.v : undefined;
+      return this.state(id, o0.v, p.lon, p.lat, p.bearing, shown.speed, shifted ? 'interpolated' : provenance, t, o0, between ? undefined : { tr, i, along: shown.along, shifted }, undefined, between);
     }
     const prev = i > 0 ? tr.obs[i - 1] : undefined;
     const close = prev && distM([prev.v.lon, prev.v.lat], [o0.v.lon, o0.v.lat]) < HEADING_MIN_M;
@@ -443,6 +592,8 @@ export class RtTimeline {
     onRoute?: { tr: Track; i: number; along: number; shifted: { n: number; e: number } | undefined },
     /** Distance from its trip's route (m) when it couldn't be placed on it. */
     offRouteM?: number,
+    /** The fix (with its upcoming trip) when the bus is between trips. */
+    betweenTrips?: RtVehicle,
   ): VehicleState {
     const trip = this.trip(v.tripId);
     const route = this.pp?.routes.get(v.routeKey);
@@ -450,6 +601,15 @@ export class RtTimeline {
     let stop = v.stopId ? this.pp?.stopById.get(v.stopId) : undefined;
     let delay = v.delay;
     const notes: string[] = [];
+    const next = betweenTrips && this.trip(betweenTrips.tripId);
+    if (next && this.pp) {
+      // Delay means little before the trip starts; say when it's due to leave instead.
+      const first = this.pp.plan.stops[next.pattern.stops[0]!]!;
+      const due = Math.round(next.dep[0]!) % 86400;
+      const hhmm = `${Math.floor(due / 3600)}:${String(Math.floor((due % 3600) / 60)).padStart(2, '0')}`;
+      notes.push(`Between trips: next trip ${next.trip.headsign.replace(/^.*?\bTo\s+/i, 'to ')} departs ${hhmm} from ${first.name} (position as reported)`);
+      delay = undefined;
+    }
     if (offRouteM !== undefined && offRouteM >= MAX_SNAP_OFFSET) {
       // Not following its trip (e.g. heading to or from the depot): TransLink's delay means little.
       notes.push(`Not on its route (≈ ${offRouteM >= 1000 ? `${(offRouteM / 1000).toFixed(1)} km` : `${Math.round(offRouteM / 50) * 50} m`} away), possibly not in service`);
@@ -486,7 +646,7 @@ export class RtTimeline {
       lon,
       lat,
       bearing,
-      status: speed === 0 ? 'dwell' : 'moving',
+      status: speed !== undefined && speed > 0 ? 'moving' : next ? 'layover' : speed === 0 ? 'dwell' : 'moving',
       provenance,
       source: this.opts.source,
       serviceDate: localDate(t),

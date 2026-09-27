@@ -314,9 +314,65 @@ describe('headings of standing buses', () => {
     }
   });
 
+  it('never moves a bus backwards along its trip on jittery fixes', () => {
+    // 300, 330, then back to 312 and 320 (behind 330), then on to 360.
+    const tl = new RtTimeline([fix(0, pt(300)), fix(30, pt(330)), fix(60, pt(312)), fix(90, pt(320)), fix(120, pt(360))], pp, kin, opts);
+    let last = -Infinity;
+    for (let s = 0; s <= 120; s += 2) {
+      const v = tl.vehiclesAt(T0 + s * 1000)[0]!;
+      const a = projectOnto(L, cum, [v.lon, v.lat]).along;
+      expect(a).toBeGreaterThanOrEqual(last - 0.01);
+      expect(eastish(v.bearing)).toBe(true);
+      last = a;
+    }
+    // Held at 330 while the fixes are behind it.
+    expect(projectOnto(L, cum, [tl.vehiclesAt(T0 + 75_000)[0]!.lon, tl.vehiclesAt(T0 + 75_000)[0]!.lat]).along).toBeCloseTo(330, 0);
+    expect(tl.vehiclesAt(T0 + 75_000)[0]!.status).toBe('dwell');
+  });
+
   it('faces along the route when a parked bus switches trips', () => {
     const tl = new RtTimeline([fix(0, pt(300)), fix(30, pt(296, 8), 'next-trip')], pp, kin, opts);
     expect(eastish(tl.vehiclesAt(T0 + 15_000)[0]!.bearing)).toBe(true);
+  });
+});
+
+describe('between trips', () => {
+  // The same route, but the trip departs 09:30 local; fixes from 09:00 are before it starts.
+  const later = preparePlan({ ...plan, trips: [{ ...plan.trips[0]!, start: 34200 }] }, kin);
+  const L = plan.shapes.L as LonLat[];
+  const cum = cumulativeLengths(L);
+  const near = (along: number, north: number, east = 0): [number, number] => {
+    const p = pointAlong(L, cum, along);
+    return [p.lon + east / (111_320 * Math.cos((49.25 * Math.PI) / 180)), p.lat + north / 111_320];
+  };
+  const fix = (s: number, [lon, lat]: [number, number]): RtSnapshot => ({
+    fetchedAt: T0 + s * 1000 + 3000,
+    headerTs: T0 + s * 1000,
+    vehicles: [{ id: 'bus1', routeKey: '99', tripId: 'trip1', lon, lat, ts: T0 + s * 1000, stopId: 's1', delay: -1800 }],
+  });
+  // Laying over 60 m north of the route (off it), on the route 300 m from the first stop, then at the
+  // first stop (60 m along), jittering back.
+  const tl = new RtTimeline(
+    [fix(0, near(300, 60)), fix(20, near(300, 3)), fix(40, near(60, 5)), fix(60, near(50, 3)), fix(90, near(55, 4))],
+    later,
+    kin,
+    opts,
+  );
+  const alongOf = (v: { lon: number; lat: number }) => projectOnto(L, cum, [v.lon, v.lat]).along;
+
+  it('hides a bus that is off its route, or on it away from its first stop, between trips', () => {
+    expect(tl.vehiclesAt(T0 + 5_000)).toHaveLength(0);
+    expect(tl.vehiclesAt(T0 + 30_000)).toHaveLength(0);
+  });
+
+  it('draws it at its first stop, on the route, standing, facing along the route, never backwards', () => {
+    const v = tl.vehiclesAt(T0 + 75_000)[0]!;
+    expect(v.lat).toBeCloseTo(49.25, 5); // on the route line
+    expect(alongOf(v)).toBeCloseTo(60, 0); // held, not moved back to 50
+    expect(Math.abs(((v.bearing - 90 + 540) % 360) - 180)).toBeLessThan(5);
+    expect(v.status).toBe('layover');
+    expect(v.delay).toBeUndefined();
+    expect(v.note).toMatch(/^Between trips: next trip to End departs 9:30 from Start/);
   });
 });
 
