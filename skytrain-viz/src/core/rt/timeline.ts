@@ -74,6 +74,13 @@ const SHIFT_CHAIN_S = 300;
 const SHIFT_DRIFT_WITHIN_S = 60;
 /** With no recent fix on the route, a shifted fix can start a run if it's this close to its timetable (s). */
 const SHIFT_SCHEDULE_S = 1200;
+/**
+ * A standing bus's GPS jitters, including backwards along its route (seen at the 99's layover on
+ * N Grandview Hwy: 478 of 2806 fix pairs): moving back less than this is standing still (m).
+ */
+const JITTER_M = 25;
+/** Fixes closer than this give no usable heading; the bus faces along its route instead (m). */
+const HEADING_MIN_M = 30;
 /** TransLink's next stop is stuck when the bus is this far past it along the route (m). */
 const STUCK_NEXT_STOP_M = 200;
 /** A prediction this close to its fix still counts as observed (s). */
@@ -237,6 +244,18 @@ export class RtTimeline {
     return tr.along[i]!;
   }
 
+  /** Heading of obs k's trip route where the fix sits on it, if it does. */
+  private routeBearing(tr: Track, k: number): number | undefined {
+    if (k < 0 || k >= tr.obs.length) return undefined;
+    const s = this.shape(tr.obs[k]!.v.tripId);
+    const along = this.alongOf(tr, k);
+    if (!s || Number.isNaN(along)) return undefined;
+    const end = s.cum[s.cum.length - 1]!;
+    const a = pointAlong(s.coords, s.cum, Math.max(0, along - 10));
+    const b = pointAlong(s.coords, s.cum, Math.min(end, along + 10));
+    return headingOf({ lon: a.lon, lat: a.lat } as RtVehicle, { lon: b.lon, lat: b.lat } as RtVehicle);
+  }
+
   /** Distance (m) of a fix from its trip's route, if it has one. */
   private offRoute(v: RtVehicle): number | undefined {
     const s = this.shape(v.tripId);
@@ -272,10 +291,11 @@ export class RtTimeline {
     if (s) {
       const d0 = this.alongOf(tr, i);
       const d1 = this.alongOf(tr, i + 1);
-      if (!Number.isNaN(d0) && !Number.isNaN(d1) && d1 >= d0) {
+      if (!Number.isNaN(d0) && !Number.isNaN(d1) && d1 >= d0 - JITTER_M) {
         const dt = (o1.v.ts - o0.v.ts) / 1000;
-        let along = d0 + (d1 - d0) * f;
-        let speed = (d1 - d0) / dt;
+        // Slightly backwards = standing still (GPS jitter).
+        let along = d1 >= d0 ? d0 + (d1 - d0) * f : d0;
+        let speed = Math.max(0, d1 - d0) / dt;
         // Paced by the profile, scaled to take exactly as long as the bus did.
         const trip = this.trip(o0.v.tripId);
         const pr = this.opts.prediction;
@@ -294,7 +314,9 @@ export class RtTimeline {
     }
     const lon = o0.v.lon + (o1.v.lon - o0.v.lon) * f;
     const lat = o0.v.lat + (o1.v.lat - o0.v.lat) * f;
-    const bearing = o0.v.bearing ?? headingOf(o0.v, o1.v);
+    // E.g. a bus switching trips while laying over: fixes metres apart say nothing about heading.
+    const close = distM([o0.v.lon, o0.v.lat], [o1.v.lon, o1.v.lat]) < HEADING_MIN_M;
+    const bearing = o0.v.bearing ?? (close ? (this.routeBearing(tr, i + 1) ?? this.routeBearing(tr, i)) : undefined) ?? headingOf(o0.v, o1.v);
     return this.state(id, o0.v, lon, lat, bearing, undefined, 'interpolated', t, o0, undefined, this.offRoute(o0.v));
   }
 
@@ -376,7 +398,8 @@ export class RtTimeline {
       return this.state(id, o0.v, p.lon, p.lat, p.bearing, shown.speed, shifted ? 'interpolated' : provenance, t, o0, { tr, i, along: shown.along, shifted });
     }
     const prev = i > 0 ? tr.obs[i - 1] : undefined;
-    const bearing = o0.v.bearing ?? (prev ? headingOf(prev.v, o0.v) : 0);
+    const close = prev && distM([prev.v.lon, prev.v.lat], [o0.v.lon, o0.v.lat]) < HEADING_MIN_M;
+    const bearing = o0.v.bearing ?? (close ? this.routeBearing(tr, i - 1) : undefined) ?? (prev ? headingOf(prev.v, o0.v) : 0);
     return this.state(id, o0.v, o0.v.lon, o0.v.lat, bearing, undefined, provenance, t, o0, undefined, this.offRoute(o0.v));
   }
 

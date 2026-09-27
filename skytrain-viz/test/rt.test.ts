@@ -282,6 +282,34 @@ describe('shifted GPS', () => {
   });
 });
 
+describe('headings of standing buses', () => {
+  const L = plan.shapes.L as LonLat[];
+  const cum = cumulativeLengths(L);
+  const pt = (along: number, north = 0): [number, number] => {
+    const p = pointAlong(L, cum, along);
+    return [p.lon, p.lat + north / 111_320];
+  };
+  const fix = (s: number, [lon, lat]: [number, number], tripId = 'trip1'): RtSnapshot => ({
+    fetchedAt: T0 + s * 1000 + 3000,
+    headerTs: T0 + s * 1000,
+    vehicles: [{ id: 'bus1', routeKey: '99', tripId, lon, lat, ts: T0 + s * 1000 }],
+  });
+  const eastish = (b: number) => Math.abs(((b - 90 + 540) % 360) - 180) < 5;
+
+  it('treats a small jitter backwards along the route as standing still, facing along the route', () => {
+    // 8 m back and 6 m north: a straight line between the fixes would point north-west.
+    const tl = new RtTimeline([fix(0, pt(300)), fix(30, pt(292, 6))], pp, kin, opts);
+    const v = tl.vehiclesAt(T0 + 15_000)[0]!;
+    expect(eastish(v.bearing)).toBe(true);
+    expect(v.status).toBe('dwell');
+  });
+
+  it('faces along the route when a parked bus switches trips', () => {
+    const tl = new RtTimeline([fix(0, pt(300)), fix(30, pt(296, 8), 'next-trip')], pp, kin, opts);
+    expect(eastish(tl.vehiclesAt(T0 + 15_000)[0]!.bearing)).toBe(true);
+  });
+});
+
 describe('snapshot encoding', () => {
   it('round-trips compactly', () => {
     const s = snap(0, [[-123.123456789, 49.2]]);
