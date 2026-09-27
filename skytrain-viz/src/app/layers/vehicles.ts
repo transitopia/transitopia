@@ -167,8 +167,10 @@ export class VehicleLayer {
 
   /** Add (or re-add after a style change) beneath the station labels. */
   attach(): void {
-    if (this.map.getLayer(LAYER_ID)) return;
-    this.map.addLayer(this.layer, this.map.getLayer(VEHICLES_BEFORE_LAYER) ? VEHICLES_BEFORE_LAYER : undefined);
+    const before = this.map.getLayer(VEHICLES_BEFORE_LAYER) ? VEHICLES_BEFORE_LAYER : undefined;
+    // setStyle keeps custom layers, but the route/track layers are re-added above them: move it back.
+    if (this.map.getLayer(LAYER_ID)) this.map.moveLayer(LAYER_ID, before);
+    else this.map.addLayer(this.layer, before);
   }
 
   setRouteColors(routes: { key: string; color: string }[]): void {
