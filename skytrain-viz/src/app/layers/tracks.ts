@@ -64,7 +64,7 @@ export function addTrackLayers(map: MlMap, tracks: InfraCollection, plan: Servic
   const yard = dark ? '#5b636d' : '#a9b0b8';
   const casing = dark ? '#15181c' : '#ffffff';
   const data = colored(tracks, plan.routes, yard);
-  const before = map.getLayer(VEHICLES_BEFORE_LAYER) ? 'stations' : undefined;
+  const before = map.getLayer(VEHICLES_BEFORE_LAYER) ? 'bus-stops' : undefined;
   if (map.getSource(TRACKS_SOURCE)) {
     (map.getSource(TRACKS_SOURCE) as GeoJSONSource).setData(data);
     return;
