@@ -117,7 +117,6 @@ export function addStaticLayers(map: MlMap, plan: ServicePlan, theme: Theme, hid
     paint: {
       'line-color': ['get', 'color'],
       'line-width': ['interpolate', ['linear'], ['zoom'], 9, 1.5, 13, 3, 16, 5],
-      'line-dasharray': [2, 1.5],
     },
   });
   map.addLayer({

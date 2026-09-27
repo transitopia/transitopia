@@ -122,9 +122,6 @@ input {
   height: 3px;
   opacity: 0.8;
 }
-.swatch-shape {
-  background: repeating-linear-gradient(90deg, var(--c) 0 6px, transparent 6px 9px);
-}
 .swatch-limited {
   height: 3px;
   vertical-align: 2px;
