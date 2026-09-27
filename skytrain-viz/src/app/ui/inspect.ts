@@ -15,7 +15,7 @@ const STATUS: Record<VehicleState['status'], string> = {
 
 const PROVENANCE: Record<VehicleState['provenance'], string> = {
   observed: 'Observed position',
-  interpolated: 'Interpolated between observations',
+  interpolated: 'Interpolated or predicted from observations',
   estimated: 'Estimated from schedule',
 };
 

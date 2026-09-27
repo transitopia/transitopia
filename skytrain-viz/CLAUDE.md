@@ -75,6 +75,8 @@ npm run validate:infra   # graph / platform / routing / turnback / checklist che
 npm run build:movements  # infer train runs → public/data/feeds/<v>/movements/*.json [--verbose] (working)
 npm run validate:plan    # teleports (fail), terminus/yard conflicts (report), fleet peaks (working)
 npm run build:observations # validate + publish data/observations/*.json (working; format in data/observations/README.md)
+npm run build:rt-profile # learn bus travel-time profiles from data/rt-history → public/data/feeds/<v>/rt-profile.json (working)
+npx tsx scripts/eval-rt.ts [--test-last 3] [--set key=value] # replay recorded RT: prediction error and live-view jumps, old vs new
 npm run scenario -- <name> # build data/scenarios/<name>/ → view at /?scenario=<name> (working; see data/scenarios/README.md)
 npx tsx scripts/screenshot.ts out.png "/?date=2026-09-28&t=08:00:00&paused=1#map=14/49.28/-123.11" [--mobile] [--dark] [--pick expo]
 npm test                 # vitest

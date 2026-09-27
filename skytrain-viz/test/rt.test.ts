@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { coverageContains, decodeSnapshot, encodeSnapshot, extendCoverage, type RtSnapshot } from '../src/core/rt/types.ts';
 import { RtTimeline } from '../src/core/rt/timeline.ts';
+import { Predictor, ProfileBuilder, type PredictionConfig } from '../src/core/rt/profile.ts';
+import { cumulativeLengths, pointAlong, projectOnto, type LonLat } from '../src/core/geo.ts';
+import rtConfig from '../data/config/rt.json';
 import { preparePlan } from '../src/core/schedule/engine.ts';
 import type { ServicePlan } from '../src/core/plan/types.ts';
 import type { KinematicsConfig } from '../src/core/movement/kinematics.ts';
@@ -62,8 +65,10 @@ describe('RtTimeline', () => {
     expect(tl.vehiclesAt(T0 - 1000)).toHaveLength(0);
   });
   it('dead-reckons along the shape after the last fix, then gives up', () => {
+    expect(tl.vehiclesAt(T0 + 65_000)[0]?.provenance).toBe('observed');
     const [v] = tl.vehiclesAt(T0 + 90_000);
-    expect(v?.provenance).toBe('observed');
+    // 30 s past the fix is a prediction, not an observation.
+    expect(v?.provenance).toBe('interpolated');
     expect(v?.lat).toBeGreaterThan(after[1]);
     expect(v?.lon).toBeCloseTo(corner[0], 5);
     expect(tl.vehiclesAt(T0 + 60_000 + 91_000)).toHaveLength(0);
@@ -79,6 +84,72 @@ describe('RtTimeline', () => {
   });
   it('filters by route', () => {
     expect(tl.vehiclesAt(T0 + 30_000, new Set(['R4']))).toHaveLength(0);
+  });
+});
+
+describe('prediction', () => {
+  const cfg = rtConfig.prediction as unknown as PredictionConfig;
+  const L = plan.shapes.L as LonLat[];
+  const cum = cumulativeLengths(L);
+  const at = (along: number): [number, number] => {
+    const p = pointAlong(L, cum, along);
+    return [p.lon, p.lat];
+  };
+  const alongOf = (v: { lon: number; lat: number }) => projectOnto(L, cum, [v.lon, v.lat]).along;
+  const predictor = new Predictor(pp, cfg);
+  const popts = { ...opts, prediction: { cfg, predictor } };
+
+  it('stops at an upcoming stop for its dwell, then leaves', () => {
+    // A mid-route stop at 1000 m with a 30 s dwell, via a learned profile.
+    const withStop = { ...plan, stops: [...plan.stops, { id: 'mid', name: 'Mid', lon: at(1000)[0], lat: at(1000)[1] }] };
+    withStop.patterns = [{ ...plan.patterns[0]!, stops: [0, 2, 1], dist: [0, 1000, 2000] }];
+    withStop.trips = [{ ...plan.trips[0]!, arr: [0, 200, 400] }];
+    const pp2 = preparePlan(withStop, kin);
+    const profile = new ProfileBuilder(pp2, cfg).build();
+    profile.shapes.L = { bands: [], all: { pace: Array(40).fill(0.1), dwell: { mid: 30 } } };
+    const p = new Predictor(pp2, cfg, profile);
+    const c = p.course(pp2.tripIndex.get('trip1')!, T0);
+    expect(p.walk(c, 900, 5).along).toBeCloseTo(950, 5); // 10 m/s
+    expect(p.walk(c, 900, 20)).toEqual({ along: 1000, speed: 0 }); // arrived at 10 s, dwelling
+    expect(p.walk(c, 900, 45).along).toBeCloseTo(1050, 5); // left at 40 s
+    // Already past the stop: no dwell.
+    expect(p.walk(c, 1000, 5).along).toBeCloseTo(1050, 5);
+  });
+
+  // Fix A at 200 m (t=0), fix B 30 s later; each known from its snapshot's fetch (3 s after).
+  const showAt = (fixB: number, t: number) => {
+    const withB = new RtTimeline([snap(0, [at(200)]), snap(30, [at(fixB)])], pp, kin, popts);
+    return withB.vehiclesAt(T0 + t * 1000)[0]!;
+  };
+  const shownBeforeB = (t: number) => new RtTimeline([snap(0, [at(200)])], pp, kin, popts).vehiclesAt(T0 + t * 1000)[0]!;
+
+  it('glides forward to a fix that is further ahead than predicted, without jumping', () => {
+    const before = alongOf(shownBeforeB(33));
+    expect(alongOf(showAt(600, 33))).toBeCloseTo(before, 0);
+    let last = before;
+    for (let t = 34; t <= 60; t++) {
+      const a = alongOf(showAt(600, t));
+      expect(a).toBeGreaterThanOrEqual(last - 1e-6);
+      last = a;
+    }
+    // Caught up with the prediction from B once the glide is over.
+    const raw = new RtTimeline([snap(30, [at(600)])], pp, kin, popts);
+    expect(alongOf(showAt(600, 62))).toBeCloseTo(alongOf(raw.vehiclesAt(T0 + 62_000)[0]!), 0);
+  });
+
+  it('holds still when a fix is behind the prediction, rather than going backwards', () => {
+    const before = alongOf(shownBeforeB(33));
+    expect(alongOf(showAt(250, 33))).toBeCloseTo(before, 0);
+    expect(alongOf(showAt(250, 43))).toBeCloseTo(before, 0);
+    expect(showAt(250, 43).status).toBe('dwell');
+    expect(alongOf(showAt(250, 80))).toBeGreaterThan(before + 50);
+  });
+
+  it('discards impossible fixes', () => {
+    const bad = new RtTimeline([snap(0, [at(200)]), snap(30, [[0, 0]]), snap(60, [at(500)])], pp, kin, opts);
+    const [v] = bad.vehiclesAt(T0 + 45_000);
+    expect(alongOf(v!)).toBeGreaterThan(200);
+    expect(alongOf(v!)).toBeLessThan(500);
   });
 });
 

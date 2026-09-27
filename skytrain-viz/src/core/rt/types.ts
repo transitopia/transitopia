@@ -24,6 +24,11 @@ export interface RtVehicle {
 export interface RtSnapshot {
   /** Epoch ms when the service fetched this snapshot. */
   fetchedAt: number;
+  /**
+   * Epoch ms when this client received it (live view only; not recorded). Fixes count as known from
+   * then, so a correction starts from what this client was actually showing.
+   */
+  receivedAt?: number;
   /** Epoch ms of the upstream feed header timestamp. */
   headerTs: number;
   vehicles: RtVehicle[];

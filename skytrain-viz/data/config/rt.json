@@ -1,5 +1,5 @@
 {
-  "$comment": "Real-time (GTFS-RT) service settings; see PLAN.md §4.6. Upstream request rate is fixed by these intervals no matter how many clients connect.",
+  "$comment": "Real-time (GTFS-RT) service settings; see PLAN.md \u00a74.6. Upstream request rate is fixed by these intervals no matter how many clients connect.",
   "positionsIntervalS": 20,
   "tripUpdatesIntervalS": 60,
   "$staleAfterS": "Clients treat live data older than this as unavailable and fall back to schedule estimates.",
@@ -11,5 +11,39 @@
   "$maxExtrapolateS": "At the live edge, dead-reckon a vehicle forward along its route for at most this long.",
   "maxExtrapolateS": 90,
   "clientPollS": 10,
-  "serverPort": 8787
+  "serverPort": 8787,
+  "$prediction": "Live bus prediction and learned travel-time profiles (src/core/rt/profile.ts, PLAN.md \u00a74.5). Values are guesses tuned against recorded data with scripts/eval-rt.ts unless noted; see docs/OPEN-QUESTIONS.md #25.",
+  "prediction": {
+    "binM": 50,
+    "$bandStartHours": "Time-of-day bands: night, AM peak, midday, PM peak, evening (local hours).",
+    "bandStartHours": [
+      0,
+      6,
+      9,
+      15,
+      18
+    ],
+    "maxPairS": 90,
+    "maxOffsetM": 50,
+    "$stationaryM": "GPS noise on a standing bus is ~5-10 m (measured: recorded fixes).",
+    "stationaryM": 15,
+    "stopZoneM": 60,
+    "minBinMetres": 150,
+    "minStopPasses": 3,
+    "defaultSpeedMps": 8,
+    "defaultDwellS": 15,
+    "minDwellS": 4,
+    "paceWindowS": 180,
+    "$paceWeight": "Tuned on 8 h training / 3 h test (2026-09-26): adapting to the bus's recent pace (any window 180-1200 s) made 30-90 s predictions slightly worse, so it's off; re-test with more history.",
+    "paceWeight": 0,
+    "paceClamp": [
+      0.7,
+      1.5
+    ],
+    "$catchUpMps": "Glide: tuned with scripts/eval-rt.ts (2026-09-26): 8 m/s over \u2264 25 s keeps apparent speed p99 \u2248 24 m/s for ~1 m of median accuracy vs 12 m/s / 15 s.",
+    "catchUpMps": 8,
+    "minGlideS": 2,
+    "maxGlideS": 25,
+    "snapM": 600
+  }
 }

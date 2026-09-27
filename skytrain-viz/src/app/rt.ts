@@ -5,6 +5,7 @@
 import rtConfig from '../../data/config/rt.json';
 import { coverageContains, decodeSnapshot, type RtCoverageResponse, type RtLiveResponse, type RtSnapshot } from '../core/rt/types.ts';
 import { RtTimeline } from '../core/rt/timeline.ts';
+import { Predictor, type PredictionConfig, type RtProfileFile } from '../core/rt/profile.ts';
 import type { PreparedPlan, VehicleState } from '../core/schedule/engine.ts';
 import { toWallTime } from '../core/time.ts';
 import { kinematics } from './plans.ts';
@@ -15,6 +16,7 @@ const LIVE_WINDOW_MS = 10 * 60_000;
 /** How much live history to keep in memory for interpolation. */
 const LIVE_BUFFER_MS = 20 * 60_000;
 const MAX_HOURS_CACHED = 8;
+const PREDICTION = rtConfig.prediction as unknown as PredictionConfig;
 
 export type RtMode = 'live' | 'recorded' | 'estimated' | 'unavailable';
 
@@ -33,6 +35,8 @@ export class RtClient {
   private coverageFetchedAt = 0;
   private timeline: RtTimeline | undefined;
   private timelineKey = '';
+  /** Per feed version: the predictor, once its travel-time profile has loaded (or turned out missing). */
+  private predictors = new Map<string, Predictor | 'loading'>();
   private listeners = new Set<() => void>();
   available = true;
 
@@ -78,16 +82,38 @@ export class RtClient {
 
     const snapshots = inLive ? this.live : this.snapshotsAround(t);
     if (!snapshots) return { mode: 'estimated' };
-    const key = `${inLive ? 'live' : 'rec'}:${snapshots.length}:${snapshots[0]?.fetchedAt}:${snapshots.at(-1)?.fetchedAt}:${pp?.plan.feedVersion}`;
+    const predictor = pp ? this.predictorFor(pp) : undefined;
+    const key = `${inLive ? 'live' : 'rec'}:${snapshots.length}:${snapshots[0]?.fetchedAt}:${snapshots.at(-1)?.fetchedAt}:${pp?.plan.feedVersion}:${predictor ? 'p' : ''}`;
     if (key !== this.timelineKey) {
       this.timelineKey = key;
       this.timeline = new RtTimeline(snapshots, pp, kinematics, {
         maxInterpolateS: rtConfig.maxInterpolateS,
         maxExtrapolateS: rtConfig.maxExtrapolateS,
         source: inLive ? 'GTFS-RT live' : 'GTFS-RT recorded',
+        ...(predictor ? { prediction: { cfg: PREDICTION, predictor } } : {}),
       });
     }
     return { mode: inLive ? 'live' : 'recorded', vehicles: this.timeline!.vehiclesAt(t, routes) };
+  }
+
+  /** Profile-based predictor for a feed; undefined while its profile loads. */
+  private predictorFor(pp: PreparedPlan): Predictor | undefined {
+    const version = pp.plan.feedVersion;
+    const p = this.predictors.get(version);
+    if (p === 'loading') return undefined;
+    if (p) return p;
+    this.predictors.set(version, 'loading');
+    // Scenario plans ("<version>~<name>") share the base feed's profile.
+    const base = version.split('~')[0];
+    fetch(`${BASE}data/feeds/${base}/rt-profile.json`)
+      .then((r) => (r.ok ? (r.json() as Promise<RtProfileFile>) : undefined))
+      .catch(() => undefined)
+      .then((profile) => {
+        // Without a profile, the timetable still gives better predictions than a fixed speed.
+        this.predictors.set(version, new Predictor(pp, PREDICTION, profile));
+        this.emit();
+      });
+    return undefined;
   }
 
   liveStatus(): string | undefined {
@@ -117,7 +143,7 @@ export class RtClient {
         const body = (await res.json()) as RtLiveResponse;
         this.liveError = body.error;
         if (body.snapshot && !body.stale) {
-          const s = body.snapshot;
+          const s: RtSnapshot = { ...body.snapshot, receivedAt: Math.max(Date.now(), body.snapshot.fetchedAt) };
           if (!this.live.length || s.fetchedAt > this.live.at(-1)!.fetchedAt) {
             this.live.push(s);
             const cutoff = Date.now() - LIVE_BUFFER_MS;

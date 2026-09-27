@@ -195,7 +195,13 @@ Script: `scripts/build-movements.ts`. The same code runs in a Worker for scenari
   2. **Interpolated**: between two observations of the same vehicle less than ~3 min apart, moved along the trip's shape rather than in a straight line.
   3. **Estimated**: scheduled trip interpolation along the shape. This is used when no RT data covers *t*: the recorder wasn't running, future times, or a gap.
 
-  In live mode, observed positions are dead-reckoned forward along the shape between polls, so motion stays smooth.
+  Fixes arrive ~20–60 s old and ~30 s apart, so the live view always predicts (`src/core/rt/profile.ts`, `timeline.ts`):
+  - **Travel-time profile** learned from the recorded history (`npm run build:rt-profile` → `public/data/feeds/<v>/rt-profile.json`): pace per 50 m bin along each trip shape by time-of-day band (congestion, signals) and expected dwell per stop. Gaps fall back to the all-day profile, then the timetable's running times with a default dwell, then a default speed.
+  - **Prediction** walks the bus forward from its last fix with the profile, stopping at each upcoming stop for its expected dwell (stops behind the fix are passed). A bus whose predicted dwell ends leaves on time even without a new fix (RT reporting gaps are likelier than long dwells; revisit with ground truth).
+  - **Corrections glide**: when a new fix becomes known (client receipt live, fetch time when recorded), a bus that turns out further ahead glides forward (≤ 8 m/s faster, ≤ 25 s); one that turns out behind holds still until the prediction catches up, never reversing. Corrections > 600 m snap.
+  - Between two known fixes (recorded playback), motion follows the profile scaled to fit both fixes, so stops show there too.
+  - Predictions are *interpolated*, not *observed* (only within 10 s of a fix). Implausible fixes (null island, > 45 m/s jumps) are dropped.
+  - Evaluate with `npx tsx scripts/eval-rt.ts` (train on older hours, replay the latest as the live view would). On 2026-09-26 (8 h train, 3 h test): median error 30 s ahead 94 → 50 m, 60 s ahead 188 → 70 m; live display error vs fixes 120 → 64 m; jumps when data arrives: median 63 → 0 m, > 50 m in 52 % → 0.6 % of updates.
 
 ### 4.6 RT service (proxy + cache + recorder)
 
