@@ -133,9 +133,12 @@ async function main(): Promise<void> {
 
   // Static layers follow the feed of the displayed date.
   let shownFeed: PreparedPlan | undefined;
+  // Set on 'style.load'. Not map.isStyleLoaded(): that stays false until the basemap's tiles load
+  // too, so after a theme switch (setStyle) our layers were never re-added.
+  let styleReady = false;
   const syncStatic = (force = false) => {
     const pp = store.planFor(displayServiceDate(clock.now()));
-    if (!pp || !map.isStyleLoaded()) return;
+    if (!pp || !styleReady) return;
     if (pp === shownFeed && !force) return;
     shownFeed = pp;
     addStaticLayers(map, pp.plan, theme, legend.hidden);
@@ -153,7 +156,10 @@ async function main(): Promise<void> {
     vehicles.setRouteColors(pp.plan.routes);
     legend.render(pp.plan.routes);
   };
-  map.on('style.load', () => syncStatic(true));
+  map.on('style.load', () => {
+    styleReady = true;
+    syncStatic(true);
+  });
   store.onChange(() => {
     syncStatic();
     timebar.invalidate();
@@ -178,6 +184,7 @@ async function main(): Promise<void> {
     if (next !== theme) {
       theme = next;
       document.documentElement.dataset.theme = theme;
+      styleReady = false;
       map.setStyle(basemapStyle(theme));
     }
   });
