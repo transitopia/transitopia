@@ -97,7 +97,7 @@ export class RtClient {
   }
 
   /** Profile-based predictor for a feed; undefined while its profile loads. */
-  private predictorFor(pp: PreparedPlan): Predictor | undefined {
+  predictorFor(pp: PreparedPlan): Predictor | undefined {
     const version = pp.plan.feedVersion;
     const p = this.predictors.get(version);
     if (p === 'loading') return undefined;

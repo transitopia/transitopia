@@ -205,6 +205,8 @@ async function main(): Promise<void> {
 
   // Real-time buses: replace schedule estimates wherever RT data covers the instant.
   const rt = new RtClient();
+  // Schedule estimates for buses stop at stops, using the same travel-time profile as live prediction.
+  store.pacerFor = (pp) => rt.predictorFor(pp)?.pacer;
   const RT_BADGE: Record<RtMode, [string, string]> = {
     live: ['Buses: live', 'Bus positions from TransLink real-time data'],
     recorded: ['Buses: recorded', 'Bus positions replayed from recorded real-time data'],

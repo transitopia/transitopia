@@ -6,7 +6,10 @@
 //    fixes is spread over the bins between them in proportion to distance; a bus that didn't move
 //    (< stationaryM) near a stop is dwelling there, elsewhere it is held in traffic or at a signal
 //    and that time stays in the bin's pace.
-//  - expected dwell (s) per stop: dwell time seen / passes.
+//  - expected dwell (s) per stop: dwell time seen / passes, plus the extra time spent around the stop
+//    compared with the pace nearby. With fixes ~30 s apart most dwells aren't seen as standing still:
+//    they show up as slow bins around the stop instead, so that excess is moved into the dwell (and
+//    those bins get the nearby pace), which is what makes predicted buses visibly stop.
 // Totals are preserved: pace × distance + dwells ≈ observed running time.
 //
 // Prediction: from a fix, walk bin by bin, stopping at each upcoming stop for its expected dwell,
@@ -14,7 +17,8 @@
 // profile, then to the timetable, then to a default speed.
 
 import { cumulativeLengths, projectOnto, type LonLat } from '../geo.ts';
-import type { PreparedPlan, PreparedTrip } from '../schedule/engine.ts';
+import type { PreparedPlan, PreparedTrip, TripPacer } from '../schedule/engine.ts';
+import { serviceDayStart } from '../time.ts';
 import type { RtSnapshot, RtVehicle } from './types.ts';
 
 export interface PredictionConfig {
@@ -30,6 +34,10 @@ export interface PredictionConfig {
   stationaryM: number;
   /** Standing still within this distance of a stop counts as dwelling there (m). */
   stopZoneM: number;
+  /** Extra time in bins within this distance of a stop, vs the pace nearby, becomes dwell (m). */
+  stopExcessM: number;
+  /** "Pace nearby" = median pace of bins away from stops within this distance (m). */
+  baselineWindowM: number;
   /** A bin's pace is used once it has this many metres of observed travel (≈ passes × binM). */
   minBinMetres: number;
   /** A stop's dwell is used once this many passes were seen. */
@@ -53,6 +61,12 @@ export interface PredictionConfig {
   maxGlideS: number;
   /** Corrections larger than this snap instead of gliding or holding (m). */
   snapM: number;
+  /**
+   * Schedule estimates follow the profile between timetable times at least this far apart (s),
+   * scaled to meet them: per-stop bus times are interpolated by the agency, so the profile decides
+   * where time goes in between.
+   */
+  scheduleAnchorS: number;
 }
 
 export interface BandProfile {
@@ -99,6 +113,8 @@ interface Acc {
 export class ProfileBuilder {
   private acc = new Map<string, Acc[]>(); // shape → per band (+1 for all-day)
   private fixes = new Map<string, RtVehicle[]>();
+  /** Shape → its stops (id, along), from the trips seen on it. */
+  private shapeStops = new Map<string, Map<string, number>>();
   private hours = new Set<string>();
 
   constructor(
@@ -160,11 +176,15 @@ export class ProfileBuilder {
     }
     const shapes: Record<string, ShapeProfile> = {};
     for (const [shape, accs] of this.acc) {
+      const stops = [...(this.shapeStops.get(shape) ?? [])].map(([id, along]) => ({ id, along }));
       const toBand = (a: Acc): BandProfile | null => {
-        const pace = [...a.time].map((t, i) => (a.metres[i]! >= cfg.minBinMetres ? Math.round((t / a.metres[i]!) * 1000) / 1000 : null));
+        const pace = [...a.time].map((t, i) => (a.metres[i]! >= cfg.minBinMetres ? t / a.metres[i]! : null));
         const dwell: Record<string, number> = {};
-        for (const [stop, passes] of a.passes) if (passes >= cfg.minStopPasses) dwell[stop] = Math.round((a.dwell.get(stop) ?? 0) / passes);
-        return pace.some((x) => x !== null) || Object.keys(dwell).length ? { pace, dwell } : null;
+        for (const [stop, passes] of a.passes) if (passes >= cfg.minStopPasses) dwell[stop] = (a.dwell.get(stop) ?? 0) / passes;
+        this.moveExcessToDwell(pace, dwell, stops);
+        const rounded = pace.map((p) => (p === null ? null : Math.round(p * 1000) / 1000));
+        for (const k of Object.keys(dwell)) dwell[k] = Math.round(dwell[k]!);
+        return rounded.some((x) => x !== null) || Object.keys(dwell).length ? { pace: rounded, dwell } : null;
       };
       const all = toBand(accs[accs.length - 1]!);
       if (!all) continue;
@@ -181,12 +201,43 @@ export class ProfileBuilder {
     };
   }
 
+  /** Moves slow time around stops (vs the pace nearby) from the bins into the stops' dwells. */
+  private moveExcessToDwell(pace: (number | null)[], dwell: Record<string, number>, stops: { id: string; along: number }[]): void {
+    const { binM, stopExcessM, baselineWindowM } = this.cfg;
+    const nearest = pace.map((_, b) => {
+      const mid = (b + 0.5) * binM;
+      let best: { id: string; along: number } | undefined;
+      for (const s of stops) if (Math.abs(s.along - mid) <= stopExcessM && (!best || Math.abs(s.along - mid) < Math.abs(best.along - mid))) best = s;
+      return best;
+    });
+    const median = (xs: number[]) => {
+      const s = [...xs].sort((a, b) => a - b);
+      return s.length ? s[Math.floor(s.length / 2)]! : undefined;
+    };
+    const away = pace.flatMap((p, b) => (p !== null && !nearest[b] ? [p] : []));
+    const overall = median(away);
+    const w = Math.round(baselineWindowM / binM);
+    pace.forEach((p, b) => {
+      const stop = nearest[b];
+      if (p === null || !stop || dwell[stop.id] === undefined) return;
+      const local: number[] = [];
+      for (let k = Math.max(0, b - w); k <= Math.min(pace.length - 1, b + w); k++) if (pace[k] !== null && !nearest[k]) local.push(pace[k]!);
+      const base = median(local) ?? overall;
+      if (base === undefined || p <= base) return;
+      dwell[stop.id]! += (p - base) * binM;
+      pace[b] = base;
+    });
+  }
+
   private addPair(trip: PreparedTrip, length: number, d0: number, d1: number, dt: number, band: number): void {
     const { cfg } = this;
     const bins = Math.ceil(length / cfg.binM);
     const accs = this.accFor(trip.pattern.shape, bins);
     const targets = [accs[band]!, accs[accs.length - 1]!];
     const stops = trip.pattern.stops.map((si, i) => ({ id: this.pp.plan.stops[si]!.id, along: trip.pattern.dist[i]! }));
+    let known = this.shapeStops.get(trip.pattern.shape);
+    if (!known) this.shapeStops.set(trip.pattern.shape, (known = new Map()));
+    for (const s of stops) known.set(s.id, s.along);
     if (d1 - d0 < cfg.stationaryM) {
       const mid = (d0 + d1) / 2;
       const stop = stops.find((s) => Math.abs(s.along - mid) <= cfg.stopZoneM);
@@ -309,6 +360,41 @@ export class Predictor {
       d = end;
     }
     return { along: Math.min(d, c.length), speed: 0 };
+  }
+
+  /** Timetable anchors per trip course (courses are per trip and time-of-day band). */
+  private anchors = new WeakMap<Course, { along: number; sec: number; factor: number }[]>();
+
+  /**
+   * Paces bus trips between their timetable times with the profile (stopping at stops), for schedule
+   * estimates: the bus arrives at each anchor stop on time and leaves when the timetable says.
+   */
+  readonly pacer: TripPacer = (trip, sec, serviceDate) => {
+    if (trip.route.kind !== 'bus') return undefined;
+    const c = this.course(trip, serviceDayStart(serviceDate) + sec * 1000);
+    let spans = this.anchors.get(c);
+    if (!spans) this.anchors.set(c, (spans = this.buildAnchors(trip, c)));
+    let k = spans.length - 2;
+    while (k > 0 && spans[k]!.sec > sec) k--;
+    const a = spans[k]!;
+    const b = spans[k + 1]!;
+    const w = this.walk(c, a.along, sec - a.sec, a.factor);
+    return { along: Math.min(b.along, w.along), speed: w.along >= b.along ? 0 : w.speed };
+  };
+
+  private buildAnchors(trip: PreparedTrip, c: Course): { along: number; sec: number; factor: number }[] {
+    const dist = trip.pattern.dist;
+    const n = dist.length;
+    const idx = [0];
+    for (let i = 1; i < n - 1; i++) if (trip.dep[i]! - trip.dep[idx[idx.length - 1]!]! >= this.cfg.scheduleAnchorS) idx.push(i);
+    if (idx[idx.length - 1] !== n - 1) idx.push(n - 1);
+    return idx.map((i, j) => {
+      const next = idx[j + 1];
+      if (next === undefined) return { along: dist[i]!, sec: trip.arr[i]!, factor: 1 };
+      const expected = this.timeBetween(c, dist[i]!, dist[next]!);
+      const available = trip.arr[next]! - trip.dep[i]!;
+      return { along: dist[i]!, sec: trip.dep[i]!, factor: expected > 0 && available > 0 ? available / expected : 1 };
+    });
   }
 
   /** How this bus is running vs the profile, from its recent fixes (factor on profile times). */

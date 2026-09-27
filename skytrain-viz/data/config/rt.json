@@ -28,6 +28,9 @@
     "$stationaryM": "GPS noise on a standing bus is ~5-10 m (measured: recorded fixes).",
     "stationaryM": 15,
     "stopZoneM": 60,
+    "$stopExcessM": "Slow time within this of a stop (vs the median pace of bins away from stops within baselineWindowM) is counted as dwell, since 30 s fixes smear dwells into nearby bins. Tuned with scripts/eval-rt.ts (2026-09-26): 75 m gives dwells of p25/p50/p75 22/32/45 s (plausible for RapidBus stops at signals) for ~2 m median / ~12 m p90 more error at 60 s than 0 m (no concentration, where buses visibly don't stop); 150 m costs 5/30 m.",
+    "stopExcessM": 75,
+    "baselineWindowM": 600,
     "minBinMetres": 150,
     "minStopPasses": 3,
     "defaultSpeedMps": 8,
@@ -44,6 +47,8 @@
     "catchUpMps": 8,
     "minGlideS": 2,
     "maxGlideS": 25,
-    "snapM": 600
+    "snapM": 600,
+    "$scheduleAnchorS": "Schedule estimates for buses: TransLink gives every stop a time, interpolated between timepoints; pin to the timetable at most every this many seconds and let the profile place stops and slow sections in between. Guess.",
+    "scheduleAnchorS": 180
   }
 }

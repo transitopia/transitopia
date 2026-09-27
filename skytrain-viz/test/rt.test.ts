@@ -4,7 +4,7 @@ import { RtTimeline } from '../src/core/rt/timeline.ts';
 import { Predictor, ProfileBuilder, type PredictionConfig } from '../src/core/rt/profile.ts';
 import { cumulativeLengths, pointAlong, projectOnto, type LonLat } from '../src/core/geo.ts';
 import rtConfig from '../data/config/rt.json';
-import { preparePlan } from '../src/core/schedule/engine.ts';
+import { preparePlan, scheduledVehicles } from '../src/core/schedule/engine.ts';
 import type { ServicePlan } from '../src/core/plan/types.ts';
 import type { KinematicsConfig } from '../src/core/movement/kinematics.ts';
 
@@ -114,6 +114,28 @@ describe('prediction', () => {
     expect(p.walk(c, 900, 45).along).toBeCloseTo(1050, 5); // left at 40 s
     // Already past the stop: no dwell.
     expect(p.walk(c, 1000, 5).along).toBeCloseTo(1050, 5);
+  });
+
+  it('paces schedule estimates between timetable times, stopping at stops', () => {
+    // Stop at 1000 m, due at 200 s; the timetable gives no dwell, the default dwell (15 s) applies.
+    const withStop = { ...plan, stops: [...plan.stops, { id: 'mid', name: 'Mid', lon: at(1000)[0], lat: at(1000)[1] }] };
+    withStop.patterns = [{ ...plan.patterns[0]!, stops: [0, 2, 1], dist: [0, 1000, 2000] }];
+    withStop.trips = [{ ...plan.trips[0]!, arr: [0, 200, 400] }];
+    withStop.calendar = { calendar: [{ serviceId: 'wk', days: [true, true, true, true, true, true, true], start: '20260901', end: '20261231' }], exceptions: [] };
+    const pp2 = preparePlan(withStop, kin);
+    const p = new Predictor(pp2, cfg);
+    const trip = pp2.tripIndex.get('trip1')!;
+    const start = trip.trip.start;
+    const moving = p.pacer(trip, start + 100, '20260928')!;
+    expect(moving.speed).toBeGreaterThan(0);
+    // Arrives a little early and waits: standing at the stop until its timetable time.
+    expect(p.pacer(trip, start + 192, '20260928')).toEqual({ along: 1000, speed: 0 });
+    expect(p.pacer(trip, start + 199, '20260928')).toEqual({ along: 1000, speed: 0 });
+    expect(p.pacer(trip, start + 210, '20260928')!.along).toBeGreaterThan(1000);
+    // And the schedule engine uses it: dwelling at the stop.
+    const [v] = scheduledVehicles(pp2, { serviceDate: '20260928', sec: start + 195, pacer: p.pacer });
+    expect(v?.status).toBe('dwell');
+    expect(v?.stopName).toBe('Mid');
   });
 
   // Fix A at 200 m (t=0), fix B 30 s later; each known from its snapshot's fetch (3 s after).

@@ -254,7 +254,15 @@ export interface ScheduleQuery {
   /** Seconds since the service day's start (may exceed 86400 for after-midnight service). */
   sec: number;
   routes?: Set<string>;
+  /** Paces trips between their timetable times (e.g. buses, with learned stops and slow sections). */
+  pacer?: TripPacer;
 }
+
+/**
+ * Position along a trip's shape at a service-day time strictly between its first departure and last
+ * arrival, or undefined to use the default timetable interpolation. speed 0 = standing at a stop.
+ */
+export type TripPacer = (trip: PreparedTrip, sec: number, serviceDate: string) => { along: number; speed: number } | undefined;
 
 /** All scheduled vehicles visible at the given service-day time. */
 /** Observation-based adjustments for timetable vehicles (see reconcileScheduled). */
@@ -329,7 +337,7 @@ export function scheduledVehicles(pp: PreparedPlan, q: ScheduleQuery, corr?: Sch
       if (q.sec > t.visibleUntil) continue;
       if (q.routes && !q.routes.has(t.route.key)) continue;
       if (special.has(t)) continue;
-      const v = positionOnTrip(pp, t, q.sec, q.serviceDate);
+      const v = positionOnTrip(pp, t, q.sec, q.serviceDate, q.pacer);
       const consist = corr?.consists.get(t.vehicleId);
       if (consist) v.consist = consist;
       out.push(v);
@@ -347,7 +355,7 @@ export function scheduledVehicles(pp: PreparedPlan, q: ScheduleQuery, corr?: Sch
       if (q.sec < t.trip.start + startShift || q.sec > until) continue;
       const sched = q.sec > lastArr + endShift ? lastArr : schedAt(c?.anchors, q.sec);
       const shift = shiftAt(c?.anchors, sched);
-      const v = positionOnTrip(pp, t, sched, q.serviceDate);
+      const v = positionOnTrip(pp, t, sched, q.serviceDate, q.pacer);
       const obs = c?.observed.find((o) => Math.abs(o.t - q.sec) <= OBSERVED_S);
       const nextObs = t.next ? corr.trips.get(t.next.trip.id)?.observed.find((o) => Math.abs(o.t - q.sec) <= OBSERVED_S) : undefined;
       const seen = obs ?? nextObs;
@@ -366,7 +374,7 @@ export function scheduledVehicles(pp: PreparedPlan, q: ScheduleQuery, corr?: Sch
   return out;
 }
 
-function positionOnTrip(pp: PreparedPlan, t: PreparedTrip, sec: number, serviceDate: string): VehicleState {
+function positionOnTrip(pp: PreparedPlan, t: PreparedTrip, sec: number, serviceDate: string, pacer?: TripPacer): VehicleState {
   const { pattern, arr, dep, kin } = t;
   const coords = pp.plan.shapes[pattern.shape] as LonLat[];
   const cum = pp.shapeCum.get(pattern.shape)!;
@@ -376,10 +384,20 @@ function positionOnTrip(pp: PreparedPlan, t: PreparedTrip, sec: number, serviceD
   let stopIdx: number;
   let speed = 0;
 
+  const paced = pacer && sec > dep[0]! && sec < arr[n - 1]! ? pacer(t, sec, serviceDate) : undefined;
   if (sec >= arr[n - 1]!) {
     d = pattern.dist[n - 1]!;
     status = 'layover';
     stopIdx = n - 1;
+  } else if (paced) {
+    d = paced.along;
+    speed = paced.speed;
+    // Standing: at the stop it's on; moving: heading for the next stop.
+    let i = pattern.dist.findIndex((x) => x > d + (speed === 0 ? 1 : 0));
+    if (i < 0) i = n - 1;
+    if (speed === 0 && i > 0 && Math.abs(pattern.dist[i - 1]! - d) <= 1) i--;
+    stopIdx = i;
+    status = speed === 0 ? 'dwell' : 'moving';
   } else {
     // Last stop whose arrival is <= sec.
     let lo = 0;

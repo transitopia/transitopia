@@ -7,7 +7,7 @@
 //   timetable — the timetable's running times with default stop dwells, adapted to the bus's pace
 //   profile — learned profile (falling back to timetable), adapted to the bus's pace
 //
-//   npx tsx scripts/eval-rt.ts [--test 2026-09-26T16,2026-09-26T17] [--test-last 3] [--set paceWeight=0.3]
+//   npx tsx scripts/eval-rt.ts [--test 2026-09-26T16,2026-09-26T17] [--test-last 3] [--set paceWeight=0.3] [--no-live]
 // Default: test on the last 3 complete hours, train on all other complete hours.
 //
 // Then replays the test hours as the live view sees them (each fix known only from the snapshot that
@@ -132,7 +132,7 @@ async function main() {
     }
   }
   printPrediction(err, buckets);
-  liveReplay(test, pp, plans.kin, new Predictor(pp, cfg, profile));
+  if (!args.includes('--no-live')) liveReplay(test, pp, plans.kin, new Predictor(pp, cfg, profile));
 }
 
 function printPrediction(err: Record<string, Record<string, number[]>>, buckets: [string, number, number][]) {

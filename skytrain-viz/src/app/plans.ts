@@ -10,7 +10,7 @@ import { serviceKey, type MovementsFile, type MovementsIndex } from '../core/mov
 import { reconcile, reconcileScheduled, type ReconcileResult, type ScheduledCorrections } from '../core/corrections/reconcile.ts';
 import type { Observation, ObservationFile, ObservationIndex } from '../core/corrections/types.ts';
 import type { ScenarioManifest } from '../core/scenario/types.ts';
-import { preparePlan, scheduledVehicles, type PreparedPlan, type VehicleState } from '../core/schedule/engine.ts';
+import { preparePlan, scheduledVehicles, type PreparedPlan, type TripPacer, type VehicleState } from '../core/schedule/engine.ts';
 import { feedForDate, manifestRange, type FeedManifest, type ServicePlan } from '../core/plan/types.ts';
 import { addDays, localDate, serviceDayStart } from '../core/time.ts';
 import type { KinematicsConfig } from '../core/movement/kinematics.ts';
@@ -205,6 +205,14 @@ export class PlanStore {
    * Vehicles at instant t (epoch ms): SkyTrain from track-level playback where movement files exist,
    * everything else (and SkyTrain as a fallback) from the schedule engine.
    */
+  /** Paces scheduled trips between timetable times (buses: learned stops and slow sections); set by the app. */
+  pacerFor: ((pp: PreparedPlan) => TripPacer | undefined) | undefined;
+
+  private pacing(pp: PreparedPlan): { pacer?: TripPacer } {
+    const pacer = this.pacerFor?.(pp);
+    return pacer ? { pacer } : {};
+  }
+
   vehiclesAt(t: number, routes?: Set<string>): VehicleState[] {
     const today = localDate(t);
     const out: VehicleState[] = [];
@@ -217,8 +225,8 @@ export class PlanStore {
       if (pb) {
         out.push(...pb.vehiclesAt(sec, date, routes, this.correctionsFor(date, pb, pp)));
         const nonRail = new Set([...(routes ?? pp.routes.keys())].filter((k) => pp.routes.get(k)?.kind !== 'skytrain'));
-        out.push(...scheduledVehicles(pp, { serviceDate: date, sec, routes: nonRail }, this.scheduledCorrectionsFor(date, pp)));
-      } else out.push(...scheduledVehicles(pp, { serviceDate: date, sec, routes }, this.scheduledCorrectionsFor(date, pp)));
+        out.push(...scheduledVehicles(pp, { serviceDate: date, sec, routes: nonRail, ...this.pacing(pp) }, this.scheduledCorrectionsFor(date, pp)));
+      } else out.push(...scheduledVehicles(pp, { serviceDate: date, sec, routes, ...this.pacing(pp) }, this.scheduledCorrectionsFor(date, pp)));
     }
     return out;
   }
