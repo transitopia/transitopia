@@ -25,7 +25,7 @@ describe('busStopMarkers', () => {
     ],
     stops: [
       { id: 'a', name: 'Eastbound W Broadway @ Alma St', lon: -123.1846, lat: 49.2643 },
-      { id: 'b', name: 'Westbound W Broadway @ Alma St', lon: -123.1858, lat: 49.2645 },
+      { id: 'b', name: 'Westbound W Broadway @ Alma St', lon: -123.1847, lat: 49.2645 },
       { id: 'c', name: 'Eastbound E Broadway @ Rupert St', lon: -123.0328, lat: 49.2615 },
       { id: 'd', name: 'Rupert Station @ Platform 1', lon: -123.0328, lat: 49.2606 },
     ],
@@ -36,14 +36,14 @@ describe('busStopMarkers', () => {
       west: [[-123.03, 49.2644], [-123.19, 49.2644]],
     },
     patterns: [
-      { id: 0, route: '99', shape: 'east', stops: [0, 2], dist: [393, 11_500] },
-      { id: 1, route: '99', shape: 'west', stops: [2, 1], dist: [0, 11_070] },
+      { id: 0, route: '99', shape: 'east', stops: [0, 2], dist: [393, 11_421] },
+      { id: 1, route: '99', shape: 'west', stops: [2, 1], dist: [0, 11_231] },
       { id: 2, route: 'expo', shape: 'east', stops: [3], dist: [0] },
     ],
     trips: [{ pattern: 0 }, { pattern: 1 }, { pattern: 2 }],
   } as unknown as ServicePlan;
 
-  it('merges both directions into one marker and skips stops at stations', () => {
+  it('labels a "+" once, and leaves stops at stations unlabelled', () => {
     const m = busStopMarkers(plan);
     expect(m.map((x) => x.name)).toEqual(['Alma St']);
     expect(m[0]!.routes).toEqual(['99']);
@@ -51,8 +51,11 @@ describe('busStopMarkers', () => {
 
   it('points each tick toward the side of the street its stop is on', () => {
     const t = busStopTicks(plan);
-    expect(t).toHaveLength(2);
-    expect(t.map((x) => Math.round(x.bearing)).sort((a, b) => a - b)).toEqual([0, 180]);
+    // Alma St both ways, plus Rupert St (at the station: a tick, but no label).
+    expect(t).toHaveLength(3);
+    expect(t.find((x) => !x.name)?.lon).toBeCloseTo(-123.0328, 3);
+    const alma = t.filter((x) => x.name === 'Alma St');
+    expect(alma.map((x) => Math.round(x.bearing)).sort((a, b) => a - b)).toEqual([0, 180]);
     for (const x of t) expect(x.lat).toBeCloseTo(49.2644, 6);
   });
 });

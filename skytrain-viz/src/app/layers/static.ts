@@ -149,7 +149,7 @@ export function addStaticLayers(map: MlMap, plan: ServicePlan, theme: Theme, hid
   const casing = dark ? '#111418' : '#ffffff';
   const text = dark ? '#e6e8eb' : '#1f2328';
   const halo = dark ? '#111418' : '#ffffff';
-  const mutedText = dark ? '#aeb4bb' : '#4b525a';
+  const mutedText = dark ? '#c3c8ce' : '#3d434a';
 
   map.addLayer({
     id: 'routes-bus',
@@ -272,13 +272,13 @@ export function addStaticLayers(map: MlMap, plan: ServicePlan, theme: Theme, hid
       minzoom: 14,
       layout: {
         'text-field': ['get', 'name'],
-        'text-font': ['Noto Sans Regular'],
-        'text-size': ['interpolate', ['linear'], ['zoom'], 14, 9, 17, 11],
+        'text-font': ['Noto Sans Medium'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 14, 10.5, 16, 12.5, 18, 14],
         'text-radial-offset': ['interpolate', ['linear'], ['zoom'], 14, 0.9, 18, 1.5],
         'text-anchor': ['get', 'anchor'],
         'text-optional': true,
       },
-      paint: { 'text-color': mutedText, 'text-halo-color': halo, 'text-halo-width': 1.2 },
+      paint: { 'text-color': mutedText, 'text-halo-color': halo, 'text-halo-width': 1.5 },
     },
     'stations-label',
   );
