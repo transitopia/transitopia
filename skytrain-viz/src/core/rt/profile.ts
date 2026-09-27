@@ -382,6 +382,41 @@ export class Predictor {
     return { along: Math.min(b.along, w.along), speed: w.along >= b.along ? 0 : w.speed };
   };
 
+  /**
+   * Delay (s, + late) of a bus at `along` at service-day second `sec` on a trip, against where the
+   * paced schedule has it. Standing at a stop in the schedule spans an interval: being there any time
+   * within it is on time.
+   */
+  delayAt(trip: PreparedTrip, along: number, sec: number, serviceDate: string): number {
+    const lo = trip.dep[0]!;
+    const hi = trip.arr[trip.arr.length - 1]!;
+    const alongAt = (s: number): number => {
+      if (s <= lo) return trip.pattern.dist[0]!;
+      if (s >= hi) return trip.pattern.dist[trip.pattern.dist.length - 1]!;
+      const p = this.pacer(trip, s, serviceDate);
+      if (p) return p.along;
+      // Not paced: linear between stops.
+      let i = 0;
+      while (i < trip.arr.length - 2 && trip.arr[i + 1]! <= s) i++;
+      const f = (s - trip.dep[i]!) / Math.max(1, trip.arr[i + 1]! - trip.dep[i]!);
+      return trip.pattern.dist[i]! + f * (trip.pattern.dist[i + 1]! - trip.pattern.dist[i]!);
+    };
+    // First and last scheduled second at which the bus is at `along` (alongAt is non-decreasing).
+    const search = (pred: (s: number) => boolean) => {
+      let a = lo;
+      let b = hi;
+      for (let k = 0; k < 40 && b - a > 0.05; k++) {
+        const m = (a + b) / 2;
+        if (pred(m)) b = m;
+        else a = m;
+      }
+      return b;
+    };
+    const first = search((s) => alongAt(s) >= along - 0.05);
+    const last = search((s) => alongAt(s) > along + 0.05);
+    return sec < first ? sec - first : sec > last ? sec - last : 0;
+  }
+
   private buildAnchors(trip: PreparedTrip, c: Course): { along: number; sec: number; factor: number }[] {
     const dist = trip.pattern.dist;
     const n = dist.length;

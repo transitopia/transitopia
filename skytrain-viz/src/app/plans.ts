@@ -10,7 +10,7 @@ import { serviceKey, type MovementsFile, type MovementsIndex } from '../core/mov
 import { reconcile, reconcileScheduled, type ReconcileResult, type ScheduledCorrections } from '../core/corrections/reconcile.ts';
 import type { Observation, ObservationFile, ObservationIndex } from '../core/corrections/types.ts';
 import type { ScenarioManifest } from '../core/scenario/types.ts';
-import { preparePlan, scheduledVehicles, type PreparedPlan, type TripPacer, type VehicleState } from '../core/schedule/engine.ts';
+import { preparePlan, scheduledVehicles, type PreparedPlan, type ScheduleCorrections, type TripPacer, type VehicleState } from '../core/schedule/engine.ts';
 import { feedForDate, manifestRange, type FeedManifest, type ServicePlan } from '../core/plan/types.ts';
 import { addDays, localDate, serviceDayStart } from '../core/time.ts';
 import type { KinematicsConfig } from '../core/movement/kinematics.ts';
@@ -213,7 +213,11 @@ export class PlanStore {
     return pacer ? { pacer } : {};
   }
 
-  vehiclesAt(t: number, routes?: Set<string>): VehicleState[] {
+  /**
+   * @param rtCorrections RT delays carried into schedule estimates, per service date; observations
+   *   (sightings) take precedence for the trips they cover.
+   */
+  vehiclesAt(t: number, routes?: Set<string>, rtCorrections?: Map<string, ScheduleCorrections>): VehicleState[] {
     const today = localDate(t);
     const out: VehicleState[] = [];
     for (const date of [addDays(today, -1), today]) {
@@ -225,11 +229,25 @@ export class PlanStore {
       if (pb) {
         out.push(...pb.vehiclesAt(sec, date, routes, this.correctionsFor(date, pb, pp)));
         const nonRail = new Set([...(routes ?? pp.routes.keys())].filter((k) => pp.routes.get(k)?.kind !== 'skytrain'));
-        out.push(...scheduledVehicles(pp, { serviceDate: date, sec, routes: nonRail, ...this.pacing(pp) }, this.scheduledCorrectionsFor(date, pp)));
-      } else out.push(...scheduledVehicles(pp, { serviceDate: date, sec, routes, ...this.pacing(pp) }, this.scheduledCorrectionsFor(date, pp)));
+        out.push(...scheduledVehicles(pp, { serviceDate: date, sec, routes: nonRail, ...this.pacing(pp) }, mergeCorrections(this.scheduledCorrectionsFor(date, pp), rtCorrections?.get(date))));
+      } else out.push(...scheduledVehicles(pp, { serviceDate: date, sec, routes, ...this.pacing(pp) }, mergeCorrections(this.scheduledCorrectionsFor(date, pp), rtCorrections?.get(date))));
     }
     return out;
   }
+}
+
+const merged = new WeakMap<ScheduleCorrections, WeakMap<ScheduleCorrections, ScheduleCorrections>>();
+/** Observation corrections over RT delay corrections (cached, so the engine's per-object caches hold). */
+function mergeCorrections(obs: ScheduleCorrections | undefined, rt: ScheduleCorrections | undefined): ScheduleCorrections | undefined {
+  if (!obs || !rt) return obs ?? rt;
+  let inner = merged.get(obs);
+  if (!inner) merged.set(obs, (inner = new WeakMap()));
+  let m = inner.get(rt);
+  if (!m) {
+    m = { trips: new Map([...rt.trips, ...obs.trips]), cancelled: obs.cancelled, consists: new Map([...rt.consists, ...obs.consists]) };
+    inner.set(rt, m);
+  }
+  return m;
 }
 
 /**

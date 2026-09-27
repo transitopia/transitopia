@@ -222,9 +222,18 @@ async function main(): Promise<void> {
     const visible = legend.hidden.size ? new Set(routeKeys(shownFeed).filter((k) => !legend.hidden.has(k))) : undefined;
     // Scenarios are hypothetical: never mix in real bus positions.
     if (!store.scenario) rt.update(t);
-    const live = store.scenario ? { mode: 'estimated' as const } : rt.vehiclesAt(t, store.planFor(displayServiceDate(t)), visible);
-    const scheduled = store.vehiclesAt(t, visible);
-    lastVehicles = live.vehicles ? [...scheduled.filter((v) => v.mode !== 'bus'), ...live.vehicles] : scheduled;
+    const pp = store.planFor(displayServiceDate(t));
+    const live = store.scenario ? { mode: 'estimated' as const } : rt.vehiclesAt(t, pp, visible);
+    // RT delays carried forward: schedule estimates continue from where buses really were.
+    const carry = store.scenario ? undefined : rt.delayCorrections(t, pp);
+    const scheduled = store.vehiclesAt(t, visible, carry?.byDate);
+    if (live.vehicles) {
+      // RT buses, plus estimates for buses whose RT prediction has run out (unreported for a while)
+      // but whose delay is known, unless the same bus (block) is already shown from RT.
+      const shownBlocks = new Set(live.vehicles.map((v) => pp?.tripIndex.get(v.tripId)?.vehicleId));
+      const carried = scheduled.filter((v) => v.mode === 'bus' && carry?.carried.has(v.tripId) && !shownBlocks.has(v.id));
+      lastVehicles = [...scheduled.filter((v) => v.mode !== 'bus'), ...live.vehicles, ...carried];
+    } else lastVehicles = scheduled;
     const [badge, badgeTitle] = RT_BADGE[live.mode];
     timebar.setRtBadge(badge, live.mode, rt.liveStatus() ? `${badgeTitle} (${rt.liveStatus()})` : badgeTitle);
     if (performance.now() - lastCoverageUpdate > 1000) {

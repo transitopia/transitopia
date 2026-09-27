@@ -4,6 +4,7 @@ import { RtTimeline } from '../src/core/rt/timeline.ts';
 import { Predictor, ProfileBuilder, type PredictionConfig } from '../src/core/rt/profile.ts';
 import { cumulativeLengths, pointAlong, projectOnto, type LonLat } from '../src/core/geo.ts';
 import rtConfig from '../data/config/rt.json';
+import { delayCorrections } from '../src/core/rt/carry.ts';
 import { preparePlan, scheduledVehicles } from '../src/core/schedule/engine.ts';
 import type { ServicePlan } from '../src/core/plan/types.ts';
 import type { KinematicsConfig } from '../src/core/movement/kinematics.ts';
@@ -172,6 +173,72 @@ describe('prediction', () => {
     const [v] = bad.vehiclesAt(T0 + 45_000);
     expect(alongOf(v!)).toBeGreaterThan(200);
     expect(alongOf(v!)).toBeLessThan(500);
+  });
+});
+
+describe('carrying RT delays into schedule estimates', () => {
+  const cfg = rtConfig.prediction as unknown as PredictionConfig;
+  const L = plan.shapes.L as LonLat[];
+  const cum = cumulativeLengths(L);
+  const at = (along: number): [number, number] => {
+    const p = pointAlong(L, cum, along);
+    return [p.lon, p.lat];
+  };
+  const alongOf = (v: { lon: number; lat: number }) => projectOnto(L, cum, [v.lon, v.lat]).along;
+  // trip1 08:20:00–08:26:40 out, trip2 back from 08:30:00 (same block, 200 s layover).
+  const T = 30000;
+  const cal = { calendar: [{ serviceId: 'wk', days: [true, true, true, true, true, true, true], start: '20260901', end: '20261231' }], exceptions: [] };
+  const two: ServicePlan = {
+    ...plan,
+    shapes: { ...plan.shapes, R: [...L].reverse() },
+    patterns: [plan.patterns[0]!, { id: 1, route: '99', direction: 1, shape: 'R', stops: [1, 0], dist: [0, 2000] }],
+    trips: [
+      { id: 'trip1', pattern: 0, service: 'wk', block: 'b1', headsign: 'To End', start: T, arr: [0, 400] },
+      { id: 'trip2', pattern: 1, service: 'wk', block: 'b1', headsign: 'To Start', start: T + 600, arr: [0, 400] },
+    ],
+    calendar: cal,
+  };
+  const pp2 = preparePlan(two, kin);
+  const predictor = new Predictor(pp2, cfg);
+  const date = '20260928';
+  const day0 = Date.UTC(2026, 8, 28, 7, 0, 0); // service day start (00:00 PDT)
+  // Bus seen at 200 m, 5 min late (scheduled there at T + 38.5 s).
+  const fixTs = day0 + (T + 38.5 + 300) * 1000;
+  const snapAt = (ts: number, along: number): RtSnapshot => ({
+    fetchedAt: ts + 3000,
+    headerTs: ts,
+    vehicles: [{ id: 'bus1', routeKey: '99', tripId: 'trip1', lon: at(along)[0], lat: at(along)[1], ts }],
+  });
+  const tl = new RtTimeline([snapAt(fixTs, 200)], pp2, kin, { ...opts, prediction: { cfg, predictor } });
+  const delays = tl.tripDelays(fixTs + 1000);
+  const carry = delayCorrections(pp2, delays, rtConfig.carry);
+
+  it('measures the delay against the paced schedule', () => {
+    expect(delays).toHaveLength(1);
+    expect(delays[0]!.serviceDate).toBe(date);
+    expect(delays[0]!.delay).toBeCloseTo(300, 0);
+  });
+
+  it('takes over from exactly where RT prediction leaves the bus', () => {
+    const handover = fixTs + opts.maxExtrapolateS * 1000;
+    const rtAlong = alongOf(tl.vehiclesAt(handover)[0]!);
+    expect(tl.vehiclesAt(handover + 1000)).toHaveLength(0);
+    const [est] = scheduledVehicles(pp2, { serviceDate: date, sec: (handover - day0) / 1000, pacer: predictor.pacer }, carry.byDate.get(date));
+    expect(est?.provenance).toBe('estimated');
+    expect(est?.delay).toBe(300);
+    expect(alongOf(est!)).toBeCloseTo(rtAlong, 0);
+    // And keeps going.
+    const [later] = scheduledVehicles(pp2, { serviceDate: date, sec: (handover - day0) / 1000 + 60, pacer: predictor.pacer }, carry.byDate.get(date));
+    expect(alongOf(later!)).toBeGreaterThan(rtAlong + 100);
+  });
+
+  it('carries lateness into the next trip, less the layover slack', () => {
+    // 300 s late; layover 200 s, of which 200 - 120 = 80 s is slack: trip2 leaves 220 s late.
+    expect(carry.carried).toEqual(new Set(['trip1', 'trip2']));
+    expect(carry.byDate.get(date)!.trips.get('trip2')!.anchors[0]!.shift).toBeCloseTo(220, 0);
+    // Early running doesn't carry.
+    const early = delayCorrections(pp2, [{ ...delays[0]!, delay: -120 }], rtConfig.carry);
+    expect([...early.carried]).toEqual(['trip1']);
   });
 });
 

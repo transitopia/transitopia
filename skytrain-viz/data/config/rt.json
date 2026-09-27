@@ -50,5 +50,10 @@
     "snapM": 600,
     "$scheduleAnchorS": "Schedule estimates for buses: TransLink gives every stop a time, interpolated between timepoints; pin to the timetable at most every this many seconds and let the profile place stops and slow sections in between. Guess.",
     "scheduleAnchorS": 180
+  },
+  "$carry": "Carrying RT bus delays into schedule estimates (src/core/rt/carry.ts). Guesses; see docs/OPEN-QUESTIONS.md #25.",
+  "carry": {
+    "minLayoverS": 120,
+    "maxTrips": 2
   }
 }

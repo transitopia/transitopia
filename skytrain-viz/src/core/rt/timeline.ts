@@ -16,7 +16,8 @@ import type { PreparedPlan, PreparedTrip, VehicleState } from '../schedule/engin
 import { kinematicsFor, type KinematicsConfig } from '../movement/kinematics.ts';
 import { Predictor, type PredictionConfig } from './profile.ts';
 import type { RtSnapshot, RtVehicle } from './types.ts';
-import { localDate } from '../time.ts';
+import { addDays, localDate, serviceDayStart } from '../time.ts';
+import type { TripDelay } from './carry.ts';
 
 export interface TimelineOptions {
   maxInterpolateS: number;
@@ -58,6 +59,9 @@ export class RtTimeline {
   private shapeCache = new Map<string, { coords: LonLat[]; cum: Float64Array } | null>();
   /** `${id}#${i}` → along shown when obs i became known, using fixes before it. */
   private shownAtFetch = new Map<string, number>();
+  /** Every fix time, sorted (for caching per-instant results). */
+  private fixTimes: number[] = [];
+  private delaysMemo: { upTo: number; delays: TripDelay[] } | undefined;
 
   constructor(
     snapshots: RtSnapshot[],
@@ -77,8 +81,46 @@ export class RtTimeline {
         if (last && v.ts < last.v.ts) continue; // out-of-order fix
         if (!plausible(v, last?.v)) continue;
         tr.obs.push({ v, knownAt: s.receivedAt ?? s.fetchedAt });
+        this.fixTimes.push(v.ts);
       }
     }
+    this.fixTimes.sort((a, b) => a - b);
+  }
+
+  /**
+   * Each bus's delay, from its latest fix at or before t, against its paced schedule (needs the
+   * predictor). Measured where this timeline shows the bus when its prediction runs out (the fix +
+   * maxExtrapolateS), so a schedule estimate carrying the delay takes over from exactly there. A bus
+   * already at its trip's end by then uses the delay at the fix instead (waiting at the terminus
+   * isn't lateness). The same result object is returned until t passes another fix.
+   */
+  tripDelays(t: number): TripDelay[] {
+    const upTo = floorCount(this.fixTimes, t);
+    if (this.delaysMemo?.upTo === upTo) return this.delaysMemo.delays;
+    const delays: TripDelay[] = [];
+    const pr = this.opts.prediction;
+    if (pr && this.pp) {
+      for (const tr of this.tracks.values()) {
+        const i = floorIndex(tr.obs, t);
+        if (i < 0) continue;
+        const o = tr.obs[i]!;
+        const trip = this.trip(o.v.tripId);
+        const along = this.alongOf(tr, i);
+        if (!trip || trip.route.kind !== 'bus' || Number.isNaN(along)) continue;
+        // Service date: after-midnight trips belong to the previous day.
+        let date = localDate(o.v.ts);
+        if ((o.v.ts - serviceDayStart(date)) / 1000 < trip.trip.start - 6 * 3600) date = addDays(date, -1);
+        const secOf = (ms: number) => (ms - serviceDayStart(date)) / 1000;
+        const handover = o.v.ts + this.opts.maxExtrapolateS * 1000;
+        const shown = this.shownAlong(tr, i, handover)?.along;
+        const end = trip.pattern.dist[trip.pattern.dist.length - 1]!;
+        const [ms, a] = shown !== undefined && shown < end - 1 ? [handover, shown] : [o.v.ts, along];
+        const delay = pr.predictor.delayAt(trip, a, secOf(ms), date);
+        delays.push({ tripId: trip.trip.id, serviceDate: date, delay, schedSec: secOf(ms) - delay, fixTs: o.v.ts });
+      }
+    }
+    this.delaysMemo = { upTo, delays };
+    return delays;
   }
 
   get size(): number {
@@ -329,6 +371,18 @@ function floorIndex(obs: Obs[], t: number): number {
     } else hi = mid - 1;
   }
   return ans;
+}
+
+/** How many values are ≤ t. */
+function floorCount(sorted: number[], t: number): number {
+  let lo = 0;
+  let hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sorted[mid]! <= t) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
 
 function floorValue(sorted: number[], t: number): number | undefined {

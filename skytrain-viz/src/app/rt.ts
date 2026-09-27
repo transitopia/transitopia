@@ -6,7 +6,8 @@ import rtConfig from '../../data/config/rt.json';
 import { coverageContains, decodeSnapshot, type RtCoverageResponse, type RtLiveResponse, type RtSnapshot } from '../core/rt/types.ts';
 import { RtTimeline } from '../core/rt/timeline.ts';
 import { Predictor, type PredictionConfig, type RtProfileFile } from '../core/rt/profile.ts';
-import type { PreparedPlan, VehicleState } from '../core/schedule/engine.ts';
+import type { PreparedPlan, ScheduleCorrections, VehicleState } from '../core/schedule/engine.ts';
+import { delayCorrections, type TripDelay } from '../core/rt/carry.ts';
 import { toWallTime } from '../core/time.ts';
 import { kinematics } from './plans.ts';
 
@@ -35,6 +36,7 @@ export class RtClient {
   private coverageFetchedAt = 0;
   private timeline: RtTimeline | undefined;
   private timelineKey = '';
+  private carryMemo: { delays: TripDelay[]; pp: PreparedPlan; result: ReturnType<typeof delayCorrections> } | undefined;
   /** Per feed version: the predictor, once its travel-time profile has loaded (or turned out missing). */
   private predictors = new Map<string, Predictor | 'loading'>();
   private listeners = new Set<() => void>();
@@ -82,18 +84,38 @@ export class RtClient {
 
     const snapshots = inLive ? this.live : this.snapshotsAround(t);
     if (!snapshots) return { mode: 'estimated' };
+    return { mode: inLive ? 'live' : 'recorded', vehicles: this.timelineFor(snapshots, inLive, pp).vehiclesAt(t, routes) };
+  }
+
+  private timelineFor(snapshots: RtSnapshot[], live: boolean, pp: PreparedPlan | undefined): RtTimeline {
     const predictor = pp ? this.predictorFor(pp) : undefined;
-    const key = `${inLive ? 'live' : 'rec'}:${snapshots.length}:${snapshots[0]?.fetchedAt}:${snapshots.at(-1)?.fetchedAt}:${pp?.plan.feedVersion}:${predictor ? 'p' : ''}`;
-    if (key !== this.timelineKey) {
+    const key = `${live ? 'live' : 'rec'}:${snapshots.length}:${snapshots[0]?.fetchedAt}:${snapshots.at(-1)?.fetchedAt}:${pp?.plan.feedVersion}:${predictor ? 'p' : ''}`;
+    if (key !== this.timelineKey || !this.timeline) {
       this.timelineKey = key;
       this.timeline = new RtTimeline(snapshots, pp, kinematics, {
         maxInterpolateS: rtConfig.maxInterpolateS,
         maxExtrapolateS: rtConfig.maxExtrapolateS,
-        source: inLive ? 'GTFS-RT live' : 'GTFS-RT recorded',
+        source: live ? 'GTFS-RT live' : 'GTFS-RT recorded',
         ...(predictor ? { prediction: { cfg: PREDICTION, predictor } } : {}),
       });
     }
-    return { mode: inLive ? 'live' : 'recorded', vehicles: this.timeline!.vehiclesAt(t, routes) };
+    return this.timeline;
+  }
+
+  /**
+   * RT bus delays at t carried forward into schedule corrections (per service date), and the trips
+   * they affect. Uses the live buffer from its start onwards (including the future, when
+   * fast-forwarding past the live edge), else recorded data covering t.
+   */
+  delayCorrections(t: number, pp: PreparedPlan | undefined): { byDate: Map<string, ScheduleCorrections>; carried: Set<string> } | undefined {
+    if (!this.available || !pp || !this.predictorFor(pp)) return undefined;
+    const fromLive = this.live.length > 0 && t >= this.live[0]!.fetchedAt;
+    const recorded = !fromLive && coverageContains(this.coverage, t, rtConfig.coverageGapS * 1000) ? this.snapshotsAround(t) : undefined;
+    const snapshots = fromLive ? this.live : recorded;
+    if (!snapshots) return undefined;
+    const delays = this.timelineFor(snapshots, fromLive, pp).tripDelays(t);
+    if (this.carryMemo?.delays !== delays || this.carryMemo.pp !== pp) this.carryMemo = { delays, pp, result: delayCorrections(pp, delays, rtConfig.carry) };
+    return this.carryMemo.result;
   }
 
   /** Profile-based predictor for a feed; undefined while its profile loads. */

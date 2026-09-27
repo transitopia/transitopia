@@ -264,27 +264,44 @@ export interface ScheduleQuery {
  */
 export type TripPacer = (trip: PreparedTrip, sec: number, serviceDate: string) => { along: number; speed: number } | undefined;
 
-/** All scheduled vehicles visible at the given service-day time. */
-/** Observation-based adjustments for timetable vehicles (see reconcileScheduled). */
+/**
+ * Adjustments for timetable vehicles: observations (see reconcileScheduled) and delays carried
+ * forward from real-time data (see src/core/rt/carry.ts).
+ */
 export interface ScheduleCorrections {
   /**
    * trip_id → time anchors (scheduled service seconds → shift), sorted by `sched`. The shift is
    * linear between anchors and constant beyond them, so a vessel that leaves late and makes up time
-   * crossing is late by less on arrival.
+   * crossing is late by less on arrival. `estimate` (a source label) marks a projected delay rather
+   * than a sighting: positions stay provenance 'estimated'.
    */
-  trips: Map<string, { anchors: { sched: number; shift: number }[]; observed: { t: number; source: string }[] }>;
+  trips: Map<string, { anchors: { sched: number; shift: number }[]; observed: { t: number; source: string }[]; estimate?: string }>;
   cancelled: Set<string>;
   consists: Map<string, NonNullable<VehicleState['consist']>>;
 }
 
+/** Trip → the trip laying over for it (the inverse of PreparedTrip.next), per plan. */
+const prevCache = new WeakMap<PreparedPlan, Map<string, PreparedTrip>>();
 const specialCache = new WeakMap<ScheduleCorrections, Set<PreparedTrip>>();
 /** Trips drawn by the corrected pass: corrected or cancelled, or laying over for a corrected trip. */
 function specialTrips(pp: PreparedPlan, corr: ScheduleCorrections): Set<PreparedTrip> {
   let s = specialCache.get(corr);
   if (!s) {
+    let prev = prevCache.get(pp);
+    if (!prev) {
+      prev = new Map();
+      for (const t of pp.tripIndex.values()) if (t.next) prev.set(t.next.trip.id, t);
+      prevCache.set(pp, prev);
+    }
     s = new Set();
-    for (const list of pp.tripsByService.values())
-      for (const t of list) if (corr.trips.has(t.trip.id) || corr.cancelled.has(t.trip.id) || (t.next && corr.trips.has(t.next.trip.id))) s.add(t);
+    for (const id of [...corr.trips.keys(), ...corr.cancelled]) {
+      const t = pp.tripIndex.get(id);
+      if (t) s.add(t);
+    }
+    for (const id of corr.trips.keys()) {
+      const p = prev.get(id);
+      if (p) s.add(p);
+    }
     specialCache.set(corr, s);
   }
   return s;
@@ -359,7 +376,12 @@ export function scheduledVehicles(pp: PreparedPlan, q: ScheduleQuery, corr?: Sch
       const obs = c?.observed.find((o) => Math.abs(o.t - q.sec) <= OBSERVED_S);
       const nextObs = t.next ? corr.trips.get(t.next.trip.id)?.observed.find((o) => Math.abs(o.t - q.sec) <= OBSERVED_S) : undefined;
       const seen = obs ?? nextObs;
-      if (seen || shift !== 0 || nextShift !== 0) {
+      const estimate = c?.estimate ?? (t.next ? corr.trips.get(t.next.trip.id)?.estimate : undefined);
+      if (estimate && !seen) {
+        // A projected delay: still an estimate, just a better one.
+        if (shift !== 0 || nextShift !== 0) v.source = `${estimate} + ${v.source}`;
+        if (shift !== 0 && q.sec <= lastArr + endShift) v.delay = Math.round(shift);
+      } else if (seen || shift !== 0 || nextShift !== 0) {
         v.provenance = seen ? 'observed' : 'interpolated';
         const sources = [...new Set([...(c?.observed ?? []), ...(t.next ? (corr.trips.get(t.next.trip.id)?.observed ?? []) : [])].map((o) => o.source))];
         v.source = `${sources.join(', ') || 'observation'} + ${v.source}`;
