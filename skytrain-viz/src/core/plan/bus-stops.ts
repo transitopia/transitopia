@@ -5,7 +5,7 @@
 //   (the station label covers them).
 
 import { cumulativeLengths, distM, localProjector, pointAlong, type LonLat } from '../geo.ts';
-import type { ServicePlan } from './types.ts';
+import { isPassengerStop, type ServicePlan } from './types.ts';
 
 export interface BusStopMarker {
   name: string;
@@ -76,7 +76,8 @@ export function busStopTicks(plan: ServicePlan): BusStopTick[] {
     p.stops.forEach((si, i) => {
       const s = plan.stops[si]!;
       const key = `${s.id}|${p.route}`;
-      if (seen.has(key)) return;
+      // Layover/timing stops where nobody boards or alights aren't shown.
+      if (seen.has(key) || !isPassengerStop(p, i)) return;
       seen.add(key);
       const at: LonLat = [s.lon, s.lat];
       // Layovers aren't passenger stops.

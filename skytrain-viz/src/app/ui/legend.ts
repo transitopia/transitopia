@@ -67,7 +67,7 @@ export class Legend {
     note.className = 'legend-note';
     note.innerHTML =
       '<span class="prov prov-estimated"></span> estimated from schedule &nbsp; <span class="prov prov-observed"></span> observed<br>' +
-      '<span class="swatch swatch-limited"></span> bus route: limited service';
+      '<span class="swatch swatch-limited"></span> bus route: limited service, or no passengers (to/from a layover)';
     this.body.append(note);
   }
 }

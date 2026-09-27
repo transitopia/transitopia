@@ -26,13 +26,13 @@ const BUS_LIMITED: ExpressionSpecification = ['all', ['==', ['get', 'kind'], 'bu
 function routesGeoJson(plan: ServicePlan): FeatureCollection {
   const features: Feature[] = [];
   const seen = new Set<string>();
-  // Buses: split into frequent and limited-service sections (drawn dashed).
+  // Buses: split into frequent sections, and limited-service or no-passenger ones (drawn dotted).
   const busRoutes = new Set(plan.routes.filter((r) => r.kind === 'bus').map((r) => r.key));
   for (const sec of routeSections(plan, busRoutes)) {
     const route = plan.routes.find((r) => r.key === sec.route)!;
     features.push({
       type: 'Feature',
-      properties: { route: route.key, kind: route.kind, mode: route.mode, color: route.color, order: 0, limited: sec.limited },
+      properties: { route: route.key, kind: route.kind, mode: route.mode, color: route.color, order: 0, limited: sec.limited, empty: sec.empty },
       geometry: { type: 'LineString', coordinates: sec.coords },
     });
   }

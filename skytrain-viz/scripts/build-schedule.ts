@@ -24,6 +24,7 @@ import type {
   RouteMode,
   ServicePlan,
 } from '../src/core/plan/types.ts';
+import { STOP_NO_DROPOFF, STOP_NO_PICKUP } from '../src/core/plan/types.ts';
 
 interface RouteConfig {
   key: string;
@@ -65,6 +66,8 @@ interface StopTimeRow {
   stopId: string;
   arr: number;
   dep: number;
+  /** STOP_NO_PICKUP | STOP_NO_DROPOFF bits. */
+  access: number;
 }
 
 export async function buildPlan(zipPath: string): Promise<ServicePlan> {
@@ -136,6 +139,8 @@ export async function buildPlan(zipPath: string): Promise<ServicePlan> {
       stopId: row.stop_id!,
       arr: parseGtfsTime(row.arrival_time ?? ''),
       dep: parseGtfsTime(row.departure_time ?? ''),
+      // GTFS: 1 = no pickup / no drop-off (2 and 3 = phone or coordinate with driver: still possible).
+      access: (row.pickup_type === '1' ? STOP_NO_PICKUP : 0) | (row.drop_off_type === '1' ? STOP_NO_DROPOFF : 0),
     });
   }
   log(`Scanned ${scanned.toLocaleString()} stop_times rows`);
@@ -190,7 +195,7 @@ export async function buildPlan(zipPath: string): Promise<ServicePlan> {
     const list = stopTimes.get(raw.id);
     if (!list || list.length < 2) continue;
     list.sort((a, b) => a.seq - b.seq);
-    const key = `${raw.route.key}|${raw.direction}|${raw.shape}|${list.map((s) => s.stopId).join(',')}`;
+    const key = `${raw.route.key}|${raw.direction}|${raw.shape}|${list.map((s) => `${s.stopId}:${s.access}`).join(',')}`;
     let pid = patternByKey.get(key);
     if (pid === undefined) {
       const coords = shapes[raw.shape];
@@ -216,6 +221,7 @@ export async function buildPlan(zipPath: string): Promise<ServicePlan> {
         shape: raw.shape,
         stops: list.map((s) => stopIndex.get(s.stopId)!),
         dist,
+        ...(list.some((s) => s.access) ? { access: list.map((s) => s.access) } : {}),
       });
       patternByKey.set(key, pid);
     }

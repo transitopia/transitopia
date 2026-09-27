@@ -59,8 +59,8 @@ describe('routeSections', () => {
         ext: [[-123.1, 49.25], [-123.08, 49.25], [-123.06, 49.25]],
       },
       patterns: [
-        { id: 0, route: '99', direction: 0, shape: 'main', stops: [], dist: [] },
-        { id: 1, route: '99', direction: 0, shape: 'ext', stops: [], dist: [] },
+        { id: 0, route: '99', direction: 0, shape: 'main', stops: [0, 1], dist: [0, 1455] },
+        { id: 1, route: '99', direction: 0, shape: 'ext', stops: [0, 1, 2], dist: [0, 1455, 2910] },
       ],
       trips: [...Array.from({ length: 40 }, () => ({ pattern: 0 })), ...Array.from({ length: 5 }, () => ({ pattern: 1 }))],
     } as unknown as Parameters<typeof routeSections>[0];
@@ -69,6 +69,24 @@ describe('routeSections', () => {
     expect(ext.length).toBeGreaterThan(0);
     // The limited part is the extension east of -123.08.
     for (const s of ext) for (const [lon] of s.coords) expect(lon).toBeGreaterThan(-123.0815);
+    expect(secs.some((s) => !s.limited)).toBe(true);
+    expect(secs.some((s) => s.empty)).toBe(false);
+  });
+
+  it('marks the run from the last drop-off to a layover stop as carrying no passengers', async () => {
+    const { routeSections } = await import('../src/core/plan/coverage.ts');
+    // Last drop-off at 1455 m (no pickup there), then 145 m to a layover stop (no pickup or drop-off).
+    const plan = {
+      shapes: { s: [[-123.1, 49.25], [-123.078, 49.25]] },
+      patterns: [{ id: 0, route: '99', direction: 0, shape: 's', stops: [0, 1, 2], dist: [0, 1455, 1600], access: [0, 1, 3] }],
+      trips: Array.from({ length: 10 }, () => ({ pattern: 0 })),
+    } as unknown as Parameters<typeof routeSections>[0];
+    const secs = routeSections(plan, new Set(['99']));
+    const empty = secs.filter((s) => s.empty);
+    expect(empty).toHaveLength(1);
+    expect(empty[0]!.limited).toBe(true);
+    // East of the drop-off (-123.1 + 1455 m ≈ -123.08).
+    for (const [lon] of empty[0]!.coords) expect(lon).toBeGreaterThan(-123.0805);
     expect(secs.some((s) => !s.limited)).toBe(true);
   });
 });

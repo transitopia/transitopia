@@ -46,6 +46,38 @@ export interface PlanPattern {
   stops: number[];
   /** Distance of each stop along the (simplified) shape, metres. */
   dist: number[];
+  /**
+   * Per stop, from GTFS pickup_type / drop_off_type: bit STOP_NO_PICKUP = can't board, bit
+   * STOP_NO_DROPOFF = can't alight (both: a layover or timing point, e.g. the 99's N Grandview Hwy
+   * @ Commercial Dr). Absent when every stop allows both.
+   */
+  access?: number[];
+}
+
+export const STOP_NO_PICKUP = 1;
+export const STOP_NO_DROPOFF = 2;
+
+/** Whether passengers can board or alight at stop i of a pattern. */
+export function isPassengerStop(p: PlanPattern, i: number): boolean {
+  return ((p.access?.[i] ?? 0) & (STOP_NO_PICKUP | STOP_NO_DROPOFF)) !== (STOP_NO_PICKUP | STOP_NO_DROPOFF);
+}
+
+/**
+ * Per leg (stop i → i+1): whether passengers can be aboard, i.e. someone could have boarded at or
+ * before stop i and alight at or after stop i+1. False for e.g. the run from the last drop-off to a
+ * layover stop, or from a layover stop to the first pickup.
+ */
+export function passengerLegs(p: PlanPattern): boolean[] {
+  const n = p.stops.length;
+  const canBoard = (i: number) => ((p.access?.[i] ?? 0) & STOP_NO_PICKUP) === 0;
+  const canAlight = (i: number) => ((p.access?.[i] ?? 0) & STOP_NO_DROPOFF) === 0;
+  const boardedBy: boolean[] = [];
+  let any = false;
+  for (let i = 0; i < n; i++) boardedBy.push((any ||= canBoard(i)));
+  const alightFrom: boolean[] = Array(n).fill(false);
+  any = false;
+  for (let i = n - 1; i >= 0; i--) alightFrom[i] = any ||= canAlight(i);
+  return Array.from({ length: n - 1 }, (_, i) => boardedBy[i]! && alightFrom[i + 1]!);
 }
 
 export interface PlanTrip {
