@@ -150,18 +150,31 @@ export function buildNetwork(
   const cosLimit = Math.cos(((180 - MAX_TURN_DEG) * Math.PI) / 180);
   const stats: Record<string, number> = {};
   const adjacency = new Map<string, Set<string>>(); // segment → segments reachable by a turn
+  const dot = (a: { away: [number, number] }, b: { away: [number, number] }) => a.away[0] * b.away[0] + a.away[1] * b.away[1];
   for (const [nodeId, ends] of endsAt) {
     const turns: [SegmentEnd, SegmentEnd][] = [];
     for (let i = 0; i < ends.length; i++) {
       for (let j = i + 1; j < ends.length; j++) {
         const a = ends[i]!;
         const b = ends[j]!;
-        const dot = a.away[0] * b.away[0] + a.away[1] * b.away[1];
         // Away-vectors nearly opposite ⇒ straight through.
-        if (dot <= cosLimit) turns.push([a.end, b.end]);
+        if (dot(a, b) <= cosLimit) turns.push([a.end, b.end]);
       }
     }
     const tag = nodes.get(nodeId)?.tags?.railway;
+    // A diamond (the middle of a double crossover) has no moving parts: each end continues only to
+    // the end most nearly opposite. At flat crossovers the diagonals meet at < MAX_TURN_DEG, which
+    // would otherwise allow a zig-zag from one diagonal onto the other and back to the same track.
+    if (ends.length === 4 && tag !== 'switch' && turns.length > 2) {
+      const opposite = (a: (typeof ends)[number]) =>
+        ends.reduce((best, b) => (b !== a && dot(a, b) < dot(a, best) ? b : best), ends.find((b) => b !== a)!);
+      const keep = turns.filter(([ea, eb]) => {
+        const a = ends.find((e) => e.end === ea)!;
+        const b = ends.find((e) => e.end === eb)!;
+        return opposite(a) === b && opposite(b) === a;
+      });
+      if (keep.length === 2) turns.splice(0, turns.length, ...keep);
+    }
     let kind: NodeKind;
     if (ends.length === 1) kind = tag === 'buffer_stop' ? 'buffer' : 'end';
     else if (tag === 'railway_crossing' || (ends.length === 4 && turns.length === 2)) kind = 'crossing';
