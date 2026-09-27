@@ -38,6 +38,8 @@ export interface VehicleState {
   stopName?: string;
   provenance: Provenance;
   source: string;
+  /** Caveat about this position or its data, shown in the inspect panel. */
+  note?: string;
   serviceDate: string;
   /** Real-time vehicle label (e.g. bus fleet number), when observed. */
   label?: string;

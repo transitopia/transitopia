@@ -65,6 +65,7 @@ export class InspectCard {
       speed ? ['Speed', speed] : undefined,
       delay ? ['Schedule', delay] : undefined,
       ago !== undefined ? ['Last fix', ago < 90 ? `${ago} s from shown time` : `${Math.round(ago / 60)} min from shown time`] : undefined,
+      v.note ? ['Note', v.note] : undefined,
     ].filter(Boolean) as [string, string][];
     this.set(`
       <button class="inspect-close" aria-label="Close">×</button>

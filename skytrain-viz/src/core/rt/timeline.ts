@@ -5,6 +5,11 @@
 //    fix corrects the prediction: a bus found to be further ahead glides forward to it; one found to
 //    be behind holds still until the prediction catches up (never drives backwards). Big corrections
 //    snap;
+//  - fixes 150 m–1 km off the trip's shape that still progress plausibly along it are treated as
+//    shifted GPS (seen: in-service buses reported ~350–620 m north of their route for 30+ min, on
+//    time, while TransLink's stop matching stalled) and placed on the route at their along-route
+//    position, as interpolated, with a note; when TransLink's next stop is left behind like that, the
+//    next stop and delay are worked out from the position instead;
 //  - otherwise the vehicle is not shown (the caller falls back to schedule estimates when the
 //    instant isn't covered by RT data at all).
 // Pure given its inputs: the same snapshots and t always give the same answer. A fix counts as
@@ -38,6 +43,8 @@ interface Track {
   obs: Obs[]; // sorted by v.ts, unique ts
   /** Distance along the trip shape per obs (m), filled lazily in order; NaN when unknown. */
   along: number[];
+  /** Per obs: how far (m, north/east) the fix is from its along-route position, when it's shifted GPS. */
+  shift: ({ n: number; e: number } | undefined)[];
   /** Fetch times of snapshots that included this vehicle, sorted. */
   seenAt: number[];
 }
@@ -46,8 +53,29 @@ interface Track {
 const MAX_SPEED = 25;
 /** A fix implying a faster straight-line move than this since the last one is discarded (m/s). */
 const IMPLAUSIBLE_SPEED = 45;
-/** Fixes further than this from their trip shape are used as-is rather than snapped (m). */
+/** Fixes within this of their trip shape are on it (m). */
 const MAX_SNAP_OFFSET = 150;
+/**
+ * Fixes up to this far off their shape, progressing plausibly along it from the previous fix, are
+ * shifted GPS and placed on the route (m). Recorded data (2026-09-25/26): 98.4 % of fixes are within
+ * 50 m, 0.2 % 300–1000 m, mostly two buses shifted ~350–620 m north for 30+ min while on time.
+ */
+const MAX_SHIFTED_GPS = 1000;
+/**
+ * Shifted fixes must progress along the route no faster than this (m/s), and in a run of them the
+ * offset must stay within SHIFT_DRIFT_M of the previous one: a far-off fix can otherwise match a
+ * distant part of the route.
+ */
+const SHIFTED_MAX_SPEED = 15;
+const SHIFT_DRIFT_M = 300;
+/** Checked against the last fix placed on the route within this long (s), so one odd fix doesn't end a run. */
+const SHIFT_CHAIN_S = 300;
+/** The offset-drift check applies between shifted fixes at most this far apart (s). */
+const SHIFT_DRIFT_WITHIN_S = 60;
+/** With no recent fix on the route, a shifted fix can start a run if it's this close to its timetable (s). */
+const SHIFT_SCHEDULE_S = 1200;
+/** TransLink's next stop is stuck when the bus is this far past it along the route (m). */
+const STUCK_NEXT_STOP_M = 200;
 /** A prediction this close to its fix still counts as observed (s). */
 const OBSERVED_S = 10;
 /** Nested corrections considered when working out what was shown before a fix arrived. */
@@ -74,7 +102,7 @@ export class RtTimeline {
       this.fetchTimes.push(s.fetchedAt);
       for (const v of s.vehicles) {
         let tr = this.tracks.get(v.id);
-        if (!tr) this.tracks.set(v.id, (tr = { obs: [], along: [], seenAt: [] }));
+        if (!tr) this.tracks.set(v.id, (tr = { obs: [], along: [], shift: [], seenAt: [] }));
         tr.seenAt.push(s.fetchedAt);
         const last = tr.obs[tr.obs.length - 1];
         if (last && last.v.ts === v.ts) continue; // unchanged fix repeated across polls
@@ -107,9 +135,7 @@ export class RtTimeline {
         const trip = this.trip(o.v.tripId);
         const along = this.alongOf(tr, i);
         if (!trip || trip.route.kind !== 'bus' || Number.isNaN(along)) continue;
-        // Service date: after-midnight trips belong to the previous day.
-        let date = localDate(o.v.ts);
-        if ((o.v.ts - serviceDayStart(date)) / 1000 < trip.trip.start - 6 * 3600) date = addDays(date, -1);
+        const { date } = this.serviceTime(trip, o.v.ts);
         const secOf = (ms: number) => (ms - serviceDayStart(date)) / 1000;
         const handover = o.v.ts + this.opts.maxExtrapolateS * 1000;
         const shown = this.shownAlong(tr, i, handover)?.along;
@@ -167,20 +193,70 @@ export class RtTimeline {
     return s;
   }
 
-  /** Along-shape distance of obs i, projecting in order so loops don't snap to a later pass. */
+  /**
+   * Along-shape distance of obs i (NaN when it can't be placed on its route), projecting in order so
+   * loops don't snap to a later pass. Marks shifted-GPS fixes in tr.shift.
+   */
   private alongOf(tr: Track, i: number): number {
     for (let k = tr.along.length; k <= i; k++) {
       const o = tr.obs[k]!;
       const s = this.shape(o.v.tripId);
-      if (!s) {
-        tr.along.push(NaN);
-        continue;
+      // Last fix on the same trip that was placed on the route, recently.
+      let j = k - 1;
+      while (j >= 0 && tr.obs[j]!.v.tripId === o.v.tripId && Number.isNaN(tr.along[j]!) && (o.v.ts - tr.obs[j]!.v.ts) / 1000 <= SHIFT_CHAIN_S) j--;
+      const prevOk = j >= 0 && tr.obs[j]!.v.tripId === o.v.tripId && !Number.isNaN(tr.along[j]!) && (o.v.ts - tr.obs[j]!.v.ts) / 1000 <= SHIFT_CHAIN_S;
+      const prev = prevOk ? tr.along[j]! : NaN;
+      let along = NaN;
+      let shift: { n: number; e: number } | undefined;
+      if (s) {
+        const p = projectOnto(s.coords, s.cum, [o.v.lon, o.v.lat], prevOk ? Math.max(0, prev - 50) : 0);
+        if (p.offset < MAX_SNAP_OFFSET) along = p.along;
+        else if (p.offset <= MAX_SHIFTED_GPS) {
+          // Shifted GPS if it keeps moving along the route at a plausible pace with a steady offset,
+          // or (e.g. starting a run, or after a GPS jump) where it is along the route fits the timetable.
+          const q = pointAlong(s.coords, s.cum, p.along);
+          const v = { n: (o.v.lat - q.lat) * 111_320, e: (o.v.lon - q.lon) * 111_320 * Math.cos((q.lat * Math.PI) / 180) };
+          let fits = false;
+          if (prevOk) {
+            const dt = (o.v.ts - tr.obs[j]!.v.ts) / 1000;
+            const moved = p.along - prev;
+            const last = dt <= SHIFT_DRIFT_WITHIN_S ? tr.shift[j] : undefined;
+            const steady = !last || Math.hypot(v.n - last.n, v.e - last.e) <= SHIFT_DRIFT_M;
+            fits = moved >= -30 && moved <= SHIFTED_MAX_SPEED * dt + 50 && steady;
+            if (!fits && moved >= -30) fits = this.nearSchedule(o.v, p.along);
+          } else fits = this.nearSchedule(o.v, p.along);
+          if (fits) {
+            along = p.along;
+            shift = v;
+          }
+        }
       }
-      const prev = k > 0 && tr.obs[k - 1]!.v.tripId === o.v.tripId ? tr.along[k - 1]! : NaN;
-      const p = projectOnto(s.coords, s.cum, [o.v.lon, o.v.lat], Number.isNaN(prev) ? 0 : Math.max(0, prev - 50));
-      tr.along.push(p.offset < MAX_SNAP_OFFSET ? p.along : NaN);
+      tr.along.push(along);
+      tr.shift.push(shift);
     }
     return tr.along[i]!;
+  }
+
+  /** Distance (m) of a fix from its trip's route, if it has one. */
+  private offRoute(v: RtVehicle): number | undefined {
+    const s = this.shape(v.tripId);
+    return s ? projectOnto(s.coords, s.cum, [v.lon, v.lat]).offset : undefined;
+  }
+
+  /** Whether a bus at `along` on its trip at the fix's time is within SHIFT_SCHEDULE_S of its timetable. */
+  private nearSchedule(v: RtVehicle, along: number): boolean {
+    const trip = this.trip(v.tripId);
+    const pr = this.opts.prediction;
+    if (!trip || !pr) return false;
+    const { date, sec } = this.serviceTime(trip, v.ts);
+    return Math.abs(pr.predictor.delayAt(trip, along, sec, date)) <= SHIFT_SCHEDULE_S;
+  }
+
+  /** Service date and service-day second of a fix on a trip (after-midnight trips: previous day). */
+  private serviceTime(trip: PreparedTrip, ts: number): { date: string; sec: number } {
+    let date = localDate(ts);
+    if ((ts - serviceDayStart(date)) / 1000 < trip.trip.start - 6 * 3600) date = addDays(date, -1);
+    return { date, sec: (ts - serviceDayStart(date)) / 1000 };
   }
 
   private trip(tripId: string | undefined): PreparedTrip | undefined {
@@ -213,13 +289,13 @@ export class RtTimeline {
           }
         }
         const p = pointAlong(s.coords, s.cum, along);
-        return this.state(id, o0.v, p.lon, p.lat, p.bearing, speed, 'interpolated', t, o0);
+        return this.state(id, o0.v, p.lon, p.lat, p.bearing, speed, 'interpolated', t, o0, { tr, i, along, shifted: tr.shift[i] ?? tr.shift[i + 1] });
       }
     }
     const lon = o0.v.lon + (o1.v.lon - o0.v.lon) * f;
     const lat = o0.v.lat + (o1.v.lat - o0.v.lat) * f;
     const bearing = o0.v.bearing ?? headingOf(o0.v, o1.v);
-    return this.state(id, o0.v, lon, lat, bearing, undefined, 'interpolated', t, o0);
+    return this.state(id, o0.v, lon, lat, bearing, undefined, 'interpolated', t, o0, undefined, this.offRoute(o0.v));
   }
 
   /** Predicted along-shape position at t from obs i alone (no correction), with speed. */
@@ -296,11 +372,12 @@ export class RtTimeline {
     const provenance = (t - o0.v.ts) / 1000 <= OBSERVED_S ? 'observed' : 'interpolated';
     if (s && shown) {
       const p = pointAlong(s.coords, s.cum, shown.along);
-      return this.state(id, o0.v, p.lon, p.lat, p.bearing, shown.speed, provenance, t, o0);
+      const shifted = tr.shift[i];
+      return this.state(id, o0.v, p.lon, p.lat, p.bearing, shown.speed, shifted ? 'interpolated' : provenance, t, o0, { tr, i, along: shown.along, shifted });
     }
     const prev = i > 0 ? tr.obs[i - 1] : undefined;
     const bearing = o0.v.bearing ?? (prev ? headingOf(prev.v, o0.v) : 0);
-    return this.state(id, o0.v, o0.v.lon, o0.v.lat, bearing, undefined, provenance, t, o0);
+    return this.state(id, o0.v, o0.v.lon, o0.v.lat, bearing, undefined, provenance, t, o0, undefined, this.offRoute(o0.v));
   }
 
   private state(
@@ -313,11 +390,44 @@ export class RtTimeline {
     provenance: VehicleState['provenance'],
     t: number,
     basis: Obs,
+    /** Where it's shown along its route (and from which obs), to check TransLink's next stop. */
+    onRoute?: { tr: Track; i: number; along: number; shifted: { n: number; e: number } | undefined },
+    /** Distance from its trip's route (m) when it couldn't be placed on it. */
+    offRouteM?: number,
   ): VehicleState {
     const trip = this.trip(v.tripId);
     const route = this.pp?.routes.get(v.routeKey);
     const kin = trip?.kin ?? kinematicsFor(this.kin, route?.mode ?? 'bus', v.routeKey);
-    const stop = v.stopId ? this.pp?.stopById.get(v.stopId) : undefined;
+    let stop = v.stopId ? this.pp?.stopById.get(v.stopId) : undefined;
+    let delay = v.delay;
+    const notes: string[] = [];
+    if (offRouteM !== undefined && offRouteM >= MAX_SNAP_OFFSET) {
+      // Not following its trip (e.g. heading to or from the depot): TransLink's delay means little.
+      notes.push(`Not on its route (≈ ${offRouteM >= 1000 ? `${(offRouteM / 1000).toFixed(1)} km` : `${Math.round(offRouteM / 50) * 50} m`} away), possibly not in service`);
+      delay = undefined;
+    }
+    if (onRoute?.shifted) {
+      const { n, e } = onRoute.shifted;
+      const dist = Math.round(Math.hypot(n, e) / 50) * 50;
+      const dir = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'][Math.round(((Math.atan2(e, n) * 180) / Math.PI + 360) / 45) % 8];
+      notes.push(`GPS appears offset ≈ ${dist} m ${dir}; shown on its route`);
+    }
+    if (trip && onRoute && this.pp) {
+      // TransLink's next stop left well behind: its stop matching (and so its delay) has stalled.
+      const ids = trip.pattern.stops.map((si) => this.pp!.plan.stops[si]!.id);
+      const next = v.stopId ? ids.indexOf(v.stopId) : -1;
+      const fixAlong = this.alongOf(onRoute.tr, onRoute.i);
+      if (next >= 0 && fixAlong > trip.pattern.dist[next]! + STUCK_NEXT_STOP_M) {
+        const actual = trip.pattern.dist.findIndex((d) => d > onRoute.along);
+        stop = actual >= 0 ? this.pp.plan.stops[trip.pattern.stops[actual]!] : undefined;
+        const pr = this.opts.prediction;
+        if (pr) {
+          const { date, sec } = this.serviceTime(trip, basis.v.ts);
+          delay = Math.round(pr.predictor.delayAt(trip, fixAlong, sec, date));
+        } else delay = undefined;
+        notes.push(`TransLink's next stop is stuck at ${this.pp.stopById.get(v.stopId!)?.name ?? v.stopId}; next stop and delay worked out from the position`);
+      }
+    }
     const s: VehicleState = {
       id: `rt:${id}`,
       routeKey: v.routeKey,
@@ -338,7 +448,8 @@ export class RtTimeline {
     if (speed !== undefined) s.speed = speed;
     if (stop) s.stopName = stop.name;
     if (v.label) s.label = v.label;
-    if (v.delay !== undefined) s.delay = v.delay;
+    if (delay !== undefined) s.delay = delay;
+    if (notes.length) s.note = notes.join('. ');
     return s;
   }
 }

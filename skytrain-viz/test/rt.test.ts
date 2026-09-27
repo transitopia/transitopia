@@ -242,6 +242,46 @@ describe('carrying RT delays into schedule estimates', () => {
   });
 });
 
+describe('shifted GPS', () => {
+  const cfg = rtConfig.prediction as unknown as PredictionConfig;
+  const L = plan.shapes.L as LonLat[];
+  const cum = cumulativeLengths(L);
+  const alongOf = (v: { lon: number; lat: number }) => projectOnto(L, cum, [v.lon, v.lat]).along;
+  // A point `along` the first (eastward) leg, shifted `north` metres.
+  const pt = (along: number, north = 0): [number, number] => {
+    const p = pointAlong(L, cum, along);
+    return [p.lon, p.lat + north / 111_320];
+  };
+  const fix = (s: number, [lon, lat]: [number, number]): RtSnapshot => ({
+    fetchedAt: T0 + s * 1000 + 3000,
+    headerTs: T0 + s * 1000,
+    vehicles: [{ id: 'bus1', routeKey: '99', tripId: 'trip1', lon, lat, ts: T0 + s * 1000, stopId: 's1', delay: 1800 }],
+  });
+  const popts = { ...opts, prediction: { cfg, predictor: new Predictor(pp, cfg) } };
+
+  it('places a bus reported ~500 m off its route, still progressing along it, on the route', () => {
+    const tl = new RtTimeline([fix(0, pt(100)), fix(30, pt(250, 500)), fix(60, pt(400, 500))], pp, kin, popts);
+    const v = tl.vehiclesAt(T0 + 30_000)[0]!;
+    expect(alongOf(v)).toBeCloseTo(250, 0);
+    expect(v.lat).toBeCloseTo(49.25, 5); // on the route, not 500 m north
+    expect(v.provenance).toBe('interpolated');
+    expect(v.note).toMatch(/offset ≈ 500 m north/);
+    // TransLink's next stop (the first stop, 250 m back) is stuck: use the position instead.
+    expect(v.stopName).toBe('End');
+    expect(v.note).toMatch(/stuck at Start/);
+    expect(Math.abs(v.delay! - 1800)).toBeGreaterThan(60);
+  });
+
+  it('leaves a far-off fix alone when it does not fit how the bus is progressing', () => {
+    // 400 m backwards along the route in 30 s: not the same bus progressing; shown where reported.
+    const tl = new RtTimeline([fix(0, pt(900)), fix(30, pt(500, 500))], pp, kin, popts);
+    const v = tl.vehiclesAt(T0 + 30_000)[0]!;
+    expect(v.lat).toBeCloseTo(49.25 + 500 / 111_320, 5);
+    expect(v.note).toMatch(/Not on its route \(≈ 500 m away\)/);
+    expect(v.delay).toBeUndefined();
+  });
+});
+
 describe('snapshot encoding', () => {
   it('round-trips compactly', () => {
     const s = snap(0, [[-123.123456789, 49.2]]);
