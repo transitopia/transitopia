@@ -1,28 +1,23 @@
-// Reconcile observations with inferred runs (PLAN.md §4.7). Produces, per run, a time warp (the
-// run's schedule shifted by observed delays that decay at terminus layovers), cancelled trips, an
-// observed consist, and windows where the position counts as observed.
+// Observations → dispatcher inputs for SkyTrain (PLAN.md §4.7, §4.11), and corrections for
+// timetable vehicles (SeaBus, WCE, buses without real-time data).
 //
-// Pure: (movements, plan, observations, service date) → RunCorrections.
+// SkyTrain sightings become anchors: "the train running trip X was at stop i at time t". The
+// dispatcher moves those stops and lets signalling carry the effect to the trains around it, so
+// corrected trains stay consistent with each other. Pure: (movements, plan, observations, date).
 
 import type { PreparedPlan } from '../schedule/engine.ts';
 import type { MovementsFile } from '../movement/types.ts';
 import { serviceDayStart } from '../time.ts';
 import type { Consist, Observation } from './types.ts';
 
-/** Real time t within [t0, t1) shows the schedule as of t − shift. Service-day seconds. */
-export interface Shift {
-  t0: number;
-  t1: number;
-  shift: number;
-}
-
-export interface RunCorrection {
-  shifts: Shift[];
-  cancelled: Set<string>;
-  consist?: Consist;
-  /** Observation instants (service-day seconds) and their sources. */
-  observed: { t: number; source: string }[];
-  sources: Set<string>;
+/** A stop time the dispatcher must honour (service-day seconds). `at`: seen while stopped. */
+export interface Anchor {
+  run: string;
+  trip: string;
+  stop: number;
+  t: number;
+  event: 'arrive' | 'depart' | 'at';
+  source: string;
 }
 
 export interface ParkedTrain {
@@ -36,39 +31,38 @@ export interface ParkedTrain {
   consist?: Consist;
 }
 
-export interface ReconcileResult {
-  runs: Map<string, RunCorrection>;
+export interface RailInputs {
+  anchors: Anchor[];
+  /** Per run: cancelled trips, observed consist, observation instants and sources. */
+  runs: Map<string, { cancelled: Set<string>; consist?: Consist; observed: { t: number; source: string }[]; sources: Set<string> }>;
   /** Out-of-service trains seen standing somewhere (parked observations). */
   parked: ParkedTrain[];
   /** Observations that couldn't be matched to a trip or run, with the reason. */
   unmatched: { obs: Observation; reason: string }[];
+  /** SkyTrain observations applied. */
+  used: number;
 }
 
 /** Positions within this of an observation count as observed (s). */
 export const OBSERVED_WINDOW_S = 90;
 /** A parked train seen once is shown this long either side of the sighting (s). */
 const PARKED_DEFAULT_WINDOW_S = 15 * 60;
-/** Minimum turnaround when absorbing delay at a terminus (s). */
-const MIN_TURN_S = 60;
 /** How far an at_platform observation may be from the scheduled time to match without a trip (s). */
 const MATCH_WINDOW_S = 600;
 
-export function reconcile(file: MovementsFile, pp: PreparedPlan, observations: Observation[], serviceDate: string): ReconcileResult {
+/** SkyTrain observations for one service date as dispatcher inputs. */
+export function railInputs(file: MovementsFile, pp: PreparedPlan, observations: Observation[], serviceDate: string): RailInputs {
   const dayStart = serviceDayStart(serviceDate);
   const toSec = (iso: string) => (Date.parse(iso) - dayStart) / 1000;
   const runOfTrip = new Map<string, string>();
   for (const r of file.runs) for (const e of r.events) if (e.k === 'trip') runOfTrip.set(e.trip, r.id);
-  const runs = new Map<string, RunCorrection>();
-  const unmatched: ReconcileResult['unmatched'] = [];
-  const parked: ParkedTrain[] = [];
+  const out: RailInputs = { anchors: [], runs: new Map(), parked: [], unmatched: [], used: 0 };
   const get = (runId: string) => {
-    let c = runs.get(runId);
-    if (!c) runs.set(runId, (c = { shifts: [], cancelled: new Set(), observed: [], sources: new Set() }));
+    let c = out.runs.get(runId);
+    if (!c) out.runs.set(runId, (c = { cancelled: new Set(), observed: [], sources: new Set() }));
     return c;
   };
   const isoDate = `${serviceDate.slice(0, 4)}-${serviceDate.slice(4, 6)}-${serviceDate.slice(6, 8)}`;
-  const delays = new Map<string, { trip: string; fromT: number; seconds: number }[]>();
-
   const railRoutes = new Set([...pp.routes.values()].filter((r) => r.kind === 'skytrain').map((r) => r.key));
   for (const obs of observations) {
     if (obs.date !== isoDate) continue;
@@ -78,10 +72,10 @@ export function reconcile(file: MovementsFile, pp: PreparedPlan, observations: O
     if (obs.kind === 'parked') {
       const seen = toSec(obs.time);
       if (!Number.isFinite(seen)) {
-        unmatched.push({ obs, reason: 'unparseable time' });
+        out.unmatched.push({ obs, reason: 'unparseable time' });
         continue;
       }
-      parked.push({
+      out.parked.push({
         at: obs.at,
         line: obs.line ?? 'expo',
         seen,
@@ -95,69 +89,42 @@ export function reconcile(file: MovementsFile, pp: PreparedPlan, observations: O
     if (obs.kind === 'at_platform') {
       const t = toSec(obs.time);
       if (!Number.isFinite(t)) {
-        unmatched.push({ obs, reason: 'unparseable time' });
+        out.unmatched.push({ obs, reason: 'unparseable time' });
         continue;
       }
       const match = matchAtPlatform(pp, runOfTrip, obs, t);
       if (!match) {
-        unmatched.push({ obs, reason: 'no scheduled train at that stop near that time' });
+        out.unmatched.push({ obs, reason: 'no scheduled train at that stop near that time' });
         continue;
       }
       const c = get(match.run);
       c.observed.push({ t, source: obs.source });
       c.sources.add(obs.source);
       if (obs.consist) c.consist = obs.consist;
-      const d = t - match.scheduled;
-      if (Math.abs(d) >= 1) (delays.get(match.run) ?? delays.set(match.run, []).get(match.run)!).push({ trip: match.trip, fromT: match.scheduled - 1, seconds: d });
-    } else {
-      const run = runOfTrip.get(obs.trip);
-      if (!run) {
-        unmatched.push({ obs, reason: `trip ${obs.trip} isn't in a train run for this date` });
-        continue;
-      }
-      const c = get(run);
-      c.sources.add(obs.source);
-      if (obs.kind === 'cancel') c.cancelled.add(obs.trip);
-      else if (obs.kind === 'consist') c.consist = obs.consist;
-      else {
-        const trip = pp.tripIndex.get(obs.trip)!;
-        const fromT = obs.time ? toSec(obs.time) : trip.dep[0]!;
-        (delays.get(run) ?? delays.set(run, []).get(run)!).push({ trip: obs.trip, fromT, seconds: obs.seconds });
-      }
+      out.anchors.push({ run: match.run, trip: match.trip, stop: match.stop, t, event: obs.event ?? 'at', source: obs.source });
+      continue;
+    }
+    const run = runOfTrip.get(obs.trip);
+    if (!run) {
+      out.unmatched.push({ obs, reason: `trip ${obs.trip} isn't in a train run for this date` });
+      continue;
+    }
+    const c = get(run);
+    c.sources.add(obs.source);
+    if (obs.kind === 'cancel') c.cancelled.add(obs.trip);
+    else if (obs.kind === 'consist') c.consist = obs.consist;
+    else {
+      // A delay: the trip leaves the first stop at or after `time` that many seconds late.
+      const trip = pp.tripIndex.get(obs.trip)!;
+      const from = obs.time ? toSec(obs.time) : trip.dep[0]!;
+      let stop = trip.dep.findIndex((d, i) => i < trip.dep.length - 1 && d >= from - 1);
+      if (stop < 0) stop = 0;
+      out.anchors.push({ run, trip: obs.trip, stop, t: trip.dep[stop]! + obs.seconds, event: 'depart', source: obs.source });
     }
   }
-
-  // Delays → shifts, absorbed by later layovers. The latest observation wins from its time on.
-  for (const [runId, ds] of delays) {
-    const run = file.runs.find((r) => r.id === runId)!;
-    const trips = run.events.flatMap((e) => (e.k === 'trip' ? [pp.tripIndex.get(e.trip)!] : []));
-    ds.sort((a, b) => a.fromT - b.fromT);
-    const shifts: Shift[] = [];
-    ds.forEach((dly, idx) => {
-      const until = ds[idx + 1]?.fromT ?? Infinity;
-      let k = trips.findIndex((t) => t.trip.id === dly.trip);
-      let d = dly.seconds;
-      let start = dly.fromT;
-      while (k >= 0 && k < trips.length && d !== 0 && start < until) {
-        const t = trips[k]!;
-        const end = t.arr[t.arr.length - 1]! + d;
-        shifts.push({ t0: start, t1: Math.min(end, until), shift: d });
-        const next = trips[k + 1];
-        if (!next) break;
-        // Layover absorbs lateness (keeping a minimum turnaround); an early train simply waits for
-        // its scheduled departure, so earliness never carries into the next trip.
-        const slack = next.dep[0]! - t.arr[t.arr.length - 1]! - MIN_TURN_S;
-        const nd = d > 0 ? Math.max(0, d - Math.max(0, slack)) : 0;
-        // During the layover the train waits at the terminus: show the schedule's layover position.
-        if (end < next.dep[0]! + nd) shifts.push({ t0: end, t1: Math.min(next.dep[0]! + nd, until), shift: Math.max(0, Math.min(d, nd)) });
-        d = nd;
-        start = next.dep[0]! + nd;
-        k++;
-      }
-    });
-    get(runId).shifts = shifts.filter((s) => s.t1 > s.t0).sort((a, b) => a.t0 - b.t0);
-  }
-  return { runs, parked, unmatched };
+  out.anchors.sort((a, b) => a.t - b.t);
+  out.used = out.anchors.length + out.parked.length + [...out.runs.values()].reduce((n, c) => n + c.cancelled.size, 0);
+  return out;
 }
 
 function matchAtPlatform(
@@ -165,12 +132,12 @@ function matchAtPlatform(
   runOfTrip: Map<string, string>,
   obs: Extract<Observation, { kind: 'at_platform' }>,
   t: number,
-): { run: string; trip: string; scheduled: number } | undefined {
+): { run: string; trip: string; stop: number; scheduled: number } | undefined {
   const stopMatches = (id: string) => {
     const s = pp.stopById.get(id);
     return id === obs.stop || s?.name === obs.stop || s?.parent === obs.stop || (s && s.name.replace(/\s+(Station.*|(North|South|East|West)bound)$/, '') === obs.stop);
   };
-  let best: { run: string; trip: string; scheduled: number; err: number } | undefined;
+  let best: { run: string; trip: string; stop: number; scheduled: number; err: number } | undefined;
   const consider = (tripId: string) => {
     const pt = pp.tripIndex.get(tripId);
     const run = runOfTrip.get(tripId);
@@ -183,19 +150,12 @@ function matchAtPlatform(
       if (obs.event === 'depart' && i === n - 1) return;
       const scheduled = obs.event === 'arrive' ? pt.arr[i]! : obs.event === 'depart' ? pt.dep[i]! : (pt.arr[i]! + pt.dep[i]!) / 2;
       const err = Math.abs(scheduled - t);
-      if ((obs.trip || err <= MATCH_WINDOW_S) && (!best || err < best.err)) best = { run, trip: tripId, scheduled, err };
+      if ((obs.trip || err <= MATCH_WINDOW_S) && (!best || err < best.err)) best = { run, trip: tripId, stop: i, scheduled, err };
     });
   };
   if (obs.trip) consider(obs.trip);
   else for (const tripId of runOfTrip.keys()) consider(tripId);
-  return best && { run: best.run, trip: best.trip, scheduled: best.scheduled };
-}
-
-/** Schedule time to evaluate for real time t on a run (identity when no shift applies). */
-export function warp(c: RunCorrection | undefined, t: number): number {
-  if (!c) return t;
-  for (const s of c.shifts) if (t >= s.t0 && t < s.t1) return t - s.shift;
-  return t;
+  return best && { run: best.run, trip: best.trip, stop: best.stop, scheduled: best.scheduled };
 }
 
 /** Corrections for timetable-based vehicles (SeaBus, WCE, buses without real-time data). */

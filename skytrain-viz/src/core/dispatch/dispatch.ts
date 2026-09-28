@@ -11,7 +11,8 @@ import type { TrackGraph } from '../infra/graph.ts';
 import type { KinematicsConfig } from '../movement/kinematics.ts';
 import type { DispatchSummary, HopVia, HopWait, MovementsFile, Run, RunEvent } from '../movement/types.ts';
 import type { PreparedPlan } from '../schedule/engine.ts';
-import { buildModels, type MoveItem, type RoutePiece, type TrainModel } from './model.ts';
+import { applyAnchors, buildModels, type AnchorInput, type MoveItem, type RoutePiece, type TrainModel } from './model.ts';
+import type { RailInputs } from '../corrections/reconcile.ts';
 import { simulate, type DispatchConfig, type MoveRecord, type SignalWait, type WaitRecord } from './sim.ts';
 
 export type { DispatchConfig } from './sim.ts';
@@ -24,7 +25,14 @@ export interface DispatchOptions {
   /** Labels for the inputs used (shown with the result). */
   inputs?: string[];
   date?: string;
+  /** Observations for this date (anchors, cancellations, consists, parked trains). */
+  rail?: RailInputs;
+  /** The date's base plan (already dispatched): runs whose times differ from it are marked adjusted. */
+  base?: MovementsFile;
 }
+
+/** Stops that moved at least this far from the base plan count as adjusted (s). */
+const ADJUSTED_S = 5;
 
 /** Times within this of the plan are kept exactly, so on-time trips stay stored by reference (s). */
 const SAME_S = 0.5;
@@ -33,6 +41,7 @@ const r1 = (x: number) => Math.round(x * 10) / 10;
 export function dispatch(file: MovementsFile, pp: PreparedPlan, g: TrackGraph, opts: DispatchOptions): MovementsFile {
   const started = performance.now();
   const models = buildModels(file, pp, opts.kin, { minHoldS: opts.config.minHoldS });
+  if (opts.rail?.anchors.length) applyAnchors(models, opts.rail.anchors as AnchorInput[], pp);
   const sim = simulate(models, g, opts.config, { deadhead: opts.deadheadSpeedFactor, turnback: opts.turnbackSpeedFactor });
 
   const stations = pp.plan.stations;
@@ -52,13 +61,27 @@ export function dispatch(file: MovementsFile, pp: PreparedPlan, g: TrackGraph, o
 
   const delays = new Map<string, number[]>();
   const holds: Record<string, number> = {};
+  const baseRuns = new Map(opts.base?.runs.map((r) => [r.id, r]));
   const runs: Run[] = models.map((m, ti) => {
     const recs = sim.records[ti]!;
     if (recs.length !== m.items.length) return m.run; // unfinished (shouldn't happen): keep the plan
-    return emitRun(m, recs, pp, (seg, offset, why) => {
+    const run = emitRun(m, recs, pp, (seg, offset, why) => {
       const k = `${placeOf(seg, offset)} (${why})`;
       holds[k] = (holds[k] ?? 0) + 1;
     }, (line, d) => (delays.get(line) ?? delays.set(line, []).get(line)!).push(d));
+    const info = opts.rail?.runs.get(run.id);
+    if (info) {
+      if (info.observed.length) run.observed = [...info.observed].sort((a, b) => a.t - b.t);
+      if (info.sources.size) run.sources = [...info.sources].sort();
+      if (info.cancelled.size) run.cancelled = [...info.cancelled].sort();
+      if (info.consist) run.consist = info.consist;
+    }
+    const base = baseRuns.get(run.id);
+    if (base) {
+      const spans = adjustedSpans(base, run, pp);
+      if (spans.length) run.adjusted = spans;
+    }
+    return run;
   });
 
   const delay: DispatchSummary['delay'] = {};
@@ -75,7 +98,7 @@ export function dispatch(file: MovementsFile, pp: PreparedPlan, g: TrackGraph, o
     forced: sim.forced.map((f) => ({ run: f.run, t: f.t, where: placeOf(f.seg, f.offset), why: f.why })),
     ms: Math.round(performance.now() - started),
   };
-  return { ...file, schema: 2, runs, dispatch: summary };
+  return { ...file, schema: 2, runs, dispatch: summary, ...(opts.rail?.parked.length ? { parked: opts.rail.parked } : {}) };
 }
 
 function emitRun(
@@ -163,6 +186,32 @@ function emitRun(
     events.push(changed || waits.length || via.length ? { ...rest, times, ...(waits.length ? { waits } : {}), ...(via.length ? { via } : {}) } : rest);
   });
   return { ...m.run, events };
+}
+
+/** When each event of a run starts and ends (trip times from the event or the plan). */
+function eventTimes(e: RunEvent, pp: PreparedPlan): number[] {
+  if (e.k !== 'trip') return [e.t0, e.t1];
+  if (e.times) return e.times;
+  const t = pp.tripIndex.get(e.trip)!;
+  return Array.from(t.arr, (a, i) => [a, t.dep[i]!]).flat();
+}
+
+/** Service-day spans where a run's times differ from its base plan by ≥ ADJUSTED_S. */
+function adjustedSpans(base: Run, run: Run, pp: PreparedPlan): [number, number][] {
+  const spans: [number, number][] = [];
+  const n = Math.min(base.events.length, run.events.length);
+  for (let i = 0; i < n; i++) {
+    const a = eventTimes(base.events[i]!, pp);
+    const b = eventTimes(run.events[i]!, pp);
+    if (a.length !== b.length || a.some((x, j) => Math.abs(x - b[j]!) >= ADJUSTED_S)) {
+      const t0 = Math.min(a[0]!, b[0]!);
+      const t1 = Math.max(a[a.length - 1]!, b[b.length - 1]!);
+      const last = spans[spans.length - 1];
+      if (last && t0 <= last[1] + 1) last[1] = Math.max(last[1], t1);
+      else spans.push([t0, t1]);
+    }
+  }
+  return spans;
 }
 
 function hopWait(it: MoveItem, w: SignalWait, hop: number): HopWait {

@@ -7,7 +7,7 @@ import type { Dir, TrackGraph, TrackPos } from '../infra/graph.ts';
 import type { PreparedPlan, VehicleState, VehicleStatus } from '../schedule/engine.ts';
 import { distanceAt, kinematicsFor, solveLeg, speedAt, type Kinematics, type KinematicsConfig, type LegProfile } from './kinematics.ts';
 import type { HopWait, MovementsFile, Run, RunEvent } from './types.ts';
-import { OBSERVED_WINDOW_S, warp, type ParkedTrain, type ReconcileResult } from '../corrections/reconcile.ts';
+import { OBSERVED_WINDOW_S, type ParkedTrain } from '../corrections/reconcile.ts';
 import { formatServiceTime, serviceDayStart } from '../time.ts';
 
 /** Distance and speed at `sec` along a flattened [t, d, …] trajectory (linear between points). */
@@ -121,33 +121,30 @@ export class TrainPlayback {
   }
 
   /**
-   * Trains visible at `sec` (service-day seconds) of this file's service day, with observations
-   * applied (PLAN.md §4.7): each run is evaluated at its warped schedule time.
+   * Trains visible at `sec` (service-day seconds) of this file's service day. With a dispatch patch
+   * applied (PLAN.md §4.11), runs carry their observations: positions within 90 s of a sighting are
+   * observed, times moved by observations or disruptions interpolated.
    */
-  vehiclesAt(sec: number, serviceDate: string, routes?: Set<string>, corrections?: ReconcileResult): VehicleState[] {
+  vehiclesAt(sec: number, serviceDate: string, routes?: Set<string>): VehicleState[] {
     const out: VehicleState[] = [];
     for (const r of this.runs) {
-      const c = corrections?.runs.get(r.run.id);
-      if (!c && r.start > sec) break;
-      const s = warp(c, sec);
-      if (s < r.start || s > r.end) continue;
-      const v = this.runAt(r, s, serviceDate);
+      if (r.start > sec) break;
+      if (sec > r.end) continue;
+      const v = this.runAt(r, sec, serviceDate);
       if (!v || (routes && !routes.has(v.routeKey))) continue;
-      if (c) {
-        if (v.tripId && c.cancelled.has(v.tripId)) continue;
-        const near = c.observed.find((o) => Math.abs(o.t - sec) <= OBSERVED_WINDOW_S);
-        const shifted = s !== sec;
-        if (near || shifted) {
-          v.provenance = near ? 'observed' : 'interpolated';
-          v.source = `${[...c.sources].join(', ')} + ${v.source}`;
-          if (near) v.observedAt = serviceDayStart(serviceDate) + near.t * 1000;
-          if (shifted) v.delay = sec - s;
-        }
-        if (c.consist) v.consist = c.consist;
+      const run = r.run;
+      if (v.tripId && run.cancelled?.includes(v.tripId)) continue;
+      const near = run.observed?.find((o) => Math.abs(o.t - sec) <= OBSERVED_WINDOW_S);
+      const adjusted = run.adjusted?.some(([a, b]) => sec >= a && sec <= b);
+      if (near || adjusted) {
+        v.provenance = near ? 'observed' : 'interpolated';
+        if (run.sources?.length) v.source = `${run.sources.join(', ')} + ${v.source}`;
+        if (near) v.observedAt = serviceDayStart(serviceDate) + near.t * 1000;
       }
+      if (run.consist) v.consist = run.consist;
       out.push(v);
     }
-    for (const [i, p] of (corrections?.parked ?? []).entries()) {
+    for (const [i, p] of (this.file.parked ?? []).entries()) {
       if (sec < p.from || sec > p.until || (routes && !routes.has(p.line))) continue;
       const v = this.parkedAt(p, i, sec, serviceDate);
       if (v) out.push(v);
@@ -251,9 +248,16 @@ export class TrainPlayback {
       else hiI = mid - 1;
     }
     const headsign = t.trip.headsign;
+    // Dispatched trips: seconds late (+) or early (−) against the timetable at this stop or the next.
+    const late = (v: VehicleState, at: number) => {
+      if (!e.times) return v;
+      const d = Math.round(at === i && sec <= dep[i]! ? dep[i]! - t.dep[i]! : arr[at]! - t.arr[at]!);
+      if (Math.abs(d) >= 1) v.delay = d;
+      return v;
+    };
     if (sec <= dep[i]! || i === n - 1) {
       const { pos, dir } = stopPos(i);
-      return this.state(r, base, pos, dir, 'dwell', this.pp.plan.stops[t.pattern.stops[i]!]!.name, headsign, 0, t.trip.id, t.route.key);
+      return late(this.state(r, base, pos, dir, 'dwell', this.pp.plan.stops[t.pattern.stops[i]!]!.name, headsign, 0, t.trip.id, t.route.key), i);
     }
     const pi = hopPath(i);
     const path = this.paths[pi]!;
@@ -266,25 +270,17 @@ export class TrainPlayback {
       const next = this.pp.plan.stops[t.pattern.stops[i + 1]!]!.name;
       const v = this.state(r, base, pos, dir, w ? 'held' : 'moving', next, headsign, speed, t.trip.id, t.route.key);
       if (w) v.note = `Held: ${w.why}`;
-      return v;
+      return late(v, i + 1);
     }
-    if (waits?.length) return this.hopWithWaits(r, base, path, dep[i]!, arr[i + 1]!, waits, sec, this.pp.plan.stops[t.pattern.stops[i + 1]!]!.name, headsign, t.trip.id, t.route.key);
+    if (waits?.length) return late(this.hopWithWaits(r, base, path, dep[i]!, arr[i + 1]!, waits, sec, this.pp.plan.stops[t.pattern.stops[i + 1]!]!.name, headsign, t.trip.id, t.route.key), i + 1);
     const leg = this.leg(pi, arr[i + 1]! - dep[i]!, r.kin);
     const tt = sec - dep[i]!;
     const d = distanceAt(leg, tt);
     const { pos, dir } = this.along(path, d);
     const holding = tt < leg.hold;
-    return this.state(
-      r,
-      base,
-      pos,
-      dir,
-      holding ? 'dwell' : 'moving',
-      this.pp.plan.stops[t.pattern.stops[holding ? i : i + 1]!]!.name,
-      headsign,
-      speedAt(leg, tt),
-      t.trip.id,
-      t.route.key,
+    return late(
+      this.state(r, base, pos, dir, holding ? 'dwell' : 'moving', this.pp.plan.stops[t.pattern.stops[holding ? i : i + 1]!]!.name, headsign, speedAt(leg, tt), t.trip.id, t.route.key),
+      holding ? i : i + 1,
     );
   }
 

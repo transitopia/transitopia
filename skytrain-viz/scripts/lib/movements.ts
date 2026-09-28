@@ -60,6 +60,8 @@ export async function buildAllMovements(input: BuildAllInput): Promise<{ index: 
       ? dispatch(built, pp, graph, { config: input.dispatch, kin, deadheadSpeedFactor: ops.yard.deadheadSpeedFactor, turnbackSpeedFactor: ops.turnback.speedFactor })
       : built;
     await writeJson(join(input.outDir, `${key}.json`), file);
+    // The inferred runs, for re-dispatching single dates with observations or disruptions.
+    if (input.dispatch) await writeJson(join(input.outDir, 'inferred', `${key}.json`), built);
     index.files[key] = `${input.relDir}/${key}.json`;
     files.set(key, file);
     if (input.verbose) {

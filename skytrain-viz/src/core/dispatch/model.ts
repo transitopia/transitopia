@@ -155,3 +155,62 @@ function buildModel(file: MovementsFile, pp: PreparedPlan, kinCfg: KinematicsCon
 export function deadheadKinematics(k: Kinematics, speedFactor: number): Kinematics {
   return { ...k, maxSpeed: k.maxSpeed * speedFactor, minCruiseFraction: 0.5 };
 }
+
+/** A stop time the dispatcher must honour (see corrections/reconcile.ts railInputs). */
+export interface AnchorInput {
+  run: string;
+  trip: string;
+  stop: number;
+  t: number;
+  event: 'arrive' | 'depart' | 'at';
+}
+
+/**
+ * Move anchored stops to their observed times. An arrival keeps the hop's planned running time
+ * (the difference is spent at the previous stop); a departure ends the dwell there. Anchors
+ * override "never early". Later trips are left to the simulation (delays carry and are absorbed).
+ */
+export function applyAnchors(models: TrainModel[], anchors: AnchorInput[], pp: PreparedPlan): void {
+  const byRun = new Map(models.map((m) => [m.run.id, m]));
+  for (const a of anchors) {
+    const m = byRun.get(a.run);
+    if (!m) continue;
+    const ev = m.run.events.findIndex((e) => e.k === 'trip' && e.trip === a.trip);
+    if (ev < 0) continue;
+    const t = pp.tripIndex.get(a.trip)!;
+    const n = t.arr.length;
+    const wait = (stop: number) => m.items.find((it): it is WaitItem => it.k === 'wait' && it.ev === ev && it.stop === stop);
+    const move = (hop: number) => m.items.find((it): it is MoveItem => it.k === 'move' && it.ev === ev && it.hop === hop);
+    const dwell = t.dep[a.stop]! - t.arr[a.stop]!;
+    const arrive = a.event === 'arrive' ? a.t : a.event === 'at' ? a.t - dwell / 2 : undefined;
+    const depart = a.event === 'depart' ? a.t : a.event === 'at' && a.stop < n - 1 ? a.t + dwell / 2 : undefined;
+    if (arrive !== undefined && a.stop > 0) {
+      const mv = move(a.stop - 1);
+      if (mv) {
+        const run = mv.plannedEnd - mv.notBefore;
+        mv.plannedEnd = arrive;
+        mv.notBefore = arrive - run;
+        const w = wait(a.stop - 1);
+        if (w && w.until > mv.notBefore) w.until = mv.notBefore;
+      }
+      const w = wait(a.stop);
+      if (w) {
+        w.t0 = arrive;
+        if (a.stop === n - 1) w.until = arrive;
+      }
+    }
+    if (depart !== undefined) {
+      const w = wait(a.stop);
+      if (w) {
+        w.until = depart;
+        w.minDur = Math.min(w.minDur, Math.max(0, depart - (arrive ?? w.t0)));
+      }
+      const mv = move(a.stop);
+      if (mv) {
+        const run = mv.plannedEnd - mv.notBefore;
+        mv.notBefore = depart;
+        mv.plannedEnd = depart + run;
+      }
+    }
+  }
+}

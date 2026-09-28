@@ -19,8 +19,9 @@ const steps: [string, string[]][] = [
     : []),
   ['Validate track network', ['scripts/validate-infra.ts']],
   ['Publish tracks and platforms', ['scripts/build-infra.ts']],
-  ['Infer train runs', ['scripts/build-movements.ts']],
+  ['Infer and dispatch train runs', ['scripts/build-movements.ts']],
   ['Publish observations', ['scripts/build-observations.ts']],
+  ['Dispatch dates with observations', ['scripts/build-dispatch.ts']],
   ['Learn bus travel-time profiles', ['scripts/build-rt-profile.ts']],
   ['Validate movements', ['scripts/validate-plan.ts']],
 ];

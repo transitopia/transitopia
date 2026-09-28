@@ -7,7 +7,8 @@ import operationsConfig from '../../data/config/operations.json';
 import type { TrackGraph } from '../core/infra/graph.ts';
 import { TrainPlayback } from '../core/movement/playback.ts';
 import { serviceKey, type MovementsFile, type MovementsIndex } from '../core/movement/types.ts';
-import { reconcile, reconcileScheduled, type ReconcileResult, type ScheduledCorrections } from '../core/corrections/reconcile.ts';
+import { reconcileScheduled, type ScheduledCorrections } from '../core/corrections/reconcile.ts';
+import { applyPatch, type DispatchIndex, type DispatchPatch } from '../core/dispatch/patch.ts';
 import type { Observation, ObservationFile, ObservationIndex } from '../core/corrections/types.ts';
 import type { ScenarioManifest } from '../core/scenario/types.ts';
 import { preparePlan, scheduledVehicles, type PreparedPlan, type ScheduleCorrections, type TripPacer, type VehicleState } from '../core/schedule/engine.ts';
@@ -25,11 +26,13 @@ export class PlanStore {
   private listeners = new Set<() => void>();
   private graph: TrackGraph | undefined;
   private movementIndexes = new Map<string, MovementsIndex | null>();
-  private playbacks = new Map<string, TrainPlayback | null>();
+  private movementFiles = new Map<string, MovementsFile | null>();
+  private playbacks = new Map<string, TrainPlayback>();
+  private dispatchIndex: DispatchIndex | null | undefined;
+  private patches = new Map<string, DispatchPatch | null>();
   private pending = new Set<string>();
   private observationIndex: ObservationIndex | null | undefined;
   private observationFiles = new Map<string, Observation[] | null>();
-  private reconciled = new Map<string, ReconcileResult>();
   private reconciledScheduled = new Map<string, ScheduledCorrections | undefined>();
 
   private constructor(
@@ -88,18 +91,32 @@ export class PlanStore {
     return out;
   }
 
-  /** Observations reconciled with a date's inferred runs (cached). */
-  private correctionsFor(date: string, pb: TrainPlayback, pp: PreparedPlan): ReconcileResult | undefined {
-    const obs = this.observationsFor(date);
-    if (!obs?.length) return undefined;
-    const key = `${date}|${pb.file.feedVersion}|${pb.file.services.join('+')}`;
-    let r = this.reconciled.get(key);
-    if (!r) {
-      r = reconcile(pb.file, pp, obs, date);
-      for (const u of r.unmatched) console.warn(`Observation not applied (${u.reason}):`, u.obs);
-      this.reconciled.set(key, r);
+  /**
+   * The dispatch patch for a date (observations, disruptions; PLAN.md §4.11): null if there is
+   * none, undefined while loading. Patches are dispatched centrally, never in the browser.
+   */
+  private patchFor(date: string): DispatchPatch | null | undefined {
+    if (this.dispatchIndex === undefined) {
+      this.dispatchIndex = null;
+      fetch(`${BASE}data/dispatch/index.json`)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null)
+        .then((idx) => {
+          this.dispatchIndex = (idx as DispatchIndex | null) ?? { schema: 1, byDate: {} };
+          this.emit();
+        });
+      return undefined;
     }
-    return r;
+    const entry = this.dispatchIndex?.byDate[date];
+    if (!entry) return this.dispatchIndex ? null : undefined;
+    const key = `${date}|${entry.version}`;
+    const p = this.patches.get(key);
+    if (p === undefined) {
+      this.fetchOnce(key, entry.path.startsWith('/') ? entry.path : `${BASE}${entry.path}`, this.patches, (j) => j as DispatchPatch);
+      return undefined;
+    }
+    if (p) for (const u of p.unmatched) console.warn(`Observation not applied (${u.reason}):`, u.obs);
+    return p;
   }
 
   /** Observations applied to a date's timetable vehicles (SeaBus, WCE, buses), cached. */
@@ -131,18 +148,28 @@ export class PlanStore {
     const key = serviceKey([...pp.servicesOn(date)].filter((s) => rail.has(s)));
     const path = index.files[key];
     if (!path) return undefined;
-    const pbKey = `${version}|${key}`;
-    const pb = this.playbacks.get(pbKey);
-    if (pb === undefined) {
-      const g = this.graph;
-      this.fetchOnce(pbKey, `${BASE}${path}`, this.playbacks, (j) => new TrainPlayback(j as MovementsFile, pp, g, kinematics, {
+    const fileKey = `${version}|${key}`;
+    const file = this.movementFiles.get(fileKey);
+    if (file === undefined) {
+      this.fetchOnce(fileKey, `${BASE}${path}`, this.movementFiles, (j) => j as MovementsFile);
+      return undefined;
+    }
+    if (!file) return undefined;
+    // The date's own plan when a patch applies to this base, else the base plan.
+    const patch = this.patchFor(date);
+    if (patch === undefined) return undefined;
+    const usable = patch && patch.feedVersion === file.feedVersion && patch.baseBuiltAt === file.builtAt;
+    const pbKey = usable ? `${fileKey}|${date}|${patch.version}` : fileKey;
+    let pb = this.playbacks.get(pbKey);
+    if (!pb) {
+      pb = new TrainPlayback(usable ? applyPatch(file, patch) : file, pp, this.graph, kinematics, {
         deadheadSpeedFactor: operationsConfig.yard.deadheadSpeedFactor,
         turnbackSpeedFactor: operationsConfig.turnback.speedFactor,
         shapes: true,
-      }));
-      return undefined;
+      });
+      this.playbacks.set(pbKey, pb);
     }
-    return pb ?? undefined;
+    return pb;
   }
 
   static async load(scenario?: string): Promise<PlanStore> {
@@ -228,7 +255,7 @@ export class PlanStore {
       if (sec < 0) continue;
       const pb = this.playbackFor(date, pp);
       if (pb) {
-        out.push(...pb.vehiclesAt(sec, date, routes, this.correctionsFor(date, pb, pp)));
+        out.push(...pb.vehiclesAt(sec, date, routes));
         const nonRail = new Set([...(routes ?? pp.routes.keys())].filter((k) => pp.routes.get(k)?.kind !== 'skytrain'));
         out.push(...scheduledVehicles(pp, { serviceDate: date, sec, routes: nonRail, ...this.pacing(pp) }, mergeCorrections(this.scheduledCorrectionsFor(date, pp), rtCorrections?.get(date))));
       } else out.push(...scheduledVehicles(pp, { serviceDate: date, sec, routes, ...this.pacing(pp) }, mergeCorrections(this.scheduledCorrectionsFor(date, pp), rtCorrections?.get(date))));

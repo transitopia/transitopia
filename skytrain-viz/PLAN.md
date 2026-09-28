@@ -14,7 +14,7 @@ Status: **implemented through M7** (2026-09-25). Operations questions still open
 | M5 Canada Line | ✅ | Came with M3/M4: the graph covers all lines, including Capstan and the Bridgeport OMC. |
 | M6 corrections | ✅ | Observations reference service date + trip, or stop + time. Delays are absorbed at layovers. Cancellations, consists and provenance are shown. |
 | M7 scenarios | ✅ | Future OSM track, custom GeoJSON track, `extend` service operation. Demo: `broadway-subway`. |
-| M8 dispatcher | 🚧 | §4.11. **M8.1 core ✅**: `build:movements` dispatches every base plan (moving block, junction locks, sections, stub berths). Conflicting pairs per weekday 1,124 → 1 (a broken deadlock); added delay p95 ≈ 3 min on weekdays, ≈ 0 on weekends. Known: 1–2 deadlocks after midnight on weekdays (pull-ins near Edmonds/Lougheed), resolved by the breaker; 4–6 s per service day (budget 1 s). |
+| M8 dispatcher | 🚧 | §4.11. **M8.2 anchors ✅**: SkyTrain observations re-dispatch their date centrally (`build:dispatch` → per-date patches the app loads); browsers no longer reconcile rail. **M8.1 core ✅**: `build:movements` dispatches every base plan (moving block, junction locks, sections, stub berths). Conflicting pairs per weekday 1,124 → 1 (a broken deadlock); added delay p95 ≈ 3 min on weekdays, ≈ 0 on weekends. Known: 1–2 deadlocks after midnight on weekdays (pull-ins near Edmonds/Lougheed), resolved by the breaker; 4–6 s per service day (budget 1 s). |
 | Public deploy | ⏳ | Not started (Cloudflare Worker + Durable Object poller, R2 for tiles/history). |
 | **TODO: service alerts → schedule overrides** | ⏳ | Needed: planned SkyTrain changes (e.g. nightly single-tracking) exist only in the GTFS-RT alerts feed, not in static GTFS or trip updates. See §4.10. |
 
@@ -252,20 +252,17 @@ type Observation =
   | { kind: 'position'; t: number; lat: number; lon: number; runId?: string; source: string };
 ```
 
-A **reconciler** adjusts a run's timeline from observations:
+SkyTrain observations go through the **dispatcher** (§4.11, M8.2): `railInputs()` matches them to runs as anchors (a stop at a time), cancellations and consists, and the date is re-dispatched centrally, so corrected trains stay consistent with signalling and the trains around them. The result is published as a patch per date. (Until M8.2 a reconciler warped each run's clock at playback.)
 
-- Anchoring times shift subsequent stops, decaying back toward the schedule at later termini.
 - Timetable-based vehicles (SeaBus, WCE, buses without real-time data) use a simpler reconciler, `reconcileScheduled`. A sighting shifts its trip (linearly between several sightings), and the terminal layover stretches to the next trip's corrected departure. A consist or vessel name applies to the whole GTFS block.
-- Cancellations drop trips and re-chain the affected runs.
+- Cancelled trips are hidden while their train runs them (the train still runs, empty, in the simulation).
 - Consist data attaches to runs.
-- Affected spans get `provenance: observed | interpolated`.
+- Positions within 90 s of an observation are `observed`; spans whose times differ from the base plan by ≥ 5 s are `interpolated`.
 
 Sources:
 
 - `data/observations/*.json` files
 - later, a rail RT adapter if TransLink publishes one
-
-Rail observations will move into the dispatcher as anchors (§4.11), so corrected trains also respect signalling. `warp()` stays until then.
 
 The bus RT history is effectively the first observation source. It uses the same reconciler concepts in a simpler form.
 

@@ -6,6 +6,8 @@
 // their track paths from `patterns` (one routed path per stop-to-stop hop). Only deadheads, turnbacks
 // and holds are stored explicitly, plus the times of trips the dispatcher changed (PLAN.md §4.11).
 
+import type { ParkedTrain } from '../corrections/reconcile.ts';
+
 /** Flattened path: [segIndex, fromOffset, toOffset, segIndex, fromOffset, toOffset, …]. */
 export type PackedPath = number[];
 
@@ -104,6 +106,8 @@ export interface MovementsFile {
   };
   /** Set when the file was produced by the dispatcher. */
   dispatch?: DispatchSummary;
+  /** Out-of-service trains seen standing somewhere (observations), shown around their sighting. */
+  parked?: ParkedTrain[];
 }
 
 export interface DispatchSummary {
