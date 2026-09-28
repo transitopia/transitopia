@@ -11,6 +11,8 @@
     "maxLayoverS": 2400,
     "$stubMaxLayoverS": "At stub termini (Waterfront Expo/Canada, Lafarge Lake–Douglas, …) a train that would wait longer than this for a departure (in place or via the tail tracks) is surplus: it returns to the yard empty instead of occupying the platform. Operators run such trains between scheduled trains (Braden, 2026-09-26; OPEN-QUESTIONS #21). guess",
     "stubMaxLayoverS": 600,
+    "$maxPullUpM": "An in-place turnback waits at the buffer of a dead-ended platform track (clear of the switch behind it) only when the buffer is within this distance of the platform stop. Farther away, the dead end is closed track, not a berth, and the train turns at the platform: Braid Platform 1, where the west track is closed beyond the platform for the OMC4 works (~430 m of it remains in OSM; Braden, 2026-09-27; OPEN-QUESTIONS #17, #20). Other termini pull up 9–40 m. guess",
+    "maxPullUpM": 100,
     "maxTurnbackM": 4000,
     "unloadS": 30,
     "$reversalS": "Time to change ends / reverse direction (driverless, so short). guess",

@@ -53,7 +53,7 @@ const kin: KinematicsConfig = {
 };
 const ops: OperationsConfig = {
   fleets: { groups: [['expo']] },
-  turnback: { minLayoverS: 60, maxLayoverS: 1800, stubMaxLayoverS: 900, maxTurnbackM: 4000, unloadS: 20, reversalS: 30, blockBonusS: 600 },
+  turnback: { minLayoverS: 60, maxLayoverS: 1800, stubMaxLayoverS: 900, maxPullUpM: 100, maxTurnbackM: 4000, unloadS: 20, reversalS: 30, blockBonusS: 600 },
   yard: { maxDeadheadM: 10_000, pullOutLeadS: 60, deadheadSpeedFactor: 0.5, runIntoYardM: 100 },
 };
 

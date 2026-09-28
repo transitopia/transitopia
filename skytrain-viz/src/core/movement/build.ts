@@ -23,6 +23,7 @@ export interface OperationsConfig {
     maxLayoverS: number;
     maxTurnbackM: number;
     stubMaxLayoverS: number;
+    maxPullUpM: number;
     unloadS: number;
     reversalS: number;
     blockBonusS: number;
@@ -450,8 +451,10 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
     const len = trainLen(a.line);
     const defaultDepart = link.berthHop?.startDir ?? d.dir0;
     // Berths: the default position plus this line's dead-ended tracks at the station (stub
-    // termini), each pulled up to the buffer so the train clears the switch behind it.
-    const candidates: TrackPos[] = [pullUp(a.pos1, len)];
+    // termini), each pulled up to the buffer so the train clears the switch behind it. A buffer
+    // far beyond the platform is closed track, not a berth (Braid), so the train stays at the platform.
+    const up = pullUp(a.pos1, len);
+    const candidates: TrackPos[] = [Math.abs(up.offset - a.pos1.offset) <= ops.turnback.maxPullUpM ? up : a.pos1];
     for (const seg of stubsNear(lastStop, a.line)) {
       if (!candidates.some((x) => x.seg === seg)) candidates.push(pullUp({ seg, offset: 0 }, len));
     }
