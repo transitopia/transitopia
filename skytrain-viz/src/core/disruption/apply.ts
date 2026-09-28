@@ -34,6 +34,9 @@ export interface DisruptedDay {
 
 /** How far to follow the open track from the kept platform, each way (m). */
 const KEPT_TRACK_M = 30_000;
+/** Service on a service day runs from about 04:00 to past midnight (service times beyond 24:00). */
+const SERVICE_FROM_S = 4 * 3600;
+const SERVICE_UNTIL_S = 30 * 3600;
 
 /** A disruption's active periods on a service date, as service-day seconds. */
 export function periodsOn(d: Disruption, date: string): [number, number][] {
@@ -42,8 +45,8 @@ export function periodsOn(d: Disruption, date: string): [number, number][] {
   for (const p of d.active) {
     const from = (Date.parse(p.from) - day) / 1000;
     const until = (Date.parse(p.until) - day) / 1000;
-    // A service day runs from ~04:00 to past midnight (service times beyond 24:00).
-    if (until > 3 * 3600 && from < 30 * 3600) out.push([Math.max(0, from), until]);
+    // Only periods overlapping the day's service count (an alert ending at 04:00 is the night before's).
+    if (until > SERVICE_FROM_S && from < SERVICE_UNTIL_S) out.push([Math.max(0, from), until]);
   }
   return out;
 }
@@ -57,6 +60,8 @@ export interface ApplyInput {
   services: Set<string>;
   date: string;
   disruptions: Disruption[];
+  /** Through-service headway for single-tracked lines when a disruption doesn't give one (s). */
+  singleTrackHeadwayS?: number;
 }
 
 export function applyDisruptions(input: ApplyInput): DisruptedDay {
@@ -98,7 +103,8 @@ export function applyDisruptions(input: ApplyInput): DisruptedDay {
         const ib = sts.indexOf(B);
         if (ia >= 0 && ib >= 0) for (let i = Math.min(ia, ib); i <= Math.max(ia, ib); i++) section.add(sts[i]!);
       }
-      const ends = new Set([A, B]);
+      // Stations whose stops stay put: the ends, unless they're single-track too.
+      const ends = new Set(st.pinEnds ? [] : [A, B]);
       // Closed: track the section's hops use that isn't the open track or an end station's platform.
       const endSegs = new Set<string>();
       for (const s of plan.stops) if (s.parent && ends.has(s.parent)) {
@@ -118,6 +124,13 @@ export function applyDisruptions(input: ApplyInput): DisruptedDay {
           for (const piece of h.pieces) if (!kept.has(piece.seg) && !endSegs.has(piece.seg)) closed.add(piece.seg);
         });
         if (touches || sts.some((s) => section.has(s) && !ends.has(s))) affected.push(p);
+        // With pinned ends, hops into and out of the section run on the open track too.
+        if (st.pinEnds) r.hops.forEach((h, i) => {
+          if (!h || (section.has(sts[i]!) === section.has(sts[i + 1]!))) return;
+          const inside = section.has(sts[i]!) ? i : i + 1;
+          const own = platforms.get(plan.stops[p.stops[inside]!]!.id)?.pos;
+          if (own && !kept.has(own.seg)) closed.add(own.seg);
+        });
       }
       // Clone the affected patterns with their section stops pinned to the open track.
       const clones = new Set<number>();
@@ -149,7 +162,11 @@ export function applyDisruptions(input: ApplyInput): DisruptedDay {
       out.closures.push({ segs: closed, from, to, patterns: clones });
     }
 
-    for (const hw of d.headway ?? []) {
+    // Single-tracking without a stated headway: thin the through service to the configured default.
+    const defaults = (d.singleTrack ?? [])
+      .filter((st) => input.singleTrackHeadwayS && !(d.headway ?? []).some((h) => h.line === st.line))
+      .map((st) => ({ line: st.line, between: st.between, minS: input.singleTrackHeadwayS! }));
+    for (const hw of [...(d.headway ?? []), ...defaults]) {
       lines.add(hw.line);
       const section = hw.between ? new Set(hw.between.map(resolveStation).filter((x): x is string => Boolean(x))) : undefined;
       const lastKept = new Map<number, number>();

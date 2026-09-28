@@ -12,6 +12,8 @@
   "maxWaitS": 900,
   "$crossingBufferS": "A train may cross a section another train has reserved (in the other direction) if it will be clear this long before the holder could possibly get there (e.g. an eastbound Millennium train crossing the shared piece at Lougheed while an Expo train is still at Braid). guess, OPEN-QUESTIONS #26",
   "crossingBufferS": 30,
+  "$singleTrackHeadwayS": "When a disruption single-tracks a line and gives no headway for it, trains through the section run at most this often per direction; the rest are cancelled (standing in for the short-turns operators add, which the model can't generate yet). At full evening service the Edmonds–Royal Oak single-tracking of 2026-09-28 gridlocked. guess, OPEN-QUESTIONS #26",
+  "singleTrackHeadwayS": 720,
   "$revenueFirst": "At a conflict point, trains in service go before empty moves; otherwise the train timetabled first goes first. guess, OPEN-QUESTIONS #26",
   "revenueFirst": true
 }

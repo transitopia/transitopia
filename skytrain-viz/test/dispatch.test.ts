@@ -45,7 +45,7 @@ const kin: KinematicsConfig = {
   routes: {},
   sizing: { minPixelLength: 14, minPixelWidth: 6 },
 };
-const config: DispatchConfig = { stepS: 1, safetyMarginM: 30, foulingM: 15, minHoldS: 40, maxWaitS: 900, crossingBufferS: 30, revenueFirst: true };
+const config: DispatchConfig = { stepS: 1, safetyMarginM: 30, foulingM: 15, minHoldS: 40, maxWaitS: 900, crossingBufferS: 30, singleTrackHeadwayS: 720, revenueFirst: true };
 const opts = { config, kin, deadheadSpeedFactor: 0.55, turnbackSpeedFactor: 0.8 };
 
 const plan: ServicePlan = {

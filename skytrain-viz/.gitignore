@@ -4,6 +4,7 @@ dist/
 data/raw/
 data/rt-history/
 data/dispatch-history/
+data/disruptions/drafts/
 public/data/
 public/tiles/
 .wrangler/

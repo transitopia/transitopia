@@ -61,7 +61,16 @@ export async function dispatchDate(ctx: DateContext, inputs: DateInputs, builtAt
   }
   // Re-infer the day with the disruptions applied, then dispatch it with the observations.
   const services = new Set(ctx.base.services);
-  const day = applyDisruptions({ plan: ctx.pp.plan, graph: ctx.graph, platforms: ctx.platforms, ...(ctx.patternPositions ? { patternPositions: ctx.patternPositions } : {}), services, date: inputs.date, disruptions });
+  const day = applyDisruptions({
+    plan: ctx.pp.plan,
+    graph: ctx.graph,
+    platforms: ctx.platforms,
+    ...(ctx.patternPositions ? { patternPositions: ctx.patternPositions } : {}),
+    services,
+    date: inputs.date,
+    disruptions,
+    singleTrackHeadwayS: ctx.config.singleTrackHeadwayS,
+  });
   const pp = preparePlan(day.plan, ctx.kin);
   const inferred = buildMovements({ graph: ctx.graph, pp, platforms: ctx.platforms, patternPositions: day.patternPositions, services, ops: ctx.ops, kin: ctx.kin, closures: day.closures });
   const rail = railInputs(inferred, pp, inputs.observations, inputs.date);

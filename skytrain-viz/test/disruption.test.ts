@@ -74,7 +74,7 @@ const ops: OperationsConfig = {
   turnback: { minLayoverS: 60, maxLayoverS: 1800, stubMaxLayoverS: 900, maxPullUpM: 100, speedFactor: 0.8, maxTurnbackM: 4000, unloadS: 20, reversalS: 30, blockBonusS: 600 },
   yard: { maxDeadheadM: 10_000, pullOutLeadS: 60, deadheadSpeedFactor: 0.5, runIntoYardM: 100, againstTrafficPenalty: 3 },
 };
-const config: DispatchConfig = { stepS: 1, safetyMarginM: 30, foulingM: 15, minHoldS: 40, maxWaitS: 900, crossingBufferS: 30, revenueFirst: true };
+const config: DispatchConfig = { stepS: 1, safetyMarginM: 30, foulingM: 15, minHoldS: 40, maxWaitS: 900, crossingBufferS: 30, singleTrackHeadwayS: 720, revenueFirst: true };
 
 const stop = (id: string, station: string, x: number, y: number) => ({ id, name: `${station} Station @ Platform ${id.slice(-1)}`, parent: station, lon: pt(x, y)[0], lat: pt(x, y)[1], platform: id.slice(-1) });
 const plan = {

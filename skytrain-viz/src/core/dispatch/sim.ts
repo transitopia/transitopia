@@ -25,6 +25,8 @@ export interface DispatchConfig {
   minHoldS: number;
   maxWaitS: number;
   crossingBufferS: number;
+  /** Default through-service headway on a single-tracked line (disruptions without a headway). */
+  singleTrackHeadwayS: number;
   revenueFirst: boolean;
 }
 
@@ -421,9 +423,14 @@ function* simulation(models: TrainModel[], g: TrackGraph, cfg: DispatchConfig, s
         if (o.excl || w.excl) return 'berth or stub track occupied';
         if (o.dir !== w.dir && !(endsAtBerth === false && earliestArrival(o) >= clearAt)) return 'opposing train on single track';
       }
+      // Another train on the part of the segment this train will run over (not elsewhere on it).
+      const piece = r.find((p) => p.seg === w.seg && Math.abs(p.g0 - w.g0) < EPS)!;
+      const lo = Math.min(piece.from, piece.to);
+      const hi = Math.max(piece.from, piece.to);
       for (const o of occupancy.get(w.seg) ?? []) {
+        if (o.tr === tr || o.hi <= lo || o.lo >= hi) continue;
         conflictWith = o.tr;
-        if (o.tr !== tr && !(reservations.get(w.seg) ?? []).some((x) => x.tr === o.tr)) return 'track occupied';
+        if (!(reservations.get(w.seg) ?? []).some((x) => x.tr === o.tr)) return 'track occupied';
       }
     }
     for (const w of want) {

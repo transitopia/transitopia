@@ -140,7 +140,7 @@ describe('buildMovements + TrainPlayback', () => {
 
 describe('corrections (observations → dispatcher → playback)', () => {
   const file = buildMovements({ graph: g, pp, platforms, services: new Set(['wk']), ops, kin });
-  const dcfg: DispatchConfig = { stepS: 1, safetyMarginM: 30, foulingM: 15, minHoldS: 40, maxWaitS: 900, crossingBufferS: 30, revenueFirst: true };
+  const dcfg: DispatchConfig = { stepS: 1, safetyMarginM: 30, foulingM: 15, minHoldS: 40, maxWaitS: 900, crossingBufferS: 30, singleTrackHeadwayS: 720, revenueFirst: true };
   const dopts = { config: dcfg, kin, deadheadSpeedFactor: ops.yard.deadheadSpeedFactor, turnbackSpeedFactor: ops.turnback.speedFactor };
   const base = dispatch(file, pp, g, dopts);
   const date = '20260928';

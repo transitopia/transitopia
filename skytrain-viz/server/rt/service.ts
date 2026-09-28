@@ -5,6 +5,7 @@
 //   GET /rt/history?date=YYYY-MM-DD&hour=HH   recorded snapshots for one local hour (NDJSON)
 //   GET /rt/coverage?from=ms&to=ms      recorder coverage intervals
 //   GET /rt/status                      poller health (no secrets)
+//   GET /rt/alerts                      current TransLink alerts for our rail lines (and whether drafted)
 //   GET /rt/dispatch                    live dispatch: current patch per service date (index)
 //   GET /rt/dispatch/<date>/<v>.json    a patch version (immutable)
 //
@@ -21,7 +22,9 @@ import { PUBLIC_DATA_DIR, ROOT } from '../../scripts/lib/paths.ts';
 import { translinkApiKey } from '../secrets.ts';
 import { Recorder } from './recorder.ts';
 import { LiveDispatcher, type LiveDispatchOptions } from './dispatch.ts';
-import { delayFor, fetchPositions, fetchTripDelays, type TripDelays } from './upstream.ts';
+import { delayFor, fetchAlerts, fetchPositions, fetchTripDelays, type TripDelays } from './upstream.ts';
+import { AlertDrafts } from './alerts.ts';
+import { draftFromAlert, type ServiceAlert } from '../../src/core/disruption/alerts.ts';
 
 export interface HttpResult {
   status: number;
@@ -45,6 +48,8 @@ export interface RtServiceOptions {
   record?: boolean;
   /** Override the key lookup (env / .secrets); null means no key. */
   apiKey?: string | null;
+  /** Where confirmed disruptions live and alert drafts are written (default data/disruptions). */
+  disruptionsDir?: string;
   /** Live dispatch (PLAN.md §4.11): on by default; false disables it, an object configures it. */
   dispatch?: boolean | LiveDispatchOptions;
   log?: (msg: string) => void;
@@ -55,6 +60,10 @@ export class RtService {
   private latest: RtSnapshot | null = null;
   private delays: TripDelays = new Map();
   private routeKeyById = new Map<string, string>();
+  /** GTFS route_id → our key for SkyTrain lines (alerts). */
+  private railKeyById = new Map<string, string>();
+  private alerts: ServiceAlert[] = [];
+  private alertDrafts: AlertDrafts;
   private routesLoadedFrom: number | undefined;
   private timers: ReturnType<typeof setTimeout>[] = [];
   private running = false;
@@ -75,6 +84,7 @@ export class RtService {
     this.record = opts.record ?? true;
     this.apiKey = opts.apiKey === null ? undefined : (opts.apiKey ?? translinkApiKey());
     this.dispatcher = opts.dispatch === false ? undefined : new LiveDispatcher({ log: this.log, ...(typeof opts.dispatch === 'object' ? opts.dispatch : {}) });
+    this.alertDrafts = new AlertDrafts({ disruptionsDir: opts.disruptionsDir ?? join(ROOT, 'data', 'disruptions'), historyDir: this.recorder.dir, log: this.log });
   }
 
   get hasKey(): boolean {
@@ -124,6 +134,16 @@ export class RtService {
     );
     this.loop('delays', rtConfig.tripUpdatesIntervalS, () => this.pollDelays());
     this.loop('positions', rtConfig.positionsIntervalS, () => this.pollPositions());
+    this.loop('alerts', rtConfig.alertsIntervalS, () => this.pollAlerts());
+  }
+
+  private async pollAlerts(): Promise<void> {
+    this.upstreamCalls++;
+    const decoded = await fetchAlerts(this.apiKey!);
+    this.alerts = decoded
+      .map((a) => ({ id: a.id, lines: [...new Set(a.routeIds.map((r) => this.railKeyById.get(r)).filter((k): k is string => Boolean(k)))], stopIds: a.stopIds, periods: a.periods, ...(a.cause !== undefined ? { cause: a.cause } : {}), ...(a.effect !== undefined ? { effect: a.effect } : {}), header: a.header, description: a.description }))
+      .filter((a) => a.lines.length > 0);
+    await this.alertDrafts.update(this.alerts);
   }
 
   stop(): void {
@@ -188,6 +208,7 @@ export class RtService {
       for (const f of manifest.feeds) {
         const plan = JSON.parse(await readFile(join(ROOT, 'public', f.path), 'utf8')) as Pick<ServicePlan, 'routes'>;
         for (const r of plan.routes) if (r.kind === 'bus') map.set(r.gtfsRouteId, r.key);
+        for (const r of plan.routes) if (r.kind === 'skytrain') this.railKeyById.set(r.gtfsRouteId, r.key);
       }
       if (this.routesLoadedFrom !== undefined) this.log(`Timetable data changed: now tracking ${[...new Set(map.values())].join(', ')}`);
       this.routeKeyById = map;
@@ -264,6 +285,8 @@ export class RtService {
         if (f.gzip) headers['Content-Encoding'] = 'gzip';
         return { status: 200, headers, body: await readFile(f.path) };
       }
+      case '/rt/alerts':
+        return json(200, { alerts: this.alerts.map((a) => ({ ...a, drafted: Boolean(draftFromAlert(a).draft) })) }, { 'Cache-Control': 'public, max-age=60' });
       case '/rt/status':
         return json(200, {
           running: this.running,

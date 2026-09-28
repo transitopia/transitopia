@@ -19,9 +19,11 @@ export interface Disruption {
   /**
    * One track of a double-track section is out of service. Trains in both directions use the track
    * through `keep` (a platform stop id or name, e.g. "Lansdowne Station @ Platform 1") between the
-   * two stations, reversing onto it wherever the track layout allows.
+   * two stations, crossing over wherever the track layout allows. `pinEnds`: the two end stations
+   * are single-track too (everyone boards from the open track's platform there); otherwise trains
+   * keep their usual platform at the ends and cross over beyond them.
    */
-  singleTrack?: { line: string; between: [string, string]; keep: string }[];
+  singleTrack?: { line: string; between: [string, string]; keep: string; pinEnds?: boolean }[];
   /**
    * Reduced service: trips of `line` (optionally only those serving a station in `between`) run at
    * most every `minS` seconds per direction while the disruption applies; the others are cancelled.

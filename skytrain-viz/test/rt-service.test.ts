@@ -31,15 +31,16 @@ describe('RtService', () => {
     });
     vi.stubGlobal('fetch', upstream);
 
-    service = new RtService({ historyDir: dir, record: false, log: () => {}, apiKey: 'test-key', dispatch: false });
+    service = new RtService({ historyDir: dir, record: false, log: () => {}, apiKey: 'test-key', dispatch: false, disruptionsDir: dir });
     await service.start(0);
-    // Let the first positions + trip-updates polls complete.
+    // Let the first positions + trip-updates + alerts polls complete.
     await vi.waitFor(() => expect(service!.liveResponse().snapshot).not.toBeNull());
+    await vi.waitFor(() => expect(upstream.mock.calls.length).toBe(3));
 
     const before = upstream.mock.calls.length;
     const responses = await Promise.all(Array.from({ length: 100 }, () => service!.handle('/rt/live', new URLSearchParams())));
     expect(upstream.mock.calls.length).toBe(before);
-    expect(before).toBe(2);
+    expect(before).toBe(3);
     for (const r of responses) {
       expect(r.status).toBe(200);
       expect(r.headers['Access-Control-Allow-Origin']).toBe('*');

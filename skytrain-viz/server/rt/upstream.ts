@@ -43,8 +43,53 @@ type FeedObject = {
       delay?: number;
       stopTimeUpdate?: { stopSequence?: number; arrival?: { delay?: number }; departure?: { delay?: number } }[];
     };
+    id?: string;
+    alert?: {
+      activePeriod?: { start?: number; end?: number }[];
+      informedEntity?: { routeId?: string; stopId?: string }[];
+      cause?: number;
+      effect?: number;
+      headerText?: { translation?: { text?: string; language?: string }[] };
+      descriptionText?: { translation?: { text?: string; language?: string }[] };
+    };
   }[];
 };
+
+export interface DecodedAlert {
+  id: string;
+  routeIds: string[];
+  stopIds: string[];
+  /** Epoch ms. */
+  periods: { start?: number; end?: number }[];
+  cause?: number;
+  effect?: number;
+  header: string;
+  description: string;
+}
+
+const english = (t?: { translation?: { text?: string; language?: string }[] }) =>
+  (t?.translation?.find((x) => !x.language || x.language.startsWith('en')) ?? t?.translation?.[0])?.text ?? '';
+
+/** Service alerts (all routes; callers filter to theirs). */
+export async function fetchAlerts(apiKey: string, signal?: AbortSignal): Promise<DecodedAlert[]> {
+  const feed = await fetchFeed('gtfsalerts', apiKey, signal);
+  const out: DecodedAlert[] = [];
+  for (const e of feed.entity ?? []) {
+    const a = e.alert;
+    if (!a || !e.id) continue;
+    out.push({
+      id: e.id,
+      routeIds: [...new Set((a.informedEntity ?? []).map((x) => x.routeId).filter((x): x is string => Boolean(x)))],
+      stopIds: [...new Set((a.informedEntity ?? []).map((x) => x.stopId).filter((x): x is string => Boolean(x)))],
+      periods: (a.activePeriod ?? []).map((p) => ({ ...(p.start ? { start: p.start * 1000 } : {}), ...(p.end ? { end: p.end * 1000 } : {}) })),
+      ...(a.cause !== undefined ? { cause: a.cause } : {}),
+      ...(a.effect !== undefined ? { effect: a.effect } : {}),
+      header: english(a.headerText),
+      description: english(a.descriptionText),
+    });
+  }
+  return out;
+}
 
 async function fetchFeed(endpoint: string, apiKey: string, signal?: AbortSignal): Promise<FeedObject> {
   const res = await fetch(`${BASE}/${endpoint}?apikey=${encodeURIComponent(apiKey)}`, {
