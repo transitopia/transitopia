@@ -14,6 +14,7 @@ Status: **implemented through M7** (2026-09-25). Operations questions still open
 | M5 Canada Line | ✅ | Came with M3/M4: the graph covers all lines, including Capstan and the Bridgeport OMC. |
 | M6 corrections | ✅ | Observations reference service date + trip, or stop + time. Delays are absorbed at layovers. Cancellations, consists and provenance are shown. |
 | M7 scenarios | ✅ | Future OSM track, custom GeoJSON track, `extend` service operation. Demo: `broadway-subway`. |
+| M8 dispatcher | ⏳ | Designed (§4.11): signalling-aware movement plans, dispatched centrally, with observations and disruptions as inputs. |
 | Public deploy | ⏳ | Not started (Cloudflare Worker + Durable Object poller, R2 for tiles/history). |
 | **TODO: service alerts → schedule overrides** | ⏳ | Needed: planned SkyTrain changes (e.g. nightly single-tracking) exist only in the GTFS-RT alerts feed, not in static GTFS or trip updates. See §4.10. |
 
@@ -111,7 +112,7 @@ It's used as an independent checklist to validate the OSM-derived graph. It does
                                                └────────────────────────────────────────────────┘
 ```
 
-The core design principle is that **every vehicle position is a pure function of (movement plan, overlays, time)**. Nothing steps a simulation forward frame by frame. That makes seeking, rewinding, and 1000× fast-forward trivial and deterministic, and it makes corrections and scenarios composable, because they just produce a different plan or overlay.
+The core design principle is that **every vehicle position is a pure function of (movement plan, overlays, time)**. Nothing steps a simulation forward frame by frame. That makes seeking, rewinding, and 1000× fast-forward trivial and deterministic, and it makes corrections and scenarios composable, because they just produce a different plan or overlay. The dispatcher (§4.11) keeps this: it runs centrally (build time, RT service), and its output is one more versioned plan that playback reads.
 
 Every vehicle state carries a **provenance** field (`observed | interpolated | estimated`) and a `source`. The same concept drives the bus real-vs-estimated indicator and, later, rail corrections.
 
@@ -180,11 +181,11 @@ Output: **runs**, each an ordered list of movements (revenue trips and deadheads
 
 ### 4.4 Movement plan and routing
 
-Script: `scripts/build-movements.ts`. The same code runs in a Worker for scenarios.
+Script: `scripts/build-movements.ts`. The same code builds scenarios, and it will feed the dispatcher (§4.11).
 
 - **Routing**: each leg (platform → platform, yard → platform, turnback) is routed on the track graph by shortest path, respecting switch pairings. Legs start and end on the specified platform's track.
 - **Timed paths**: each leg becomes a list of `(edgeId, fromOffset, toOffset)` plus a time profile. Per-line kinematics (accel, decel, top speed, dwell; all in config) are fitted so run time matches the schedule. Slack goes into the dwell.
-- **Conflict check** (validation only): flags two runs occupying the same track span at once. This catches modeling errors early and infeasible scenarios later.
+- **Conflict check** (validation only): flags two runs occupying the same track span at once. This catches modeling errors early and infeasible scenarios later. The dispatcher (§4.11) will prevent conflicts instead of only reporting them.
 - **Runtime**: `positionAt(run, t)` binary-searches the timed path, applies the kinematic interpolation, and maps the edge offset to lat/lon plus bearing.
 
 ### 4.5 SeaBus, West Coast Express, and buses
@@ -264,6 +265,8 @@ Sources:
 - `data/observations/*.json` files
 - later, a rail RT adapter if TransLink publishes one
 
+Rail observations will move into the dispatcher as anchors (§4.11), so corrected trains also respect signalling. `warp()` stays until then.
+
 The bus RT history is effectively the first observation source. It uses the same reconciler concepts in a simpler form.
 
 ### 4.8 Scenarios (config files)
@@ -274,7 +277,7 @@ A scenario is a directory in `data/scenarios/<name>/`:
 - `service.json`: either `{ "base": "gtfs" }` or a service-pattern spec that generates trips, e.g. line, pattern (origin → destination, stopping platforms), headways by time band, and short-turn rules
 - optional `config.json`: overrides for kinematics, fleet caps, and turnback times
 
-`npm run scenario <name>` runs the full pipeline (apply diff → validate → generate trips → infer runs → route → conflict check) and writes `public/data/scenarios/<name>/`. The app picks scenarios via `?scenario=<name>`. There's no editing UI. An in-browser Web Worker recompute can come later if it's wanted.
+`npm run scenario <name>` runs the full pipeline (apply diff → validate → generate trips → infer runs → route → conflict check) and writes `public/data/scenarios/<name>/`. The app picks scenarios via `?scenario=<name>`. There's no editing UI. Recomputes stay central (build time or the RT service, §4.11); browsers don't run the pipeline.
 
 ### 4.9 Frontend
 
@@ -311,7 +314,7 @@ A scenario is a directory in `data/scenarios/<name>/`:
    - `single-track between A and B` → close one track in that section for the active period (graph edits like scenario infrastructure diffs).
    - `A - B - N minutes` → replace the timetable in that section with a generated N-minute pattern for the period (scenario-style service operation).
    - platform reassignments → role-based pins (like `patternPlatforms`).
-3. **Apply per date.** A service date with active overrides gets its own movement build: base plan + overrides → platform mapping → run inference. The same pipeline as scenarios, keyed by date instead of name, built on demand or ahead for announced dates.
+3. **Apply per date.** Confirmed overrides become dispatcher inputs (§4.11) for their active period: closures, service changes and platform pins. The RT service re-dispatches the affected dates and publishes them like any other dispatch version. Parsing produces a draft that a person confirms, because alerts don't say which track is closed.
 4. **Show it.** A banner or badge when the displayed time has an active alert, the alert text in the inspect card, and provenance "adjusted by TransLink alert" on affected trains.
 5. **Hand overrides.** The same override format should also accept manual entries (`data/observations/` or a sibling), for disruptions without a parseable alert.
 
@@ -319,6 +322,71 @@ A scenario is a directory in `data/scenarios/<name>/`:
 - Which track is closed when an alert says only "single-track": needs ground truth, as at Braid.
 - How to time the reduced-headway pattern relative to the rest of the line.
 - How to treat alerts whose text changes between polls.
+
+### 4.11 Dispatcher: signalling-aware movement plans (planned)
+
+**Why.** Each train's position comes from the timetable independently of every other train, so nothing stops two trains occupying the same track. `validate:plan` reports ~1,100 conflicting pairs on a weekday. Most are terminus berths (Waterfront 324, Production Way–University 226; OPEN-QUESTIONS #21). Some are head-on meetings on track used in both directions. For example, on 2026-09-28 at 10:02:35 two Braid short-turns meet at the crossover south of Sapperton; the real train waits ~30 s there (#20). Corrections make this worse, because `reconcile()` shifts runs at playback, after any consistency check. And disruptions such as single-tracking (§4.10) can't be shown credibly without a model of who waits for whom.
+
+**What.** A dispatcher (`src/core/dispatch/`, DOM-free) turns the inferred runs (§4.3) into a feasible movement plan by simulating SkyTrain's signalling. It is the one place where the timetable, infrastructure state, service changes and observations meet:
+
+```
+dispatch(plan, runs, graph, inputs) → movement plan + per-train delays, holds and provenance spans
+inputs = { closures, serviceChanges, anchors }      // all optional, each with a source and active period
+```
+
+- **Deterministic:** the same inputs give byte-identical output (stable ordering, no wall clock, no randomness). This is tested.
+- **Central only:** it runs at build time (static base plans, scenarios) and in the RT service (live). Browsers never dispatch; they download results, so every visitor sees the same plan. Client requests never trigger a dispatch. Only new inputs, and the build, do.
+- **Playback stays pure:** positions = f(plan, dispatch result, t). The dispatcher may step through time internally; the ban on frame-stepped state applies to playback.
+
+**Signalling model.** SkyTrain uses moving-block CBTC (Thales SelTrac on all three lines, to verify: OPEN-QUESTIONS #26).
+- **Moving block:** a train's movement authority ends a safety margin behind the rear of the train ahead on its path, and the train brakes (config decel) to stop short of it. Following trains close up and queue naturally.
+- **Route locking:** a train may enter a section used in both directions only when its route through to the next place where it can clear is free and not reserved by an opposing train. Such sections include single-track working, stubs such as Braid's west track, tail and pocket tracks, and crossovers. This prevents head-on meetings and deadlock: a train never enters a single-track section it can't leave.
+- **Junctions and crossings:** a conflicting route is granted to one train at a time. The train timetabled first at the conflict point goes first, and revenue trains go before empty moves (config).
+- **Berths:** a stub terminus admits a train only into a free berth. This replaces the berth allocator in `build.ts`. Terminus overlaps (#21) become queues outside the station, or surplus trains return to the yard as now.
+- **Yards** are outside signalling (manual operation): only their leads are checked.
+- **Never early:** a train doesn't leave a stop before its timetabled time. Lost time is recovered only from timetable slack (the retime range and layovers).
+
+**Simulation.** A fixed time step (1 s) over the service day, with all trains of a fleet group together. Each step grants routes, computes authorities and advances trains within their kinematic limits. The trace is then compressed back to movement events:
+- Trips that run on plan stay stored by reference, so files stay small.
+- Trips that deviate carry explicit stop times.
+- Waits at signals become holds of kind `signal`, which can fall mid-hop.
+
+The existing leg solver reproduces motion between stops. The movement schema goes to version 2.
+
+**Inputs** (typed and validated, each with a source and an active period)
+- **`closures`:** track out of service (segment spans), optionally declaring a section as single-track with the crossovers to use. They use the same diff format as scenario infrastructure (§4.8).
+- **`serviceChanges`:** cancelled trips, short-turns, and replacement headways for a section (scenario-style service operations, §4.8). What the operator does when capacity drops is set by config policies until it's observed, e.g. cap trains through a single-track section at N per hour and cancel the rest, or short-turn at the nearest crossover.
+- **`anchors`:** observations (§4.7). A sighting pins a train to a stop at a time. The dispatcher absorbs the difference before the sighting (a hold at an earlier station, or early running within slack) and propagates knock-on delays through the signalling. This replaces `warp()` for rail; timetable vehicles keep `reconcileScheduled`.
+- **Provenance:** trains within 90 s of an anchor are *observed*, trains whose times the dispatcher changed are *interpolated*, and the rest are *estimated*. The inspect panel says why a train is held, e.g. "waiting for the Braid–Sapperton single track".
+
+**Central live dispatch** (the RT service now, its Durable Object in the public version)
+- **Input sources:**
+  - committed files (`data/observations/`, `data/disruptions/`)
+  - confirmed alert overrides (§4.10)
+  - later, authenticated observation submissions
+
+  Anonymous visitors can't change the shared model.
+- **Re-dispatch:** a new input triggers a re-dispatch of its service date from the earliest affected time. It starts from a checkpoint of the simulation state (saved every 15 min of service time), so nothing before the input changes. The output is a versioned patch: the runs that differ from the static base plan.
+- **One dispatch, many subscribers:** `/rt/live`, which clients already poll every ~10–30 s, gains `dispatch: { <date>: <version> }`. Clients fetch `/rt/dispatch/<date>/<version>.json` when the version changes. Patches are immutable and CDN-cacheable indefinitely; the version pointer is cached like `/rt/live` (max-age 10). Server-sent events or WebSockets can replace polling later without changing the model.
+- **History:** versions are persisted (on disk now, R2 later). Viewing a past time uses the latest version for that date, which is the best reconstruction. Keeping the earlier versions allows an "as known then" view later.
+- **Fallback:** if the dispatcher or the service is down, clients use the static base plan, marked *estimated* as today.
+
+**Budget.** A full weekday dispatch (~2,100 SkyTrain trips, ~150 runs) takes under 1 s in Node, and an incremental re-dispatch under 200 ms. The plan (2.4 MB JSON), graph and checkpoints need well under a Durable Object's 128 MB.
+
+**Validation.**
+- **`validate:plan`:** conflicting pairs drop to 0 (outside yards). New reports: delay added against the timetable per line (median, p95, the worst trips and where they waited) and holds by place.
+- **Tests:**
+  - determinism
+  - an incremental re-dispatch equals a full one
+  - no deadlock on single-track and stub fixtures
+  - the Braid case: a northbound short-turn waits at the crossover for the departing one
+- **Field checks** against ground truth, e.g. the ~30 s hold before the crossover south of Sapperton (GPS, 2026-09-27).
+
+**Open points.** These become config values and OPEN-QUESTIONS items during implementation.
+- Signalling parameters: safety margin, minimum headway, and whether dwell extends while a train is held (#26).
+- Priority at junctions and merges.
+- How operators adapt service when a section is single-tracked: short-turns, longer headways or cancellations.
+- Whether CBTC trains recover lost time by running faster, or only at layovers.
 
 ## 5. Repository layout
 
@@ -333,14 +401,15 @@ skytrain-viz/
     infrastructure/           # committed: tracks.generated.geojson, overrides.json, diagram-checklist.json
     config/                   # committed: kinematics, dwell, turnbacks, yards, consists, fleet caps
     observations/             # committed: manual corrections
+    disruptions/              # planned: closures and service changes (dispatcher inputs, §4.11)
     scenarios/                # committed: scenario bundles
   scripts/                    # tsx: fetch-gtfs, build-schedule, fetch-osm, import-osm, infer-runs,
                               #      build-movements, validate-*, scenario, tiles
   src/
     core/                     # DOM-free; shared by scripts, tests, workers
-      gtfs/  infra/  runs/  movement/  corrections/  scenario/  rt/
+      gtfs/  infra/  runs/  movement/  dispatch/  corrections/  scenario/  rt/
     app/                      # map, layers, clock, controls, inspect
-  server/                     # RT service: poller, cache, recorder, history endpoints (Node)
+  server/                     # RT service: poller, cache, recorder, history endpoints, later live dispatch (Node)
   worker/                     # later: Cloudflare Worker + Durable Object port of server/
   public/                     # static assets; public/data and public/tiles are gitignored build output
   test/
@@ -358,7 +427,13 @@ Each milestone ends with something you can look at.
 6. **M5 – Canada Line.** Graph (both branches, Capstan, Bridgeport OMC) and runs.
 7. **M6 – Corrections.** Observation format, reconciler, observation files, and provenance in the inspect view.
 8. **M7 – Scenarios.** Infra diffs, service-pattern generator, and `npm run scenario`, plus one demo scenario (e.g. an extra crossover, or a Millennium stub toward UBC).
-9. **Later – Public deploy.** Static host, Worker + Durable Object poller/recorder, R2 for tiles and history.
+9. **M8 – Dispatcher** (§4.11), in steps that each end with something to look at:
+   1. *Core:* base plans are built through the dispatcher with no inputs (moving block, route locking, berths). Done when `validate:plan` shows no conflicts outside yards, the added delay is small (p95 target set from the first build), and the Braid meeting is gone.
+   2. *Anchors:* rail observations go through the dispatcher; `warp()` is retired for rail.
+   3. *Disruptions from files:* `data/disruptions/*.json` closures and service changes. First case: Canada Line single-tracking between Bridgeport and Richmond-Brighouse (Sep 27–30).
+   4. *Live central dispatch:* input-triggered re-dispatch in the RT service with checkpoints, versioned patches, a `/rt/live` pointer, and patch loading in the client.
+   5. *Alerts:* §4.10 alerts become draft disruption inputs, confirmed by a person.
+10. **Later – Public deploy.** Static host, Worker + Durable Object for the poller, recorder and dispatcher, R2 for tiles, history and dispatch versions.
 
 ## 7. Validation and testing
 
@@ -377,7 +452,8 @@ Each milestone ends with something you can look at.
   - no dangling nodes
   - the diagram checklist is satisfied
 - **`npm run validate:plan`**:
-  - no conflicts
+  - no conflicts (enforced once the dispatcher lands; reported until then)
+  - added delay vs the timetable and holds by place (with the dispatcher)
   - no teleports between movements
   - fleet in service ≤ per-line caps
   - yard occupancy ≤ capacity
@@ -392,4 +468,6 @@ Each milestone ends with something you can look at.
 | RT API limits or outages. | Single poller with fixed upstream rate; stale-snapshot serving; automatic estimated fallback with a visible badge. |
 | The recorder only covers time when it was running (a local laptop). | Honest coverage strip. The public version moves the recorder to an always-on Durable Object. |
 | GTFS changes (new signup periods, route IDs, platform stops). | Select by name; per-feed builds; the validator fails loudly on unmapped platforms. |
+| The dispatcher adds unrealistic delays or deadlocks. | Route locking (never enter a section you can't leave), delay reports per line, deadlock fixtures in tests, field checks against GPS rides. Rules and parameters live in config. |
+| Untrusted input on a public server changes what everyone sees. | Only committed files, confirmed alerts and authenticated submissions feed the dispatcher. Visitor requests never trigger a dispatch. |
 | Data size in the browser. | Per-service-pattern movement files, lazy-loaded; PMTiles range requests; simplified yard geometry at low zoom. |

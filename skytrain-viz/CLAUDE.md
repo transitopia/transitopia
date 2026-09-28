@@ -12,6 +12,7 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 
 - **Never print, log, commit, or bundle the API key.** It lives in `.secrets` (`TRANSLINK_API_KEY=...`, gitignored). Only `server/` (and later `worker/`) reads it. Browser code must never see it.
 - **Never let client requests trigger TransLink API calls.** A single poller fetches upstream on a fixed interval. Clients only read the cached snapshot. Only one process per machine polls and records: the leader holds `data/rt-history/.lock` ({pid, port}), and any other RT service instance forwards `/rt/*` to it.
+- **Dispatching is central.** The signalling-aware dispatcher (PLAN.md §4.11) runs only at build time and in the RT service, and every visitor gets the same versioned result. Browsers never run it, and client requests never trigger a dispatch.
 - **Positions are a pure function of (plan, overlays, t).** Don't introduce frame-stepped simulation state. Seek, rewind, and fast-forward depend on this.
 - **Every vehicle state carries provenance** (`observed | interpolated | estimated`) and a source. Never render an estimate as if it were observed.
 - **`src/core/` stays DOM-free.** It's shared by build scripts, tests, and workers.
