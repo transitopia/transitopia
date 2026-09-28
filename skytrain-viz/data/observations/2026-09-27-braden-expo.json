@@ -1,0 +1,239 @@
+{
+  "$comment": "Field notes from Braden riding the Expo Line on Sunday 2026-09-27: Royal Oak → Braid (short-turn) and Braid → Stadium–Chinatown on the same Mark II train, with GPS tracks in gpx/. Stop times are read from the tracks.",
+  "observations": [
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524484",
+      "stop": "Royal Oak",
+      "line": "expo",
+      "event": "depart",
+      "time": "2026-09-27T16:58:50-07:00",
+      "source": "Braden, on board (GPS)",
+      "consist": {
+        "type": "Mk II",
+        "cars": 4,
+        "carNumbers": [
+          "322",
+          "321",
+          "316",
+          "315"
+        ]
+      },
+      "note": "Bombardier ART Mark II, cars 322-321-316-315. GPS track: gpx/2026-09-27-mark2outbound-gps-recorder.gpx (the recorder skips fixes while stationary, so dwell times come from gaps; ±5 s)."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524484",
+      "stop": "Edmonds",
+      "line": "expo",
+      "time": "2026-09-27T17:01:32-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "Stopped 17:01:12–17:01:52."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524484",
+      "stop": "22nd Street",
+      "line": "expo",
+      "time": "2026-09-27T17:04:20-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "Stopped ~17:04:02–17:04:37."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524484",
+      "stop": "New Westminster",
+      "line": "expo",
+      "time": "2026-09-27T17:07:21-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "Stopped ~17:07:01–17:07:41."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524484",
+      "stop": "Columbia",
+      "line": "expo",
+      "time": "2026-09-27T17:09:00-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "Stopped ~17:08:30–17:09:29 (GPS lost in the station)."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524484",
+      "stop": "Sapperton",
+      "line": "expo",
+      "time": "2026-09-27T17:13:20-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "Held ~30 s just south of the crossover ~460 m south of Sapperton (17:11:30–17:12:03), crossed to the west track (OSM way 426641643) and stopped at Sapperton Platform 1 ~17:13:05–17:13:36."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524484",
+      "stop": "Braid",
+      "line": "expo",
+      "event": "arrive",
+      "time": "2026-09-27T17:14:37-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "Arrived on the west track at Braid Platform 1 (sign: Waterfront only; the west track is closed beyond it for the OMC4 works) and waited there until departing as 15524806."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524806",
+      "stop": "Braid",
+      "line": "expo",
+      "event": "depart",
+      "time": "2026-09-27T17:21:16-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "Same train (block 2205212). Departed Braid Platform 1. GPS track: gpx/2026-09-27-mark2return-gpx-tracker.gpx (1 Hz, no accuracy data; dwell times ±3 s)."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524806",
+      "stop": "Sapperton",
+      "line": "expo",
+      "time": "2026-09-27T17:22:36-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "Stopped 17:22:19–17:22:54, Platform 1."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524806",
+      "stop": "Columbia",
+      "line": "expo",
+      "time": "2026-09-27T17:25:55-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "Stopped 17:25:33–17:26:16."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524806",
+      "stop": "New Westminster",
+      "line": "expo",
+      "time": "2026-09-27T17:27:41-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "Stopped 17:27:21–17:28:02."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524806",
+      "stop": "22nd Street",
+      "line": "expo",
+      "time": "2026-09-27T17:30:51-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "Stopped 17:30:32–17:31:10."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524806",
+      "stop": "Edmonds",
+      "line": "expo",
+      "time": "2026-09-27T17:33:43-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "Stopped 17:33:28–17:33:59."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524806",
+      "stop": "Royal Oak",
+      "line": "expo",
+      "time": "2026-09-27T17:36:47-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "Stopped 17:36:31–17:37:03."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524806",
+      "stop": "Metrotown",
+      "line": "expo",
+      "time": "2026-09-27T17:38:40-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "Stopped 17:38:25–17:38:56."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524806",
+      "stop": "Patterson",
+      "line": "expo",
+      "time": "2026-09-27T17:40:15-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "Stopped 17:40:03–17:40:28."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524806",
+      "stop": "Joyce-Collingwood",
+      "line": "expo",
+      "time": "2026-09-27T17:42:23-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "Stopped 17:42:08–17:42:38."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524806",
+      "stop": "29th Avenue",
+      "line": "expo",
+      "time": "2026-09-27T17:44:34-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "Stopped 17:44:18–17:44:51."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524806",
+      "stop": "Nanaimo",
+      "line": "expo",
+      "time": "2026-09-27T17:46:03-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "Stopped 17:45:51–17:46:16."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524806",
+      "stop": "Commercial-Broadway",
+      "line": "expo",
+      "time": "2026-09-27T17:48:31-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "Stopped 17:48:16–17:48:47."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524806",
+      "stop": "Main Street-Science World",
+      "line": "expo",
+      "time": "2026-09-27T17:51:44-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "Stopped 17:51:26–17:52:03."
+    },
+    {
+      "kind": "at_platform",
+      "date": "2026-09-27",
+      "trip": "15524806",
+      "stop": "Stadium-Chinatown",
+      "line": "expo",
+      "event": "arrive",
+      "time": "2026-09-27T17:53:25-07:00",
+      "source": "Braden, on board (GPS)",
+      "note": "End of the GPS track (the line goes underground beyond here)."
+    }
+  ]
+}

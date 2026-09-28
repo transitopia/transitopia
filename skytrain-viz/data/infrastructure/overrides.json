@@ -70,7 +70,7 @@
           49.2246884
         ]
       },
-      "note": "OMC4 works (Feb 2024–~2027): Braid short-turns use the west track, dead-ended just north of Braid (Platform 2 per TransLink), running in both directions between Braid and the crossover south of Sapperton. Satellite imagery 2026 shows no crossover near Braid (Braden, 2026-09-26)."
+      "note": "OMC4 works (Feb 2024–~2027): Braid short-turns use the west track (Platform 1 at Sapperton and Braid), closed just north of Braid, running in both directions between Braid and the crossover ~460 m south of Sapperton. Satellite imagery 2026 shows no crossover near Braid (Braden, 2026-09-26); platform signs and GPS (Braden, 2026-09-27)."
     },
     {
       "station": "Braid",
@@ -85,7 +85,7 @@
           49.2246624
         ]
       },
-      "note": "Trains to/from Lougheed and Production Way–University use the east track in both directions (single-track north of Braid; Platform 1 per TransLink)."
+      "note": "Trains to/from Lougheed and Production Way–University use the east track in both directions (single-track north of Braid; Platform 2 at Sapperton and Braid)."
     }
   ]
 }
