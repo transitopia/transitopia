@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { readdir } from 'node:fs/promises';
 import { CONFIG_DIR, FEEDS_OUT_DIR, readJson } from './lib/paths.ts';
 import { loadAllPlans, loadGraph } from './lib/infra.ts';
+import { dispatchSummary } from './lib/movements.ts';
 import { preparePlan } from '../src/core/schedule/engine.ts';
 import { TrainPlayback } from '../src/core/movement/playback.ts';
 import type { MovementsFile } from '../src/core/movement/types.ts';
@@ -35,7 +36,7 @@ async function main() {
     const keys = (await readdir(dir)).filter((f) => f !== 'index.json').map((f) => f.replace(/\.json$/, ''));
     for (const key of keys.filter((k) => !arg('--key') || k === arg('--key'))) {
       const file = await readJson<MovementsFile>(join(dir, `${key}.json`));
-      const pb = new TrainPlayback(file, pp, graph, kin, { deadheadSpeedFactor: ops.yard.deadheadSpeedFactor });
+      const pb = new TrainPlayback(file, pp, graph, kin, { deadheadSpeedFactor: ops.yard.deadheadSpeedFactor, turnbackSpeedFactor: ops.turnback.speedFactor });
       const last = new Map<string, { lon: number; lat: number; t: number }>();
       const jumps = new Map<string, { t: number; d: number }>();
       const conflicts = new Map<string, { t: number; d: number }>();
@@ -66,8 +67,9 @@ async function main() {
           }
         }
         // Conflicts: two trains overlapping on the same track segment.
+        // Yards are outside signalling (manual operation): trains stored there may share a drawn track.
         const bySeg = new Map<string, typeof vs>();
-        for (const v of vs) if (v.track) (bySeg.get(v.track.seg) ?? bySeg.set(v.track.seg, []).get(v.track.seg)!).push(v);
+        for (const v of vs) if (v.track && graph.segment(v.track.seg).kind !== 'yard') (bySeg.get(v.track.seg) ?? bySeg.set(v.track.seg, []).get(v.track.seg)!).push(v);
         for (const list of bySeg.values()) {
           for (let i = 0; i < list.length; i++) {
             for (let j = i + 1; j < list.length; j++) {
@@ -87,6 +89,8 @@ async function main() {
           }
         }
       }
+      console.log(`${plan.feedVersion} [${key}]: ${dispatchSummary(file)}`);
+      for (const f of file.dispatch?.forced.slice(0, 5) ?? []) console.log(`  deadlock broken: ${f.run} at ${formatServiceTime(f.t)} ${f.where} (${f.why})`);
       console.log(
         `${plan.feedVersion} [${key}]: ${file.runs.length} runs; peak trains visible: ` +
           [...fleetAt].map(([l, [n, t]]) => `${l} ${n} @${formatServiceTime(t)}`).join(', '),

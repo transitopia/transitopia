@@ -6,9 +6,29 @@ import type { LonLat } from '../geo.ts';
 import type { Dir, TrackGraph, TrackPos } from '../infra/graph.ts';
 import type { PreparedPlan, VehicleState, VehicleStatus } from '../schedule/engine.ts';
 import { distanceAt, kinematicsFor, solveLeg, speedAt, type Kinematics, type KinematicsConfig, type LegProfile } from './kinematics.ts';
-import type { MovementsFile, Run, RunEvent } from './types.ts';
+import type { HopWait, MovementsFile, Run, RunEvent } from './types.ts';
 import { OBSERVED_WINDOW_S, warp, type ParkedTrain, type ReconcileResult } from '../corrections/reconcile.ts';
 import { formatServiceTime, serviceDayStart } from '../time.ts';
+
+/** Distance and speed at `sec` along a flattened [t, d, …] trajectory (linear between points). */
+function alongVia(pts: number[], sec: number): { d: number; speed: number } {
+  const n = pts.length / 2;
+  if (sec <= pts[0]!) return { d: pts[1]!, speed: 0 };
+  if (sec >= pts[2 * n - 2]!) return { d: pts[2 * n - 1]!, speed: 0 };
+  let lo = 0;
+  let hi = n - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (pts[2 * mid]! <= sec) lo = mid;
+    else hi = mid;
+  }
+  const t0 = pts[2 * lo]!;
+  const d0 = pts[2 * lo + 1]!;
+  const t1 = pts[2 * hi]!;
+  const d1 = pts[2 * hi + 1]!;
+  const speed = t1 > t0 ? (d1 - d0) / (t1 - t0) : 0;
+  return { d: d0 + speed * (sec - t0), speed };
+}
 
 interface DecodedPath {
   segs: string[];
@@ -23,6 +43,9 @@ interface TimedEvent {
   e: RunEvent;
   t0: number;
   t1: number;
+  /** Trip stop times: the dispatcher's when set, else the plan's. */
+  arr?: ArrayLike<number>;
+  dep?: ArrayLike<number>;
 }
 
 interface PreparedRun {
@@ -32,10 +55,13 @@ interface PreparedRun {
   end: number;
   kin: Kinematics;
   deadheadKin: Kinematics;
+  turnbackKin: Kinematics;
 }
 
 export interface PlaybackOptions {
   deadheadSpeedFactor: number;
+  /** Speed factor for turnback moves (default: deadheadSpeedFactor). */
+  turnbackSpeedFactor?: number;
   /** Draw each train as a polyline following the track (for zoomed-in views). */
   shapes?: boolean;
 }
@@ -76,7 +102,10 @@ export class TrainPlayback {
           if (e.k !== 'trip') return { e, t0: e.t0, t1: e.t1 };
           const t = pp.tripIndex.get(e.trip);
           if (!t) throw new Error(`Movement file references unknown trip ${e.trip}`);
-          return { e, t0: t.dep[0]!, t1: t.arr[t.arr.length - 1]! };
+          if (!e.times) return { e, t0: t.dep[0]!, t1: t.arr[t.arr.length - 1]!, arr: t.arr, dep: t.dep };
+          const arr = e.times.filter((_, i) => i % 2 === 0);
+          const dep = e.times.filter((_, i) => i % 2 === 1);
+          return { e, t0: dep[0]!, t1: arr[arr.length - 1]!, arr, dep };
         });
         return {
           run,
@@ -85,6 +114,7 @@ export class TrainPlayback {
           end: events[events.length - 1]?.t1 ?? 0,
           kin: k,
           deadheadKin: { ...k, maxSpeed: k.maxSpeed * opts.deadheadSpeedFactor, minCruiseFraction: 0.5 },
+          turnbackKin: { ...k, maxSpeed: k.maxSpeed * (opts.turnbackSpeedFactor ?? opts.deadheadSpeedFactor), minCruiseFraction: 0.5 },
         };
       })
       .sort((a, b) => a.start - b.start);
@@ -177,22 +207,34 @@ export class TrainPlayback {
     };
     if (e.k === 'hold') {
       const pos = { seg: this.file.segIds[e.seg]!, offset: e.offset };
-      return this.state(r, base, pos, e.dir, e.kind === 'yard' ? 'layover' : 'layover', undefined, this.nextTripHeadsign(r, lo), 0);
+      const v = this.state(r, base, pos, e.dir, e.kind === 'signal' ? 'held' : 'layover', undefined, this.nextTripHeadsign(r, lo), 0);
+      if (e.why) v.note = `Held: ${e.why}`;
+      return v;
     }
     if (e.k === 'move') {
       const path = this.paths[e.path]!;
-      const leg = this.leg(e.path, e.t1 - e.t0, r.deadheadKin);
+      const headsign = e.kind === 'pullin' ? 'Not in service · to yard' : e.kind === 'pullout' ? 'Not in service · from yard' : 'Turning back';
+      if (e.via) {
+        const { d, speed } = alongVia(e.via, sec);
+        const { pos, dir } = this.along(path, d);
+        const w = e.waits?.find((x) => sec >= x.t0 && sec <= x.t1);
+        const v = this.state(r, base, pos, dir, w ? 'held' : e.kind, undefined, headsign, speed);
+        if (w) v.note = `Held: ${w.why}`;
+        return v;
+      }
+      const leg = this.leg(e.path, e.t1 - e.t0, e.kind === 'turnback' ? r.turnbackKin : r.deadheadKin);
       const tt = Math.min(e.t1 - e.t0, Math.max(0, sec - e.t0));
       const d = distanceAt(leg, tt);
       const { pos, dir } = this.along(path, d);
       const status: VehicleStatus = e.kind;
-      const headsign = e.kind === 'pullin' ? 'Not in service · to yard' : e.kind === 'pullout' ? 'Not in service · from yard' : 'Turning back';
       return this.state(r, base, pos, dir, status, undefined, headsign, speedAt(leg, tt));
     }
     // Revenue trip.
     const t = this.pp.tripIndex.get(e.trip)!;
     const pat = this.file.patterns[e.pattern]!;
     const n = t.arr.length;
+    const arr = te.arr!;
+    const dep = te.dep!;
     const hopPath = (i: number) => (i === 0 && e.berth ? e.berth.hop : i === n - 2 && e.arrive ? e.arrive.hop : pat.hops[i]!);
     const stopPos = (i: number): { pos: TrackPos; dir: Dir } => {
       if (i === 0 && e.berth) return { pos: { seg: this.file.segIds[e.berth.seg]!, offset: e.berth.offset }, dir: e.berth.dir };
@@ -205,18 +247,30 @@ export class TrainPlayback {
     let hiI = n - 1;
     while (i < hiI) {
       const mid = (i + hiI + 1) >> 1;
-      if (t.arr[mid]! <= sec) i = mid;
+      if (arr[mid]! <= sec) i = mid;
       else hiI = mid - 1;
     }
     const headsign = t.trip.headsign;
-    if (sec <= t.dep[i]! || i === n - 1) {
+    if (sec <= dep[i]! || i === n - 1) {
       const { pos, dir } = stopPos(i);
       return this.state(r, base, pos, dir, 'dwell', this.pp.plan.stops[t.pattern.stops[i]!]!.name, headsign, 0, t.trip.id, t.route.key);
     }
     const pi = hopPath(i);
     const path = this.paths[pi]!;
-    const leg = this.leg(pi, t.arr[i + 1]! - t.dep[i]!, r.kin);
-    const tt = sec - t.dep[i]!;
+    const waits = e.waits?.filter((w) => w.hop === i);
+    const via = e.via?.find((x) => x.hop === i);
+    if (via) {
+      const { d, speed } = alongVia(via.pts, sec);
+      const { pos, dir } = this.along(path, d);
+      const w = waits?.find((x) => sec >= x.t0 && sec <= x.t1);
+      const next = this.pp.plan.stops[t.pattern.stops[i + 1]!]!.name;
+      const v = this.state(r, base, pos, dir, w ? 'held' : 'moving', next, headsign, speed, t.trip.id, t.route.key);
+      if (w) v.note = `Held: ${w.why}`;
+      return v;
+    }
+    if (waits?.length) return this.hopWithWaits(r, base, path, dep[i]!, arr[i + 1]!, waits, sec, this.pp.plan.stops[t.pattern.stops[i + 1]!]!.name, headsign, t.trip.id, t.route.key);
+    const leg = this.leg(pi, arr[i + 1]! - dep[i]!, r.kin);
+    const tt = sec - dep[i]!;
     const d = distanceAt(leg, tt);
     const { pos, dir } = this.along(path, d);
     const holding = tt < leg.hold;
@@ -232,6 +286,48 @@ export class TrainPlayback {
       t.trip.id,
       t.route.key,
     );
+  }
+
+  /** A hop with signal waits: stop-to-stop legs between the waits, standing still during them. */
+  private hopWithWaits(
+    r: PreparedRun,
+    base: Pick<VehicleState, 'id' | 'provenance' | 'source' | 'serviceDate' | 'length' | 'width'>,
+    path: DecodedPath,
+    dep: number,
+    arr: number,
+    waits: HopWait[],
+    sec: number,
+    nextStop: string,
+    headsign: string,
+    tripId: string,
+    routeKey: string,
+  ): VehicleState {
+    let d0 = 0;
+    let t0 = dep;
+    for (const w of [...waits, { d: path.length, t0: arr, t1: arr, why: '' } as HopWait]) {
+      if (sec < w.t0) {
+        const leg = this.freeLeg(w.d - d0, w.t0 - t0, r.kin);
+        const { pos, dir } = this.along(path, d0 + distanceAt(leg, sec - t0));
+        return this.state(r, base, pos, dir, 'moving', nextStop, headsign, speedAt(leg, sec - t0), tripId, routeKey);
+      }
+      if (sec <= w.t1 && w.why) {
+        const { pos, dir } = this.along(path, w.d);
+        const v = this.state(r, base, pos, dir, 'held', nextStop, headsign, 0, tripId, routeKey);
+        v.note = `Held: ${w.why}`;
+        return v;
+      }
+      d0 = w.d;
+      t0 = w.t1;
+    }
+    const { pos, dir } = this.along(path, path.length);
+    return this.state(r, base, pos, dir, 'moving', nextStop, headsign, 0, tripId, routeKey);
+  }
+
+  private freeLeg(distance: number, duration: number, k: Kinematics): LegProfile {
+    const key = `d${distance.toFixed(2)}|${duration}|${k.maxSpeed}`;
+    let l = this.legCache.get(key);
+    if (!l) this.legCache.set(key, (l = solveLeg(distance, duration, k)));
+    return l;
   }
 
   private nextTripHeadsign(r: PreparedRun, from: number): string {

@@ -1,0 +1,17 @@
+{
+  "$comment": "Signalling-aware dispatcher (PLAN.md §4.11). SkyTrain uses moving-block CBTC; every value here is a guess until OPEN-QUESTIONS #26 is answered.",
+  "$stepS": "Simulation time step (s). Trains on plan follow their exact timetable profile; only constrained motion is integrated at this step.",
+  "stepS": 1,
+  "$safetyMarginM": "Moving block: a train's authority ends this far behind the rear of the train ahead, or before a fouling point it may not pass. guess, OPEN-QUESTIONS #26",
+  "safetyMarginM": 30,
+  "$foulingM": "A train within this distance of a switch or crossing fouls it (other routes through that node must wait). guess, OPEN-QUESTIONS #26",
+  "foulingM": 15,
+  "$minHoldS": "When a train runs late, a layover or turnback hold shrinks to at most this (unloading and changing ends); scheduled slack absorbs the delay. guess, OPEN-QUESTIONS #6",
+  "minHoldS": 40,
+  "$maxWaitS": "Deadlock breaker: a train blocked this long is given authority anyway and the conflict is reported (validate:plan). It should never trigger on a feasible plan.",
+  "maxWaitS": 900,
+  "$crossingBufferS": "A train may cross a section another train has reserved (in the other direction) if it will be clear this long before the holder could possibly get there (e.g. an eastbound Millennium train crossing the shared piece at Lougheed while an Expo train is still at Braid). guess, OPEN-QUESTIONS #26",
+  "crossingBufferS": 30,
+  "$revenueFirst": "At a conflict point, trains in service go before empty moves; otherwise the train timetabled first goes first. guess, OPEN-QUESTIONS #26",
+  "revenueFirst": true
+}

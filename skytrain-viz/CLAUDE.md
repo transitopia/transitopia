@@ -33,9 +33,15 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 - Trip times: SkyTrain/WCE/SeaBus trips are re-timed within ±45 s of GTFS (minute-rounded) in proportion to each hop's physical minimum time (`retime` in `schedule/engine.ts`). Without this, some hops are impossibly fast.
 - Chaining: GTFS block successor first (only when it starts where the last trip ended), else FIFO earliest feasible departure. Turnbacks choose between the GTFS departure platform (via tail/pocket/main reversals) and reversing in place, by cost.
 - In-place turnbacks get stub berths by occupancy (`berth`/`arrive` overrides on trip events), pulled up to the buffer.
-- Surplus trains at stub termini (would wait > `turnback.stubMaxLayoverS`) pull in to the yard instead of queueing. Timing pull-ins into gaps between scheduled trains was tried and made no measurable difference, so it isn't implemented.
+- Surplus trains at stub termini (would wait > `turnback.stubMaxLayoverS`, or every dead-ended berth is taken) pull in to the yard instead of queueing. Timing pull-ins into gaps between scheduled trains was tried and made no measurable difference, so it isn't implemented.
+- Pull-outs/pull-ins avoid running against the normal direction of traffic (`yard.againstTrafficPenalty`); turnbacks have their own speed (`turnback.speedFactor`).
 - Playback (`playback.ts`) is pure: (movement file, prepared plan, graph, t) → positions. Keep it that way.
 - Debug with `npm run build:movements -- --verbose` (per-terminus chaining stats) and `npm run validate:plan` (conflict hot spots).
+
+## Dispatcher notes (`src/core/dispatch/`, PLAN.md §4.11)
+
+- `build:movements` runs inferred runs through the signalling simulation (moving block, junction locks, sections for track used both ways, stub berths). Its output is still a movement file; playback stays pure. `--no-dispatch` writes the timetable-only plan for comparison.
+- Deadlocks are prevented by resource order (see PLAN.md §4.11 "As built"), not by the breaker. A "deadlock broken" line in `validate:plan` is a bug to look at: `DISPATCH_DEBUG=1` prints the waits-for chain, `DISPATCH_TRACE=<run> DISPATCH_TRACE_FROM=<s> DISPATCH_TRACE_TO=<s>` traces one train.
 
 ## Corrections
 
@@ -73,8 +79,8 @@ npm run tiles            # build public/tiles/vancouver.pmtiles + fonts/sprites 
 npm run data:osm         # fetch OSM tracks + import → data/infrastructure/*.generated.geojson (working)
 npm run build:infra      # publish tracks + per-feed platform mapping to public/data (working)
 npm run validate:infra   # graph / platform / routing / turnback / checklist checks (working)
-npm run build:movements  # infer train runs → public/data/feeds/<v>/movements/*.json [--verbose] (working)
-npm run validate:plan    # teleports (fail), terminus/yard conflicts (report), fleet peaks (working)
+npm run build:movements  # infer + dispatch train runs → public/data/feeds/<v>/movements/*.json [--verbose] [--no-dispatch] (working)
+npm run validate:plan    # teleports (fail), conflicts, dispatch delays and broken deadlocks (report), fleet peaks (working)
 npm run build:observations # validate + publish data/observations/*.json (working; format in data/observations/README.md)
 npm run build:rt-profile # learn bus travel-time profiles from data/rt-history → public/data/feeds/<v>/rt-profile.json (working)
 npx tsx scripts/eval-rt.ts [--test-last 3] [--set key=value] # replay recorded RT: prediction error and live-view jumps, old vs new

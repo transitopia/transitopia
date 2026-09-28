@@ -137,6 +137,7 @@ export class PlanStore {
       const g = this.graph;
       this.fetchOnce(pbKey, `${BASE}${path}`, this.playbacks, (j) => new TrainPlayback(j as MovementsFile, pp, g, kinematics, {
         deadheadSpeedFactor: operationsConfig.yard.deadheadSpeedFactor,
+        turnbackSpeedFactor: operationsConfig.turnback.speedFactor,
         shapes: true,
       }));
       return undefined;

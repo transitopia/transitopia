@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { CONFIG_DIR, PUBLIC_DATA_DIR, ROOT, log, readJson, writeJson } from './lib/paths.ts';
 import { INFRA_DIR, loadLatestPlan, loadOverrides, loadTracks } from './lib/infra.ts';
 import { buildAllMovements } from './lib/movements.ts';
+import type { DispatchConfig } from '../src/core/dispatch/dispatch.ts';
 import { TrackGraph } from '../src/core/infra/graph.ts';
 import { mapPlatforms } from '../src/core/infra/platforms.ts';
 import { routePattern } from '../src/core/infra/patterns.ts';
@@ -66,7 +67,8 @@ async function main() {
   log(`Platforms: ${report.assignments.size} mapped; ${failures} unroutable hops`);
 
   // 4. Movements.
-  const { index } = await buildAllMovements({ plan, graph, platforms: report.assignments, patternPositions: report.patternPositions, kin, ops, outDir: join(out, 'movements'), relDir: `${rel}/movements` });
+  const dispatchCfg = await readJson<DispatchConfig>(join(CONFIG_DIR, 'dispatch.json'));
+  const { index } = await buildAllMovements({ plan, graph, platforms: report.assignments, patternPositions: report.patternPositions, kin, ops, dispatch: dispatchCfg, outDir: join(out, 'movements'), relDir: `${rel}/movements` });
 
   // 5. Publish.
   await writeJson(join(out, 'plan.json'), plan);

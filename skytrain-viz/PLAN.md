@@ -14,7 +14,7 @@ Status: **implemented through M7** (2026-09-25). Operations questions still open
 | M5 Canada Line | ✅ | Came with M3/M4: the graph covers all lines, including Capstan and the Bridgeport OMC. |
 | M6 corrections | ✅ | Observations reference service date + trip, or stop + time. Delays are absorbed at layovers. Cancellations, consists and provenance are shown. |
 | M7 scenarios | ✅ | Future OSM track, custom GeoJSON track, `extend` service operation. Demo: `broadway-subway`. |
-| M8 dispatcher | ⏳ | Designed (§4.11): signalling-aware movement plans, dispatched centrally, with observations and disruptions as inputs. |
+| M8 dispatcher | 🚧 | §4.11. **M8.1 core ✅**: `build:movements` dispatches every base plan (moving block, junction locks, sections, stub berths). Conflicting pairs per weekday 1,124 → 1 (a broken deadlock); added delay p95 ≈ 3 min on weekdays, ≈ 0 on weekends. Known: 1–2 deadlocks after midnight on weekdays (pull-ins near Edmonds/Lougheed), resolved by the breaker; 4–6 s per service day (budget 1 s). |
 | Public deploy | ⏳ | Not started (Cloudflare Worker + Durable Object poller, R2 for tiles/history). |
 | **TODO: service alerts → schedule overrides** | ⏳ | Needed: planned SkyTrain changes (e.g. nightly single-tracking) exist only in the GTFS-RT alerts feed, not in static GTFS or trip updates. See §4.10. |
 
@@ -370,6 +370,16 @@ The existing leg solver reproduces motion between stops. The movement schema goe
 - **One dispatch, many subscribers:** `/rt/live`, which clients already poll every ~10–30 s, gains `dispatch: { <date>: <version> }`. Clients fetch `/rt/dispatch/<date>/<version>.json` when the version changes. Patches are immutable and CDN-cacheable indefinitely; the version pointer is cached like `/rt/live` (max-age 10). Server-sent events or WebSockets can replace polling later without changing the model.
 - **History:** versions are persisted (on disk now, R2 later). Viewing a past time uses the latest version for that date, which is the best reconstruction. Keeping the earlier versions allows an "as known then" view later.
 - **Fallback:** if the dispatcher or the service is down, clients use the static base plan, marked *estimated* as today.
+
+**As built (M8.1).** Details that the design above didn't anticipate:
+- *Sections* come from revenue use: track trains in service run both ways (single track, stub platforms), plus crossovers, tails, pockets, sidings and leads. Elsewhere, an empty move running against the normal direction of traffic reserves the pieces it runs "wrong road", and other trains treat that reservation as a stop. (Pull-outs and pull-ins were first routed by plain shortest path, which ran them against traffic over ~74 km of main line; §4.3 now penalises that.)
+- *Resource order:* trains take junction locks and sections only in path order, only when they can reach them, and not beyond their next stop (except track their body will cover there). Junctions beyond the current limit are given back. This, rather than cleverness in the deadlock breaker, is what keeps the plan deadlock-free.
+- *Room to clear:* a junction is locked, or a section entered, only if the whole train fits beyond it; nobody may stop on a junction inside another train's reserved section.
+- *Crossing moves:* a train may cross a piece that another train has reserved in the opposite direction if it will clear `crossingBufferS` before that train could get there (Millennium trains crossing the shared piece at Lougheed while Expo trains are still on the Braid single track).
+- *Spawning:* a pull-out appears only where its body is clear, on no one else's reservation and fouling no junction in use.
+- *Output:* trips on time stay by reference (within 0.5 s); others carry `times`, `waits` (with the reason) and, where they left the planned profile, `via` (the simulated trajectory, thinned to 2 m), which playback follows. Weekday file: 2.4 MB, 0.64 MB gzipped.
+- *Run inference changes found through the dispatcher:* turnbacks run at their own speed factor (0.8; at 0.55 the 4-minute Production Way turnaround was infeasible, parking trains on Millennium platforms for 16 min), and stub termini send surplus trains to the yard when their berths are full (§4.3).
+- *Debugging:* `DISPATCH_DEBUG=1` prints the first deadlock's waits-for chain; `DISPATCH_TRACE=<run> DISPATCH_TRACE_FROM=<s> DISPATCH_TRACE_TO=<s>` traces one train's state and authority decisions.
 
 **Budget.** A full weekday dispatch (~2,100 SkyTrain trips, ~150 runs) takes under 1 s in Node, and an incremental re-dispatch under 200 ms. The plan (2.4 MB JSON), graph and checkpoints need well under a Durable Object's 128 MB.
 

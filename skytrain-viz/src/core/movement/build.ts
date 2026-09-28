@@ -24,6 +24,7 @@ export interface OperationsConfig {
     maxTurnbackM: number;
     stubMaxLayoverS: number;
     maxPullUpM: number;
+    speedFactor: number;
     unloadS: number;
     reversalS: number;
     blockBonusS: number;
@@ -33,6 +34,7 @@ export interface OperationsConfig {
     pullOutLeadS: number;
     deadheadSpeedFactor: number;
     runIntoYardM: number;
+    againstTrafficPenalty: number;
   };
 }
 
@@ -148,6 +150,16 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
     patternsOut[p.id] = { hops: r.hops.map((h) => addPath(h!.pieces)) };
   }
 
+  // Normal direction of traffic per segment: the directions revenue trips use it in (bit 1: +, 2: −).
+  const revenueDirs = new Map<string, number>();
+  for (const r of patternRoutes.values()) {
+    for (const h of r.hops) for (const p of h!.pieces) if (p.to !== p.from) revenueDirs.set(p.seg, (revenueDirs.get(p.seg) ?? 0) | (p.to > p.from ? 1 : 2));
+  }
+  const againstTraffic = (seg: string, dir: Dir) => {
+    const d = revenueDirs.get(seg);
+    return d === (dir === 1 ? 2 : 1) ? ops.yard.againstTrafficPenalty : 0;
+  };
+
   // --- trips ---
   const stationOf = (si: number) => plan.stops[si]!.parent ?? plan.stops[si]!.name.replace(/\s*@.*$/, '');
   const trips: TripInfo[] = [];
@@ -199,9 +211,12 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
     return r;
   };
   const yardCache = new Map<string, Path | null>();
-  /** Path from a platform to the nearest yard (for pull-ins), extended into the yard. */
-  const toYard = (pos: TrackPos, dir: Dir): Path | null => {
-    const key = `${pk(pos)}|${dir}`;
+  /**
+   * Path from a platform to the nearest yard (for pull-ins), extended into the yard. `reversed`: the
+   * path will be run backwards (a pull-out), so traffic direction is judged the other way round.
+   */
+  const toYard = (pos: TrackPos, dir: Dir, reversed = false): Path | null => {
+    const key = `${pk(pos)}|${dir}|${reversed}`;
     let r = yardCache.get(key);
     if (r !== undefined) return r;
     r = g.route(pos, null, {
@@ -209,7 +224,8 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
       allowReversals: true,
       allowReverseAtStart: true,
       goalKinds: YARD,
-      maxLength: ops.yard.maxDeadheadM,
+      maxLength: ops.yard.maxDeadheadM * (1 + ops.yard.againstTrafficPenalty),
+      dirPenalty: reversed ? (seg, d) => againstTraffic(seg, (-d) as Dir) : againstTraffic,
     });
     if (r) {
       const last = r.pieces[r.pieces.length - 1]!;
@@ -223,11 +239,13 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
     return r;
   };
 
+  // Empty moves: turnbacks at their own speed, pull-outs and pull-ins slower (config).
+  const speedFactorFor = (kind: MoveKind) => (kind === 'turnback' ? ops.turnback.speedFactor : ops.yard.deadheadSpeedFactor);
   // Minimum time for a (possibly reversing) deadhead path.
-  const deadheadTime = (line: string, path: Path) => {
+  const deadheadTime = (line: string, path: Path, kind: MoveKind = 'turnback') => {
     const k = kinematicsFor(kin, 'skytrain', line);
     const subs = splitAtReversals(path.pieces);
-    const moving = subs.reduce((s, sub) => s + minLegTime(lengthOf(sub), k, ops.yard.deadheadSpeedFactor), 0);
+    const moving = subs.reduce((s, sub) => s + minLegTime(lengthOf(sub), k, speedFactorFor(kind)), 0);
     return moving + Math.max(0, subs.length - 1) * ops.turnback.reversalS;
   };
 
@@ -280,6 +298,20 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
    * (operators run them empty between scheduled trains; OPEN-QUESTIONS #21).
    */
   const tooLongAtStub = (a: TripInfo, link: Link) => link.d.dep - a.arr > ops.turnback.stubMaxLayoverS && atStubTerminus(a);
+  /**
+   * A stub terminus holds at most one waiting train per dead-ended track (e.g. Waterfront Expo: the
+   * turnback stub and Platform 2). A train arriving when they're all taken is surplus and returns to
+   * the yard; otherwise first-come-first-served chaining keeps the morning's pool of trains there
+   * all day, with layovers the terminus can't hold (OPEN-QUESTIONS #21).
+   */
+  const waitingAtStub = new Map<string, [number, number][]>();
+  const stubFull = (a: TripInfo) => {
+    const cap = stubsNear(plan.stops[a.t.pattern.stops[a.t.pattern.stops.length - 1]!]!, a.line).length;
+    if (!cap) return false;
+    // Counted when this train needs a berth: after unloading and changing ends at the platform.
+    const at = a.arr + ops.turnback.unloadS + ops.turnback.reversalS;
+    return (waitingAtStub.get(a.station1) ?? []).filter(([from, to]) => from <= at && at < to).length >= cap;
+  };
 
   // --- chaining (FIFO per terminus, preferring the GTFS block) ---
   type Link = { d: TripInfo; path: Path; berthHop?: Path };
@@ -333,6 +365,11 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
       reason('no departures of this fleet here');
       continue;
     }
+    if (stubFull(a)) {
+      st.unchained++;
+      reason('stub terminus full: returns to yard');
+      continue;
+    }
     let chosen: Link | undefined;
     let sawCandidate = false;
     let lastReason = 'no departure within max layover';
@@ -367,6 +404,7 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
       next.set(a, chosen);
       hasPrev.add(chosen.d);
       st.chained++;
+      if (atStubTerminus(a)) (waitingAtStub.get(a.station1) ?? waitingAtStub.set(a.station1, []).get(a.station1)!).push([a.arr, chosen.d.dep]);
     } else {
       st.unchained++;
       reason(sawCandidate ? lastReason : 'no departure within max layover');
@@ -387,7 +425,7 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
   ) => {
     const k = kinematicsFor(kin, 'skytrain', line);
     const subs = splitAtReversals(path.pieces);
-    const times = subs.map((s) => minLegTime(lengthOf(s), k, ops.yard.deadheadSpeedFactor));
+    const times = subs.map((s) => minLegTime(lengthOf(s), k, speedFactorFor(kind)));
     const revs = Math.max(0, subs.length - 1) * ops.turnback.reversalS;
     const need = times.reduce((a, b) => a + b, 0) + revs;
     const avail = window.end - window.start;
@@ -490,7 +528,7 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
     const events: RunEvent[] = [];
     const run: Run = { id: `${first.line}-${String(++runNo).padStart(3, '0')}`, line: first.line, events };
     // Pull-out: nearest yard behind the first platform, reversed.
-    const back = toYard(first.pos0, (-first.dir0) as Dir);
+    const back = toYard(first.pos0, (-first.dir0) as Dir, true);
     const readyAt = first.dep - ops.yard.pullOutLeadS;
     if (back) {
       const out = reversePath(back);

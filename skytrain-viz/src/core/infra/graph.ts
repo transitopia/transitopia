@@ -62,12 +62,17 @@ export interface RouteOptions {
    */
   allowMainReversals?: boolean;
   mainReversalPenalty?: number;
+  /**
+   * Extra cost per metre for running along `seg` in `dir` (e.g. against the normal direction of
+   * traffic, so empty moves keep to the right track where they can).
+   */
+  dirPenalty?: (seg: string, dir: Dir) => number;
 }
 
 const REVERSAL_KINDS = new Set<SegmentKind>(['pocket', 'tail', 'siding']);
 const DEFAULT_KINDS = new Set<SegmentKind>(['main', 'pocket', 'tail', 'siding', 'crossover', 'spur']);
 
-interface Transition {
+export interface Transition {
   seg: string;
   dir: Dir;
 }
@@ -200,27 +205,35 @@ export class TrackGraph {
         continue;
       }
       // At the segment end: continue onto the straightest successor.
-      const nexts = this.successors(seg.id, d);
-      if (!nexts.length) break;
-      const here = pointAlong(seg.coords, seg.cum, offset);
-      let best = nexts[0]!;
-      let bestDiff = Infinity;
-      for (const n of nexts) {
-        const ns = this.segment(n.seg);
-        const p = pointAlong(ns.coords, ns.cum, n.dir === 1 ? Math.min(ns.length, 10) : Math.max(0, ns.length - 10));
-        const b = bearingOf([here.lon, here.lat], [p.lon, p.lat]);
-        const want = d === 1 ? here.bearing : (here.bearing + 180) % 360;
-        const diff = Math.abs(((b - want + 540) % 360) - 180);
-        if (diff < bestDiff) {
-          bestDiff = diff;
-          best = n;
-        }
-      }
+      const best = this.straightest(seg.id, d);
+      if (!best) break;
       seg = this.segment(best.seg);
       d = best.dir;
       offset = d === 1 ? 0 : seg.length;
     }
     return out;
+  }
+
+  /** The successor at the exit of `seg` (moving in `dir`) that continues most nearly straight on. */
+  straightest(segId: string, dir: Dir): Transition | undefined {
+    const nexts = this.successors(segId, dir);
+    if (nexts.length <= 1) return nexts[0];
+    const seg = this.segment(segId);
+    const here = pointAlong(seg.coords, seg.cum, dir === 1 ? seg.length : 0);
+    let best = nexts[0]!;
+    let bestDiff = Infinity;
+    for (const n of nexts) {
+      const ns = this.segment(n.seg);
+      const p = pointAlong(ns.coords, ns.cum, n.dir === 1 ? Math.min(ns.length, 10) : Math.max(0, ns.length - 10));
+      const b = bearingOf([here.lon, here.lat], [p.lon, p.lat]);
+      const want = dir === 1 ? here.bearing : (here.bearing + 180) % 360;
+      const diff = Math.abs(((b - want + 540) % 360) - 180);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        best = n;
+      }
+    }
+    return best;
   }
 
   /** Track positions near a point, nearest first. */
@@ -256,6 +269,7 @@ export class TrackGraph {
     const kinds = opts.kinds ?? DEFAULT_KINDS;
     const maxLength = opts.maxLength ?? 60_000;
     const len = (id: string) => this.segment(id).length;
+    const dp = (seg: string, dir: Dir, dist: number) => (opts.dirPenalty ? opts.dirPenalty(seg, dir) * dist : 0);
 
     type Key = string; // `${seg}|${dir}`
     interface Rec {
@@ -296,10 +310,13 @@ export class TrackGraph {
     for (const d of startDirs) {
       const extra = opts.fromDir !== undefined && d !== opts.fromDir ? penalty : 0;
       // Direct: target ahead on the same segment.
-      if (to && from.seg === to.seg && (to.offset - from.offset) * d >= 0) consider(Math.abs(to.offset - from.offset) + extra, d, undefined, { dir: d });
+      if (to && from.seg === to.seg && (to.offset - from.offset) * d >= 0) {
+        const dist = Math.abs(to.offset - from.offset);
+        consider(dist + dp(from.seg, d, dist) + extra, d, undefined, { dir: d });
+      }
       const toExit = d === 1 ? len(from.seg) - from.offset : from.offset;
       const key = `${from.seg}|${d}`;
-      const rec: Rec = { cost: toExit + extra, seg: from.seg, dir: d, via: 'start', startDir: d };
+      const rec: Rec = { cost: toExit + dp(from.seg, d, toExit) + extra, seg: from.seg, dir: d, via: 'start', startDir: d };
       if (!best.has(key) || best.get(key)!.cost > rec.cost) {
         best.set(key, rec);
         heap.push(rec.cost, key);
@@ -335,9 +352,9 @@ export class TrackGraph {
         if (to && t.seg === to.seg) {
           const partial = t.dir === 1 ? to.offset : ts.length - to.offset;
           // Record a pseudo-state for reconstruction.
-          setGoal(`${t.seg}|${t.dir}|goal`, { cost: cost + kp + partial, seg: t.seg, dir: t.dir, parent: key, via: 'turn' });
+          setGoal(`${t.seg}|${t.dir}|goal`, { cost: cost + kp + partial + dp(t.seg, t.dir, partial), seg: t.seg, dir: t.dir, parent: key, via: 'turn' });
         }
-        push(t.seg, t.dir, cost + kp + ts.length, 'turn');
+        push(t.seg, t.dir, cost + kp + ts.length + dp(t.seg, t.dir, ts.length), 'turn');
         // Run into a reversal track (or, if allowed, onto main track past a switch), reverse, come back out.
         const mainRev = opts.allowMainReversals && ts.kind === 'main' && nexts.length > 1;
         if (opts.allowReversals && (REVERSAL_KINDS.has(ts.kind) || mainRev)) {

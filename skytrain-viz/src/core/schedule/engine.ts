@@ -18,7 +18,8 @@ import {
 } from '../movement/kinematics.ts';
 
 export type Provenance = 'observed' | 'interpolated' | 'estimated';
-export type VehicleStatus = 'moving' | 'dwell' | 'layover' | 'turnback' | 'pullout' | 'pullin';
+/** `held`: stopped between stations by signalling (dispatched SkyTrain plans). */
+export type VehicleStatus = 'moving' | 'dwell' | 'layover' | 'turnback' | 'pullout' | 'pullin' | 'held';
 
 export interface VehicleState {
   /** Stable across consecutive trips of the same vehicle, where known. */
