@@ -74,7 +74,7 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 
 ```sh
 npm run dev              # Vite + local RT service at /rt/* (poller, cache, recorder) (working)
-npm run server           # standalone RT service on :8787, e.g. to keep recording (working)
+npm run server           # standalone RT service on :8787, e.g. to keep recording; also live dispatch (working)
 npm run data:gtfs        # fetch latest GTFS + build plan.json and manifest (working)
 npm run data             # fetch-gtfs, fetch-osm, import-osm, build-schedule, infer-runs, build-movements
 npm run tiles            # build public/tiles/vancouver.pmtiles + fonts/sprites (working)
@@ -95,7 +95,8 @@ npm run typecheck
 
 ## Workflow
 
-- Gitignored build and runtime output: `data/raw/`, `data/rt-history/`, `public/data/`, `public/tiles/`, `public/basemap-assets/`.
+- Gitignored build and runtime output: `data/raw/`, `data/rt-history/`, `data/dispatch-history/`, `public/data/`, `public/tiles/`, `public/basemap-assets/`.
+- The dev server loads `server/` once: restart `npm run dev` after changing it.
 - Route colours and names are baked into `plan.json` from `data/config/routes.json`; rebuild with `npx tsx scripts/build-schedule.ts --force` after editing it.
 - After changing infrastructure, config, or pipeline code, rebuild and run both validators before calling the work done.
 - For visual changes, run the app and look at it (`scripts/screenshot.ts` drives the local Chrome; `window.skytrain` is a debug handle with `map`, `clock`, `store`, `vehicles()`), especially at station zoom around Waterfront, Columbia/Sapperton, Commercial–Broadway, Lougheed, Edmonds (OMC 1), and Bridgeport, where the track work is densest. Check the phone layout too.

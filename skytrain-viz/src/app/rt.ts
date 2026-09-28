@@ -29,6 +29,7 @@ interface HourChunk {
 export class RtClient {
   private live: RtSnapshot[] = [];
   private liveError: string | undefined;
+  private dispatch: Record<string, string> | undefined;
   private liveTimer: ReturnType<typeof setTimeout> | undefined;
   private hours = new Map<string, HourChunk>();
   private coverage: [number, number][] = [];
@@ -142,6 +143,11 @@ export class RtClient {
     return this.liveError;
   }
 
+  /** Live dispatch versions from the last /rt/live response (service date → version). */
+  dispatchPointer(): Record<string, string> | undefined {
+    return this.dispatch;
+  }
+
   // --- live ---
 
   private liveSpan(): [number, number] | undefined {
@@ -164,6 +170,10 @@ export class RtClient {
         }
         const body = (await res.json()) as RtLiveResponse;
         this.liveError = body.error;
+        if (body.dispatch && JSON.stringify(body.dispatch) !== JSON.stringify(this.dispatch)) {
+          this.dispatch = body.dispatch;
+          this.emit();
+        }
         if (body.snapshot && !body.stale) {
           const s: RtSnapshot = { ...body.snapshot, receivedAt: Math.max(Date.now(), body.snapshot.fetchedAt) };
           if (!this.live.length || s.fetchedAt > this.live.at(-1)!.fetchedAt) {

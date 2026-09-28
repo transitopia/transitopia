@@ -29,6 +29,8 @@ export class PlanStore {
   private movementFiles = new Map<string, MovementsFile | null>();
   private playbacks = new Map<string, TrainPlayback>();
   private dispatchIndex: DispatchIndex | null | undefined;
+  /** Live dispatch versions (the RT service), which take precedence over the static index. */
+  private liveDispatch: DispatchIndex['byDate'] = {};
   private patches = new Map<string, DispatchPatch | null>();
   private pending = new Set<string>();
   private observationIndex: ObservationIndex | null | undefined;
@@ -98,21 +100,24 @@ export class PlanStore {
   private patchFor(date: string): DispatchPatch | null | undefined {
     if (this.dispatchIndex === undefined) {
       this.dispatchIndex = null;
-      fetch(`${BASE}data/dispatch/index.json`)
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null)
-        .then((idx) => {
-          this.dispatchIndex = (idx as DispatchIndex | null) ?? { schema: 1, byDate: {} };
-          this.emit();
-        });
+      const get = (url: string) =>
+        fetch(url)
+          .then((r) => (r.ok ? (r.json() as Promise<DispatchIndex>) : null))
+          .catch(() => null);
+      // The static index (build:dispatch) and, unless viewing a scenario, the live one.
+      void Promise.all([get(`${BASE}data/dispatch/index.json`), this.scenario ? null : get(`${BASE}rt/dispatch`)]).then(([idx, live]) => {
+        this.dispatchIndex = idx ?? { schema: 1, byDate: {} };
+        if (live) this.liveDispatch = { ...live.byDate, ...this.liveDispatch };
+        this.emit();
+      });
       return undefined;
     }
-    const entry = this.dispatchIndex?.byDate[date];
+    const entry = this.liveDispatch[date] ?? this.dispatchIndex?.byDate[date];
     if (!entry) return this.dispatchIndex ? null : undefined;
     const key = `${date}|${entry.version}`;
     const p = this.patches.get(key);
     if (p === undefined) {
-      this.fetchOnce(key, entry.path.startsWith('/') ? entry.path : `${BASE}${entry.path}`, this.patches, (j) => {
+      this.fetchOnce(key, `${BASE}${entry.path}`, this.patches, (j) => {
         const patch = j as DispatchPatch;
         for (const u of patch.unmatched) console.warn(`Observation not applied (${u.reason}):`, u.obs);
         for (const pr of patch.problems ?? []) console.warn(`Disruption not fully applied: ${pr}`);
@@ -174,6 +179,18 @@ export class PlanStore {
       this.playbacks.set(pbKey, pb);
     }
     return pb;
+  }
+
+  /** New live dispatch versions from /rt/live (service date → version). */
+  setLiveDispatch(pointer: Record<string, string> | undefined): void {
+    if (!pointer || this.scenario) return;
+    let changed = false;
+    for (const [date, version] of Object.entries(pointer)) {
+      if (this.liveDispatch[date]?.version === version) continue;
+      this.liveDispatch[date] = { version, path: `rt/dispatch/${date}/${version}.json` };
+      changed = true;
+    }
+    if (changed) this.emit();
   }
 
   /** Disruptions in effect at instant t (epoch ms), from the dispatch patches of the days running then. */

@@ -31,7 +31,7 @@ describe('RtService', () => {
     });
     vi.stubGlobal('fetch', upstream);
 
-    service = new RtService({ historyDir: dir, record: false, log: () => {}, apiKey: 'test-key' });
+    service = new RtService({ historyDir: dir, record: false, log: () => {}, apiKey: 'test-key', dispatch: false });
     await service.start(0);
     // Let the first positions + trip-updates polls complete.
     await vi.waitFor(() => expect(service!.liveResponse().snapshot).not.toBeNull());
@@ -53,7 +53,7 @@ describe('RtService', () => {
     dir = await mkdtemp(join(tmpdir(), 'rt-test-'));
     const upstream = vi.fn();
     vi.stubGlobal('fetch', upstream);
-    service = new RtService({ historyDir: dir, record: false, log: () => {}, apiKey: null });
+    service = new RtService({ historyDir: dir, record: false, log: () => {}, apiKey: null, dispatch: false });
     await service.start(0);
     const r = await service.handle('/rt/live', new URLSearchParams());
     const body = JSON.parse(String(r.body));
@@ -61,5 +61,8 @@ describe('RtService', () => {
     expect(body.stale).toBe(true);
     expect(body.error).toMatch(/API key/);
     expect(upstream).not.toHaveBeenCalled();
+    // Live dispatch is off here: no pointer, and its endpoints say so.
+    expect(body.dispatch).toBeUndefined();
+    expect((await service.handle('/rt/dispatch', new URLSearchParams())).status).toBe(404);
   });
 });

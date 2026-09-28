@@ -13,7 +13,7 @@ import type { DispatchSummary, HopVia, HopWait, MovementsFile, Run, RunEvent } f
 import type { PreparedPlan } from '../schedule/engine.ts';
 import { applyAnchors, buildModels, type AnchorInput, type MoveItem, type RoutePiece, type TrainModel } from './model.ts';
 import type { RailInputs } from '../corrections/reconcile.ts';
-import { simulate, type DispatchConfig, type MoveRecord, type SignalWait, type WaitRecord } from './sim.ts';
+import { simulate, simulateAsync, type DispatchConfig, type MoveRecord, type SignalWait, type SimResult, type WaitRecord } from './sim.ts';
 
 export type { DispatchConfig } from './sim.ts';
 
@@ -40,9 +40,26 @@ const r1 = (x: number) => Math.round(x * 10) / 10;
 
 export function dispatch(file: MovementsFile, pp: PreparedPlan, g: TrackGraph, opts: DispatchOptions): MovementsFile {
   const started = performance.now();
+  const models = modelsFor(file, pp, opts);
+  return finish(file, pp, g, opts, models, simulate(models, g, opts.config, speedsOf(opts)), started);
+}
+
+/** The same as dispatch(), yielding to the event loop while it simulates (for servers). */
+export async function dispatchAsync(file: MovementsFile, pp: PreparedPlan, g: TrackGraph, opts: DispatchOptions): Promise<MovementsFile> {
+  const started = performance.now();
+  const models = modelsFor(file, pp, opts);
+  return finish(file, pp, g, opts, models, await simulateAsync(models, g, opts.config, speedsOf(opts)), started);
+}
+
+const speedsOf = (opts: DispatchOptions) => ({ deadhead: opts.deadheadSpeedFactor, turnback: opts.turnbackSpeedFactor });
+
+function modelsFor(file: MovementsFile, pp: PreparedPlan, opts: DispatchOptions): TrainModel[] {
   const models = buildModels(file, pp, opts.kin, { minHoldS: opts.config.minHoldS });
   if (opts.rail?.anchors.length) applyAnchors(models, opts.rail.anchors as AnchorInput[], pp);
-  const sim = simulate(models, g, opts.config, { deadhead: opts.deadheadSpeedFactor, turnback: opts.turnbackSpeedFactor });
+  return models;
+}
+
+function finish(file: MovementsFile, pp: PreparedPlan, g: TrackGraph, opts: DispatchOptions, models: TrainModel[], sim: SimResult, started: number): MovementsFile {
 
   const stations = pp.plan.stations;
   const placeOf = (seg: string, offset: number) => {

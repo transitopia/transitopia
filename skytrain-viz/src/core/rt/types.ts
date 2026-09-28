@@ -42,6 +42,8 @@ export interface RtLiveResponse {
   stale: boolean;
   /** Why data is unavailable (e.g. no API key), for display. */
   error?: string;
+  /** Live dispatch (PLAN.md §4.11): service date (YYYYMMDD) → current patch version. */
+  dispatch?: Record<string, string>;
 }
 
 /** Response of GET /rt/coverage: recorder coverage as merged [start, end] epoch-ms intervals. */

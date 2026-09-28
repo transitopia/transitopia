@@ -5,6 +5,8 @@
 //   GET /rt/history?date=YYYY-MM-DD&hour=HH   recorded snapshots for one local hour (NDJSON)
 //   GET /rt/coverage?from=ms&to=ms      recorder coverage intervals
 //   GET /rt/status                      poller health (no secrets)
+//   GET /rt/dispatch                    live dispatch: current patch per service date (index)
+//   GET /rt/dispatch/<date>/<v>.json    a patch version (immutable)
 //
 // Client requests never trigger upstream calls: the upstream rate is fixed by the poll intervals.
 // Only one process per machine polls and records (the "leader", holding data/rt-history/.lock);
@@ -18,6 +20,7 @@ import type { RtCoverageResponse, RtLiveResponse, RtSnapshot, RtVehicle } from '
 import { PUBLIC_DATA_DIR, ROOT } from '../../scripts/lib/paths.ts';
 import { translinkApiKey } from '../secrets.ts';
 import { Recorder } from './recorder.ts';
+import { LiveDispatcher, type LiveDispatchOptions } from './dispatch.ts';
 import { delayFor, fetchPositions, fetchTripDelays, type TripDelays } from './upstream.ts';
 
 export interface HttpResult {
@@ -42,6 +45,8 @@ export interface RtServiceOptions {
   record?: boolean;
   /** Override the key lookup (env / .secrets); null means no key. */
   apiKey?: string | null;
+  /** Live dispatch (PLAN.md §4.11): on by default; false disables it, an object configures it. */
+  dispatch?: boolean | LiveDispatchOptions;
   log?: (msg: string) => void;
 }
 
@@ -58,6 +63,7 @@ export class RtService {
   private upstreamCalls = 0;
   private startedAt = Date.now();
   readonly recorder: Recorder;
+  readonly dispatcher: LiveDispatcher | undefined;
   private log: (msg: string) => void;
   private record: boolean;
   private leaderUrl: string | undefined;
@@ -68,6 +74,7 @@ export class RtService {
     this.log = opts.log ?? ((m) => console.log(`[rt] ${m}`));
     this.record = opts.record ?? true;
     this.apiKey = opts.apiKey === null ? undefined : (opts.apiKey ?? translinkApiKey());
+    this.dispatcher = opts.dispatch === false ? undefined : new LiveDispatcher({ log: this.log, ...(typeof opts.dispatch === 'object' ? opts.dispatch : {}) });
   }
 
   get hasKey(): boolean {
@@ -103,6 +110,8 @@ export class RtService {
       this.log(`Another RT service (pid in ${this.lockPath}) is polling; forwarding /rt/* to ${this.leaderUrl}`);
       return;
     }
+    // The leader (or a standalone process without a key) dispatches; followers forward to it.
+    this.dispatcher?.start();
     await this.loadRoutes();
     if (!this.apiKey) {
       this.log('No TRANSLINK_API_KEY (env or .secrets): real-time buses disabled, schedule estimates only.');
@@ -119,6 +128,7 @@ export class RtService {
 
   stop(): void {
     this.running = false;
+    this.dispatcher?.stop();
     for (const t of this.timers) clearTimeout(t);
     this.timers = [];
     if (this.ownsLock) {
@@ -226,11 +236,13 @@ export class RtService {
     };
     if (!this.apiKey) r.error = 'No TransLink API key configured';
     else if (this.lastError && r.stale) r.error = this.lastError;
+    if (this.dispatcher) r.dispatch = this.dispatcher.pointer();
     return r;
   }
 
   async handle(pathname: string, params: URLSearchParams): Promise<HttpResult> {
     if (this.leaderUrl) return this.forward(pathname, params);
+    if (pathname.startsWith('/rt/dispatch')) return this.handleDispatch(pathname);
     switch (pathname) {
       case '/rt/live':
         return json(200, this.liveResponse(), { 'Cache-Control': 'public, max-age=10' });
@@ -265,6 +277,16 @@ export class RtService {
       default:
         return json(404, { error: 'Not found' });
     }
+  }
+
+  /** Live dispatch: the index of current versions, or one immutable patch version. */
+  private async handleDispatch(pathname: string): Promise<HttpResult> {
+    if (!this.dispatcher) return json(404, { error: 'Live dispatch is off' });
+    if (pathname === '/rt/dispatch' || pathname === '/rt/dispatch/') return json(200, this.dispatcher.index(), { 'Cache-Control': 'public, max-age=10' });
+    const m = /^\/rt\/dispatch\/(\d{8})\/([0-9a-z]+)\.json$/.exec(pathname);
+    const patch = m ? await this.dispatcher.patch(m[1]!, m[2]!) : undefined;
+    if (!patch) return json(404, { error: 'No such dispatch version' });
+    return json(200, patch, { 'Cache-Control': 'public, max-age=31536000, immutable' });
   }
 }
 

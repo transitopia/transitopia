@@ -234,6 +234,7 @@ async function main(): Promise<void> {
       const carried = scheduled.filter((v) => v.mode === 'bus' && carry?.carried.has(v.tripId) && !shownBlocks.has(v.id));
       lastVehicles = [...scheduled.filter((v) => v.mode !== 'bus'), ...live.vehicles, ...carried];
     } else lastVehicles = scheduled;
+    store.setLiveDispatch(rt.dispatchPointer());
     timebar.setNotices(store.scenario ? [] : store.noticesAt(t));
     const [badge, badgeTitle] = RT_BADGE[live.mode];
     timebar.setRtBadge(badge, live.mode, rt.liveStatus() ? `${badgeTitle} (${rt.liveStatus()})` : badgeTitle);

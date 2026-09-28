@@ -11,6 +11,10 @@
   "$maxExtrapolateS": "At the live edge, dead-reckon a vehicle forward along its route for at most this long.",
   "maxExtrapolateS": 90,
   "clientPollS": 10,
+  "$dispatchCheckS": "Live dispatch (PLAN.md §4.11): how often the RT service checks data/observations and data/disruptions for changes. Only changed inputs re-dispatch a date; client requests never do.",
+  "dispatchCheckS": 30,
+  "$dispatchWindowDays": "Live dispatch covers service dates this many days either side of today; older and later dates come from build:dispatch.",
+  "dispatchWindowDays": 7,
   "serverPort": 8787,
   "$prediction": "Live bus prediction and learned travel-time profiles (src/core/rt/profile.ts, PLAN.md \u00a74.5). Values are guesses tuned against recorded data with scripts/eval-rt.ts unless noted; see docs/OPEN-QUESTIONS.md #25.",
   "prediction": {

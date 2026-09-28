@@ -15,7 +15,7 @@ import { railInputs } from '../corrections/reconcile.ts';
 import type { Observation } from '../corrections/types.ts';
 import { applyDisruptions, periodsOn } from '../disruption/apply.ts';
 import type { Disruption } from '../disruption/types.ts';
-import { dispatch, type DispatchConfig } from './dispatch.ts';
+import { dispatchAsync, type DispatchConfig } from './dispatch.ts';
 import { inputsVersion, makePatch, type DispatchPatch } from './patch.ts';
 
 export interface DateInputs {
@@ -49,13 +49,14 @@ export function dateVersion(ctx: Pick<DateContext, 'base' | 'config'>, inputs: D
   return inputsVersion({ base: ctx.base.builtAt, services: ctx.base.services, config: ctx.config, date: inputs.date, observations: inputs.observations, disruptions: activeDisruptions(inputs) });
 }
 
-export function dispatchDate(ctx: DateContext, inputs: DateInputs, builtAt: string): DispatchPatch {
+/** Dispatch a date with its inputs (yields to the event loop while it simulates). */
+export async function dispatchDate(ctx: DateContext, inputs: DateInputs, builtAt: string): Promise<DispatchPatch> {
   const version = dateVersion(ctx, inputs);
   const disruptions = activeDisruptions(inputs);
   const speeds = { deadheadSpeedFactor: ctx.ops.yard.deadheadSpeedFactor, turnbackSpeedFactor: ctx.ops.turnback.speedFactor };
   if (!disruptions.length) {
     const rail = railInputs(ctx.inferred, ctx.pp, inputs.observations, inputs.date);
-    const out = dispatch(ctx.inferred, ctx.pp, ctx.graph, { config: ctx.config, kin: ctx.kin, ...speeds, inputs: labels(rail.used, []), date: inputs.date, rail, base: ctx.base });
+    const out = await dispatchAsync(ctx.inferred, ctx.pp, ctx.graph, { config: ctx.config, kin: ctx.kin, ...speeds, inputs: labels(rail.used, []), date: inputs.date, rail, base: ctx.base });
     return makePatch(ctx.base, out, { date: inputs.date, version, builtAt, unmatched: rail.unmatched });
   }
   // Re-infer the day with the disruptions applied, then dispatch it with the observations.
@@ -64,7 +65,7 @@ export function dispatchDate(ctx: DateContext, inputs: DateInputs, builtAt: stri
   const pp = preparePlan(day.plan, ctx.kin);
   const inferred = buildMovements({ graph: ctx.graph, pp, platforms: ctx.platforms, patternPositions: day.patternPositions, services, ops: ctx.ops, kin: ctx.kin, closures: day.closures });
   const rail = railInputs(inferred, pp, inputs.observations, inputs.date);
-  const out = dispatch(inferred, pp, ctx.graph, { config: ctx.config, kin: ctx.kin, ...speeds, inputs: labels(rail.used, disruptions), date: inputs.date, rail });
+  const out = await dispatchAsync(inferred, pp, ctx.graph, { config: ctx.config, kin: ctx.kin, ...speeds, inputs: labels(rail.used, disruptions), date: inputs.date, rail });
   // Trains on a disrupted line carry the notice while it applies.
   for (const run of out.runs) {
     const span = runSpan(run, pp);

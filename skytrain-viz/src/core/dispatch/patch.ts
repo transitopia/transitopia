@@ -38,7 +38,7 @@ export interface DispatchPatch {
 /** Published index of patches (public/data/dispatch/index.json, or the RT service's /rt/dispatch). */
 export interface DispatchIndex {
   schema: 1;
-  /** Service date (YYYYMMDD) → patch version and path (relative to public/, or a /rt/ URL). */
+  /** Service date (YYYYMMDD) → patch version and path (relative to the site root: data/… or rt/…). */
   byDate: Record<string, { version: string; path: string }>;
 }
 

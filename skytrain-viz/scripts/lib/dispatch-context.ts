@@ -1,6 +1,7 @@
 // Loads what dispatching one service date needs from the built data (plan, graph, inferred and
 // dispatched runs, config), with caching. Used by build:dispatch and the RT service.
 
+import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { CONFIG_DIR, PUBLIC_DATA_DIR, ROOT, readJson } from './paths.ts';
 import { loadGraph } from './infra.ts';
@@ -38,9 +39,15 @@ export class DispatchContexts {
     ]).then(([kin, ops, dispatch]) => ({ kin, ops, dispatch })));
   }
 
-  private file(path: string): Promise<MovementsFile> {
-    let f = this.files.get(path);
-    if (!f) this.files.set(path, (f = readJson<MovementsFile>(join(ROOT, 'public', path))));
+  /** A built movement file, re-read when it changes on disk (a rebuild while the service runs). */
+  private async file(path: string): Promise<MovementsFile> {
+    const abs = join(ROOT, 'public', path);
+    const key = `${path}|${(await stat(abs)).mtimeMs}`;
+    let f = this.files.get(key);
+    if (!f) {
+      for (const k of this.files.keys()) if (k.startsWith(`${path}|`)) this.files.delete(k);
+      this.files.set(key, (f = readJson<MovementsFile>(abs)));
+    }
     return f;
   }
 

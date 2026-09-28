@@ -3,6 +3,7 @@ node_modules/
 dist/
 data/raw/
 data/rt-history/
+data/dispatch-history/
 public/data/
 public/tiles/
 .wrangler/

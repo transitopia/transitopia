@@ -69,6 +69,7 @@ interface Interval {
   seg: string;
   lo: number;
   hi: number;
+  tr?: Train;
 }
 
 interface Reservation {
@@ -115,6 +116,12 @@ interface Train {
   /** Junctions inside this train's reserved sections: nobody else may stop on them. */
   routeNodes: { node: string; releaseG: number }[];
   body: Interval[];
+  /** Position and item the cached body was computed for. */
+  bodyG: number;
+  bodyI: number;
+  /** Priority this step: empty moves after trains in service, then timetable order. */
+  prAt: number;
+  prDeadhead: number;
   records: (MoveRecord | WaitRecord)[];
 }
 
@@ -129,7 +136,29 @@ export interface SpeedFactors {
   turnback: number;
 }
 
+/** Simulation steps between yields (async runs let a server keep answering requests meanwhile). */
+const YIELD_EVERY_STEPS = 2000;
+
+/** Run the simulation to completion. */
 export function simulate(models: TrainModel[], g: TrackGraph, cfg: DispatchConfig, speeds: SpeedFactors): SimResult {
+  const it = simulation(models, g, cfg, speeds);
+  for (;;) {
+    const r = it.next();
+    if (r.done) return r.value;
+  }
+}
+
+/** The same simulation, yielding to the event loop every few thousand steps (identical result). */
+export async function simulateAsync(models: TrainModel[], g: TrackGraph, cfg: DispatchConfig, speeds: SpeedFactors): Promise<SimResult> {
+  const it = simulation(models, g, cfg, speeds);
+  for (;;) {
+    const r = it.next();
+    if (r.done) return r.value;
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+}
+
+function* simulation(models: TrainModel[], g: TrackGraph, cfg: DispatchConfig, speeds: SpeedFactors): Generator<void, SimResult> {
   const dt = cfg.stepS;
   const F = cfg.foulingM;
   const margin = cfg.safetyMarginM;
@@ -208,13 +237,30 @@ export function simulate(models: TrainModel[], g: TrackGraph, cfg: DispatchConfi
       locks: [],
       routeNodes: [],
       body: [],
+      bodyG: Number.NaN,
+      bodyI: -1,
+      prAt: 0,
+      prDeadhead: 0,
       records: [],
     };
   });
   const forced: ForcedGrant[] = [];
   const nodeLocks = new Map<string, Train>();
   const reservations = new Map<string, Reservation[]>();
-  let occupancy = new Map<string, { tr: Train; lo: number; hi: number }[]>();
+  const occupancy = new Map<string, Interval[]>();
+  const occupy = (tr: Train) => {
+    if (tr.G !== tr.bodyG || tr.i !== tr.bodyI) {
+      tr.body = bodyOf(tr);
+      for (const iv of tr.body) iv.tr = tr;
+      tr.bodyG = tr.G;
+      tr.bodyI = tr.i;
+    }
+    for (const iv of tr.body) {
+      let list = occupancy.get(iv.seg);
+      if (!list) occupancy.set(iv.seg, (list = []));
+      list.push(iv);
+    }
+  };
 
   const kinOf = (tr: Train, item: MoveItem) => (item.revenue ? tr.kin : item.kind === 'turnback' ? tr.tkin : tr.dkin);
   /**
@@ -317,6 +363,10 @@ export function simulate(models: TrainModel[], g: TrackGraph, cfg: DispatchConfi
   const covered = (tr: Train, p: RoutePiece) => tr.res.some((r) => r.seg === p.seg && r.dir === p.dir && r.g0 <= p.g0 + EPS && r.g1 >= p.g1 - EPS);
   /** Reserve the section starting at route piece q; returns '' on success, else the reason. */
   let conflictWith: Train | undefined;
+  const nodeAt = (p: RoutePiece, atEnd: boolean) => {
+    const sg = g.segment(p.seg);
+    return (p.dir === 1) === atEnd ? sg.to : sg.from;
+  };
   let routeNodes: [string, number][] = [];
   const routeHolder = new Map<string, Train>();
   const requestSection = (tr: Train, q: number): string => {
@@ -340,10 +390,6 @@ export function simulate(models: TrainModel[], g: TrackGraph, cfg: DispatchConfi
     }
     // Nor while another train fouls a junction at either end of it or inside it.
     if (want.length) {
-      const nodeAt = (p: RoutePiece, atEnd: boolean) => {
-        const sg = g.segment(p.seg);
-        return (p.dir === 1) === atEnd ? sg.to : sg.from;
-      };
       const nodes = new Map<string, number>();
       for (let j = q; j < r.length && r[j]!.g0 < end - EPS; j++) {
         if (j > q && r[j]!.rev) break;
@@ -449,31 +495,34 @@ export function simulate(models: TrainModel[], g: TrackGraph, cfg: DispatchConfi
   };
 
   // --- movement authority ---
+  /** Scratch state of the authority being computed (one at a time; avoids per-call closures). */
+  const A: { lim: number; why: string; by: Train | undefined } = { lim: Infinity, why: '', by: undefined };
+  const blockAt = (at: number, reason: string, who?: Train) => {
+    if (at < A.lim) {
+      A.lim = at;
+      A.why = reason;
+      A.by = who;
+    }
+  };
+  const reachable = (stopAt: number) => A.lim >= stopAt - EPS;
   /**
    * How far (route coordinate of the train's centre) the train may go during the current move.
    * Acquires junction locks and section reservations it needs within `need` metres of its head.
    */
   const authority = (tr: Train, item: MoveItem, need: number): { lim: number; why: string; by?: Train } => {
     if (tr.G < tr.forcedTo) return { lim: Infinity, why: '' };
-    let by: Train | undefined;
     const r = tr.m.route;
     const head = tr.G + tr.half;
     const k = kinOf(tr, item);
     const vmax = k.maxSpeed / 3.6;
     const scan = vmax * vmax / (2 * k.decel) + vmax * dt + margin + tr.half + F + LOOKAHEAD_SLACK_M;
-    let lim = Infinity;
-    let why = '';
+    A.lim = Infinity;
+    A.why = '';
+    A.by = undefined;
     pieceAt(tr);
-    const block = (at: number, reason: string, who?: Train) => {
-      if (at < lim) {
-        lim = at;
-        why = reason;
-        by = who;
-      }
-    };
     // Resources (sections, junctions) are only taken in path order and only when the train can
-    // reach them: a train never holds a lock or reservation while it waits for something before it.
-    const reachable = (stopAt: number) => lim >= stopAt - EPS;
+    // reach them (reachable()): a train never holds a lock or reservation while it waits for
+    // something before it.
     const tail = tr.G - tr.half;
     for (let q = tr.pi; q < r.length; q++) {
       const p = r[q]!;
@@ -484,19 +533,19 @@ export function simulate(models: TrainModel[], g: TrackGraph, cfg: DispatchConfi
       // Track beyond this move's stop (and beyond the train's front when it stands there) is
       // requested when the train leaves the stop, not before.
       const beyondStop = p.g0 >= item.g1 + tr.half - EPS;
-      if (traceRun === tr.m.run.id && now >= traceFrom && now <= traceTo) console.log(`  [auth ${now}] q=${q} ${p.seg}${p.dir > 0 ? '+' : '-'} g0=${p.g0.toFixed(1)} head=${head.toFixed(1)} need=${need.toFixed(1)} needsRes=${needsReservation(p)} covered=${covered(tr, p)} lim=${lim.toFixed(1)} stopAt=${stopAt.toFixed(1)} beyond=${beyondStop}`);
+      if (traceRun === tr.m.run.id && now >= traceFrom && now <= traceTo) console.log(`  [auth ${now}] q=${q} ${p.seg}${p.dir > 0 ? '+' : '-'} g0=${p.g0.toFixed(1)} head=${head.toFixed(1)} need=${need.toFixed(1)} needsRes=${needsReservation(p)} covered=${covered(tr, p)} A.lim=${A.lim.toFixed(1)} stopAt=${stopAt.toFixed(1)} beyond=${beyondStop}`);
       if (!beyondStop && p.g1 > tail + EPS && !covered(tr, p)) {
         if (needsReservation(p)) {
           // Never enter a section you can't leave: reserve it through to where it ends or reverses.
           if (p.g0 - head <= need + F && reachable(stopAt)) {
             const reason = requestSection(tr, q);
-            if (reason) block(stopAt, reason, conflictWith);
-          } else if (!inside) block(stopAt, 'section ahead');
+            if (reason) blockAt(stopAt, reason, conflictWith);
+          } else if (!inside) blockAt(stopAt, 'section ahead');
         } else {
           // Someone running against traffic here holds it.
           for (const o of reservations.get(p.seg) ?? []) {
             if (o.tr !== tr && (o.dir !== p.dir || o.excl)) {
-              block(stopAt, 'opposing move', o.tr);
+              blockAt(stopAt, 'opposing move', o.tr);
               break;
             }
           }
@@ -513,9 +562,9 @@ export function simulate(models: TrainModel[], g: TrackGraph, cfg: DispatchConfi
         const near = Math.min(xa, xb);
         const far = Math.max(xa, xb);
         if (far <= head + EPS) continue;
-        block(near < head ? tr.G : near - margin - tr.half, 'train ahead', o.tr);
+        blockAt(near < head ? tr.G : near - margin - tr.half, 'train ahead', o.tr);
       }
-      if (lim < p.g0) break;
+      if (A.lim < p.g0) break;
       // Junction at the end of this piece.
       const nx = r[q + 1];
       if (nx && !nx.rev && nx.seg !== p.seg) {
@@ -528,23 +577,23 @@ export function simulate(models: TrainModel[], g: TrackGraph, cfg: DispatchConfi
           if (needsReservation(nx) && !covered(tr, nx)) {
             const reason = requestSection(tr, q + 1);
             if (reason) {
-              block(at, reason, conflictWith);
+              blockAt(at, reason, conflictWith);
               break;
             }
           }
           if (nodeLocks.has(node) || fouled(node, tr)) {
-            block(at, 'junction', nodeLocks.get(node) ?? foulerOf(node, tr));
+            blockAt(at, 'junction', nodeLocks.get(node) ?? foulerOf(node, tr));
             break;
           }
           // Stopping on a junction another train's section runs through would trap that train.
           const rh = routeHolder.get(node);
           if (rh && rh !== tr && x > item.g1 - tr.half - F - EPS) {
-            block(at, 'junction (route set for another train)', rh);
+            blockAt(at, 'junction (route set for another train)', rh);
             break;
           }
           // Only set a route through a junction the train can clear (unless it stops on it by plan).
           if (!clearBeyond(tr, x, Math.min(F + 2 * tr.half + margin, item.g1 + tr.half - x))) {
-            block(at, 'junction (no room beyond)', lastObstacle);
+            blockAt(at, 'junction (no room beyond)', lastObstacle);
             break;
           }
           nodeLocks.set(node, tr);
@@ -553,30 +602,30 @@ export function simulate(models: TrainModel[], g: TrackGraph, cfg: DispatchConfi
       }
     }
     // Wherever the train stops, it mustn't foul a junction on another train's reserved route.
-    if (lim < item.g1 + tr.half) {
+    if (A.lim < item.g1 + tr.half) {
       for (let q = tr.pi; q < r.length - 1; q++) {
         const p = r[q]!;
         const x = p.g1;
-        if (x > lim + tr.half + F) break;
+        if (x > A.lim + tr.half + F) break;
         if (r[q + 1]!.rev || x <= tr.G + tr.half - EPS) continue;
         const node = p.dir === 1 ? g.segment(p.seg).to : g.segment(p.seg).from;
         const rh = routeHolder.get(node);
-        if (rh && rh !== tr && x - F - tr.half < lim) {
-          block(Math.max(tr.G, x - F - CLEAR_M - tr.half), 'junction (route set for another train)', rh);
+        if (rh && rh !== tr && x - F - tr.half < A.lim) {
+          blockAt(Math.max(tr.G, x - F - CLEAR_M - tr.half), 'junction (route set for another train)', rh);
           break;
         }
       }
     }
     // Give back junctions beyond where the train must now stop: it can't use them yet, and holding
     // them could block the very train it waits for.
-    if (lim < Infinity) {
+    if (A.lim < Infinity) {
       tr.locks = tr.locks.filter((l) => {
-        if (l.x - F <= lim + tr.half + EPS || l.x <= head) return true;
+        if (l.x - F <= A.lim + tr.half + EPS || l.x <= head) return true;
         if (nodeLocks.get(l.node) === tr) nodeLocks.delete(l.node);
         return false;
       });
     }
-    return { lim, why, ...(by ? { by } : {}) };
+    return A.by ? { lim: A.lim, why: A.why, by: A.by } : { lim: A.lim, why: A.why };
   };
 
   const stopDist = (v: number, k: Kinematics) => (v * v) / (2 * k.decel);
@@ -791,7 +840,9 @@ export function simulate(models: TrainModel[], g: TrackGraph, cfg: DispatchConfi
     return true;
   };
   const waiting: Train[] = [];
+  let steps = 0;
   while ((next < order.length || active.length || waiting.length) && t < tEnd) {
+    if (++steps % YIELD_EVERY_STEPS === 0) yield;
     const t1 = t + dt;
     while (next < order.length && order[next]!.start <= t1) waiting.push(order[next++]!);
     for (let j = 0; j < waiting.length; j++) {
@@ -807,17 +858,18 @@ export function simulate(models: TrainModel[], g: TrackGraph, cfg: DispatchConfi
         if (tr.m.items[0]?.k === 'wait') tr.itemStart = t;
       }
       active.push(tr);
-      for (const iv of (tr.body = bodyOf(tr))) (occupancy.get(iv.seg) ?? occupancy.set(iv.seg, []).get(iv.seg)!).push({ tr, lo: iv.lo, hi: iv.hi });
+      occupy(tr);
       waiting.splice(j--, 1);
     }
-    occupancy = new Map();
+    for (const list of occupancy.values()) list.length = 0;
     for (const tr of active) {
-      tr.body = bodyOf(tr);
-      for (const iv of tr.body) (occupancy.get(iv.seg) ?? occupancy.set(iv.seg, []).get(iv.seg)!).push({ tr, lo: iv.lo, hi: iv.hi });
+      occupy(tr);
+      const pr = priority(tr);
+      tr.prAt = pr.at;
+      tr.prDeadhead = pr.deadhead;
     }
-    const keyed = active.map((tr) => ({ tr, ...priority(tr) }));
-    keyed.sort((a, b) => a.deadhead - b.deadhead || a.at - b.at || a.tr.idx - b.tr.idx);
-    for (const { tr } of keyed) {
+    active.sort((a, b) => a.prDeadhead - b.prDeadhead || a.prAt - b.prAt || a.idx - b.idx);
+    for (const tr of active) {
       advance(tr, Math.max(t, tr.start), t1);
       if (!tr.done) release(tr);
       if (traceRun === tr.m.run.id && t1 >= traceFrom && t1 <= traceTo) console.log(`[step ${t1}] ${describe(tr)}`);

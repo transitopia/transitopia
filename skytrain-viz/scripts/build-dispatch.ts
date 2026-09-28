@@ -5,40 +5,15 @@
 //
 //   npm run build:dispatch
 
-import { readdir, rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PUBLIC_DATA_DIR, ROOT, log, readJson, writeJson } from './lib/paths.ts';
 import { DispatchContexts } from './lib/dispatch-context.ts';
 import { dispatchDate } from '../src/core/dispatch/date.ts';
 import type { DispatchIndex } from '../src/core/dispatch/patch.ts';
 import type { Observation, ObservationFile, ObservationIndex } from '../src/core/corrections/types.ts';
-import type { Disruption, DisruptionFile } from '../src/core/disruption/types.ts';
-import { periodsOn } from '../src/core/disruption/apply.ts';
-import { addDays } from '../src/core/time.ts';
+import { datesOf, loadDisruptions } from './lib/disruptions.ts';
 
-/** Confirmed and draft disruptions from data/disruptions/*.json. */
-export async function loadDisruptions(dir = join(ROOT, 'data', 'disruptions')): Promise<Disruption[]> {
-  let files: string[] = [];
-  try {
-    files = (await readdir(dir)).filter((f) => f.endsWith('.json'));
-  } catch {
-    return [];
-  }
-  const out: Disruption[] = [];
-  for (const f of files.sort()) out.push(...(await readJson<DisruptionFile>(join(dir, f))).disruptions);
-  return out;
-}
-
-/** Service dates (YYYYMMDD) a disruption touches. */
-function datesOf(d: Disruption): string[] {
-  const dates = new Set<string>();
-  for (const p of d.active) {
-    // Candidates: the local dates of its start and end, and the day before (after-midnight service).
-    const day = (iso: string) => new Date(Date.parse(iso) - 7 * 3600_000).toISOString().slice(0, 10).replaceAll('-', '');
-    for (const x of [day(p.from), day(p.until)]) for (const c of [addDays(x, -1), x]) if (periodsOn(d, c).length) dates.add(c);
-  }
-  return [...dates];
-}
 
 const OUT = join(PUBLIC_DATA_DIR, 'dispatch');
 
@@ -60,7 +35,7 @@ async function main() {
       continue;
     }
     const t0 = performance.now();
-    const patch = dispatchDate(ctx, { date, observations, disruptions }, builtAt);
+    const patch = await dispatchDate(ctx, { date, observations, disruptions }, builtAt);
     const path = `data/dispatch/${date}.json`;
     await writeJson(join(ROOT, 'public', path), patch);
     index.byDate[date] = { version: patch.version, path };
