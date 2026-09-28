@@ -7,7 +7,7 @@ Ground-truth corrections to the schedule-inferred SkyTrain trains and to timetab
   "observations": [
     { "kind": "at_platform", "date": "2026-09-28", "stop": "Commercial-Broadway", "line": "expo",
       "time": "2026-09-28T08:15:30-07:00", "source": "rider report",
-      "consist": { "type": "Mk III", "cars": 4, "carNumbers": ["301", "302", "303", "304"] } },
+      "consist": { "type": "Mk II", "cars": 4, "carNumbers": ["301", "302", "303", "304"] } },
     { "kind": "delay",   "date": "2026-09-28", "trip": "15522403", "seconds": 180, "source": "TransLink alert" },
     { "kind": "cancel",  "date": "2026-09-28", "trip": "15522410", "source": "TransLink alert" },
     { "kind": "consist", "date": "2026-09-28", "trip": "15522403", "consist": { "type": "Mk I", "cars": 6 }, "source": "photo" },

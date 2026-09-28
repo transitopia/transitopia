@@ -41,8 +41,12 @@ Evidence cited below comes from feed `26SEP_20260925`, OSM (2026-09-25), and the
 
 ## Fleet and consists
 
-9. **Consist lengths by line and time of day.** Mk I 4- or 6-car, Mk II and Mk III 2- or 4-car, Canada Line 2-car EMU. Are Mk V trains in service yet on the Expo Line, and in what lengths?
-   - *Assumption:* consist type unknown. Expo trains are drawn at 80 m, Millennium at 68 m, Canada Line at 41 m.
+9. **Consist lengths by line and time of day.** *Partly answered.* Rolling stock by line (CPTDB wiki, "SkyTrain" § Rolling Stock and "BCRTC 1700/1800 series"; Braden, 2026-09-28):
+   - **Expo:** Mk I (2-car pairs, run as 4 or 6 cars), Mk III (4-car sets) and ✅ **Mk V, in service since 2025-07-10**. Mk V cars run in semi-permanent articulated 5-car sets, about 84.8 m long (2 × 17.35 m end cars + 3 × 16.70 m middle cars), 2.65 m wide, 80 km/h in service. Twelve sets were in service by September 2026 (Braden, from CPTDB), of 41 ordered; they replace Mk I and are based at OMC 1.
+   - **Millennium:** ✅ Mk II only, with rare exceptions (2-car pairs, run as 2 or 4 cars).
+   - **Canada Line:** ✅ Hyundai Rotem EMU only, always 2 cars.
+   - *Still open:* the mix of Mk I, Mk III and Mk V on the Expo Line (and whether Mk II still runs there), and Mk I and Millennium consist lengths by time of day.
+   - *Assumption:* the consist of a given run is unknown unless observed. Expo trains are drawn at 80 m (between a 6-car Mk I and a Mk V), Millennium at 68 m (4-car Mk II), Canada Line at 41 m.
 10. **Peak trains in service per line** (weekday AM, PM, midday, weekend). This is the main sanity check for run inference.
     - *Assumption:* none. Inference output is reported, not constrained, until caps are known.
 11. **Any public source for train or car numbers per run?** Examples: fan logs, TransLink releases, ground observation.

@@ -7,9 +7,9 @@
     "bus":      { "accel": 1.0, "decel": 1.0, "maxSpeed": 60, "minCruiseFraction": 0.0, "dwell": 0, "length": 18, "width": 2.6, "profile": "linear" }
   },
   "routes": {
-    "expo":       { "length": 80, "$comment": "guess: mix of 4/6-car Mk I, 4-car Mk II/III (OPEN-QUESTIONS #9)" },
-    "millennium": { "length": 68, "$comment": "guess: 4-car Mk II/III" },
-    "canada":     { "length": 41, "decel": 1.3, "$comment": "2-car Hyundai Rotem EMU" },
+    "expo":       { "length": 80, "$comment": "guess: mix of 4/6-car Mk I, 4-car Mk III and 5-car Mk V (~85 m, 12 sets in service Sep 2026; CPTDB). OPEN-QUESTIONS #9" },
+    "millennium": { "length": 68, "$comment": "guess: 4-car Mk II (Millennium runs Mk II only, 2 or 4 cars; CPTDB). OPEN-QUESTIONS #9" },
+    "canada":     { "length": 41, "decel": 1.3, "$comment": "2-car Hyundai Rotem EMU, the only Canada Line stock (CPTDB). OPEN-QUESTIONS #9" },
     "wce":        { "length": 130, "$comment": "guess: typical 5-car consist plus locomotive" }
   },
   "sizing": {

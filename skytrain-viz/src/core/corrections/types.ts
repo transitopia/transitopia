@@ -7,7 +7,7 @@
 export interface Consist {
   /** Vessel or train name, e.g. "Burrard Pacific Breeze". */
   name?: string;
-  /** e.g. "Mk III", "Mk I", "Canada Line EMU". */
+  /** e.g. "Mk V", "Mk III", "Mk I", "Canada Line EMU". */
   type?: string;
   cars?: number;
   /** Car numbers in order, if known. */
