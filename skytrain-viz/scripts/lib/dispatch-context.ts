@@ -12,10 +12,13 @@ import type { OperationsConfig } from '../../src/core/movement/build.ts';
 import type { DispatchConfig } from '../../src/core/dispatch/dispatch.ts';
 import type { DateContext } from '../../src/core/dispatch/date.ts';
 import type { TrackGraph } from '../../src/core/infra/graph.ts';
+import { mapPlatforms, type PlatformReport } from '../../src/core/infra/platforms.ts';
+import type { Overrides } from './infra.ts';
 
 export class DispatchContexts {
   private manifest: Promise<FeedManifest> | undefined;
-  private graph: Promise<TrackGraph> | undefined;
+  private graph: Promise<{ graph: TrackGraph; overrides: Overrides }> | undefined;
+  private platforms = new Map<string, PlatformReport>();
   private configs: Promise<{ kin: KinematicsConfig; ops: OperationsConfig; dispatch: DispatchConfig }> | undefined;
   private plans = new Map<string, Promise<PreparedPlan>>();
   private files = new Map<string, Promise<MovementsFile>>();
@@ -55,12 +58,17 @@ export class DispatchContexts {
     const key = serviceKey([...pp.servicesOn(date)].filter((s) => rail.has(s)));
     const path = index.files[key];
     if (!path) return undefined;
-    const [base, inferred, graph] = await Promise.all([
+    const [base, inferred, { graph, overrides }] = await Promise.all([
       this.file(path),
       this.file(path.replace(/\/([^/]+)$/, '/inferred/$1')),
-      (this.graph ??= loadGraph().then((x) => x.graph)),
+      (this.graph ??= loadGraph()),
     ]);
     if (base.schema !== 2) return undefined;
-    return { pp, graph, inferred, base, config: dispatch, kin, deadheadSpeedFactor: ops.yard.deadheadSpeedFactor, turnbackSpeedFactor: ops.turnback.speedFactor };
+    let report = this.platforms.get(feed.version);
+    if (!report) {
+      const railKeys = new Set(pp.plan.routes.filter((r) => r.kind === 'skytrain').map((r) => r.key));
+      this.platforms.set(feed.version, (report = mapPlatforms(graph, pp.plan, railKeys, overrides.platforms, overrides.patternPlatforms)));
+    }
+    return { pp, graph, inferred, base, config: dispatch, kin, ops, platforms: report.assignments, ...(report.patternPositions ? { patternPositions: report.patternPositions } : {}) };
   }
 }

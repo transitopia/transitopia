@@ -77,6 +77,8 @@ export interface Run {
   sources?: string[];
   /** Trips reported cancelled: the train is hidden while running them. */
   cancelled?: string[];
+  /** Notices for this train while they apply (e.g. a disruption on its line), service-day seconds. */
+  notes?: { t0: number; t1: number; text: string }[];
 }
 
 export interface PatternPaths {

@@ -14,7 +14,7 @@ Status: **implemented through M7** (2026-09-25). Operations questions still open
 | M5 Canada Line | ✅ | Came with M3/M4: the graph covers all lines, including Capstan and the Bridgeport OMC. |
 | M6 corrections | ✅ | Observations reference service date + trip, or stop + time. Delays are absorbed at layovers. Cancellations, consists and provenance are shown. |
 | M7 scenarios | ✅ | Future OSM track, custom GeoJSON track, `extend` service operation. Demo: `broadway-subway`. |
-| M8 dispatcher | 🚧 | §4.11. **M8.2 anchors ✅**: SkyTrain observations re-dispatch their date centrally (`build:dispatch` → per-date patches the app loads); browsers no longer reconcile rail. **M8.1 core ✅**: `build:movements` dispatches every base plan (moving block, junction locks, sections, stub berths). Conflicting pairs per weekday 1,124 → 1 (a broken deadlock); added delay p95 ≈ 3 min on weekdays, ≈ 0 on weekends. Known: 1–2 deadlocks after midnight on weekdays (pull-ins near Edmonds/Lougheed), resolved by the breaker; 4–6 s per service day (budget 1 s). |
+| M8 dispatcher | 🚧 | §4.11. **M8.3 disruptions ✅**: `data/disruptions/*.json` (single-track sections, reduced headways) re-plan and re-dispatch their dates; first case: Canada Line Bridgeport–Richmond-Brighouse, Sep 27–30 nights. **M8.2 anchors ✅**: SkyTrain observations re-dispatch their date centrally (`build:dispatch` → per-date patches the app loads); browsers no longer reconcile rail. **M8.1 core ✅**: `build:movements` dispatches every base plan (moving block, junction locks, sections, stub berths). Conflicting pairs per weekday 1,124 → 1 (a broken deadlock); added delay p95 ≈ 3 min on weekdays, ≈ 0 on weekends. Known: 1–2 deadlocks after midnight on weekdays (pull-ins near Edmonds/Lougheed), resolved by the breaker; 4–6 s per service day (budget 1 s). |
 | Public deploy | ⏳ | Not started (Cloudflare Worker + Durable Object poller, R2 for tiles/history). |
 | **TODO: service alerts → schedule overrides** | ⏳ | Needed: planned SkyTrain changes (e.g. nightly single-tracking) exist only in the GTFS-RT alerts feed, not in static GTFS or trip updates. See §4.10. |
 
@@ -313,7 +313,7 @@ A scenario is a directory in `data/scenarios/<name>/`:
    - platform reassignments → role-based pins (like `patternPlatforms`).
 3. **Apply per date.** Confirmed overrides become dispatcher inputs (§4.11) for their active period: closures, service changes and platform pins. The RT service re-dispatches the affected dates and publishes them like any other dispatch version. Parsing produces a draft that a person confirms, because alerts don't say which track is closed.
 4. **Show it.** A banner or badge when the displayed time has an active alert, the alert text in the inspect card, and provenance "adjusted by TransLink alert" on affected trains.
-5. **Hand overrides.** The same override format should also accept manual entries (`data/observations/` or a sibling), for disruptions without a parseable alert.
+5. **Hand overrides.** The same format takes manual entries (`data/disruptions/`, M8.3), for disruptions without a parseable alert.
 
 **Open points:**
 - Which track is closed when an alert says only "single-track": needs ground truth, as at Braid.
@@ -377,6 +377,8 @@ The existing leg solver reproduces motion between stops. The movement schema goe
 - *Output:* trips on time stay by reference (within 0.5 s); others carry `times`, `waits` (with the reason) and, where they left the planned profile, `via` (the simulated trajectory, thinned to 2 m), which playback follows. Weekday file: 2.4 MB, 0.64 MB gzipped.
 - *Run inference changes found through the dispatcher:* turnbacks run at their own speed factor (0.8; at 0.55 the 4-minute Production Way turnaround was infeasible, parking trains on Millennium platforms for 16 min), and stub termini send surplus trains to the yard when their berths are full (§4.3).
 - *Debugging:* `DISPATCH_DEBUG=1` prints the first deadlock's waits-for chain; `DISPATCH_TRACE=<run> DISPATCH_TRACE_FROM=<s> DISPATCH_TRACE_TO=<s>` traces one train's state and authority decisions.
+
+**Disruptions (M8.3).** `applyDisruptions()` turns a disruption into a modified plan for the date: for `singleTrack`, it follows the track through the kept platform, pins the section's intermediate stops to it, closes the other track between the two stations (their own platform tracks stay open, so trains can reach the crossovers) and moves the period's trips onto cloned patterns routed with the closure; `headway` cancels trips closer together than `minS` per direction. The date is then re-inferred (the run builder routes turnbacks and yard moves in the period around the closure too) and dispatched; single-track working falls out of the section rules. Because runs and patterns change, the patch carries the whole day's plan, plus notices the app shows ("Service change" badge, and on the affected trains). Canada Line Sep 28 (weekday): 66/603 trips late ≥ 30 s (p95 177 s), no use of the closed track in the period.
 
 **Budget.** A full weekday dispatch (~2,100 SkyTrain trips, ~150 runs) takes under 1 s in Node, and an incremental re-dispatch under 200 ms. The plan (2.4 MB JSON), graph and checkpoints need well under a Durable Object's 128 MB.
 

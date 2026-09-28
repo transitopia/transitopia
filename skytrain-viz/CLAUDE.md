@@ -48,6 +48,7 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 - Observations (`src/core/corrections/`) reference **service date + GTFS trip_id** or **stop + time**, never inferred run ids.
 - SkyTrain: `railInputs()` turns them into dispatcher anchors (a stop at a time), cancellations, consists and parked trains. The dispatcher re-dispatches the date centrally (`build:dispatch` → `public/data/dispatch/<date>.json`, a patch of the runs that changed); playback marks positions observed within 90 s of a sighting and interpolated where times moved. Browsers never reconcile rail observations.
 - Timetable vehicles (SeaBus, WCE, buses without RT): `reconcileScheduled()` in the app, as before.
+- Disruptions (`data/disruptions/*.json`, format in its README): single-track sections and reduced headways for a period. `build:dispatch` re-plans each affected date (`src/core/disruption/apply.ts` → re-inferred runs with closures → dispatch). Only `"status": "confirmed"` entries apply.
 - A future rail real-time adapter should emit `Observation`s rather than touch playback.
 
 ## Scenarios
@@ -83,7 +84,7 @@ npm run validate:infra   # graph / platform / routing / turnback / checklist che
 npm run build:movements  # infer + dispatch train runs → public/data/feeds/<v>/movements/*.json [--verbose] [--no-dispatch] (working)
 npm run validate:plan    # teleports (fail), conflicts, dispatch delays and broken deadlocks (report), fleet peaks (working)
 npm run build:observations # validate + publish data/observations/*.json (working; format in data/observations/README.md)
-npm run build:dispatch   # re-dispatch dates with observations → public/data/dispatch/<date>.json + index.json (working)
+npm run build:dispatch   # re-dispatch dates with observations or disruptions → public/data/dispatch/<date>.json + index.json (working)
 npm run build:rt-profile # learn bus travel-time profiles from data/rt-history → public/data/feeds/<v>/rt-profile.json (working)
 npx tsx scripts/eval-rt.ts [--test-last 3] [--set key=value] # replay recorded RT: prediction error and live-view jumps, old vs new
 npm run scenario -- <name> # build data/scenarios/<name>/ → view at /?scenario=<name> (working; see data/scenarios/README.md)

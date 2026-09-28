@@ -67,6 +67,8 @@ export interface RouteOptions {
    * traffic, so empty moves keep to the right track where they can).
    */
   dirPenalty?: (seg: string, dir: Dir) => number;
+  /** Segments out of service (disruptions): never entered. */
+  closed?: Set<string>;
 }
 
 const REVERSAL_KINDS = new Set<SegmentKind>(['pocket', 'tail', 'siding']);
@@ -347,6 +349,7 @@ export class TrackGraph {
           continue;
         }
         if (!kinds.has(ts.kind)) continue;
+        if (opts.closed?.has(t.seg)) continue;
         const kp = opts.kindPenalty?.[ts.kind] ?? 0;
         // Entering the target segment: finish partway along it.
         if (to && t.seg === to.seg) {

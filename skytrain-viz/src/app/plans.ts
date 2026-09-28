@@ -112,10 +112,14 @@ export class PlanStore {
     const key = `${date}|${entry.version}`;
     const p = this.patches.get(key);
     if (p === undefined) {
-      this.fetchOnce(key, entry.path.startsWith('/') ? entry.path : `${BASE}${entry.path}`, this.patches, (j) => j as DispatchPatch);
+      this.fetchOnce(key, entry.path.startsWith('/') ? entry.path : `${BASE}${entry.path}`, this.patches, (j) => {
+        const patch = j as DispatchPatch;
+        for (const u of patch.unmatched) console.warn(`Observation not applied (${u.reason}):`, u.obs);
+        for (const pr of patch.problems ?? []) console.warn(`Disruption not fully applied: ${pr}`);
+        return patch;
+      });
       return undefined;
     }
-    if (p) for (const u of p.unmatched) console.warn(`Observation not applied (${u.reason}):`, u.obs);
     return p;
   }
 
@@ -170,6 +174,18 @@ export class PlanStore {
       this.playbacks.set(pbKey, pb);
     }
     return pb;
+  }
+
+  /** Disruptions in effect at instant t (epoch ms), from the dispatch patches of the days running then. */
+  noticesAt(t: number): string[] {
+    const out: string[] = [];
+    const today = localDate(t);
+    for (const date of [addDays(today, -1), today]) {
+      const sec = (t - serviceDayStart(date)) / 1000;
+      const patch = this.patchFor(date);
+      for (const n of patch?.notices ?? []) if (sec >= n.from && sec <= n.to) out.push(`${n.text} (${n.source})`);
+    }
+    return out;
   }
 
   static async load(scenario?: string): Promise<PlanStore> {

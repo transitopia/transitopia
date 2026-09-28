@@ -142,6 +142,8 @@ export class TrainPlayback {
         if (near) v.observedAt = serviceDayStart(serviceDate) + near.t * 1000;
       }
       if (run.consist) v.consist = run.consist;
+      const note = run.notes?.find((n) => sec >= n.t0 && sec <= n.t1);
+      if (note) v.note = v.note ? `${v.note} · ${note.text}` : note.text;
       out.push(v);
     }
     for (const [i, p] of (this.file.parked ?? []).entries()) {
