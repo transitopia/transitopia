@@ -425,12 +425,12 @@ skytrain-viz was merged into the Transitopia monorepo on 2026-09-29 (see [V2-PLA
 | skytrain-viz | Transitopia |
 |---|---|
 | `src/core/` | `packages/transit-core/src/` (DOM-free; shared by pipelines, tests and the server) |
-| `src/app/`, `index.html` | `packages/transit-map/` (engine + standalone viewer, `npm run dev:transit`) |
+| `src/app/` | `packages/transit-map/` (the engine); its UI became React components in `apps/web/src/TransitMap/`, and `index.html`/`main.ts` were replaced by `/transit` on the site |
 | `server/` | `apps/server/src/` |
 | `scripts/` | `pipelines/` |
 | `test/` | `test/` in each workspace |
 | `data/{config,infrastructure,scenarios,observations,disruptions}/` | `regions/metro-vancouver/…` (committed) |
-| `data/{raw,rt-history,ais-history,dispatch-history}/`, `public/{data,tiles,basemap-assets}/` | `var/…` (gitignored; `var/public/` is served at the viewer's web root) |
+| `data/{raw,rt-history,ais-history,dispatch-history}/`, `public/{data,tiles,basemap-assets}/` | `var/…` (gitignored; the site's dev server serves `var/public/` at `/dev-data/`) |
 
 ## 6. Milestones
 

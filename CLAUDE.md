@@ -8,19 +8,21 @@ npm workspaces (V2-PLAN.md §4.1). Cross-workspace imports use package specifier
 
 | Path | What |
 |---|---|
-| `apps/web/` | The transitopia.org SPA: React 19, Vite, Tailwind, wouter, MapLibre. Cycling map today; `/transit` comes in Phase 1. |
+| `apps/web/` | The transitopia.org SPA: React 19, Vite, Tailwind, wouter, MapLibre. `/transit` and `/cycling` share one map; the position is in `#map=z/lat/lng`, mode state in the query. |
 | `apps/server/` | RT service: budgeted TransLink poller, AIS stream, recorder, live dispatch. Becomes the V2 server (Phase 2). |
 | `packages/transit-core/` | DOM-free engine: GTFS, track graph, run inference, dispatcher, playback, corrections, RT prediction. |
-| `packages/transit-map/` | Transit map engine (clock, playback, WebGL layers) plus, until Phase 1, the standalone viewer. |
+| `packages/transit-map/` | The transit engine on a host map: `TransitEngine.create(map, { dataBase, apiBase, theme })` (`engine.ts`); clock, playback, WebGL layers, and a snapshot store React reads with `useSyncExternalStore`. No UI framework. |
+| `packages/map-style/` | The site's Protomaps basemap (light and dark), fonts list and zoom helpers. |
+| `packages/shared/` | Shared by web and server: the dataset registry (`datasets.ts`) behind the attribution control. |
 | `pipelines/` | Build-time pipelines and validators. `pipelines/lib/paths.ts` is the one place that knows where data lives. |
 | `regions/metro-vancouver/` | Committed, curated inputs: `config/`, `infrastructure/`, `scenarios/`, `observations/`, `disruptions/`. |
 | `map-layers/` | Java/Planetiler profile for the cycling layer (built daily in CI). |
-| `var/` | Gitignored downloads, recordings and build output. `var/public/` is the transit viewer's web root. |
+| `var/` | Gitignored downloads, recordings and build output. The web dev server serves `var/public/` at `/dev-data/`. |
 
 ## Scope
 
 - **Transit routes**: Expo, Millennium, and Canada Lines (track-level); SeaBus and West Coast Express (shape-level); buses 99, R1, R2, R3, R4, R5, R6. **No other bus routes** until Phase 7 (V2-PLAN.md §9), though the recorder keeps every route.
-- **Transit stack**: TypeScript, Vite, and MapLibre GL JS v6 with a PMTiles vector basemap (Protomaps). Vehicles are drawn by our own WebGL2 custom layer (`packages/transit-map/src/layers/gl-polygons.ts`) using only MapLibre's public API. Don't reintroduce deck.gl: its MapLibre integration depends on private internals that v6 removed. The engine stays framework-free; React is for the site's chrome (V2-PLAN.md §4.2). MIT licensed.
+- **Transit stack**: TypeScript, Vite, and MapLibre GL JS v6 with a PMTiles vector basemap (Protomaps, `packages/map-style`). Vehicles are drawn by our own WebGL2 custom layer (`packages/transit-map/src/layers/gl-polygons.ts`) using only MapLibre's public API. Don't reintroduce deck.gl: its MapLibre integration depends on private internals that v6 removed. The engine stays framework-free; React is for the site's chrome (V2-PLAN.md §4.2). MIT licensed.
 - Desktop-first, but the map and time controls must work on phones. Keep chrome minimal.
 
 ## Ground rules
@@ -91,9 +93,8 @@ npm workspaces (V2-PLAN.md §4.1). Cross-workspace imports use package specifier
 Run from the repo root.
 
 ```sh
-npm run dev              # apps/web (the site) at http://localhost:5174
-npm run dev:transit      # standalone transit viewer at http://localhost:5173 + local RT service at /rt/*
-npm run server           # standalone RT service on :8787, e.g. to keep recording; also live dispatch
+npm run dev              # the site (apps/web) at http://localhost:5173: /transit, /cycling
+npm run server           # RT service on :8787; run the site with VITE_TRANSIT_API=http://localhost:8787/ to use it
 npm test                 # vitest, every workspace
 npm run typecheck        # tsc in every workspace
 npm run lint             # oxlint --type-aware, repo-wide
@@ -101,7 +102,7 @@ npm run format           # prettier (format-check in CI)
 npm run build            # build every workspace that has a build
 npm run data:gtfs        # fetch latest GTFS + build plan.json and manifest
 npm run data             # fetch-gtfs, fetch-osm, import-osm, build-schedule, build-infra, build-movements, …
-npm run tiles            # build var/public/tiles/vancouver.pmtiles + fonts/sprites
+npm run tiles -- --region bc # the site's basemap, var/public/tiles/protomaps-bc.pmtiles (~2 GB) + fonts/sprites
 npm run data:osm         # fetch OSM tracks + import → regions/metro-vancouver/infrastructure/*.generated.geojson
 npm run build:infra      # publish tracks + per-feed platform mapping to var/public/data
 npm run validate:infra   # graph / platform / routing / turnback / checklist checks
@@ -115,7 +116,7 @@ npm run scenario -- <name> # build regions/metro-vancouver/scenarios/<name>/ →
 npx tsx pipelines/eval-rt.ts [--test-last 3] [--set key=value] # replay recorded RT: prediction error and live-view jumps, old vs new
 npx tsx pipelines/probe-ais.ts [--minutes 30] # record raw aisstream.io messages for the SeaBus fleet and summarise them
 npx tsx pipelines/eval-ais.ts [YYYYMMDD]      # recorded SeaBus AIS vs the timetable: matches, lateness, vessels per block, berths
-npx tsx pipelines/screenshot.ts out.png "/?date=2026-09-28&t=08:00:00&paused=1#map=14/49.28/-123.11" [--mobile] [--dark] [--pick expo] [--base http://localhost:5174]
+npx tsx pipelines/screenshot.ts out.png "/transit?date=2026-09-28&t=08:00:00&paused=1#map=14/49.28/-123.11" [--mobile] [--dark] [--pick expo]
 ```
 
 ## Workflow
@@ -124,8 +125,10 @@ npx tsx pipelines/screenshot.ts out.png "/?date=2026-09-28&t=08:00:00&paused=1#m
 - CI (`.github/workflows/checks.yml`) runs lint, format-check, typecheck, tests and builds, and both validators against a pinned GTFS snapshot (`FIXTURE_FEED_DATE`).
 - Everything under `var/` is gitignored: `var/raw/`, `var/rt-history/`, `var/ais-history/`, `var/dispatch-history/`, `var/public/{data,tiles,basemap-assets}/`.
 - Browser-facing URLs (`/data/…`, `/tiles/…`) are paths under `var/public/`, not repo paths: published indexes store them as `data/…`.
-- Vite restarts the transit viewer's RT service by itself when `apps/server/src/` files imported by its `vite.config.ts` change (seen 2026-09-28); restart `npm run dev:transit` if a change isn't picked up.
+- Where the site reads its data: `apps/web/src/config.ts` (local defaults: `var/public` via `/dev-data/`) and `apps/web/.env.production`. Without `VITE_TRANSIT_API` the engine makes no RT requests at all (schedules only).
+- Every map overlay re-adds its layers after a theme switch: depend on `useStyleGeneration()` (cycling) or call `engine.setTheme()` before the style swaps (transit). Declare what a mode draws with `useDatasets([...])` so the attribution control credits it.
+- TypeScript is strict repo-wide (`tsconfig.base.json`: `exactOptionalPropertyTypes`, `erasableSyntaxOnly`, no unused locals): write optional properties as `x?: T | undefined` when `undefined` is passed explicitly, and no constructor parameter properties (Node's type stripping rejects them).
 - Route colours and names are baked into `plan.json` from `regions/metro-vancouver/config/routes.json`; rebuild with `npx tsx pipelines/build-schedule.ts --force` after editing it.
 - After changing infrastructure, config, or pipeline code, rebuild and run both validators before calling the work done.
-- For visual changes, run the app and look at it (`pipelines/screenshot.ts` drives the local Chrome; `window.skytrain` is a debug handle with `map`, `clock`, `store`, `vehicles()`), especially at station zoom around Waterfront, Columbia/Sapperton, Commercial–Broadway, Lougheed, Edmonds (OMC 1), and Bridgeport, where the track work is densest. Check the phone layout too.
+- For visual changes, run the app and look at it (`pipelines/screenshot.ts` drives the local Chrome; `window.transit` is a debug handle on /transit with `map`, `clock`, `store`, `rt`, `vehicles()`), especially at station zoom around Waterfront, Columbia/Sapperton, Commercial–Broadway, Lougheed, Edmonds (OMC 1), and Bridgeport, where the track work is densest. Check the phone layout too.
 - Prefer small, reviewable commits per milestone step.

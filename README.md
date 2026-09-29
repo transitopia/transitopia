@@ -17,7 +17,9 @@ This repository is a monorepo (npm workspaces) containing most of the parts you 
 * `apps/web`: the Single Page Application that implements the website with the Transitopia map, seen at https://www.transitopia.org/
 * `apps/server`: the real-time service: it polls TransLink's GTFS-realtime feeds within a request budget, streams SeaBus AIS positions, records history, and re-dispatches trains live.
 * `packages/transit-core`: the DOM-free transit engine: GTFS, the SkyTrain track graph, run inference, a signalling-aware dispatcher, playback, corrections, and bus prediction.
-* `packages/transit-map`: the transit map engine (clock, playback, WebGL vehicle layers), with a standalone viewer until it moves into `apps/web`.
+* `packages/transit-map`: the transit map engine (clock, playback, WebGL vehicle layers), mounted by the website on `/transit`.
+* `packages/map-style`: the site's basemap style (Protomaps, light and dark).
+* `packages/shared`: definitions shared by the website and server, such as the dataset registry behind the map's credits.
 * `pipelines`: build-time data pipelines and validators.
 * `regions/metro-vancouver`: curated data for Metro Vancouver (config, track infrastructure, scenarios, observations and disruptions).
 * `map-layers`: A Transitopia profile for [Planetiler](https://github.com/onthegomap/planetiler) that generates our unique map layers/overlays, like the cycling/micromobility map.
@@ -28,30 +30,28 @@ This repository is a monorepo (npm workspaces) containing most of the parts you 
 
 You need Node.js 22+ (and optionally Java 21+ if you want to build the maps yourself). Clone this repo, then run `npm install` at its root.
 
-### The cycling map (`apps/web`)
+1. Build the basemap (a British Columbia extract of the [Protomaps](https://protomaps.com/) daily build, about 2 GB, plus its fonts and icons):
 
-1. Get the vector base map tiles file:
-   - Option 1: Download. Go to [Transitopia Base Map Releases](https://github.com/transitopia/planetiler-openmaptiles/releases), find the most recent release, and download `transitopia-base-bc.pmtiles`. Copy it into this repo's `apps/web/public/` folder.
-   - Option 2: Build it yourself. Use the [Transitopia planetiler-openmaptiles](https://github.com/transitopia/planetiler-openmaptiles) repository to generate the `transitopia-base-bc.pmtiles` vector map data file using planetiler (see that repo's README). Copy the resulting map data file into this repo: `cp ../planetiler-openmaptiles/data/transitopia-base-bc.pmtiles apps/web/public/transitopia-base-bc.pmtiles`.
-2. Get the vector overlay tiles file: this contains the cycling paths, pedestrian paths, etc. and is specific to Transitopia.
+   ```sh
+   npm run tiles -- --region bc
+   ```
+
+2. For the cycling map, get the vector overlay tiles file: this contains the cycling paths, bike parking, etc. and is specific to Transitopia.
    - Option 1: Download. Go to [this page](https://github.com/transitopia/transitopia/actions/workflows/build_cycling.yml?query=event%3Aschedule), select the latest run, then click on `compiled-maps` to download the .zip file with the vector overlays. Unzip it, then copy `transitopia-cycling-british-columbia.pmtiles` into this repo's `apps/web/public/` folder.
    - Option 2: Build it yourself. Use the `map-layers` folder in this repository to generate the `transitopia-cycling-british-columbia.pmtiles` vector map data file using planetiler. See [the README](./map-layers/README.md) for instructions.
-3. Run the development server: `npm run dev`
-4. Go to http://localhost:5174/ in your browser.
+3. For the transit map, build the timetable and train data:
 
-### The transit map (standalone viewer)
+   ```sh
+   npm run data:gtfs       # fetch the latest GTFS feed and build the timetable data
+   npm run build:infra     # publish the track network and platform mapping
+   npm run build:movements # infer train runs and dispatch them, per day type
+   ```
 
-```sh
-npm run tiles           # build the Metro Vancouver PMTiles basemap (one-time)
-npm run data:gtfs       # fetch the latest GTFS feed and build the timetable data
-npm run build:infra     # publish the track network and platform mapping
-npm run build:movements # infer train runs and dispatch them, per day type
-npm run dev:transit     # viewer at http://localhost:5173, plus the local RT service
-```
+4. Run the development server with `npm run dev`, then go to http://localhost:5173/ in your browser.
 
 Downloads and build output go to `var/` (gitignored). The track network itself is committed (`regions/metro-vancouver/infrastructure/`), and `npm run data:osm` re-imports it from OpenStreetMap.
 
-Without TransLink and aisstream.io API keys, everything runs in schedule-only (*estimated*) mode, which is what development normally uses: TransLink allows 1,000 requests a day per key, and one poller spends them for production (see [V2-PLAN.md §4.5 and §7.5](V2-PLAN.md)).
+The site shows transit schedules only (*estimated* positions) unless it's pointed at an RT service: run `npm run server` and start the site with `VITE_TRANSIT_API=http://localhost:8787/ npm run dev`. Without TransLink and aisstream.io API keys the RT service is schedule-only too, which is what development normally uses: TransLink allows 1,000 requests a day per key, and one poller spends them for production (see [V2-PLAN.md §4.5 and §7.5](V2-PLAN.md)).
 
 ## Credits
 
@@ -67,6 +67,6 @@ Transit data: TransLink GTFS static and GTFS-realtime ([app developer resources]
 
 Map vector tile data is stored in the [PMTiles](https://github.com/protomaps/PMTiles) format.
 
-The base map style is a customized version of [OpenMapTiles Positron](https://github.com/openmaptiles/positron-gl-style), and the base map is [a customized version of OpenMapTiles](https://github.com/transitopia/planetiler-openmaptiles).
+The basemap is built from the [Protomaps](https://protomaps.com/) daily build of OpenStreetMap, styled with [Protomaps basemaps](https://github.com/protomaps/basemaps) in light and dark flavours.
 
 Hosting is provided by [Cloudflare Workers](https://workers.cloudflare.com/).

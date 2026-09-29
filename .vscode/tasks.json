@@ -6,12 +6,6 @@
             "type": "shell",
             "command": "npm run dev",
             "problemMatcher": [],
-        },
-        {
-            "label": "Run Transit Viewer (Development)",
-            "type": "shell",
-            "command": "npm run dev:transit",
-            "problemMatcher": [],
         }
     ]
 }
