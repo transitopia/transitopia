@@ -11,6 +11,7 @@ const STATUS: Record<VehicleState['status'], string> = {
   turnback: 'Turning back',
   pullout: 'Leaving yard',
   pullin: 'To yard',
+  held: 'Held at a signal · next stop',
 };
 
 const PROVENANCE: Record<VehicleState['provenance'], string> = {

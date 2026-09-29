@@ -12,6 +12,7 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 
 - **Never print, log, commit, or bundle the API key.** It lives in `.secrets` (`TRANSLINK_API_KEY=...`, gitignored). Only `server/` (and later `worker/`) reads it. Browser code must never see it.
 - **Never let client requests trigger TransLink API calls.** A single poller fetches upstream on a fixed interval. Clients only read the cached snapshot. Only one process per machine polls and records: the leader holds `data/rt-history/.lock` ({pid, port}), and any other RT service instance forwards `/rt/*` to it.
+- **Dispatching is central.** The signalling-aware dispatcher (PLAN.md §4.11) runs only at build time and in the RT service, and every visitor gets the same versioned result. Browsers never run it, and client requests never trigger a dispatch.
 - **Positions are a pure function of (plan, overlays, t).** Don't introduce frame-stepped simulation state. Seek, rewind, and fast-forward depend on this.
 - **Every vehicle state carries provenance** (`observed | interpolated | estimated`) and a source. Never render an estimate as if it were observed.
 - **`src/core/` stays DOM-free.** It's shared by build scripts, tests, and workers.
@@ -32,14 +33,22 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 - Trip times: SkyTrain/WCE/SeaBus trips are re-timed within ±45 s of GTFS (minute-rounded) in proportion to each hop's physical minimum time (`retime` in `schedule/engine.ts`). Without this, some hops are impossibly fast.
 - Chaining: GTFS block successor first (only when it starts where the last trip ended), else FIFO earliest feasible departure. Turnbacks choose between the GTFS departure platform (via tail/pocket/main reversals) and reversing in place, by cost.
 - In-place turnbacks get stub berths by occupancy (`berth`/`arrive` overrides on trip events), pulled up to the buffer.
-- Surplus trains at stub termini (would wait > `turnback.stubMaxLayoverS`) pull in to the yard instead of queueing. Timing pull-ins into gaps between scheduled trains was tried and made no measurable difference, so it isn't implemented.
+- Surplus trains at stub termini (would wait > `turnback.stubMaxLayoverS`, or every dead-ended berth is taken) pull in to the yard instead of queueing. Timing pull-ins into gaps between scheduled trains was tried and made no measurable difference, so it isn't implemented.
+- Pull-outs/pull-ins avoid running against the normal direction of traffic (`yard.againstTrafficPenalty`); turnbacks have their own speed (`turnback.speedFactor`).
 - Playback (`playback.ts`) is pure: (movement file, prepared plan, graph, t) → positions. Keep it that way.
 - Debug with `npm run build:movements -- --verbose` (per-terminus chaining stats) and `npm run validate:plan` (conflict hot spots).
+
+## Dispatcher notes (`src/core/dispatch/`, PLAN.md §4.11)
+
+- `build:movements` runs inferred runs through the signalling simulation (moving block, junction locks, sections for track used both ways, stub berths). Its output is still a movement file; playback stays pure. `--no-dispatch` writes the timetable-only plan for comparison.
+- Deadlocks are prevented by resource order (see PLAN.md §4.11 "As built"), not by the breaker. A "deadlock broken" line in `validate:plan` is a bug to look at: `DISPATCH_DEBUG=1` prints the waits-for chain, `DISPATCH_TRACE=<run> DISPATCH_TRACE_FROM=<s> DISPATCH_TRACE_TO=<s>` traces one train.
 
 ## Corrections
 
 - Observations (`src/core/corrections/`) reference **service date + GTFS trip_id** or **stop + time**, never inferred run ids.
-- `reconcile()` turns them into per-run time warps (delays absorbed by later layovers), cancellations, consists, and observed windows. Playback evaluates each run at its warped time and sets provenance: observed within 90 s of a sighting, interpolated while a delay applies.
+- SkyTrain: `railInputs()` turns them into dispatcher anchors (a stop at a time), cancellations, consists and parked trains. The dispatcher re-dispatches the date centrally (`build:dispatch` → `public/data/dispatch/<date>.json`, a patch of the runs that changed); playback marks positions observed within 90 s of a sighting and interpolated where times moved. Browsers never reconcile rail observations.
+- Timetable vehicles (SeaBus, WCE, buses without RT): `reconcileScheduled()` in the app, as before.
+- Disruptions (`data/disruptions/*.json`, format in its README): single-track sections and reduced headways for a period. `build:dispatch` re-plans each affected date (`src/core/disruption/apply.ts` → re-inferred runs with closures → dispatch). Only `"status": "confirmed"` entries apply. The RT service drafts them from TransLink alerts into `data/disruptions/drafts/` (gitignored); never confirm a draft without knowing which track stays open.
 - A future rail real-time adapter should emit `Observation`s rather than touch playback.
 
 ## Scenarios
@@ -65,16 +74,18 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 
 ```sh
 npm run dev              # Vite + local RT service at /rt/* (poller, cache, recorder) (working)
-npm run server           # standalone RT service on :8787, e.g. to keep recording (working)
+npm run server           # standalone RT service on :8787, e.g. to keep recording; also live dispatch (working)
 npm run data:gtfs        # fetch latest GTFS + build plan.json and manifest (working)
 npm run data             # fetch-gtfs, fetch-osm, import-osm, build-schedule, infer-runs, build-movements
 npm run tiles            # build public/tiles/vancouver.pmtiles + fonts/sprites (working)
 npm run data:osm         # fetch OSM tracks + import → data/infrastructure/*.generated.geojson (working)
 npm run build:infra      # publish tracks + per-feed platform mapping to public/data (working)
 npm run validate:infra   # graph / platform / routing / turnback / checklist checks (working)
-npm run build:movements  # infer train runs → public/data/feeds/<v>/movements/*.json [--verbose] (working)
-npm run validate:plan    # teleports (fail), terminus/yard conflicts (report), fleet peaks (working)
+npm run build:movements  # infer + dispatch train runs → public/data/feeds/<v>/movements/*.json [--verbose] [--no-dispatch] (working)
+npm run validate:plan    # teleports (fail), conflicts, dispatch delays and broken deadlocks (report), fleet peaks (working)
 npm run build:observations # validate + publish data/observations/*.json (working; format in data/observations/README.md)
+npm run build:dispatch   # re-dispatch dates with observations or disruptions → public/data/dispatch/<date>.json + index.json (working)
+npm run disruptions      # list/confirm/discard disruptions drafted from TransLink alerts [-- pull | confirm <id> [--keep "<stop>"] | discard <id>] (working)
 npm run build:rt-profile # learn bus travel-time profiles from data/rt-history → public/data/feeds/<v>/rt-profile.json (working)
 npx tsx scripts/eval-rt.ts [--test-last 3] [--set key=value] # replay recorded RT: prediction error and live-view jumps, old vs new
 npm run scenario -- <name> # build data/scenarios/<name>/ → view at /?scenario=<name> (working; see data/scenarios/README.md)
@@ -85,7 +96,8 @@ npm run typecheck
 
 ## Workflow
 
-- Gitignored build and runtime output: `data/raw/`, `data/rt-history/`, `public/data/`, `public/tiles/`, `public/basemap-assets/`.
+- Gitignored build and runtime output: `data/raw/`, `data/rt-history/`, `data/dispatch-history/`, `public/data/`, `public/tiles/`, `public/basemap-assets/`.
+- The dev server loads `server/` once: restart `npm run dev` after changing it.
 - Route colours and names are baked into `plan.json` from `data/config/routes.json`; rebuild with `npx tsx scripts/build-schedule.ts --force` after editing it.
 - After changing infrastructure, config, or pipeline code, rebuild and run both validators before calling the work done.
 - For visual changes, run the app and look at it (`scripts/screenshot.ts` drives the local Chrome; `window.skytrain` is a debug handle with `map`, `clock`, `store`, `vehicles()`), especially at station zoom around Waterfront, Columbia/Sapperton, Commercial–Broadway, Lougheed, Edmonds (OMC 1), and Bridgeport, where the track work is densest. Check the phone layout too.

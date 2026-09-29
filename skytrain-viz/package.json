@@ -26,6 +26,8 @@
     "build:movements": "tsx scripts/build-movements.ts",
     "validate:plan": "tsx scripts/validate-plan.ts",
     "build:observations": "tsx scripts/build-observations.ts",
+    "build:dispatch": "tsx scripts/build-dispatch.ts",
+    "disruptions": "tsx scripts/disruptions.ts",
     "build:rt-profile": "tsx scripts/build-rt-profile.ts",
     "scenario": "tsx scripts/scenario.ts"
   },

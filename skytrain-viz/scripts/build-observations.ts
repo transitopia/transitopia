@@ -7,27 +7,11 @@ import { readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ROOT, PUBLIC_DATA_DIR, log, readJson, writeJson } from './lib/paths.ts';
 import type { Observation, ObservationFile, ObservationIndex } from '../src/core/corrections/types.ts';
+import { observationProblems } from '../src/core/corrections/validate.ts';
+
 
 const SRC = join(ROOT, 'data', 'observations');
 const OUT = join(PUBLIC_DATA_DIR, 'observations');
-const KINDS = new Set(['at_platform', 'delay', 'cancel', 'consist', 'parked']);
-
-function problems(o: Observation): string[] {
-  const p: string[] = [];
-  if (!KINDS.has(o.kind)) p.push(`unknown kind "${(o as { kind: string }).kind}"`);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(o.date ?? '')) p.push('date must be YYYY-MM-DD');
-  if (!o.source) p.push('source is required');
-  if (o.kind === 'at_platform') {
-    if (!o.stop) p.push('stop is required');
-    if (!o.time || Number.isNaN(Date.parse(o.time))) p.push('time must be ISO 8601 with offset');
-  } else if (o.kind === 'parked') {
-    if (!Array.isArray(o.at) || o.at.length !== 2) p.push('at must be [lon, lat]');
-    if (!o.time || Number.isNaN(Date.parse(o.time))) p.push('time must be ISO 8601 with offset');
-  } else if (!('trip' in o) || !o.trip) p.push('trip is required');
-  if (o.kind === 'delay' && !Number.isFinite(o.seconds)) p.push('seconds must be a number');
-  return p;
-}
-
 async function main() {
   let files: string[] = [];
   try {
@@ -43,7 +27,7 @@ async function main() {
     const data = await readJson<ObservationFile>(join(SRC, f));
     const valid: Observation[] = [];
     data.observations.forEach((o, i) => {
-      const p = problems(o);
+      const p = observationProblems(o);
       if (p.length) {
         bad++;
         log(`  ${f} #${i}: ${p.join('; ')}`);

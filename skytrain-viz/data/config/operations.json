@@ -15,6 +15,8 @@
     "maxPullUpM": 100,
     "maxTurnbackM": 4000,
     "unloadS": 30,
+    "$speedFactor": "Turnbacks (short empty moves between an arrival and the next departure, e.g. through the crossovers west of Production Way–University) run at this fraction of line max speed. At the pull-out speed (0.55) the 4-minute Production Way turnaround in the timetable was infeasible, so trains waited 16 min for a later departure, parked on Millennium platforms. guess, OPEN-QUESTIONS #6",
+    "speedFactor": 0.8,
     "$reversalS": "Time to change ends / reverse direction (driverless, so short). guess",
     "reversalS": 40,
     "$blockBonusS": "Unused since GTFS block successors are now always preferred (kept for config compatibility).",
@@ -28,6 +30,8 @@
     "$deadheadSpeedFactor": "Deadheads run at this fraction of line max speed: about the line's average including stops, so pull-outs don't catch up with trains in service.",
     "deadheadSpeedFactor": 0.55,
     "$runIntoYardM": "How far into the yard a pulling-in train is drawn before it disappears (and a pull-out appears).",
-    "runIntoYardM": 150
+    "runIntoYardM": 150,
+    "$againstTrafficPenalty": "Pull-outs and pull-ins keep to the normal direction of traffic: running against it costs this many extra metres per metre when choosing their path, so they take the wrong track only where it's much shorter (e.g. single-track sections). Without it, shortest paths ran empty trains against traffic over ~74 km of main line, which signalling can't allow between trains in service. guess, OPEN-QUESTIONS #22",
+    "againstTrafficPenalty": 3
   }
 }

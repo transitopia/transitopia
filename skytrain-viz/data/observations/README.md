@@ -1,6 +1,6 @@
 # Observations
 
-Ground-truth corrections to the schedule-inferred SkyTrain trains and to timetable vehicles (SeaBus, WCE, buses without real-time data) (PLAN.md §4.7). Put JSON files here, e.g. `2026-09-28-rider-reports.json`, then run `npm run build:observations` (it also runs as part of `npm run data`). The app applies them on the matching service dates.
+Ground-truth corrections to the schedule-inferred SkyTrain trains and to timetable vehicles (SeaBus, WCE, buses without real-time data) (PLAN.md §4.7). Put JSON files here, e.g. `2026-09-28-rider-reports.json`, then run `npm run build:observations && npm run build:dispatch` (both run as part of `npm run data`). SkyTrain observations are applied centrally by the dispatcher, which re-dispatches each observed date (`public/data/dispatch/<date>.json`); the app applies timetable-vehicle observations itself.
 
 ```json
 {
@@ -28,4 +28,4 @@ Ground-truth corrections to the schedule-inferred SkyTrain trains and to timetab
 
 A `parked` observation places an out-of-service train on the track nearest `at` (a point on that track, e.g. a siding). It's shown from `from` to `until`, defaulting to ±15 min around `time`: *observed* within 90 s of the sighting, *interpolated* otherwise.
 
-Effects: a delay shifts the train's run from that point and is absorbed by later terminus layovers (keeping a 60 s turnaround). A cancelled trip hides the train during that trip. A consist applies to the whole inferred run. For timetable vehicles, a sighting shifts that trip (with several sightings, the delay changes linearly between them, e.g. time made up crossing), and the wait at the terminal stretches until the next trip's corrected departure.
+Effects on SkyTrain: sightings and delays become anchors. The dispatcher moves the anchored stop (an arrival keeps the hop's running time and spends the difference at the previous stop; a departure ends the dwell) and signalling carries the effect to the trains around it; later terminus layovers absorb delay. A cancelled trip hides the train during that trip. A consist applies to the whole inferred run. `build:dispatch` lists any observation it couldn't apply. For timetable vehicles, a sighting shifts that trip (with several sightings, the delay changes linearly between them, e.g. time made up crossing), and the wait at the terminal stretches until the next trip's corrected departure.

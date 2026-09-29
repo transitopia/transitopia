@@ -33,6 +33,8 @@ export function routePattern(
   pattern: PlanPattern,
   /** Per-pattern overrides (PlatformReport.patternPositions). */
   patternPositions?: Map<number, Map<number, TrackPos>>,
+  /** Segments out of service (disruptions). */
+  closed?: Set<string>,
 ): PatternRoute {
   const positions: TrackPos[] = [];
   const failures: string[] = [];
@@ -53,7 +55,7 @@ export function routePattern(
     for (let i = 0; i + 1 < positions.length; i++) {
       const a = positions[i]!;
       const b = positions[i + 1]!;
-      const p: Path | null = a.seg && b.seg ? g.route(a, b, { fromDir: dir, allowReversals: false, maxLength: 12_000, kindPenalty: REVENUE_KIND_PENALTY }) : null;
+      const p: Path | null = a.seg && b.seg ? g.route(a, b, { fromDir: dir, allowReversals: false, maxLength: 12_000, kindPenalty: REVENUE_KIND_PENALTY, ...(closed ? { closed } : {}) }) : null;
       if (!p || p.reversals > 0) {
         hs.push(undefined);
         fails++;

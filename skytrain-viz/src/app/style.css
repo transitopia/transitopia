@@ -6,6 +6,7 @@
   --muted: #5f6770;
   --accent: #0060df;
   --live: #d92d20;
+  --warn: #9a5b00;
   --shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
   --radius: 10px;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -19,6 +20,7 @@
   --muted: #9aa3ad;
   --accent: #6ea8fe;
   --live: #ff6b5e;
+  --warn: #f0b35a;
   --shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
   color-scheme: dark;
 }
@@ -288,8 +290,19 @@ input {
   color: var(--text);
   border-color: var(--text);
 }
-.tb-rt:empty {
+.tb-rt:empty,
+.tb-notice:empty {
   display: none;
+}
+/* A disruption applies at the shown time (details in the tooltip). */
+.tb-notice {
+  font-size: 11px;
+  white-space: nowrap;
+  padding: 0 6px;
+  margin-left: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--warn);
+  color: var(--warn);
 }
 .tb-date,
 .tb-rate {

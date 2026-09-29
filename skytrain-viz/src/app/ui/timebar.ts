@@ -45,6 +45,7 @@ export class Timebar {
   private slider = el<HTMLInputElement>('tb-slider');
   private coverage = el<HTMLElement>('tb-coverage');
   private rtBadge = el<HTMLElement>('tb-rt');
+  private notice = el<HTMLElement>('tb-notice');
   private lastCoverageKey = '';
   private scrubbing = false;
   private lastDate = '';
@@ -138,6 +139,14 @@ export class Timebar {
         return d;
       }),
     );
+  }
+
+  /** Disruptions in effect at the shown time (empty hides the badge). */
+  setNotices(texts: string[]): void {
+    const text = texts.length ? 'Service change' : '';
+    if (this.notice.textContent !== text) this.notice.textContent = text;
+    const title = texts.join('\n');
+    if (this.notice.title !== title) this.notice.title = title;
   }
 
   setRtBadge(text: string, mode: string, title: string): void {
