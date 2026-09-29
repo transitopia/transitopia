@@ -1,0 +1,9 @@
+{
+  "$comment": "SeaBus operating assumptions. Geometry (berths, lanes) is in data/infrastructure/seabus.json. OPEN-QUESTIONS #24.",
+  "$pairs": "Berth pairs a vessel runs between, in order of preference. The wheelhouse sees the passenger ramps better from one side, so a vessel loads at the east berth at both terminals, or the west berth at both (Braden, 2026-09-28).",
+  "pairs": [
+    { "waterfront": "west", "lonsdale": "west" },
+    { "waterfront": "east", "lonsdale": "east" }
+  ],
+  "$assignment": "Each GTFS block (one vessel's day, OPEN-QUESTIONS #14) keeps one pair all day. Blocks are assigned in order of first departure: the pair whose berths are free while the block lays over, then the pair with fewer vessels in service at the same time, then the first pair. Which vessel actually uses which pair is unknown. guess"
+}

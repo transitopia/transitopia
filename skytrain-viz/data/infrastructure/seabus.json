@@ -1,0 +1,35 @@
+{
+  "$comment": "SeaBus berths and crossing lanes, used instead of the GTFS shapes (a straight line between the terminals). Applied by build-schedule (src/core/plan/ferry-berths.ts). Berth pairing is in data/config/seabus.json. OPEN-QUESTIONS #24.",
+  "route": "seabus",
+  "$approachM": "Vessels leave and enter a slip straight along its axis for this far before turning into a lane. guess",
+  "approachM": 60,
+  "terminals": {
+    "waterfront": {
+      "$comment": "Two slips opening to the northeast, either side of the central pier; West is the northwestern one (Sep 26: Burrard Pacific Breeze at the West berth, Braden). dock = vessel centre when berthed, outBearing = slip axis pointing out to open water. Read off the basemap's pier outlines at zoom 17.5, not imagery: verify.",
+      "berths": {
+        "west": { "dock": [-123.109351, 49.287077], "outBearing": 63 },
+        "east": { "dock": [-123.109105, 49.286792], "outBearing": 63 }
+      }
+    },
+    "lonsdale": {
+      "$comment": "Two slips opening to the south-southwest between the exit and boarding floats. Read off the basemap's pier outlines at zoom 17.5, not imagery: verify. The layup/maintenance berth northwest of the terminal (where Burrard Beaver was parked on 2026-09-28) isn't used: vessels out of service are hidden.",
+      "berths": {
+        "west": { "dock": [-123.083965, 49.309758], "outBearing": 204 },
+        "east": { "dock": [-123.083542, 49.30958], "outBearing": 204 }
+      }
+    }
+  },
+  "$lanes": "Crossing lanes by direction, from terminal to terminal, excluding the slip approaches. Vessels keep right, so each direction bows to its own side of the direct line (~250 m at most). Traced from the centre of each direction's bundle in a day of AIS tracks for Burrard Pacific Breeze (Burrard Otter II's the same day agrees; 2026-09-28, Braden), georeferenced on the two terminals (fit: 3.13 m/px, 0.05° rotation), so ±30 m.",
+  "lanes": {
+    "waterfront>lonsdale": [
+      [-123.105689, 49.288704], [-123.101373, 49.291429], [-123.098783, 49.293255], [-123.095848, 49.295222],
+      [-123.09274, 49.298032], [-123.089501, 49.300842], [-123.087774, 49.302529], [-123.085831, 49.304637],
+      [-123.085397, 49.306464], [-123.084877, 49.30787]
+    ],
+    "lonsdale>waterfront": [
+      [-123.086689, 49.30759], [-123.088846, 49.306466], [-123.091651, 49.305062], [-123.094025, 49.303657],
+      [-123.096183, 49.302253], [-123.098558, 49.300286], [-123.100501, 49.298599], [-123.102444, 49.296351],
+      [-123.103828, 49.294102], [-123.104735, 49.292415], [-123.105904, 49.289604]
+    ]
+  }
+}
