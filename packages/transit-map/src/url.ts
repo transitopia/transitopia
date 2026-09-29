@@ -17,6 +17,8 @@ export interface UrlState {
   rate?: number;
   paused?: boolean;
   vehicle?: string;
+  /** Dispatch versions to preview, service date (YYYYMMDD) → version (?preview=20260927:15egjb9,…). */
+  preview?: Record<string, string>;
 }
 
 export function readUrl(): UrlState {
@@ -39,6 +41,14 @@ export function readUrl(): UrlState {
   if (q.get("paused") === "1") out.paused = true;
   const v = q.get("select") ?? q.get("v");
   if (v) out.vehicle = v;
+  const preview = Object.fromEntries(
+    (q.get("preview") ?? "")
+      .split(",")
+      .map((p) => /^(\d{8}):([0-9a-z]+)$/.exec(p))
+      .filter((m) => m !== null)
+      .map((m) => [m[1]!, m[2]!]),
+  );
+  if (Object.keys(preview).length) out.preview = preview;
   return out;
 }
 
@@ -53,8 +63,11 @@ export function writeUrl(clock: Clock, vehicle: string | undefined): void {
     if (!clock.playing) q.set("paused", "1");
   }
   if (vehicle) q.set("select", vehicle);
-  const scenario = new URLSearchParams(location.search).get("scenario");
-  if (scenario) q.set("scenario", scenario);
+  const kept = new URLSearchParams(location.search);
+  for (const k of ["scenario", "preview"]) {
+    const v = kept.get(k);
+    if (v) q.set(k, v);
+  }
   const search = q.toString();
   const url = `${location.pathname}${search ? `?${search}` : ""}${location.hash}`;
   if (url !== `${location.pathname}${location.search}${location.hash}`)

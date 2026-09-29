@@ -57,6 +57,7 @@ export class PlanStore {
   private movementIndexes = new Map<string, MovementsIndex | null>();
   private movementFiles = new Map<string, MovementsFile | null>();
   private playbacks = new Map<string, TrainPlayback>();
+  private preview: Record<string, string> = {};
   private dispatchIndex: DispatchIndex | null | undefined;
   /** Live dispatch versions (the RT service), which take precedence over the static index. */
   private liveDispatch: DispatchIndex["byDate"] = {};
@@ -173,14 +174,21 @@ export class PlanStore {
       });
       return undefined;
     }
-    const entry = this.liveDispatch[date] ?? this.dispatchIndex?.byDate[date];
+    const preview = this.preview[date];
+    const entry =
+      preview ?
+        { version: preview, path: `rt/dispatch/${date}/${preview}.json` }
+      : (this.liveDispatch[date] ?? this.dispatchIndex?.byDate[date]);
     if (!entry) return this.dispatchIndex ? null : undefined;
     const key = `${date}|${entry.version}`;
     const p = this.patches.get(key);
     if (p === undefined) {
       this.fetchOnce(
         key,
-        `${this.dataBase}${entry.path}`,
+        // Live and preview versions are served by the RT service, static ones with the data.
+        entry.path.startsWith("rt/") && this.apiBase ?
+          `${this.apiBase}${entry.path}`
+        : `${this.dataBase}${entry.path}`,
         this.patches,
         (j) => {
           const patch = j as DispatchPatch;
@@ -276,6 +284,20 @@ export class PlanStore {
       this.playbacks.set(pbKey, pb);
     }
     return pb;
+  }
+
+  /**
+   * Show these dispatch versions (service date → version) instead of the current ones: previews of
+   * corrections not confirmed yet (V2-PLAN.md §5.6, ?preview=<YYYYMMDD>:<version>).
+   */
+  setPreview(versions: Record<string, string>): void {
+    this.preview = { ...versions };
+    this.emit();
+  }
+
+  /** Dates shown with a preview version. */
+  get previewDates(): string[] {
+    return Object.keys(this.preview).sort();
   }
 
   /** New live dispatch versions from /rt/live (service date → version). */

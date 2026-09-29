@@ -99,6 +99,8 @@ export interface TransitSnapshot {
   rt: { mode: RtMode; label: string; title: string };
   /** Service changes in effect at the shown time. */
   notices: string[];
+  /** Service dates shown with a preview dispatch (unconfirmed corrections; ?preview=). */
+  preview: string[];
   routes: PlanRoute[];
   hidden: ReadonlySet<string>;
   selected: SelectedVehicle | undefined;
@@ -195,6 +197,7 @@ export class TransitEngine {
       );
 
     const url = opts.initial ?? readUrl();
+    if (url.preview) store.setPreview(url.preview);
     this.clock = new Clock(url.t ?? Date.now());
     this.clock.setBounds(range[0], range[1]);
     if (url.t === undefined && (Date.now() < range[0] || Date.now() > range[1]))
@@ -445,6 +448,7 @@ export class TransitEngine {
       coverage: this.coverage,
       rt: this.rtState,
       notices: this.notices,
+      preview: this.store.previewDates,
       // Stable identities, so React skips re-rendering the legend.
       routes: prev && sameRoutes(prev.routes, routes) ? prev.routes : routes,
       hidden: this.hidden,

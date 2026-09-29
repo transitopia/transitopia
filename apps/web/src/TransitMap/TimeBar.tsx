@@ -98,6 +98,13 @@ export const TimeBar: React.FC<{
                 Service change
               </span>
             : null}
+            {snap.preview.length ?
+              <span
+                className="whitespace-nowrap rounded bg-purple-700 px-1 text-white"
+                title={`Showing unconfirmed corrections for ${snap.preview.map(isoDate).join(", ")}: not what visitors see`}>
+                Preview
+              </span>
+            : null}
           </div>
         </div>
         <div className="order-last flex w-full gap-2 pt-1 sm:order-none sm:w-auto sm:pt-0">
