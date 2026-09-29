@@ -1,0 +1,30 @@
+{
+  "$comment": "Confirmed 2026-09-28 from a draft of TransLink alert 757208.",
+  "disruptions": [
+    {
+      "id": "alert-757208",
+      "source": "TransLink alert",
+      "text": "Expo Line Track Maintenance on Mon Sep 28 from 9:30 PM until the end of service.",
+      "note": "Expo Line Track Maintenance on Mon Sep 28 from 9:30 PM until the end of service. Trains will single-track in both directions between Edmonds Station & Royal Oak Station. Platform 1 will be closed; please board all trains from Platform 2 at both stations.\n\n\r\nExpo Line trains will operate Waterfront <-> King George/Production Way, stopping at Royal Oak platform 2 and Edmonds platform 2 in both directions.\r\n\nAdditional short-turn trains will operate Waterfront <-> Metrotown and Edmonds <-> King George / Production Way. \r\n\nSome trains will dwell longer than normal at Metrotown and 22nd Street Stations.\r\n\nTrips through Royal Oak Station will be delayed, with the worst affected trips taking approximately 15 minutes longer than normal.",
+      "status": "confirmed",
+      "alertId": "757208",
+      "active": [
+        {
+          "from": "2026-09-29T04:30:00.000Z",
+          "until": "2026-09-29T11:00:00.000Z"
+        }
+      ],
+      "singleTrack": [
+        {
+          "line": "expo",
+          "between": [
+            "Edmonds",
+            "Royal Oak"
+          ],
+          "keep": "Edmonds Station @ Platform 2",
+          "pinEnds": true
+        }
+      ]
+    }
+  ]
+}
