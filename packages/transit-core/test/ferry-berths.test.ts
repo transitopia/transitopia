@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { applyFerryBerths, berthPath, type FerryConfig, type FerryInfra } from '../src/core/plan/ferry-berths.ts';
-import { bearingDeg, distM } from '../src/core/geo.ts';
-import type { PlanTrip, ServicePlan } from '../src/core/plan/types.ts';
+import { applyFerryBerths, berthPath, type FerryConfig, type FerryInfra } from '../src/plan/ferry-berths.ts';
+import { bearingDeg, distM } from '../src/geo.ts';
+import type { PlanTrip, ServicePlan } from '../src/plan/types.ts';
 
 // Two terminals ~2.2 km apart north–south, each with a west and an east berth 30 m apart.
 const infra: FerryInfra = {

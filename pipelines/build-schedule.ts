@@ -10,11 +10,11 @@
 import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { readCsv, readCsvAll, type Row } from './lib/gtfs-zip.ts';
-import { CONFIG_DIR, FEEDS_OUT_DIR, GTFS_RAW_DIR, PUBLIC_DATA_DIR, ROOT, log, readJson, writeJson } from './lib/paths.ts';
-import { cumulativeLengths, distM, projectOnto, round, simplify, type LonLat } from '../src/core/geo.ts';
-import { parseGtfsTime, TIMEZONE } from '../src/core/time.ts';
-import { applyFerryBerths, type FerryConfig, type FerryInfra } from '../src/core/plan/ferry-berths.ts';
-import type { CalendarEntry, CalendarException } from '../src/core/gtfs/calendar.ts';
+import { CONFIG_DIR, INFRA_DIR, GTFS_RAW_DIR, PUBLIC_DATA_DIR, FEEDS_OUT_DIR, log, readJson, writeJson } from './lib/paths.ts';
+import { cumulativeLengths, distM, projectOnto, round, simplify, type LonLat } from '@transitopia/transit-core/geo.ts';
+import { parseGtfsTime, TIMEZONE } from '@transitopia/transit-core/time.ts';
+import { applyFerryBerths, type FerryConfig, type FerryInfra } from '@transitopia/transit-core/plan/ferry-berths.ts';
+import type { CalendarEntry, CalendarException } from '@transitopia/transit-core/gtfs/calendar.ts';
 import type {
   FeedManifest,
   PlanPattern,
@@ -25,8 +25,8 @@ import type {
   RouteKind,
   RouteMode,
   ServicePlan,
-} from '../src/core/plan/types.ts';
-import { STOP_NO_DROPOFF, STOP_NO_PICKUP } from '../src/core/plan/types.ts';
+} from '@transitopia/transit-core/plan/types.ts';
+import { STOP_NO_DROPOFF, STOP_NO_PICKUP } from '@transitopia/transit-core/plan/types.ts';
 
 interface RouteConfig {
   key: string;
@@ -312,7 +312,7 @@ export async function buildPlan(zipPath: string): Promise<ServicePlan> {
   // SeaBus: berth-to-berth paths along the keep-right lanes instead of the GTFS shapes.
   const ferry = applyFerryBerths(
     plan,
-    await readJson<FerryInfra>(join(ROOT, 'data', 'infrastructure', 'seabus.json')),
+    await readJson<FerryInfra>(join(INFRA_DIR, 'seabus.json')),
     await readJson<FerryConfig>(join(CONFIG_DIR, 'seabus.json')),
   );
   if (ferry.sharedBerthS > 0) log(`  warn: SeaBus vessels are docked at the same berth for ${ferry.sharedBerthS} s`);

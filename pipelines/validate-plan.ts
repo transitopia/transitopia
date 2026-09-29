@@ -8,13 +8,13 @@ import { readdir } from 'node:fs/promises';
 import { CONFIG_DIR, FEEDS_OUT_DIR, readJson } from './lib/paths.ts';
 import { loadAllPlans, loadGraph } from './lib/infra.ts';
 import { dispatchSummary } from './lib/movements.ts';
-import { preparePlan } from '../src/core/schedule/engine.ts';
-import { TrainPlayback } from '../src/core/movement/playback.ts';
-import type { MovementsFile } from '../src/core/movement/types.ts';
-import type { KinematicsConfig } from '../src/core/movement/kinematics.ts';
-import type { OperationsConfig } from '../src/core/movement/build.ts';
-import { distM } from '../src/core/geo.ts';
-import { formatServiceTime } from '../src/core/time.ts';
+import { preparePlan } from '@transitopia/transit-core/schedule/engine.ts';
+import { TrainPlayback } from '@transitopia/transit-core/movement/playback.ts';
+import type { MovementsFile } from '@transitopia/transit-core/movement/types.ts';
+import type { KinematicsConfig } from '@transitopia/transit-core/movement/kinematics.ts';
+import type { OperationsConfig } from '@transitopia/transit-core/movement/build.ts';
+import { distM } from '@transitopia/transit-core/geo.ts';
+import { formatServiceTime } from '@transitopia/transit-core/time.ts';
 
 /** Largest plausible movement between samples: 90 km/h. */
 const MAX_SPEED_MS = 25;

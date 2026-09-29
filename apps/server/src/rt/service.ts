@@ -20,23 +20,23 @@
 
 import { readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import rtConfig from '../../data/config/rt.json' with { type: 'json' };
-import seabusConfig from '../../data/config/seabus.json' with { type: 'json' };
-import type { FeedManifest, ServicePlan } from '../../src/core/plan/types.ts';
-import type { RtCoverageResponse, RtLiveResponse, RtSnapshot, RtVehicle } from '../../src/core/rt/types.ts';
-import { PUBLIC_DATA_DIR, ROOT } from '../../scripts/lib/paths.ts';
+import rtConfig from '@transitopia/region-metro-vancouver/config/rt.json' with { type: 'json' };
+import seabusConfig from '@transitopia/region-metro-vancouver/config/seabus.json' with { type: 'json' };
+import type { FeedManifest, ServicePlan } from '@transitopia/transit-core/plan/types.ts';
+import type { RtCoverageResponse, RtLiveResponse, RtSnapshot, RtVehicle } from '@transitopia/transit-core/rt/types.ts';
+import { DISRUPTIONS_DIR, RT_HISTORY_DIR, AIS_HISTORY_DIR, PUBLIC_DIR, PUBLIC_DATA_DIR } from '@transitopia/pipelines/lib/paths.ts';
 import { aisstreamApiKey, translinkApiKey } from '../secrets.ts';
 import { AisFeed, type AisConfig } from './ais.ts';
-import { encodeFixes, type AisFixesResponse } from '../../src/core/ais/fixes.ts';
+import { encodeFixes, type AisFixesResponse } from '@transitopia/transit-core/ais/fixes.ts';
 import { Recorder } from './recorder.ts';
 import { LiveDispatcher, type LiveDispatchOptions } from './dispatch.ts';
 import { delayFor, fetchAlerts, fetchPositions, fetchTripUpdates, type TripDelays } from './upstream.ts';
 import { ServiceChanges } from './changes.ts';
-import type { RtRouteAlert } from '../../src/core/rt/changes.ts';
-import { localDate } from '../../src/core/time.ts';
+import type { RtRouteAlert } from '@transitopia/transit-core/rt/changes.ts';
+import { localDate } from '@transitopia/transit-core/time.ts';
 import { AlertDrafts } from './alerts.ts';
-import { draftFromAlert, type ServiceAlert } from '../../src/core/disruption/alerts.ts';
-import { cadence, pollIntervalS, POLL_FEEDS, RequestLedger, type CadenceConfig, type PollFeed } from '../../src/core/rt/budget.ts';
+import { draftFromAlert, type ServiceAlert } from '@transitopia/transit-core/disruption/alerts.ts';
+import { cadence, pollIntervalS, POLL_FEEDS, RequestLedger, type CadenceConfig, type PollFeed } from '@transitopia/transit-core/rt/budget.ts';
 
 const CADENCE = cadence(rtConfig as unknown as CadenceConfig);
 const SCHEDULE = (rtConfig as unknown as CadenceConfig).poll;
@@ -103,7 +103,7 @@ export class RtService {
   private ownsLock = false;
 
   constructor(opts: RtServiceOptions = {}) {
-    this.recorder = new Recorder(opts.historyDir ?? join(ROOT, 'data', 'rt-history'), CADENCE.coverageGapMs);
+    this.recorder = new Recorder(opts.historyDir ?? RT_HISTORY_DIR, CADENCE.coverageGapMs);
     this.log = opts.log ?? ((m) => console.log(`[rt] ${m}`));
     this.record = opts.record ?? true;
     this.apiKey = opts.apiKey === null ? undefined : (opts.apiKey ?? translinkApiKey());
@@ -114,13 +114,13 @@ export class RtService {
         apiKey: aisKey,
         cfg: seabusConfig.ais as unknown as AisConfig,
         route: 'seabus',
-        recorder: new Recorder(opts.aisHistoryDir ?? join(ROOT, 'data', 'ais-history'), seabusConfig.ais.coverageGapS * 1000),
+        recorder: new Recorder(opts.aisHistoryDir ?? AIS_HISTORY_DIR, seabusConfig.ais.coverageGapS * 1000),
         record: this.record,
         log: (m) => this.log(`AIS: ${m}`),
       });
     }
     this.changes = new ServiceChanges(join(this.recorder.dir, 'changes'), this.record);
-    this.alertDrafts = new AlertDrafts({ disruptionsDir: opts.disruptionsDir ?? join(ROOT, 'data', 'disruptions'), historyDir: this.recorder.dir, log: this.log });
+    this.alertDrafts = new AlertDrafts({ disruptionsDir: opts.disruptionsDir ?? DISRUPTIONS_DIR, historyDir: this.recorder.dir, log: this.log });
   }
 
   get hasKey(): boolean {
@@ -309,7 +309,7 @@ export class RtService {
       const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as FeedManifest;
       const map = new Map<string, string>();
       for (const f of manifest.feeds) {
-        const plan = JSON.parse(await readFile(join(ROOT, 'public', f.path), 'utf8')) as Pick<ServicePlan, 'routes'>;
+        const plan = JSON.parse(await readFile(join(PUBLIC_DIR, f.path), 'utf8')) as Pick<ServicePlan, 'routes'>;
         for (const r of plan.routes) if (r.kind === 'bus') map.set(r.gtfsRouteId, r.key);
         for (const r of plan.routes) if (r.kind === 'skytrain') this.railKeyById.set(r.gtfsRouteId, r.key);
       }

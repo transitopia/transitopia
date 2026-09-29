@@ -5,10 +5,10 @@
 
 import { readFile } from 'node:fs/promises';
 import { gunzipSync } from 'node:zlib';
-import { decodeSnapshot } from '../../src/core/rt/types.ts';
-import { fixToVehicle, parseAisMessage, serviceDateWindow, vehicleToFix } from '../../src/core/ais/fixes.ts';
-import type { AisFix } from '../../src/core/ais/match.ts';
-import { addDays, localDate } from '../../src/core/time.ts';
+import { decodeSnapshot } from '@transitopia/transit-core/rt/types.ts';
+import { fixToVehicle, parseAisMessage, serviceDateWindow, vehicleToFix } from '@transitopia/transit-core/ais/fixes.ts';
+import type { AisFix } from '@transitopia/transit-core/ais/match.ts';
+import { addDays, localDate } from '@transitopia/transit-core/time.ts';
 import { hourKey, type Recorder } from './recorder.ts';
 
 const URL = 'wss://stream.aisstream.io/v0/stream';

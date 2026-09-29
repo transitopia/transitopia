@@ -5,12 +5,12 @@
 
 import { readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ROOT, PUBLIC_DATA_DIR, log, readJson, writeJson } from './lib/paths.ts';
-import type { Observation, ObservationFile, ObservationIndex } from '../src/core/corrections/types.ts';
-import { observationProblems } from '../src/core/corrections/validate.ts';
+import { OBSERVATIONS_DIR, PUBLIC_DATA_DIR, log, readJson, writeJson } from './lib/paths.ts';
+import type { Observation, ObservationFile, ObservationIndex } from '@transitopia/transit-core/corrections/types.ts';
+import { observationProblems } from '@transitopia/transit-core/corrections/validate.ts';
 
 
-const SRC = join(ROOT, 'data', 'observations');
+const SRC = OBSERVATIONS_DIR;
 const OUT = join(PUBLIC_DATA_DIR, 'observations');
 async function main() {
   let files: string[] = [];

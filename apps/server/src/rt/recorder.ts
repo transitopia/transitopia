@@ -9,8 +9,8 @@ import { appendFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } fro
 import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { createGzip, gunzipSync } from 'node:zlib';
-import { decodeSnapshot, encodeSnapshot, extendCoverage, type RtSnapshot } from '../../src/core/rt/types.ts';
-import { toWallTime } from '../../src/core/time.ts';
+import { decodeSnapshot, encodeSnapshot, extendCoverage, type RtSnapshot } from '@transitopia/transit-core/rt/types.ts';
+import { toWallTime } from '@transitopia/transit-core/time.ts';
 
 export function hourKey(t: number): { date: string; hour: string } {
   const w = toWallTime(t);

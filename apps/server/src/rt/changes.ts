@@ -4,8 +4,8 @@
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { emptyDayChanges, type RtDayChanges, type RtRouteAlert } from '../../src/core/rt/changes.ts';
-import { localDate } from '../../src/core/time.ts';
+import { emptyDayChanges, type RtDayChanges, type RtRouteAlert } from '@transitopia/transit-core/rt/changes.ts';
+import { localDate } from '@transitopia/transit-core/time.ts';
 
 /** Days kept in memory; older ones are read from disk when asked for. */
 const MAX_DAYS_CACHED = 4;

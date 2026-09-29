@@ -2,15 +2,15 @@
 
 import { join } from 'node:path';
 import { log, writeJson } from './paths.ts';
-import type { TrackGraph, TrackPos } from '../../src/core/infra/graph.ts';
-import type { PlatformAssignment } from '../../src/core/infra/platforms.ts';
-import { preparePlan } from '../../src/core/schedule/engine.ts';
-import { buildMovements, type OperationsConfig } from '../../src/core/movement/build.ts';
-import { dispatch, type DispatchConfig } from '../../src/core/dispatch/dispatch.ts';
-import { serviceKey, type MovementsFile, type MovementsIndex } from '../../src/core/movement/types.ts';
-import type { KinematicsConfig } from '../../src/core/movement/kinematics.ts';
-import type { ServicePlan } from '../../src/core/plan/types.ts';
-import { addDays } from '../../src/core/time.ts';
+import type { TrackGraph, TrackPos } from '@transitopia/transit-core/infra/graph.ts';
+import type { PlatformAssignment } from '@transitopia/transit-core/infra/platforms.ts';
+import { preparePlan } from '@transitopia/transit-core/schedule/engine.ts';
+import { buildMovements, type OperationsConfig } from '@transitopia/transit-core/movement/build.ts';
+import { dispatch, type DispatchConfig } from '@transitopia/transit-core/dispatch/dispatch.ts';
+import { serviceKey, type MovementsFile, type MovementsIndex } from '@transitopia/transit-core/movement/types.ts';
+import type { KinematicsConfig } from '@transitopia/transit-core/movement/kinematics.ts';
+import type { ServicePlan } from '@transitopia/transit-core/plan/types.ts';
+import { addDays } from '@transitopia/transit-core/time.ts';
 
 export interface BuildAllInput {
   plan: ServicePlan;

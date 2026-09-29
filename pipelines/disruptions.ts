@@ -11,12 +11,12 @@
 
 import { readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import rtConfig from '../data/config/rt.json' with { type: 'json' };
-import { ROOT, log } from './lib/paths.ts';
+import rtConfig from '@transitopia/region-metro-vancouver/config/rt.json' with { type: 'json' };
+import { RT_HISTORY_DIR, log } from './lib/paths.ts';
 import { DISRUPTIONS_DIR, loadDisruptions } from './lib/disruptions.ts';
-import { AlertDrafts } from '../server/rt/alerts.ts';
-import type { ServiceAlert } from '../src/core/disruption/alerts.ts';
-import type { Disruption, DisruptionFile } from '../src/core/disruption/types.ts';
+import { AlertDrafts } from '@transitopia/server/rt/alerts.ts';
+import type { ServiceAlert } from '@transitopia/transit-core/disruption/alerts.ts';
+import type { Disruption, DisruptionFile } from '@transitopia/transit-core/disruption/types.ts';
 
 const DRAFTS = join(DISRUPTIONS_DIR, 'drafts');
 const args = process.argv.slice(2);
@@ -60,7 +60,7 @@ async function pull() {
   const res = await fetch(`${from.replace(/\/$/, '')}/rt/alerts`);
   if (!res.ok) throw new Error(`${from}/rt/alerts: HTTP ${res.status}`);
   const { alerts } = (await res.json()) as { alerts: (ServiceAlert & { drafted?: boolean })[] };
-  await new AlertDrafts({ disruptionsDir: DISRUPTIONS_DIR, historyDir: join(ROOT, 'data', 'rt-history'), log }).update(alerts.map(({ drafted: _d, ...a }) => a));
+  await new AlertDrafts({ disruptionsDir: DISRUPTIONS_DIR, historyDir: RT_HISTORY_DIR, log }).update(alerts.map(({ drafted: _d, ...a }) => a));
   await list();
 }
 

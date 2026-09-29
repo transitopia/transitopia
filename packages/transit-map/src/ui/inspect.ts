@@ -1,8 +1,8 @@
 // Details card for the selected vehicle. It follows the vehicle by id each frame and says plainly
 // whether the position is observed or estimated.
 
-import type { VehicleState } from '../../core/schedule/engine.ts';
-import type { PlanRoute } from '../../core/plan/types.ts';
+import type { VehicleState } from '@transitopia/transit-core/schedule/engine.ts';
+import type { PlanRoute } from '@transitopia/transit-core/plan/types.ts';
 
 const STATUS: Record<VehicleState['status'], string> = {
   moving: 'Next stop',

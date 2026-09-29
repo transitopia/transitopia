@@ -4,8 +4,8 @@
 // so both stand out against their own route line. Picking is done on the CPU.
 
 import type { Map as MlMap } from 'maplibre-gl';
-import type { VehicleState } from '../../core/schedule/engine.ts';
-import type { KinematicsConfig } from '../../core/movement/kinematics.ts';
+import type { VehicleState } from '@transitopia/transit-core/schedule/engine.ts';
+import type { KinematicsConfig } from '@transitopia/transit-core/movement/kinematics.ts';
 import { GlPolygonLayer, VERTEX_BYTES } from './gl-polygons.ts';
 import { VEHICLES_BEFORE_LAYER } from './static.ts';
 

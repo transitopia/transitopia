@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { mergeCorrections } from '../src/app/plans.ts';
-import type { ScheduleCorrections } from '../src/core/schedule/engine.ts';
+import { mergeCorrections } from '../src/plans.ts';
+import type { ScheduleCorrections } from '@transitopia/transit-core/schedule/engine.ts';
 
 describe('mergeCorrections', () => {
   it('keeps a ferry berth-pair shape override from either side', () => {

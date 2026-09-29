@@ -27,3 +27,10 @@ dist-ssr
 *.pmtiles
 # Except this symlink:
 !public/transitopia-cycling-british-columbia.pmtiles
+
+# Transit data: downloads, recordings and pipeline build output (see pipelines/lib/paths.ts)
+var/
+# API keys (TRANSLINK_API_KEY=…, AISSTREAM_API_KEY=…); read only by the server and pipelines
+.secrets
+.wrangler/
+regions/*/disruptions/drafts/

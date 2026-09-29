@@ -7,7 +7,7 @@
 import { appendFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { RAW_DIR, log } from './lib/paths.ts';
-import { aisstreamApiKey } from '../server/secrets.ts';
+import { aisstreamApiKey } from '@transitopia/server/secrets.ts';
 
 const FLEET: Record<string, string> = {
   '316011649': 'Burrard Beaver',

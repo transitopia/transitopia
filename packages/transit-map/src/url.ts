@@ -2,7 +2,7 @@
 // No time parameters means "live". The map position lives in the hash (MapLibre's hash option).
 // `t` is service-day time, so it may exceed 24:00 for after-midnight trips.
 
-import { formatServiceDate, formatServiceTime, parseGtfsTime, serviceDayStart } from '../core/time.ts';
+import { formatServiceDate, formatServiceTime, parseGtfsTime, serviceDayStart } from '@transitopia/transit-core/time.ts';
 import { displayServiceDate } from './plans.ts';
 import type { Clock } from './clock.ts';
 

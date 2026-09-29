@@ -1,6 +1,6 @@
 // Collapsible legend with per-route visibility toggles. Hidden routes persist per browser.
 
-import type { PlanRoute } from '../../core/plan/types.ts';
+import type { PlanRoute } from '@transitopia/transit-core/plan/types.ts';
 import { loadPref, savePref } from '../prefs.ts';
 
 const GROUPS: { title: string; kinds: PlanRoute['kind'][] }[] = [

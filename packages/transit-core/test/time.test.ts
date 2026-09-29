@@ -7,7 +7,7 @@ import {
   parseGtfsTime,
   serviceDayStart,
   toWallTime,
-} from '../src/core/time.ts';
+} from '../src/time.ts';
 
 describe('parseGtfsTime', () => {
   it('handles leading spaces and times past midnight', () => {

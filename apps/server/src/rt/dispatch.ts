@@ -9,15 +9,15 @@
 
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import rtConfig from '../../data/config/rt.json' with { type: 'json' };
-import { ROOT, readJson } from '../../scripts/lib/paths.ts';
-import { DispatchContexts } from '../../scripts/lib/dispatch-context.ts';
-import { datesOf, loadDisruptions } from '../../scripts/lib/disruptions.ts';
-import { activeDisruptions, dateVersion, dispatchDate, type DateInputs } from '../../src/core/dispatch/date.ts';
-import type { DispatchIndex, DispatchPatch } from '../../src/core/dispatch/patch.ts';
-import type { Observation, ObservationFile } from '../../src/core/corrections/types.ts';
-import { observationProblems } from '../../src/core/corrections/validate.ts';
-import { addDays, localDate } from '../../src/core/time.ts';
+import rtConfig from '@transitopia/region-metro-vancouver/config/rt.json' with { type: 'json' };
+import { OBSERVATIONS_DIR, DISRUPTIONS_DIR, DISPATCH_HISTORY_DIR, PUBLIC_DATA_DIR, readJson } from '@transitopia/pipelines/lib/paths.ts';
+import { DispatchContexts } from '@transitopia/pipelines/lib/dispatch-context.ts';
+import { datesOf, loadDisruptions } from '@transitopia/pipelines/lib/disruptions.ts';
+import { activeDisruptions, dateVersion, dispatchDate, type DateInputs } from '@transitopia/transit-core/dispatch/date.ts';
+import type { DispatchIndex, DispatchPatch } from '@transitopia/transit-core/dispatch/patch.ts';
+import type { Observation, ObservationFile } from '@transitopia/transit-core/corrections/types.ts';
+import { observationProblems } from '@transitopia/transit-core/corrections/validate.ts';
+import { addDays, localDate } from '@transitopia/transit-core/time.ts';
 
 export interface LiveDispatchOptions {
   observationsDir?: string;
@@ -44,9 +44,9 @@ export class LiveDispatcher {
   private builtAt = 0;
 
   constructor(opts: LiveDispatchOptions = {}) {
-    this.observationsDir = opts.observationsDir ?? join(ROOT, 'data', 'observations');
-    this.disruptionsDir = opts.disruptionsDir ?? join(ROOT, 'data', 'disruptions');
-    this.historyDir = opts.historyDir ?? join(ROOT, 'data', 'dispatch-history');
+    this.observationsDir = opts.observationsDir ?? OBSERVATIONS_DIR;
+    this.disruptionsDir = opts.disruptionsDir ?? DISRUPTIONS_DIR;
+    this.historyDir = opts.historyDir ?? DISPATCH_HISTORY_DIR;
     this.log = opts.log ?? ((m) => console.log(`[dispatch] ${m}`));
     this.now = opts.now ?? Date.now;
   }
@@ -95,7 +95,7 @@ export class LiveDispatcher {
 
   private async runCheck(): Promise<void> {
     // A rebuild (npm run data / build:movements) replaces the base plans: start from the new ones.
-    const built = await stat(join(ROOT, 'public', 'data', 'manifest.json')).then((s) => s.mtimeMs, () => 0);
+    const built = await stat(join(PUBLIC_DATA_DIR, 'manifest.json')).then((s) => s.mtimeMs, () => 0);
     if (built !== this.builtAt) {
       this.builtAt = built;
       this.contexts.reset();

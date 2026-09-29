@@ -4,13 +4,13 @@
 // vessels glide from where they were drawn to their corrected positions (core/ais/glide.ts) instead
 // of jumping; times the fixes already cover use every fix (hindsight), so replays never jump.
 
-import rtConfig from '../../data/config/rt.json';
-import seabusConfig from '../../data/config/seabus.json';
-import { decodeFixes, serviceDateWindow, type AisFixesResponse } from '../core/ais/fixes.ts';
-import { aisCorrections, type AisDay, type AisFix, type AisMatchConfig } from '../core/ais/match.ts';
-import { glideCorrections, type Glide, type GlideConfig } from '../core/ais/glide.ts';
-import type { PreparedPlan, ScheduleCorrections } from '../core/schedule/engine.ts';
-import { serviceDayStart } from '../core/time.ts';
+import rtConfig from '@transitopia/region-metro-vancouver/config/rt.json';
+import seabusConfig from '@transitopia/region-metro-vancouver/config/seabus.json';
+import { decodeFixes, serviceDateWindow, type AisFixesResponse } from '@transitopia/transit-core/ais/fixes.ts';
+import { aisCorrections, type AisDay, type AisFix, type AisMatchConfig } from '@transitopia/transit-core/ais/match.ts';
+import { glideCorrections, type Glide, type GlideConfig } from '@transitopia/transit-core/ais/glide.ts';
+import type { PreparedPlan, ScheduleCorrections } from '@transitopia/transit-core/schedule/engine.ts';
+import { serviceDayStart } from '@transitopia/transit-core/time.ts';
 
 const BASE = import.meta.env.BASE_URL;
 const ROUTE = 'seabus';

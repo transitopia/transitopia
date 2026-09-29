@@ -1,0 +1,16 @@
+{
+  "name": "@transitopia/transit-core",
+  "private": true,
+  "description": "DOM-free transit engine: GTFS, track graph, run inference, dispatcher, playback, corrections, RT prediction.",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@transitopia/region-metro-vancouver": "*",
+    "@types/geojson": "^7946.0.16"
+  }
+}

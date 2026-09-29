@@ -1,0 +1,28 @@
+{
+  "name": "@transitopia/transit-map",
+  "private": true,
+  "description": "The transit map engine (clock, playback, WebGL vehicle layers) and, for now, the standalone transit viewer.",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "dev": "vite --configLoader runner",
+    "build": "tsc --noEmit && vite build --configLoader runner",
+    "preview": "vite preview --configLoader runner",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@maplibre/maplibre-gl-style-spec": "^26.4.4",
+    "@protomaps/basemaps": "^5.7.2",
+    "@transitopia/region-metro-vancouver": "*",
+    "@transitopia/transit-core": "*",
+    "maplibre-gl": "^6.11.2",
+    "pmtiles": "^4.5.0"
+  },
+  "devDependencies": {
+    "@transitopia/server": "*",
+    "@types/geojson": "^7946.0.16",
+    "vite": "^8.3.1"
+  }
+}

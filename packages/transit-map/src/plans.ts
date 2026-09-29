@@ -2,19 +2,19 @@
 // by querying the service days that can have trips running then (today, and yesterday's after-midnight
 // trips), each against the feed that covers that date.
 
-import kinematicsConfig from '../../data/config/kinematics.json';
-import operationsConfig from '../../data/config/operations.json';
-import type { TrackGraph } from '../core/infra/graph.ts';
-import { TrainPlayback } from '../core/movement/playback.ts';
-import { serviceKey, type MovementsFile, type MovementsIndex } from '../core/movement/types.ts';
-import { reconcileScheduled, type ScheduledCorrections } from '../core/corrections/reconcile.ts';
-import { applyPatch, type DispatchIndex, type DispatchPatch } from '../core/dispatch/patch.ts';
-import type { Observation, ObservationFile, ObservationIndex } from '../core/corrections/types.ts';
-import type { ScenarioManifest } from '../core/scenario/types.ts';
-import { preparePlan, scheduledVehicles, type PreparedPlan, type ScheduleCorrections, type TripPacer, type VehicleState } from '../core/schedule/engine.ts';
-import { feedForDate, manifestRange, type FeedManifest, type ServicePlan } from '../core/plan/types.ts';
-import { addDays, localDate, serviceDayStart } from '../core/time.ts';
-import type { KinematicsConfig } from '../core/movement/kinematics.ts';
+import kinematicsConfig from '@transitopia/region-metro-vancouver/config/kinematics.json';
+import operationsConfig from '@transitopia/region-metro-vancouver/config/operations.json';
+import type { TrackGraph } from '@transitopia/transit-core/infra/graph.ts';
+import { TrainPlayback } from '@transitopia/transit-core/movement/playback.ts';
+import { serviceKey, type MovementsFile, type MovementsIndex } from '@transitopia/transit-core/movement/types.ts';
+import { reconcileScheduled, type ScheduledCorrections } from '@transitopia/transit-core/corrections/reconcile.ts';
+import { applyPatch, type DispatchIndex, type DispatchPatch } from '@transitopia/transit-core/dispatch/patch.ts';
+import type { Observation, ObservationFile, ObservationIndex } from '@transitopia/transit-core/corrections/types.ts';
+import type { ScenarioManifest } from '@transitopia/transit-core/scenario/types.ts';
+import { preparePlan, scheduledVehicles, type PreparedPlan, type ScheduleCorrections, type TripPacer, type VehicleState } from '@transitopia/transit-core/schedule/engine.ts';
+import { feedForDate, manifestRange, type FeedManifest, type ServicePlan } from '@transitopia/transit-core/plan/types.ts';
+import { addDays, localDate, serviceDayStart } from '@transitopia/transit-core/time.ts';
+import type { KinematicsConfig } from '@transitopia/transit-core/movement/kinematics.ts';
 
 export const kinematics = kinematicsConfig as unknown as KinematicsConfig;
 

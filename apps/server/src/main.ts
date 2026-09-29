@@ -4,7 +4,7 @@
 //   npm run server             # http://localhost:8787/rt/live
 
 import { createServer } from 'node:http';
-import rtConfig from '../data/config/rt.json' with { type: 'json' };
+import rtConfig from '@transitopia/region-metro-vancouver/config/rt.json' with { type: 'json' };
 import { RtService } from './rt/service.ts';
 import { serveRt } from './http.ts';
 

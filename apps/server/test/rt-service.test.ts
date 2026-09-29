@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
-import { RtService } from '../server/rt/service.ts';
+import { RtService } from '../src/rt/service.ts';
 
 const { FeedMessage } = GtfsRealtimeBindings.transit_realtime;
 

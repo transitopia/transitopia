@@ -13,7 +13,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import { promisify } from 'node:util';
-import { RAW_DIR, ROOT, log } from './lib/paths.ts';
+import { RAW_DIR, PUBLIC_DIR, log } from './lib/paths.ts';
 
 const run = promisify(execFile);
 
@@ -24,8 +24,8 @@ const MAXZOOM = 15;
 const FONTS = ['Noto Sans Regular', 'Noto Sans Medium', 'Noto Sans Italic'];
 
 const BIN_DIR = join(RAW_DIR, 'bin');
-const TILES_DIR = join(ROOT, 'public', 'tiles');
-const ASSETS_DIR = join(ROOT, 'public', 'basemap-assets');
+const TILES_DIR = join(PUBLIC_DIR, 'tiles');
+const ASSETS_DIR = join(PUBLIC_DIR, 'basemap-assets');
 const OUT = join(TILES_DIR, 'vancouver.pmtiles');
 
 async function exists(p: string): Promise<boolean> {

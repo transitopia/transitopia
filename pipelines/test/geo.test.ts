@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { cumulativeLengths, distM, pointAlong, projectOnto, simplify, type LonLat } from '../src/core/geo.ts';
-import { interpolateMissing } from '../scripts/build-schedule.ts';
+import { cumulativeLengths, distM, pointAlong, projectOnto, simplify, type LonLat } from '@transitopia/transit-core/geo.ts';
+import { interpolateMissing } from '../build-schedule.ts';
 
 // A 2 km east–west line at Vancouver's latitude.
 const line: LonLat[] = [
@@ -52,7 +52,7 @@ describe('interpolateMissing', () => {
 
 describe('routeSections', () => {
   it('marks sections served by few trips as limited', async () => {
-    const { routeSections } = await import('../src/core/plan/coverage.ts');
+    const { routeSections } = await import('@transitopia/transit-core/plan/coverage.ts');
     const plan = {
       shapes: {
         main: [[-123.1, 49.25], [-123.08, 49.25]],
@@ -74,7 +74,7 @@ describe('routeSections', () => {
   });
 
   it('marks the run from the last drop-off to a layover stop as carrying no passengers', async () => {
-    const { routeSections } = await import('../src/core/plan/coverage.ts');
+    const { routeSections } = await import('@transitopia/transit-core/plan/coverage.ts');
     // Last drop-off at 1455 m (no pickup there), then 145 m to a layover stop (no pickup or drop-off).
     const plan = {
       shapes: { s: [[-123.1, 49.25], [-123.078, 49.25]] },

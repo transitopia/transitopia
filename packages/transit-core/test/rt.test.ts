@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { coverageContains, decodeSnapshot, encodeSnapshot, extendCoverage, type RtSnapshot } from '../src/core/rt/types.ts';
-import { RtTimeline } from '../src/core/rt/timeline.ts';
-import { Predictor, ProfileBuilder, type PredictionConfig } from '../src/core/rt/profile.ts';
-import { cumulativeLengths, pointAlong, projectOnto, type LonLat } from '../src/core/geo.ts';
-import rtConfig from '../data/config/rt.json';
-import { delayCorrections } from '../src/core/rt/carry.ts';
-import { changesView, EFFECT_DETOUR, emptyDayChanges, type RtDayChanges } from '../src/core/rt/changes.ts';
-import { preparePlan, scheduledVehicles } from '../src/core/schedule/engine.ts';
-import type { ServicePlan } from '../src/core/plan/types.ts';
-import type { KinematicsConfig } from '../src/core/movement/kinematics.ts';
+import { coverageContains, decodeSnapshot, encodeSnapshot, extendCoverage, type RtSnapshot } from '../src/rt/types.ts';
+import { RtTimeline } from '../src/rt/timeline.ts';
+import { Predictor, ProfileBuilder, type PredictionConfig } from '../src/rt/profile.ts';
+import { cumulativeLengths, pointAlong, projectOnto, type LonLat } from '../src/geo.ts';
+import rtConfig from '@transitopia/region-metro-vancouver/config/rt.json';
+import { delayCorrections } from '../src/rt/carry.ts';
+import { changesView, EFFECT_DETOUR, emptyDayChanges, type RtDayChanges } from '../src/rt/changes.ts';
+import { preparePlan, scheduledVehicles } from '../src/schedule/engine.ts';
+import type { ServicePlan } from '../src/plan/types.ts';
+import type { KinematicsConfig } from '../src/movement/kinematics.ts';
 
 const kin: KinematicsConfig = {
   modes: { bus: { accel: 1, decel: 1, maxSpeed: 60, minCruiseFraction: 0, dwell: 0, length: 18, width: 2.6, profile: 'linear' } },

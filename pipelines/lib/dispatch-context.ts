@@ -3,17 +3,17 @@
 
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { CONFIG_DIR, PUBLIC_DATA_DIR, ROOT, readJson } from './paths.ts';
+import { CONFIG_DIR, PUBLIC_DIR, PUBLIC_DATA_DIR, readJson } from './paths.ts';
 import { loadGraph } from './infra.ts';
-import { preparePlan, type PreparedPlan } from '../../src/core/schedule/engine.ts';
-import { feedForDate, type FeedManifest, type ServicePlan } from '../../src/core/plan/types.ts';
-import { serviceKey, type MovementsFile, type MovementsIndex } from '../../src/core/movement/types.ts';
-import type { KinematicsConfig } from '../../src/core/movement/kinematics.ts';
-import type { OperationsConfig } from '../../src/core/movement/build.ts';
-import type { DispatchConfig } from '../../src/core/dispatch/dispatch.ts';
-import type { DateContext } from '../../src/core/dispatch/date.ts';
-import type { TrackGraph } from '../../src/core/infra/graph.ts';
-import { mapPlatforms, type PlatformReport } from '../../src/core/infra/platforms.ts';
+import { preparePlan, type PreparedPlan } from '@transitopia/transit-core/schedule/engine.ts';
+import { feedForDate, type FeedManifest, type ServicePlan } from '@transitopia/transit-core/plan/types.ts';
+import { serviceKey, type MovementsFile, type MovementsIndex } from '@transitopia/transit-core/movement/types.ts';
+import type { KinematicsConfig } from '@transitopia/transit-core/movement/kinematics.ts';
+import type { OperationsConfig } from '@transitopia/transit-core/movement/build.ts';
+import type { DispatchConfig } from '@transitopia/transit-core/dispatch/dispatch.ts';
+import type { DateContext } from '@transitopia/transit-core/dispatch/date.ts';
+import type { TrackGraph } from '@transitopia/transit-core/infra/graph.ts';
+import { mapPlatforms, type PlatformReport } from '@transitopia/transit-core/infra/platforms.ts';
 import type { Overrides } from './infra.ts';
 
 export class DispatchContexts {
@@ -41,7 +41,7 @@ export class DispatchContexts {
 
   /** A built movement file, re-read when it changes on disk (a rebuild while the service runs). */
   private async file(path: string): Promise<MovementsFile> {
-    const abs = join(ROOT, 'public', path);
+    const abs = join(PUBLIC_DIR, path);
     const key = `${path}|${(await stat(abs)).mtimeMs}`;
     let f = this.files.get(key);
     if (!f) {
@@ -58,9 +58,9 @@ export class DispatchContexts {
     if (!feed) return undefined;
     const { kin, ops, dispatch } = await this.loadConfigs();
     let ppP = this.plans.get(feed.version);
-    if (!ppP) this.plans.set(feed.version, (ppP = readJson<ServicePlan>(join(ROOT, 'public', feed.path)).then((p) => preparePlan(p, kin))));
+    if (!ppP) this.plans.set(feed.version, (ppP = readJson<ServicePlan>(join(PUBLIC_DIR, feed.path)).then((p) => preparePlan(p, kin))));
     const pp = await ppP;
-    const index = await readJson<MovementsIndex>(join(ROOT, 'public', feed.movements ?? `data/feeds/${feed.version}/movements/index.json`));
+    const index = await readJson<MovementsIndex>(join(PUBLIC_DIR, feed.movements ?? `data/feeds/${feed.version}/movements/index.json`));
     const rail = new Set(pp.plan.trips.filter((t) => pp.routes.get(pp.plan.patterns[t.pattern]!.route)?.kind === 'skytrain').map((t) => t.service));
     const key = serviceKey([...pp.servicesOn(date)].filter((s) => rail.has(s)));
     const path = index.files[key];

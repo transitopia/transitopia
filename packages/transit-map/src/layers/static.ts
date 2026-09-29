@@ -4,9 +4,9 @@
 import type { FeatureCollection, Feature } from 'geojson';
 import type { GeoJSONSource, Map as MlMap } from 'maplibre-gl';
 import type { ExpressionSpecification, GeoJSONSourceSpecification } from '@maplibre/maplibre-gl-style-spec';
-import type { ServicePlan } from '../../core/plan/types.ts';
-import { routeSections } from '../../core/plan/coverage.ts';
-import { busStopMarkers, busStopTicks } from '../../core/plan/bus-stops.ts';
+import type { ServicePlan } from '@transitopia/transit-core/plan/types.ts';
+import { routeSections } from '@transitopia/transit-core/plan/coverage.ts';
+import { busStopMarkers, busStopTicks } from '@transitopia/transit-core/plan/bus-stops.ts';
 import type { Theme } from '../basemap.ts';
 
 export const ROUTES_SOURCE = 'transit-routes';

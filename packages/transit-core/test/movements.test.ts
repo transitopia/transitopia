@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { TrackGraph } from '../src/core/infra/graph.ts';
-import { buildMovements, splitAtReversals, type OperationsConfig } from '../src/core/movement/build.ts';
-import { TrainPlayback } from '../src/core/movement/playback.ts';
-import { preparePlan } from '../src/core/schedule/engine.ts';
-import type { InfraCollection, InfraFeature, NodeKind, SegmentEnd, SegmentKind } from '../src/core/infra/types.ts';
-import type { PlatformAssignment } from '../src/core/infra/platforms.ts';
-import type { ServicePlan } from '../src/core/plan/types.ts';
-import type { KinematicsConfig } from '../src/core/movement/kinematics.ts';
-import { distM, type LonLat } from '../src/core/geo.ts';
-import { railInputs } from '../src/core/corrections/reconcile.ts';
-import { dispatch, type DispatchConfig } from '../src/core/dispatch/dispatch.ts';
-import type { MovementsFile } from '../src/core/movement/types.ts';
-import type { Observation } from '../src/core/corrections/types.ts';
-import { serviceDayStart } from '../src/core/time.ts';
+import { TrackGraph } from '../src/infra/graph.ts';
+import { buildMovements, splitAtReversals, type OperationsConfig } from '../src/movement/build.ts';
+import { TrainPlayback } from '../src/movement/playback.ts';
+import { preparePlan } from '../src/schedule/engine.ts';
+import type { InfraCollection, InfraFeature, NodeKind, SegmentEnd, SegmentKind } from '../src/infra/types.ts';
+import type { PlatformAssignment } from '../src/infra/platforms.ts';
+import type { ServicePlan } from '../src/plan/types.ts';
+import type { KinematicsConfig } from '../src/movement/kinematics.ts';
+import { distM, type LonLat } from '../src/geo.ts';
+import { railInputs } from '../src/corrections/reconcile.ts';
+import { dispatch, type DispatchConfig } from '../src/dispatch/dispatch.ts';
+import type { MovementsFile } from '../src/movement/types.ts';
+import type { Observation } from '../src/corrections/types.ts';
+import { serviceDayStart } from '../src/time.ts';
 
 // A single line with stub ends and a yard branching off the middle:
 //

@@ -7,11 +7,11 @@
 
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { PUBLIC_DATA_DIR, ROOT, log, readJson, writeJson } from './lib/paths.ts';
+import { PUBLIC_DIR, PUBLIC_DATA_DIR, log, readJson, writeJson } from './lib/paths.ts';
 import { DispatchContexts } from './lib/dispatch-context.ts';
-import { dispatchDate } from '../src/core/dispatch/date.ts';
-import type { DispatchIndex } from '../src/core/dispatch/patch.ts';
-import type { Observation, ObservationFile, ObservationIndex } from '../src/core/corrections/types.ts';
+import { dispatchDate } from '@transitopia/transit-core/dispatch/date.ts';
+import type { DispatchIndex } from '@transitopia/transit-core/dispatch/patch.ts';
+import type { Observation, ObservationFile, ObservationIndex } from '@transitopia/transit-core/corrections/types.ts';
 import { datesOf, loadDisruptions } from './lib/disruptions.ts';
 
 
@@ -28,7 +28,7 @@ async function main() {
   for (const d of disruptions) if (d.status !== 'draft') for (const x of datesOf(d)) dates.add(x);
   for (const date of [...dates].sort()) {
     const observations: Observation[] = [];
-    for (const p of obsIndex.byDate[date] ?? []) observations.push(...(await readJson<ObservationFile>(join(ROOT, 'public', p))).observations);
+    for (const p of obsIndex.byDate[date] ?? []) observations.push(...(await readJson<ObservationFile>(join(PUBLIC_DIR, p))).observations);
     const ctx = await contexts.forDate(date);
     if (!ctx) {
       log(`${date}: no dispatched plan covers this date; skipped`);
@@ -37,7 +37,7 @@ async function main() {
     const t0 = performance.now();
     const patch = await dispatchDate(ctx, { date, observations, disruptions }, builtAt);
     const path = `data/dispatch/${date}.json`;
-    await writeJson(join(ROOT, 'public', path), patch);
+    await writeJson(join(PUBLIC_DIR, path), patch);
     index.byDate[date] = { version: patch.version, path };
     const changed = patch.file ? `whole day re-planned (${patch.file.runs.length} runs)` : `${patch.runs.length} runs changed`;
     log(`${date}: ${patch.summary.inputs.join(', ') || 'no inputs'} → ${changed}; ${patch.summary.forced.length} forced; ${Math.round(performance.now() - t0)} ms`);

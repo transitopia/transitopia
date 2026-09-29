@@ -3,16 +3,16 @@
 // instant whether buses are shown from RT data (observed/interpolated) or schedule (estimated), and
 // loads TransLink's service changes (cancelled trips, skipped stops, detours) for the days shown.
 
-import rtConfig from '../../data/config/rt.json';
-import { coverageContains, decodeSnapshot, type RtCoverageResponse, type RtLiveResponse, type RtSnapshot } from '../core/rt/types.ts';
-import { RtTimeline } from '../core/rt/timeline.ts';
-import { Predictor, type PredictionConfig, type RtProfileFile } from '../core/rt/profile.ts';
-import type { PreparedPlan, ScheduleCorrections, VehicleState } from '../core/schedule/engine.ts';
-import { delayCorrections, type TripDelay } from '../core/rt/carry.ts';
-import { changesView, type ChangesView, type RtDayChanges } from '../core/rt/changes.ts';
-import { addDays, localDate, toWallTime } from '../core/time.ts';
+import rtConfig from '@transitopia/region-metro-vancouver/config/rt.json';
+import { coverageContains, decodeSnapshot, type RtCoverageResponse, type RtLiveResponse, type RtSnapshot } from '@transitopia/transit-core/rt/types.ts';
+import { RtTimeline } from '@transitopia/transit-core/rt/timeline.ts';
+import { Predictor, type PredictionConfig, type RtProfileFile } from '@transitopia/transit-core/rt/profile.ts';
+import type { PreparedPlan, ScheduleCorrections, VehicleState } from '@transitopia/transit-core/schedule/engine.ts';
+import { delayCorrections, type TripDelay } from '@transitopia/transit-core/rt/carry.ts';
+import { changesView, type ChangesView, type RtDayChanges } from '@transitopia/transit-core/rt/changes.ts';
+import { addDays, localDate, toWallTime } from '@transitopia/transit-core/time.ts';
 import { kinematics } from './plans.ts';
-import { cadence, type CadenceConfig } from '../core/rt/budget.ts';
+import { cadence, type CadenceConfig } from '@transitopia/transit-core/rt/budget.ts';
 
 const BASE = import.meta.env.BASE_URL;
 /** Live mode applies when the clock is within this of wall-clock time. */

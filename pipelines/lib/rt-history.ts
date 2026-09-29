@@ -5,14 +5,14 @@ import { existsSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
-import { decodeSnapshot, type RtSnapshot } from '../../src/core/rt/types.ts';
-import { feedForDate, type FeedManifest, type ServicePlan } from '../../src/core/plan/types.ts';
-import { preparePlan, type PreparedPlan } from '../../src/core/schedule/engine.ts';
-import type { KinematicsConfig } from '../../src/core/movement/kinematics.ts';
-import { localDate } from '../../src/core/time.ts';
-import { CONFIG_DIR, FEEDS_OUT_DIR, PUBLIC_DATA_DIR, ROOT, readJson } from './paths.ts';
+import { decodeSnapshot, type RtSnapshot } from '@transitopia/transit-core/rt/types.ts';
+import { feedForDate, type FeedManifest, type ServicePlan } from '@transitopia/transit-core/plan/types.ts';
+import { preparePlan, type PreparedPlan } from '@transitopia/transit-core/schedule/engine.ts';
+import type { KinematicsConfig } from '@transitopia/transit-core/movement/kinematics.ts';
+import { localDate } from '@transitopia/transit-core/time.ts';
+import { CONFIG_DIR, RT_HISTORY_DIR, PUBLIC_DATA_DIR, FEEDS_OUT_DIR, readJson } from './paths.ts';
 
-export const RT_HISTORY_DIR = join(ROOT, 'data', 'rt-history');
+export { RT_HISTORY_DIR };
 
 export interface RecordedHour {
   /** "<date>T<HH>" as recorded, e.g. "2026-09-26T17". */

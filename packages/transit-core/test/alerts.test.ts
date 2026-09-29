@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { draftFromAlert, type ServiceAlert } from '../src/core/disruption/alerts.ts';
+import { draftFromAlert, type ServiceAlert } from '../src/disruption/alerts.ts';
 
 // Alert texts as TransLink published them (GTFS-RT, 2026-09-28).
 const canada: ServiceAlert = {

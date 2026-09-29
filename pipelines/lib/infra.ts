@@ -2,14 +2,14 @@
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ROOT, PUBLIC_DATA_DIR, readJson } from './paths.ts';
-import { TrackGraph } from '../../src/core/infra/graph.ts';
-import type { InfraCollection } from '../../src/core/infra/types.ts';
-import type { PatternPlatformRule, PlatformOverride } from '../../src/core/infra/platforms.ts';
-import type { FeedManifest, ServicePlan } from '../../src/core/plan/types.ts';
-import type { LonLat } from '../../src/core/geo.ts';
+import { INFRA_DIR, PUBLIC_DIR, PUBLIC_DATA_DIR, readJson } from './paths.ts';
+import { TrackGraph } from '@transitopia/transit-core/infra/graph.ts';
+import type { InfraCollection } from '@transitopia/transit-core/infra/types.ts';
+import type { PatternPlatformRule, PlatformOverride } from '@transitopia/transit-core/infra/platforms.ts';
+import type { FeedManifest, ServicePlan } from '@transitopia/transit-core/plan/types.ts';
+import type { LonLat } from '@transitopia/transit-core/geo.ts';
 
-export const INFRA_DIR = join(ROOT, 'data', 'infrastructure');
+export { INFRA_DIR };
 
 export interface TurnOverride {
   node: LonLat;
@@ -49,10 +49,10 @@ export async function loadLatestPlan(): Promise<ServicePlan> {
   const manifest = await readJson<FeedManifest>(join(PUBLIC_DATA_DIR, 'manifest.json'));
   const feed = [...manifest.feeds].sort((a, b) => (a.start < b.start ? 1 : -1))[0];
   if (!feed) throw new Error('No built feeds; run npm run data:gtfs');
-  return readJson<ServicePlan>(join(ROOT, 'public', feed.path));
+  return readJson<ServicePlan>(join(PUBLIC_DIR, feed.path));
 }
 
 export async function loadAllPlans(): Promise<ServicePlan[]> {
   const manifest = await readJson<FeedManifest>(join(PUBLIC_DATA_DIR, 'manifest.json'));
-  return Promise.all(manifest.feeds.map((f) => readJson<ServicePlan>(join(ROOT, 'public', f.path))));
+  return Promise.all(manifest.feeds.map((f) => readJson<ServicePlan>(join(PUBLIC_DIR, f.path))));
 }

@@ -3,9 +3,9 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
-import { fetchAlerts, fetchTripUpdates } from '../server/rt/upstream.ts';
-import { ServiceChanges } from '../server/rt/changes.ts';
-import { alertActiveAt, changesView, EFFECT_DETOUR, EFFECT_NO_SERVICE, mergeAlerts, type RtRouteAlert } from '../src/core/rt/changes.ts';
+import { fetchAlerts, fetchTripUpdates } from '../src/rt/upstream.ts';
+import { ServiceChanges } from '../src/rt/changes.ts';
+import { alertActiveAt, changesView, EFFECT_DETOUR, EFFECT_NO_SERVICE, mergeAlerts, type RtRouteAlert } from '@transitopia/transit-core/rt/changes.ts';
 
 const { FeedMessage } = GtfsRealtimeBindings.transit_realtime;
 

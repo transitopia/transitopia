@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { busStopLabel, busStopMarkers, busStopTicks } from '../src/core/plan/bus-stops.ts';
-import type { ServicePlan } from '../src/core/plan/types.ts';
+import { busStopLabel, busStopMarkers, busStopTicks } from '../src/plan/bus-stops.ts';
+import type { ServicePlan } from '../src/plan/types.ts';
 
 describe('busStopLabel', () => {
   it('labels street stops by cross street and exchanges by name', () => {

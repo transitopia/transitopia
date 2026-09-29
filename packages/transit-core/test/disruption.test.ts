@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { TrackGraph } from '../src/core/infra/graph.ts';
-import { applyDisruptions } from '../src/core/disruption/apply.ts';
-import type { Disruption } from '../src/core/disruption/types.ts';
-import { buildMovements, type OperationsConfig } from '../src/core/movement/build.ts';
-import { dispatch, type DispatchConfig } from '../src/core/dispatch/dispatch.ts';
-import { TrainPlayback } from '../src/core/movement/playback.ts';
-import { preparePlan } from '../src/core/schedule/engine.ts';
-import type { InfraCollection, InfraFeature, NodeKind, SegmentEnd, SegmentKind } from '../src/core/infra/types.ts';
-import type { PlatformAssignment } from '../src/core/infra/platforms.ts';
-import type { ServicePlan } from '../src/core/plan/types.ts';
-import type { KinematicsConfig } from '../src/core/movement/kinematics.ts';
-import type { LonLat } from '../src/core/geo.ts';
+import { TrackGraph } from '../src/infra/graph.ts';
+import { applyDisruptions } from '../src/disruption/apply.ts';
+import type { Disruption } from '../src/disruption/types.ts';
+import { buildMovements, type OperationsConfig } from '../src/movement/build.ts';
+import { dispatch, type DispatchConfig } from '../src/dispatch/dispatch.ts';
+import { TrainPlayback } from '../src/movement/playback.ts';
+import { preparePlan } from '../src/schedule/engine.ts';
+import type { InfraCollection, InfraFeature, NodeKind, SegmentEnd, SegmentKind } from '../src/infra/types.ts';
+import type { PlatformAssignment } from '../src/infra/platforms.ts';
+import type { ServicePlan } from '../src/plan/types.ts';
+import type { KinematicsConfig } from '../src/movement/kinematics.ts';
+import type { LonLat } from '../src/geo.ts';
 
 // Double track A–M–B: U runs +x (A1, M1, B1), D runs −x (B2, M2, A2). Crossovers let −x trains move
 // from D to U before M (X2) and back to D after it (X1).

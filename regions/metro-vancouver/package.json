@@ -1,0 +1,9 @@
+{
+  "name": "@transitopia/region-metro-vancouver",
+  "private": true,
+  "description": "Curated inputs for Metro Vancouver: config, track infrastructure, scenarios, observations and disruptions.",
+  "type": "module",
+  "exports": {
+    "./*": "./*"
+  }
+}

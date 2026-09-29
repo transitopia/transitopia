@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { distanceAt, solveLeg, speedAt, type Kinematics } from '../src/core/movement/kinematics.ts';
+import { distanceAt, solveLeg, speedAt, type Kinematics } from '../src/movement/kinematics.ts';
 
 const train: Kinematics = {
   accel: 1,

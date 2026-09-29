@@ -6,9 +6,9 @@
 import type { FeatureCollection } from 'geojson';
 import type { GeoJSONSource, Map as MlMap } from 'maplibre-gl';
 import type { ExpressionSpecification } from '@maplibre/maplibre-gl-style-spec';
-import type { InfraCollection } from '../../core/infra/types.ts';
-import { TrackGraph } from '../../core/infra/graph.ts';
-import type { PlanRoute, ServicePlan } from '../../core/plan/types.ts';
+import type { InfraCollection } from '@transitopia/transit-core/infra/types.ts';
+import { TrackGraph } from '@transitopia/transit-core/infra/graph.ts';
+import type { PlanRoute, ServicePlan } from '@transitopia/transit-core/plan/types.ts';
 import type { Theme } from '../basemap.ts';
 import { VEHICLES_BEFORE_LAYER } from './static.ts';
 

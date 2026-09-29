@@ -3,12 +3,12 @@
 
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ROOT, readJson } from './paths.ts';
-import type { Disruption, DisruptionFile } from '../../src/core/disruption/types.ts';
-import { periodsOn } from '../../src/core/disruption/apply.ts';
-import { addDays, localDate } from '../../src/core/time.ts';
+import { DISRUPTIONS_DIR, readJson } from './paths.ts';
+import type { Disruption, DisruptionFile } from '@transitopia/transit-core/disruption/types.ts';
+import { periodsOn } from '@transitopia/transit-core/disruption/apply.ts';
+import { addDays, localDate } from '@transitopia/transit-core/time.ts';
 
-export const DISRUPTIONS_DIR = join(ROOT, 'data', 'disruptions');
+export { DISRUPTIONS_DIR };
 
 /** Confirmed and draft disruptions from data/disruptions/*.json. */
 export async function loadDisruptions(dir = DISRUPTIONS_DIR): Promise<Disruption[]> {

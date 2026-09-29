@@ -4,24 +4,24 @@
 //   npx tsx scripts/eval-ais.ts [YYYYMMDD]      # default: today's service date
 
 import { join } from 'node:path';
-import { CONFIG_DIR, ROOT, readJson } from './lib/paths.ts';
+import { CONFIG_DIR, INFRA_DIR, AIS_HISTORY_DIR, readJson } from './lib/paths.ts';
 import { loadLatestPlan } from './lib/infra.ts';
-import { Recorder } from '../server/rt/recorder.ts';
-import { readRecordedFixes } from '../server/rt/ais.ts';
-import { aisCorrections, type AisMatchConfig } from '../src/core/ais/match.ts';
-import { preparePlan } from '../src/core/schedule/engine.ts';
-import { distM, type LonLat } from '../src/core/geo.ts';
-import { formatServiceTime, localDate, serviceDayStart } from '../src/core/time.ts';
+import { Recorder } from '@transitopia/server/rt/recorder.ts';
+import { readRecordedFixes } from '@transitopia/server/rt/ais.ts';
+import { aisCorrections, type AisMatchConfig } from '@transitopia/transit-core/ais/match.ts';
+import { preparePlan } from '@transitopia/transit-core/schedule/engine.ts';
+import { distM, type LonLat } from '@transitopia/transit-core/geo.ts';
+import { formatServiceTime, localDate, serviceDayStart } from '@transitopia/transit-core/time.ts';
 
 const kin = await readJson<any>(join(CONFIG_DIR, 'kinematics.json'));
 const seabus = await readJson<any>(join(CONFIG_DIR, 'seabus.json'));
-const infra = await readJson<any>(join(ROOT, 'data', 'infrastructure', 'seabus.json'));
+const infra = await readJson<any>(join(INFRA_DIR, 'seabus.json'));
 const cfg = Object.fromEntries(Object.entries(seabus.ais.match).filter(([k]) => !k.startsWith('$'))) as unknown as AisMatchConfig;
 const names = new Map<string, string>(seabus.ais.vessels.map((v: any) => [v.mmsi, v.name]));
 
 const date = process.argv[2] ?? (new Date().getHours() < 3 ? localDate(Date.now() - 86_400_000) : localDate(Date.now()));
 const pp = preparePlan(await loadLatestPlan(), kin);
-const fixes = (await readRecordedFixes(new Recorder(join(ROOT, 'data', 'ais-history'), 75_000), date)).map((f) => ({ ...f, name: names.get(f.mmsi) ?? f.name }));
+const fixes = (await readRecordedFixes(new Recorder(AIS_HISTORY_DIR, 75_000), date)).map((f) => ({ ...f, name: names.get(f.mmsi) ?? f.name }));
 if (!fixes.length) {
   console.log(`No recorded AIS fixes for ${date} (data/ais-history/).`);
   process.exit(0);

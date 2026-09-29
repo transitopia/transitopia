@@ -7,7 +7,7 @@
 import { join } from 'node:path';
 import { PUBLIC_DATA_DIR, FEEDS_OUT_DIR, log, writeJson } from './lib/paths.ts';
 import { loadAllPlans, loadGraph } from './lib/infra.ts';
-import { mapPlatforms } from '../src/core/infra/platforms.ts';
+import { mapPlatforms } from '@transitopia/transit-core/infra/platforms.ts';
 
 export interface PlatformsFile {
   feedVersion: string;

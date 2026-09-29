@@ -6,12 +6,12 @@
 import { join } from 'node:path';
 import { readJson } from './lib/paths.ts';
 import { INFRA_DIR, loadGraph, loadLatestPlan } from './lib/infra.ts';
-import { mapPlatforms } from '../src/core/infra/platforms.ts';
-import { routePattern } from '../src/core/infra/patterns.ts';
-import type { Dir, TrackGraph } from '../src/core/infra/graph.ts';
-import type { SegmentKind } from '../src/core/infra/types.ts';
-import type { LonLat } from '../src/core/geo.ts';
-import { distM } from '../src/core/geo.ts';
+import { mapPlatforms } from '@transitopia/transit-core/infra/platforms.ts';
+import { routePattern } from '@transitopia/transit-core/infra/patterns.ts';
+import type { Dir, TrackGraph } from '@transitopia/transit-core/infra/graph.ts';
+import type { SegmentKind } from '@transitopia/transit-core/infra/types.ts';
+import type { LonLat } from '@transitopia/transit-core/geo.ts';
+import { distM } from '@transitopia/transit-core/geo.ts';
 
 interface ChecklistItem {
   name: string;

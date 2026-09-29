@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { TrackGraph } from '../src/core/infra/graph.ts';
-import { dispatch, type DispatchConfig } from '../src/core/dispatch/dispatch.ts';
-import { TrainPlayback } from '../src/core/movement/playback.ts';
-import { preparePlan } from '../src/core/schedule/engine.ts';
-import type { InfraCollection, InfraFeature, NodeKind, SegmentEnd, SegmentKind } from '../src/core/infra/types.ts';
-import type { MovementsFile } from '../src/core/movement/types.ts';
-import type { ServicePlan } from '../src/core/plan/types.ts';
-import type { KinematicsConfig } from '../src/core/movement/kinematics.ts';
-import type { LonLat } from '../src/core/geo.ts';
+import { TrackGraph } from '../src/infra/graph.ts';
+import { dispatch, type DispatchConfig } from '../src/dispatch/dispatch.ts';
+import { TrainPlayback } from '../src/movement/playback.ts';
+import { preparePlan } from '../src/schedule/engine.ts';
+import type { InfraCollection, InfraFeature, NodeKind, SegmentEnd, SegmentKind } from '../src/infra/types.ts';
+import type { MovementsFile } from '../src/movement/types.ts';
+import type { ServicePlan } from '../src/plan/types.ts';
+import type { KinematicsConfig } from '../src/movement/kinematics.ts';
+import type { LonLat } from '../src/geo.ts';
 
 // Double track at A merging into a single track to stub station B:
 //

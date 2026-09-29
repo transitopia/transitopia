@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { TrackGraph } from '../src/core/infra/graph.ts';
-import type { InfraCollection, InfraFeature, NodeKind, SegmentEnd, SegmentKind } from '../src/core/infra/types.ts';
-import type { LonLat } from '../src/core/geo.ts';
+import { TrackGraph } from '../src/infra/graph.ts';
+import type { InfraCollection, InfraFeature, NodeKind, SegmentEnd, SegmentKind } from '../src/infra/types.ts';
+import type { LonLat } from '../src/geo.ts';
 
 // A small synthetic layout (x = metres east, converted to degrees at 49.25°N):
 //

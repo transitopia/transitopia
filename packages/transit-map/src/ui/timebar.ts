@@ -3,7 +3,7 @@
 
 import type { Clock } from '../clock.ts';
 import { displayServiceDate, SERVICE_DAY_ROLLOVER_H } from '../plans.ts';
-import { formatServiceDate, parseServiceDate, serviceDayStart, toWallTime } from '../../core/time.ts';
+import { formatServiceDate, parseServiceDate, serviceDayStart, toWallTime } from '@transitopia/transit-core/time.ts';
 
 export const RATES = [-300, -60, -10, -1, 1, 10, 60, 300];
 const SLIDER_START_S = SERVICE_DAY_ROLLOVER_H * 3600;

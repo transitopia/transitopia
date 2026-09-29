@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import rtConfig from '../data/config/rt.json' with { type: 'json' };
-import { bandAt, cadence, maxRequestsPer24h, pollIntervalNearS, pollIntervalS, RequestLedger, simulatePolls, type CadenceConfig, type PollSchedule } from '../src/core/rt/budget.ts';
-import { fromWallTime } from '../src/core/time.ts';
+import rtConfig from '@transitopia/region-metro-vancouver/config/rt.json' with { type: 'json' };
+import { bandAt, cadence, maxRequestsPer24h, pollIntervalNearS, pollIntervalS, RequestLedger, simulatePolls, type CadenceConfig, type PollSchedule } from '../src/rt/budget.ts';
+import { fromWallTime } from '../src/time.ts';
 
 const SCHEDULE = (rtConfig as unknown as CadenceConfig).poll;
 /** Local (Vancouver) time. 2026-09-28 is a Monday. */

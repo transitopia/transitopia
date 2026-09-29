@@ -2,16 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { aisCorrections, schedTimeAt, type AisFix, type AisMatchConfig } from '../src/core/ais/match.ts';
-import { decodeFixes, encodeFixes, fixToVehicle, parseAisMessage, parseAisTime, vehicleToFix } from '../src/core/ais/fixes.ts';
-import { preparePlan, scheduledVehicles } from '../src/core/schedule/engine.ts';
-import { distM } from '../src/core/geo.ts';
-import { serviceDayStart } from '../src/core/time.ts';
-import type { ServicePlan } from '../src/core/plan/types.ts';
-import type { KinematicsConfig } from '../src/core/movement/kinematics.ts';
-import { AisFeed } from '../server/rt/ais.ts';
-import { glideCorrections, type GlideConfig } from '../src/core/ais/glide.ts';
-import { Recorder } from '../server/rt/recorder.ts';
+import { aisCorrections, schedTimeAt, type AisFix, type AisMatchConfig } from '@transitopia/transit-core/ais/match.ts';
+import { decodeFixes, encodeFixes, fixToVehicle, parseAisMessage, parseAisTime, vehicleToFix } from '@transitopia/transit-core/ais/fixes.ts';
+import { preparePlan, scheduledVehicles } from '@transitopia/transit-core/schedule/engine.ts';
+import { distM } from '@transitopia/transit-core/geo.ts';
+import { serviceDayStart } from '@transitopia/transit-core/time.ts';
+import type { ServicePlan } from '@transitopia/transit-core/plan/types.ts';
+import type { KinematicsConfig } from '@transitopia/transit-core/movement/kinematics.ts';
+import { AisFeed } from '../src/rt/ais.ts';
+import { glideCorrections, type GlideConfig } from '@transitopia/transit-core/ais/glide.ts';
+import { Recorder } from '../src/rt/recorder.ts';
 
 const kin: KinematicsConfig = {
   modes: { ferry: { accel: 0.08, decel: 0.08, maxSpeed: 24, minCruiseFraction: 0.6, dwell: 0, length: 34, width: 10, profile: 'trapezoid' } },
@@ -243,10 +243,10 @@ describe('AisFeed', () => {
       const utc = now.toISOString().replace('T', ' ').replace('Z', '') + ' +0000 UTC';
       emit('message', { data: JSON.stringify({ MessageType: 'PositionReport', MetaData: { MMSI: 316042365, ShipName: 'BURRARD CHINOOK', latitude: 49.29, longitude: -123.1, time_utc: utc }, Message: { PositionReport: { Sog: 11, Cog: 30 } } }) });
       await new Promise((r) => setTimeout(r, 10));
-      const { localDate } = await import('../src/core/time.ts');
+      const { localDate } = await import('@transitopia/transit-core/time.ts');
       // Before 03:00 local, fixes belong to the previous service date.
-      const w = (await import('../src/core/time.ts')).toWallTime(now.getTime());
-      const date = w.hour < 3 ? (await import('../src/core/time.ts')).addDays(localDate(now.getTime()), -1) : localDate(now.getTime());
+      const w = (await import('@transitopia/transit-core/time.ts')).toWallTime(now.getTime());
+      const date = w.hour < 3 ? (await import('@transitopia/transit-core/time.ts')).addDays(localDate(now.getTime()), -1) : localDate(now.getTime());
       const all = await feed.fixesFor(date);
       expect(all.fixes).toHaveLength(1);
       expect((await feed.fixesFor(date, all.cursor)).fixes).toHaveLength(0);

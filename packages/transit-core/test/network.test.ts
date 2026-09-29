@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildNetwork, type OsmNode, type OsmWay } from '../src/core/infra/network.ts';
+import { buildNetwork, type OsmNode, type OsmWay } from '../src/infra/network.ts';
 
 // The flat double crossover north of Broadway-City Hall (OSM geometry): the diagonals meet at ~16°.
 const pts: Record<number, [number, number]> = {

@@ -11,19 +11,19 @@ import { basemapStyle, type Theme } from './basemap.ts';
 import { addStaticLayers, applyRouteFilter, setFerryPair } from './layers/static.ts';
 import { VehicleLayer } from './layers/vehicles.ts';
 import { addTrackLayers, applyTrackFilter, loadPlatforms, loadTracks, setDebugPlatforms } from './layers/tracks.ts';
-import { TrackGraph } from '../core/infra/graph.ts';
-import type { InfraCollection } from '../core/infra/types.ts';
+import { TrackGraph } from '@transitopia/transit-core/infra/graph.ts';
+import type { InfraCollection } from '@transitopia/transit-core/infra/types.ts';
 import { Timebar } from './ui/timebar.ts';
 import { Legend } from './ui/legend.ts';
 import { InspectCard } from './ui/inspect.ts';
 import { readUrl, writeUrl } from './url.ts';
 import { RtClient, type RtMode } from './rt.ts';
 import { AisClient } from './ais.ts';
-import { addDays, localDate } from '../core/time.ts';
+import { addDays, localDate } from '@transitopia/transit-core/time.ts';
 import { loadPref, savePref } from './prefs.ts';
-import { makeServiceDescriber, type ServiceDayInfo } from '../core/gtfs/describe.ts';
-import { feedForDate } from '../core/plan/types.ts';
-import type { PreparedPlan, VehicleState } from '../core/schedule/engine.ts';
+import { makeServiceDescriber, type ServiceDayInfo } from '@transitopia/transit-core/gtfs/describe.ts';
+import { feedForDate } from '@transitopia/transit-core/plan/types.ts';
+import type { PreparedPlan, VehicleState } from '@transitopia/transit-core/schedule/engine.ts';
 
 type ThemePref = 'auto' | Theme;
 

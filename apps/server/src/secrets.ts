@@ -3,7 +3,7 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROOT } from '../scripts/lib/paths.ts';
+import { ROOT } from '@transitopia/pipelines/lib/paths.ts';
 
 export function secret(name: string): string | undefined {
   if (process.env[name]) return process.env[name]!.trim();

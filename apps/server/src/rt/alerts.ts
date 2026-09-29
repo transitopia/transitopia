@@ -5,8 +5,8 @@
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { draftFromAlert, type ServiceAlert } from '../../src/core/disruption/alerts.ts';
-import type { DisruptionFile } from '../../src/core/disruption/types.ts';
+import { draftFromAlert, type ServiceAlert } from '@transitopia/transit-core/disruption/alerts.ts';
+import type { DisruptionFile } from '@transitopia/transit-core/disruption/types.ts';
 
 export interface AlertDraftsOptions {
   disruptionsDir: string;

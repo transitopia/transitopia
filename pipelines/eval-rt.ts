@@ -17,18 +17,18 @@
 // first carried it) and measures what's displayed: jumps when a snapshot arrives, error against each
 // fix at the moment it was taken, backward movement, and apparent speed.
 
-import rtConfig from '../data/config/rt.json' with { type: 'json' };
-import { cumulativeLengths, projectOnto, type LonLat } from '../src/core/geo.ts';
-import { Predictor, ProfileBuilder, type PredictionConfig } from '../src/core/rt/profile.ts';
-import { RtTimeline } from '../src/core/rt/timeline.ts';
-import { distM } from '../src/core/geo.ts';
-import type { RtVehicle } from '../src/core/rt/types.ts';
-import type { PreparedPlan } from '../src/core/schedule/engine.ts';
-import type { KinematicsConfig } from '../src/core/movement/kinematics.ts';
+import rtConfig from '@transitopia/region-metro-vancouver/config/rt.json' with { type: 'json' };
+import { cumulativeLengths, projectOnto, type LonLat } from '@transitopia/transit-core/geo.ts';
+import { Predictor, ProfileBuilder, type PredictionConfig } from '@transitopia/transit-core/rt/profile.ts';
+import { RtTimeline } from '@transitopia/transit-core/rt/timeline.ts';
+import { distM } from '@transitopia/transit-core/geo.ts';
+import type { RtVehicle } from '@transitopia/transit-core/rt/types.ts';
+import type { PreparedPlan } from '@transitopia/transit-core/schedule/engine.ts';
+import type { KinematicsConfig } from '@transitopia/transit-core/movement/kinematics.ts';
 import { loadRecordedHours, planLoader, type RecordedHour } from './lib/rt-history.ts';
 import { log } from './lib/paths.ts';
-import { cadence, pollIntervalS, type CadenceConfig } from '../src/core/rt/budget.ts';
-import type { RtSnapshot } from '../src/core/rt/types.ts';
+import { cadence, pollIntervalS, type CadenceConfig } from '@transitopia/transit-core/rt/budget.ts';
+import type { RtSnapshot } from '@transitopia/transit-core/rt/types.ts';
 
 const CADENCE = cadence(rtConfig as unknown as CadenceConfig);
 

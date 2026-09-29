@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { reconcileScheduled } from '../src/core/corrections/reconcile.ts';
-import type { Observation } from '../src/core/corrections/types.ts';
-import { preparePlan, scheduledVehicles } from '../src/core/schedule/engine.ts';
-import type { ServicePlan } from '../src/core/plan/types.ts';
-import type { KinematicsConfig } from '../src/core/movement/kinematics.ts';
+import { reconcileScheduled } from '../src/corrections/reconcile.ts';
+import type { Observation } from '../src/corrections/types.ts';
+import { preparePlan, scheduledVehicles } from '../src/schedule/engine.ts';
+import type { ServicePlan } from '../src/plan/types.ts';
+import type { KinematicsConfig } from '../src/movement/kinematics.ts';
 
 const kin: KinematicsConfig = {
   modes: { ferry: { accel: 0.3, decel: 0.3, maxSpeed: 25, minCruiseFraction: 0, dwell: 0, length: 34, width: 10, profile: 'linear' } },

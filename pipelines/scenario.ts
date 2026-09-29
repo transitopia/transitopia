@@ -8,24 +8,24 @@
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { CONFIG_DIR, PUBLIC_DATA_DIR, ROOT, log, readJson, writeJson } from './lib/paths.ts';
+import { CONFIG_DIR, SCENARIOS_DIR, PUBLIC_DATA_DIR, log, readJson, writeJson } from './lib/paths.ts';
 import { INFRA_DIR, loadLatestPlan, loadOverrides, loadTracks } from './lib/infra.ts';
 import { buildAllMovements } from './lib/movements.ts';
-import type { DispatchConfig } from '../src/core/dispatch/dispatch.ts';
-import { TrackGraph } from '../src/core/infra/graph.ts';
-import { mapPlatforms } from '../src/core/infra/platforms.ts';
-import { routePattern } from '../src/core/infra/patterns.ts';
-import type { InfraCollection } from '../src/core/infra/types.ts';
-import { composeNetwork } from '../src/core/scenario/network.ts';
-import { applyService } from '../src/core/scenario/service.ts';
-import type { CustomTrackProps, ScenarioManifest, ScenarioSpec } from '../src/core/scenario/types.ts';
-import type { OperationsConfig } from '../src/core/movement/build.ts';
-import type { KinematicsConfig } from '../src/core/movement/kinematics.ts';
+import type { DispatchConfig } from '@transitopia/transit-core/dispatch/dispatch.ts';
+import { TrackGraph } from '@transitopia/transit-core/infra/graph.ts';
+import { mapPlatforms } from '@transitopia/transit-core/infra/platforms.ts';
+import { routePattern } from '@transitopia/transit-core/infra/patterns.ts';
+import type { InfraCollection } from '@transitopia/transit-core/infra/types.ts';
+import { composeNetwork } from '@transitopia/transit-core/scenario/network.ts';
+import { applyService } from '@transitopia/transit-core/scenario/service.ts';
+import type { CustomTrackProps, ScenarioManifest, ScenarioSpec } from '@transitopia/transit-core/scenario/types.ts';
+import type { OperationsConfig } from '@transitopia/transit-core/movement/build.ts';
+import type { KinematicsConfig } from '@transitopia/transit-core/movement/kinematics.ts';
 
 async function main() {
   const name = process.argv[2];
   if (!name || !/^[a-z0-9-]+$/.test(name)) throw new Error('Usage: npm run scenario -- <name> (lowercase, digits, dashes)');
-  const dir = join(ROOT, 'data', 'scenarios', name);
+  const dir = join(SCENARIOS_DIR, name);
   const spec = await readJson<ScenarioSpec>(join(dir, 'scenario.json'));
   const kin = await readJson<KinematicsConfig>(join(CONFIG_DIR, 'kinematics.json'));
   const ops = await readJson<OperationsConfig>(join(CONFIG_DIR, 'operations.json'));

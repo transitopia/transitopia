@@ -11,10 +11,10 @@ import { join } from 'node:path';
 import { CONFIG_DIR, FEEDS_OUT_DIR, readJson } from './lib/paths.ts';
 import { loadAllPlans, loadGraph } from './lib/infra.ts';
 import { buildAllMovements } from './lib/movements.ts';
-import { mapPlatforms } from '../src/core/infra/platforms.ts';
-import type { OperationsConfig } from '../src/core/movement/build.ts';
-import type { DispatchConfig } from '../src/core/dispatch/dispatch.ts';
-import type { KinematicsConfig } from '../src/core/movement/kinematics.ts';
+import { mapPlatforms } from '@transitopia/transit-core/infra/platforms.ts';
+import type { OperationsConfig } from '@transitopia/transit-core/movement/build.ts';
+import type { DispatchConfig } from '@transitopia/transit-core/dispatch/dispatch.ts';
+import type { KinematicsConfig } from '@transitopia/transit-core/movement/kinematics.ts';
 
 async function main() {
   const { graph, overrides } = await loadGraph();

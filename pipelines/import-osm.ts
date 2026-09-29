@@ -6,13 +6,12 @@
 
 import { join } from 'node:path';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { ROOT, RAW_DIR, log } from './lib/paths.ts';
+import { INFRA_DIR, RAW_DIR, log } from './lib/paths.ts';
 import { loadOverrides } from './lib/infra.ts';
-import { buildNetwork, type OsmNode, type OsmWay } from '../src/core/infra/network.ts';
-import { composeNetwork } from '../src/core/scenario/network.ts';
-import type { LineKey } from '../src/core/infra/types.ts';
+import { buildNetwork, type OsmNode, type OsmWay } from '@transitopia/transit-core/infra/network.ts';
+import { composeNetwork } from '@transitopia/transit-core/scenario/network.ts';
+import type { LineKey } from '@transitopia/transit-core/infra/types.ts';
 
-const INFRA_DIR = join(ROOT, 'data', 'infrastructure');
 
 interface OsmRelation {
   type: 'relation';

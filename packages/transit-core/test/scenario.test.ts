@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { TrackGraph } from '../src/core/infra/graph.ts';
-import { composeNetwork } from '../src/core/scenario/network.ts';
-import { applyService } from '../src/core/scenario/service.ts';
-import type { InfraCollection, InfraFeature, NodeKind, SegmentEnd } from '../src/core/infra/types.ts';
-import type { ServicePlan } from '../src/core/plan/types.ts';
-import type { KinematicsConfig } from '../src/core/movement/kinematics.ts';
-import type { LonLat } from '../src/core/geo.ts';
+import { TrackGraph } from '../src/infra/graph.ts';
+import { composeNetwork } from '../src/scenario/network.ts';
+import { applyService } from '../src/scenario/service.ts';
+import type { InfraCollection, InfraFeature, NodeKind, SegmentEnd } from '../src/infra/types.ts';
+import type { ServicePlan } from '../src/plan/types.ts';
+import type { KinematicsConfig } from '../src/movement/kinematics.ts';
+import type { LonLat } from '../src/geo.ts';
 
 const M_PER_DEG_LON = 111_320 * Math.cos((49.25 * Math.PI) / 180);
 const pt = (x: number, y = 0): LonLat => [Math.round((-123 + x / M_PER_DEG_LON) * 1e7) / 1e7, Math.round((49.25 + y / 110_574) * 1e7) / 1e7];

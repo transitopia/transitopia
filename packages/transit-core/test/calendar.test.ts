@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { activeServices, indexCalendar, type ServiceCalendar } from '../src/core/gtfs/calendar.ts';
-import { feedForDate, manifestRange, type FeedManifest } from '../src/core/plan/types.ts';
+import { activeServices, indexCalendar, type ServiceCalendar } from '../src/gtfs/calendar.ts';
+import { feedForDate, manifestRange, type FeedManifest } from '../src/plan/types.ts';
 
 // Mirrors the structure of TransLink feed 26SEP_20260925: weekday/Sat/Sun calendars, a Mon–Thu
 // supplement added only via calendar_dates, and holidays that remove weekday service.

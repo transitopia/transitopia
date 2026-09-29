@@ -6,9 +6,9 @@
 // timetable. Rebuild as history accumulates. Check the effect with `npx tsx scripts/eval-rt.ts`.
 
 import { join } from 'node:path';
-import rtConfig from '../data/config/rt.json' with { type: 'json' };
-import { ProfileBuilder, type PredictionConfig } from '../src/core/rt/profile.ts';
-import type { PreparedPlan } from '../src/core/schedule/engine.ts';
+import rtConfig from '@transitopia/region-metro-vancouver/config/rt.json' with { type: 'json' };
+import { ProfileBuilder, type PredictionConfig } from '@transitopia/transit-core/rt/profile.ts';
+import type { PreparedPlan } from '@transitopia/transit-core/schedule/engine.ts';
 import { FEEDS_OUT_DIR, log, writeJson } from './lib/paths.ts';
 import { loadRecordedHours, planLoader } from './lib/rt-history.ts';
 

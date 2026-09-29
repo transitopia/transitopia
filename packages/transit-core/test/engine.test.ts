@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { preparePlan, scheduledVehicles } from '../src/core/schedule/engine.ts';
-import type { ServicePlan } from '../src/core/plan/types.ts';
-import type { KinematicsConfig } from '../src/core/movement/kinematics.ts';
+import { preparePlan, scheduledVehicles } from '../src/schedule/engine.ts';
+import type { ServicePlan } from '../src/plan/types.ts';
+import type { KinematicsConfig } from '../src/movement/kinematics.ts';
 
 const kin: KinematicsConfig = {
   modes: {
