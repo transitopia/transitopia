@@ -13,6 +13,16 @@ https://docs.protomaps.com/deploy/cloudflare. A file `<name>.pmtiles` in the buc
 | `transitopia-cycling-british-columbia.pmtiles` | `.github/workflows/build_cycling.yml`, daily (`map-layers/`) |
 | `transitopia-base-bc.pmtiles` | Retired in V2 (the OpenMapTiles basemap); delete once V2 is live. |
 
+The worker's `ALLOWED_ORIGINS` variable lists the sites allowed to use the tiles (CORS), comma
+separated. It keeps other websites from building maps on our tiles and using up our Cloudflare
+allowance. It doesn't stop non-browser clients. Entries may use `*` for one subdomain label, which
+is a Transitopia change to the upstream worker:
+
+    https://www.transitopia.org,https://transitopia.org,https://*.transitopia-web.pages.dev,https://transitopia-web.pages.dev,http://localhost:5173
+
+`worker.js` isn't deployed by CI: after changing it, paste it into the worker in the Cloudflare
+dashboard (or deploy it with wrangler).
+
 To upload by hand:
 
     rclone copy var/public/tiles/protomaps-bc.pmtiles transitopia-maps-r2:transitopia-maps --s3-no-check-bucket
