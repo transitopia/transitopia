@@ -42,7 +42,6 @@ import {
   type CadenceConfig,
 } from "@transitopia/transit-core/rt/budget.ts";
 
-const BASE = import.meta.env.BASE_URL;
 /** Live mode applies when the clock is within this of wall-clock time. */
 const LIVE_WINDOW_MS = 10 * 60_000;
 /** How much live history to keep in memory for interpolation. */
@@ -98,7 +97,18 @@ export class RtClient {
   /** Per feed version: the predictor, once its travel-time profile has loaded (or turned out missing). */
   private predictors = new Map<string, Predictor | "loading">();
   private listeners = new Set<() => void>();
-  available = true;
+  available: boolean;
+  /** URL prefixes of the published data and of the RT service (undefined: schedules only). */
+  private readonly data: string;
+  private readonly api: string | undefined;
+
+  constructor(urls: { data: string; api: string | undefined }) {
+    this.data = urls.data;
+    this.api = urls.api;
+    this.available = urls.api !== undefined;
+    if (!this.available)
+      this.liveError = "Real-time data isn't available on this site yet";
+  }
 
   onChange(fn: () => void): () => void {
     this.listeners.add(fn);
@@ -111,6 +121,7 @@ export class RtClient {
 
   /** Called every frame with the clock time; schedules any fetches needed. */
   update(t: number): void {
+    if (!this.api) return;
     const nearNow = Math.abs(t - Date.now()) < LIVE_WINDOW_MS;
     if (nearNow) this.ensureLivePolling();
     else this.stopLivePolling();
@@ -279,7 +290,7 @@ export class RtClient {
       const entry = e;
       entry.loading = true;
       entry.fetchedAt = now;
-      fetch(`${BASE}rt/changes?date=${date}`)
+      fetch(`${this.api}rt/changes?date=${date}`)
         .then((r) => (r.ok ? (r.json() as Promise<RtDayChanges>) : undefined))
         .catch(() => undefined)
         .then((data) => {
@@ -308,7 +319,7 @@ export class RtClient {
     this.predictors.set(version, "loading");
     // Scenario plans ("<version>~<name>") share the base feed's profile.
     const base = version.split("~")[0];
-    fetch(`${BASE}data/feeds/${base}/rt-profile.json`)
+    fetch(`${this.data}data/feeds/${base}/rt-profile.json`)
       .then((r) => (r.ok ? (r.json() as Promise<RtProfileFile>) : undefined))
       .catch(() => undefined)
       .then((profile) => {
@@ -322,6 +333,11 @@ export class RtClient {
         this.emit();
       });
     return undefined;
+  }
+
+  /** Stop polling (the engine is being disposed). */
+  stop(): void {
+    this.stopLivePolling();
   }
 
   liveStatus(): string | undefined {
@@ -349,7 +365,7 @@ export class RtClient {
     if (this.liveTimer !== undefined) return;
     const poll = async () => {
       try {
-        const res = await fetch(`${BASE}rt/live`, { cache: "no-cache" });
+        const res = await fetch(`${this.api}rt/live`, { cache: "no-cache" });
         if (res.status === 404) {
           // No RT service (e.g. a static build without the proxy).
           this.available = false;
@@ -429,7 +445,9 @@ export class RtClient {
     chunk: HourChunk,
   ): Promise<void> {
     try {
-      const res = await fetch(`${BASE}rt/history?date=${date}&hour=${hour}`);
+      const res = await fetch(
+        `${this.api}rt/history?date=${date}&hour=${hour}`,
+      );
       if (!res.ok) {
         chunk.status = "missing";
         return;
@@ -460,13 +478,14 @@ export class RtClient {
   }
 
   private async fetchCoverage(from: number, to: number): Promise<void> {
+    if (!this.api) return;
     this.coverageFetchedAt = Date.now();
     // Fetch a generous window so scrubbing around the day doesn't refetch.
     const lo = from - 86_400_000;
     const hi = to + 86_400_000;
     try {
       const res = await fetch(
-        `${BASE}rt/coverage?from=${Math.round(lo)}&to=${Math.round(hi)}`,
+        `${this.api}rt/coverage?from=${Math.round(lo)}&to=${Math.round(hi)}`,
       );
       if (res.status === 404) {
         this.available = false;

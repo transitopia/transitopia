@@ -147,11 +147,16 @@ export function maxRequestsPer24h(
 export class RequestLedger {
   private entries: [number, PollFeed][];
 
+  readonly cap: number;
+  readonly windowMs: number;
+
   constructor(
-    readonly cap: number,
+    cap: number,
     entries: [number, PollFeed][] = [],
-    readonly windowMs = DAY_MS,
+    windowMs = DAY_MS,
   ) {
+    this.cap = cap;
+    this.windowMs = windowMs;
     this.entries = entries
       .filter(
         (e) =>

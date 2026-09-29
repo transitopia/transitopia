@@ -61,7 +61,10 @@ export class AisFeed {
   private mmsis: Set<string>;
   private log: (msg: string) => void;
 
-  constructor(private opts: AisFeedOptions) {
+  private opts: AisFeedOptions;
+
+  constructor(opts: AisFeedOptions) {
+    this.opts = opts;
     this.mmsis = new Set(opts.cfg.vessels.map((v) => v.mmsi));
     this.log = opts.log ?? ((m) => console.log(`[ais] ${m}`));
   }

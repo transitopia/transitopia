@@ -40,11 +40,14 @@ export class Recorder {
   private loaded = false;
   private writing: Promise<void> = Promise.resolve();
 
-  constructor(
-    readonly dir: string,
-    /** Coverage continues across gaps up to this (ms), fixed or depending on the time. */
-    private gapMs: number | ((t: number) => number),
-  ) {}
+  readonly dir: string;
+  /** Coverage continues across gaps up to this (ms), fixed or depending on the time. */
+  private gapMs: number | ((t: number) => number);
+
+  constructor(dir: string, gapMs: number | ((t: number) => number)) {
+    this.dir = dir;
+    this.gapMs = gapMs;
+  }
 
   private get coveragePath(): string {
     return join(this.dir, "coverage.json");

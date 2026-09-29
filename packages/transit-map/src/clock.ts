@@ -2,6 +2,9 @@
 // (including negative) and any seek are exact. Listeners fire on discrete changes (seek, rate,
 // play/pause), not per frame; the render loop reads now() each frame.
 
+/** Playback rates offered by the time controls (negative plays backwards). */
+export const RATES = [-300, -60, -10, -1, 1, 10, 60, 300];
+
 export type ClockListener = (clock: Clock) => void;
 
 /** How close to wall-clock time counts as "live". */

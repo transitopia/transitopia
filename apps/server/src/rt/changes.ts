@@ -26,10 +26,13 @@ export class ServiceChanges {
   private days = new Map<string, RtDayChanges>();
   private writing: Promise<void> = Promise.resolve();
 
-  constructor(
-    readonly dir: string,
-    private record: boolean,
-  ) {}
+  readonly dir: string;
+  private record: boolean;
+
+  constructor(dir: string, record: boolean) {
+    this.dir = dir;
+    this.record = record;
+  }
 
   private path(date: string): string {
     return join(this.dir, `${date}.json`);

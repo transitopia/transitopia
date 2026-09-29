@@ -2,7 +2,7 @@
 //
 //   tsx pipelines/screenshot.ts <out.png> [path-and-query] [--mobile] [--dark] [--wait ms] [--click x,y]
 //
-// Example: tsx pipelines/screenshot.ts /tmp/a.png "/?date=2026-09-28&t=08:00:00&paused=1#map=13/49.28/-123.11"
+// Example: tsx pipelines/screenshot.ts /tmp/a.png "/transit?date=2026-09-28&t=08:00:00&paused=1#map=13/49.28/-123.11"
 // Requires `npm run dev` (http://localhost:5173). Browser console errors are printed.
 
 import { chromium } from "playwright-core";
@@ -75,7 +75,7 @@ if (pick) {
   // Use with paused=1 so the vehicle stays put.
   const found = await page.evaluate((route) => {
     const w = window as unknown as {
-      skytrain: {
+      transit: {
         map: { jumpTo(o: { center: [number, number]; zoom: number }): void };
         vehicles(): {
           routeKey: string;
@@ -85,10 +85,10 @@ if (pick) {
         }[];
       };
     };
-    const v = w.skytrain
+    const v = w.transit
       .vehicles()
       .find((x) => x.routeKey === route && x.status === "moving");
-    if (v) w.skytrain.map.jumpTo({ center: [v.lon, v.lat], zoom: 16 });
+    if (v) w.transit.map.jumpTo({ center: [v.lon, v.lat], zoom: 16 });
     return Boolean(v);
   }, pick);
   if (!found) console.log(`No moving ${pick} vehicle found`);

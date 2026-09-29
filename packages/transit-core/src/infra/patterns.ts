@@ -24,8 +24,8 @@ export interface PatternRoute {
   /** Path for each hop i → i+1 (undefined when unroutable). */
   hops: (Path | undefined)[];
   /** Direction of travel when departing the first stop / arriving at the last. */
-  startDir?: Dir;
-  endDir?: Dir;
+  startDir?: Dir | undefined;
+  endDir?: Dir | undefined;
   /** Stop-pair names that couldn't be routed. */
   failures: string[];
 }
@@ -50,7 +50,12 @@ export function routePattern(
   const hops: (Path | undefined)[] = [];
   // Try both initial directions; keep the one that routes the whole pattern best.
   let best:
-    | { hops: (Path | undefined)[]; fails: number; len: number; startDir?: Dir }
+    | {
+        hops: (Path | undefined)[];
+        fails: number;
+        len: number;
+        startDir?: Dir | undefined;
+      }
     | undefined;
   for (const d0 of [1, -1] as Dir[]) {
     const hs: (Path | undefined)[] = [];

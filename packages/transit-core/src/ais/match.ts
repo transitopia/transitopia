@@ -30,15 +30,15 @@ import { serviceDayStart } from "../time.ts";
 
 export interface AisFix {
   mmsi: string;
-  name?: string;
+  name?: string | undefined;
   /** Epoch ms of the fix. */
   ts: number;
   lat: number;
   lon: number;
   /** Speed over ground, knots. */
-  sog?: number;
+  sog?: number | undefined;
   /** Course over ground, degrees. */
-  cog?: number;
+  cog?: number | undefined;
 }
 
 export interface AisMatchConfig {

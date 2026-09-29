@@ -1,7 +1,7 @@
 // Per-browser conveniences (theme, hidden routes, legend state). Storage can be unavailable
 // (private mode, blocked site data), so every access is guarded and defaults always work.
 
-const PREFIX = "skytrain-viz:";
+const PREFIX = "transitopia:transit:";
 
 export function loadPref<T>(key: string, fallback: T): T {
   try {

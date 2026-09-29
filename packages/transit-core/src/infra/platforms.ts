@@ -88,8 +88,8 @@ type Pins = Map<number, Set<number>>;
 interface PatternEnds {
   route: string;
   weight: number;
-  first: { si: number; ci: number; dir: Dir; pin?: TrackPos };
-  last: { si: number; ci: number; dir: Dir; pin?: TrackPos };
+  first: { si: number; ci: number; dir: Dir; pin?: TrackPos | undefined };
+  last: { si: number; ci: number; dir: Dir; pin?: TrackPos | undefined };
 }
 
 interface Solution {

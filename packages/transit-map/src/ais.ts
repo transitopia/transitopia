@@ -28,7 +28,6 @@ import type {
 } from "@transitopia/transit-core/schedule/engine.ts";
 import { serviceDayStart } from "@transitopia/transit-core/time.ts";
 
-const BASE = import.meta.env.BASE_URL;
 const ROUTE = "seabus";
 const MATCH = Object.fromEntries(
   Object.entries(seabusConfig.ais.match).filter(([k]) => !k.startsWith("$")),
@@ -48,7 +47,7 @@ interface DateFixes {
   loading: boolean;
   nextPollAt: number;
   /** Epoch ms when the latest new fixes arrived, until folded into a glide. */
-  arrivedAt?: number;
+  arrivedAt?: number | undefined;
   /** Corrections from all fixes, and a glide from what was shown to them (service-day seconds). */
   memo?: {
     pp: PreparedPlan;
@@ -61,9 +60,16 @@ interface DateFixes {
 export class AisClient {
   private dates = new Map<string, DateFixes>();
   private listeners = new Set<() => void>();
-  available = true;
+  available: boolean;
   /** Why live AIS data is unavailable, for display. */
   error: string | undefined;
+  /** URL prefix of the RT service, or undefined for schedules only. */
+  private readonly api: string | undefined;
+
+  constructor(api: string | undefined) {
+    this.api = api;
+    this.available = api !== undefined;
+  }
 
   onChange(fn: () => void): () => void {
     this.listeners.add(fn);
@@ -143,7 +149,7 @@ export class AisClient {
     d.loading = true;
     try {
       const res = await fetch(
-        `${BASE}rt/ais/fixes?date=${date}${d.cursor ? `&after=${d.cursor}` : ""}`,
+        `${this.api}rt/ais/fixes?date=${date}${d.cursor ? `&after=${d.cursor}` : ""}`,
         { cache: "no-cache" },
       );
       if (res.status === 404) {

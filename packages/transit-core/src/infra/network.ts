@@ -36,7 +36,7 @@ export interface OsmNode {
   id: number;
   lat: number;
   lon: number;
-  tags?: Record<string, string>;
+  tags?: Record<string, string> | undefined;
 }
 
 export interface OsmWay {

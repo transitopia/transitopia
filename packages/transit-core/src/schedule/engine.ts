@@ -45,33 +45,33 @@ export interface VehicleState {
   /** Degrees clockwise from north. */
   bearing: number;
   /** m/s, where known. */
-  speed?: number;
+  speed?: number | undefined;
   status: VehicleStatus;
   /** Stop the vehicle is at (dwell/layover) or heading to (moving). */
-  stopName?: string;
+  stopName?: string | undefined;
   provenance: Provenance;
   source: string;
   /** Caveat about this position or its data, shown in the inspect panel. */
-  note?: string;
+  note?: string | undefined;
   serviceDate: string;
   /** Real-time vehicle label (e.g. bus fleet number), when observed. */
-  label?: string;
+  label?: string | undefined;
   /** Seconds late (+) or early (−), when known. */
-  delay?: number;
+  delay?: number | undefined;
   /** Epoch ms of the real-time fix this position is based on (observed/interpolated only). */
-  observedAt?: number;
+  observedAt?: number | undefined;
   /** Inferred physical train run (SkyTrain), e.g. "expo-012". */
-  runId?: string;
+  runId?: string | undefined;
   /** Tail-to-head polyline along the track, for drawing trains around curves. */
-  shape?: [number, number][];
+  shape?: [number, number][] | undefined;
   /** Position on the track graph (track-level playback only). */
   track?: { seg: string; offset: number };
   /** Observed consist (corrections), e.g. { type: 'Mk III', cars: 4 } or { name: 'Burrard Pacific Breeze' }. */
   consist?: {
-    name?: string;
-    type?: string;
-    cars?: number;
-    carNumbers?: string[];
+    name?: string | undefined;
+    type?: string | undefined;
+    cars?: number | undefined;
+    carNumbers?: string[] | undefined;
   };
   length: number;
   width: number;
@@ -313,9 +313,9 @@ export interface ScheduleQuery {
   serviceDate: string;
   /** Seconds since the service day's start (may exceed 86400 for after-midnight service). */
   sec: number;
-  routes?: Set<string>;
+  routes?: Set<string> | undefined;
   /** Paces trips between their timetable times (e.g. buses, with learned stops and slow sections). */
-  pacer?: TripPacer;
+  pacer?: TripPacer | undefined;
 }
 
 /**

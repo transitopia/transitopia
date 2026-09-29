@@ -15,9 +15,5 @@
     "@transitopia/region-metro-vancouver": "*",
     "@transitopia/transit-core": "*",
     "gtfs-realtime-bindings": "^2.2.0"
-  },
-  "devDependencies": {
-    "@types/geojson": "^7946.0.16",
-    "vite": "^8.3.1"
   }
 }

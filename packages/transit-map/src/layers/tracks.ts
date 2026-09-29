@@ -12,7 +12,7 @@ import type {
   PlanRoute,
   ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
-import type { Theme } from "../basemap.ts";
+import type { Theme } from "@transitopia/map-style/basemap.ts";
 import { VEHICLES_BEFORE_LAYER } from "./static.ts";
 
 export const TRACKS_SOURCE = "tracks";
@@ -25,8 +25,7 @@ const TRACK_LAYERS = [
 ];
 /** Each track layer's own filter, so line visibility can be combined with it. */
 const baseFilters = new Map<string, ExpressionSpecification>();
-const DEBUG_SOURCE = "tracks-debug";
-const BASE = import.meta.env.BASE_URL;
+export const DEBUG_SOURCE = "tracks-debug";
 
 export interface PlatformsFile {
   feedVersion: string;
@@ -37,10 +36,11 @@ export interface PlatformsFile {
 }
 
 export async function loadTracks(
+  base: string,
   path = "data/infra/tracks.geojson",
 ): Promise<InfraCollection | undefined> {
   try {
-    const res = await fetch(`${BASE}${path}`);
+    const res = await fetch(`${base}${path}`);
     return res.ok ? ((await res.json()) as InfraCollection) : undefined;
   } catch {
     return undefined;
@@ -48,10 +48,11 @@ export async function loadTracks(
 }
 
 export async function loadPlatforms(
+  base: string,
   feedVersion: string,
 ): Promise<PlatformsFile | undefined> {
   try {
-    const res = await fetch(`${BASE}data/feeds/${feedVersion}/platforms.json`);
+    const res = await fetch(`${base}data/feeds/${feedVersion}/platforms.json`);
     return res.ok ? ((await res.json()) as PlatformsFile) : undefined;
   } catch {
     return undefined;

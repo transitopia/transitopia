@@ -184,10 +184,13 @@ export class VehicleLayer {
   private mercPerPx = 0;
   selectedId: string | undefined;
 
-  constructor(
-    private map: MlMap,
-    private sizing: KinematicsConfig["sizing"],
-  ) {}
+  private map: MlMap;
+  private sizing: KinematicsConfig["sizing"];
+
+  constructor(map: MlMap, sizing: KinematicsConfig["sizing"]) {
+    this.map = map;
+    this.sizing = sizing;
+  }
 
   /** Add (or re-add after a style change) beneath the station labels. */
   attach(): void {
@@ -198,6 +201,10 @@ export class VehicleLayer {
     // setStyle keeps custom layers, but the route/track layers are re-added above them: move it back.
     if (this.map.getLayer(LAYER_ID)) this.map.moveLayer(LAYER_ID, before);
     else this.map.addLayer(this.layer, before);
+  }
+
+  detach(): void {
+    if (this.map.getLayer(LAYER_ID)) this.map.removeLayer(LAYER_ID);
   }
 
   setRouteColors(routes: { key: string; color: string }[]): void {

@@ -20,7 +20,11 @@ export interface AlertDraftsOptions {
 export class AlertDrafts {
   private lastSet = "";
 
-  constructor(private opts: AlertDraftsOptions) {}
+  private opts: AlertDraftsOptions;
+
+  constructor(opts: AlertDraftsOptions) {
+    this.opts = opts;
+  }
 
   get draftsDir(): string {
     return join(this.opts.disruptionsDir, "drafts");

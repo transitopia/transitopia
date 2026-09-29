@@ -12,10 +12,11 @@ const SNAP_M = 4;
 
 export interface ComposeInput {
   base: InfraCollection;
-  future?: InfraCollection;
-  futureLines?: LineKey[];
-  custom?: GeoJSON.FeatureCollection<GeoJSON.LineString, CustomTrackProps>;
-  removeWays?: number[];
+  future?: InfraCollection | undefined;
+  futureLines?: LineKey[] | undefined;
+  custom?:
+    GeoJSON.FeatureCollection<GeoJSON.LineString, CustomTrackProps> | undefined;
+  removeWays?: number[] | undefined;
 }
 
 export function composeNetwork(input: ComposeInput): {

@@ -51,40 +51,40 @@ export interface Path {
 
 export interface RouteOptions {
   /** Required initial direction; undefined = either. */
-  fromDir?: Dir;
+  fromDir?: Dir | undefined;
   /** Required final direction; undefined = either. */
-  toDir?: Dir;
+  toDir?: Dir | undefined;
   /** Permit reversing at dead ends and inside reversal tracks along the way. */
-  allowReversals?: boolean;
+  allowReversals?: boolean | undefined;
   /** Permit reversing in place at the start position (e.g. stub terminus) — costs a penalty. */
-  allowReverseAtStart?: boolean;
+  allowReverseAtStart?: boolean | undefined;
   /** Permit arriving facing the wrong way and reversing at the target — costs a penalty. */
-  allowReverseAtTarget?: boolean;
+  allowReverseAtTarget?: boolean | undefined;
   /** Distance-equivalent cost of one reversal (m). */
-  reversalPenalty?: number;
+  reversalPenalty?: number | undefined;
   /** How far into a pocket/tail a train runs before reversing (m): ≥ train length. */
-  reversalRunIn?: number;
+  reversalRunIn?: number | undefined;
   /** Segment kinds the route may use (default: all but yard). */
-  kinds?: Set<SegmentKind>;
+  kinds?: Set<SegmentKind> | undefined;
   /** Extra distance-equivalent cost for entering a segment of these kinds (m), e.g. to keep revenue running on main track. */
-  kindPenalty?: Partial<Record<SegmentKind, number>>;
+  kindPenalty?: Partial<Record<SegmentKind, number>> | undefined;
   /** Give up beyond this distance (m). */
-  maxLength?: number;
+  maxLength?: number | undefined;
   /** With a null target: finish on entering any segment of these kinds (e.g. reach a yard). */
-  goalKinds?: Set<SegmentKind>;
+  goalKinds?: Set<SegmentKind> | undefined;
   /**
    * Also allow reversing on main track just past a switch (run in, stop, reverse back through it) —
    * how trains short-turn at through stations without a pocket. Costs `mainReversalPenalty`.
    */
-  allowMainReversals?: boolean;
-  mainReversalPenalty?: number;
+  allowMainReversals?: boolean | undefined;
+  mainReversalPenalty?: number | undefined;
   /**
    * Extra cost per metre for running along `seg` in `dir` (e.g. against the normal direction of
    * traffic, so empty moves keep to the right track where they can).
    */
-  dirPenalty?: (seg: string, dir: Dir) => number;
+  dirPenalty?: ((seg: string, dir: Dir) => number) | undefined;
   /** Segments out of service (disruptions): never entered. */
-  closed?: Set<string>;
+  closed?: Set<string> | undefined;
 }
 
 const REVERSAL_KINDS = new Set<SegmentKind>(["pocket", "tail", "siding"]);
@@ -335,15 +335,15 @@ export class TrackGraph {
       dir: Dir;
       parent?: Key;
       via: "start" | "turn" | "deadend" | "pocket";
-      startDir?: Dir;
+      startDir?: Dir | undefined;
     }
     const best = new Map<Key, Rec>();
     const heap = new MinHeap<Key>();
     let goal:
       | {
           cost: number;
-          key?: Key;
-          direct?: { dir: Dir };
+          key?: Key | undefined;
+          direct?: { dir: Dir } | undefined;
           endDir: Dir;
           reverseAtTarget: boolean;
         }

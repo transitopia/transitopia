@@ -13,7 +13,7 @@ import {
   busStopMarkers,
   busStopTicks,
 } from "@transitopia/transit-core/plan/bus-stops.ts";
-import type { Theme } from "../basemap.ts";
+import type { Theme } from "@transitopia/map-style/basemap.ts";
 
 export const ROUTES_SOURCE = "transit-routes";
 export const STATIONS_SOURCE = "transit-stations";

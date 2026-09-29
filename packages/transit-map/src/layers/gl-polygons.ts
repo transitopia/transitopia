@@ -60,7 +60,6 @@ function multiply(a: ArrayLike<number>, b: ArrayLike<number>): Float64Array {
 export class GlPolygonLayer implements CustomLayerInterface {
   readonly type = "custom" as const;
   readonly renderingMode = "2d" as const;
-  private gl: WebGL2RenderingContext | undefined;
   private program: WebGLProgram | undefined;
   private buffer: WebGLBuffer | undefined;
   private vao: WebGLVertexArrayObject | undefined;
@@ -71,13 +70,16 @@ export class GlPolygonLayer implements CustomLayerInterface {
   private dirty = false;
   private map: MlMap | undefined;
 
-  constructor(readonly id: string) {}
+  readonly id: string;
+
+  constructor(id: string) {
+    this.id = id;
+  }
 
   onAdd(map: MlMap, gl: WebGLRenderingContext | WebGL2RenderingContext): void {
     if (!(gl instanceof WebGL2RenderingContext))
       throw new Error("WebGL2 is required");
     this.map = map;
-    this.gl = gl;
     const program = gl.createProgram()!;
     gl.attachShader(program, compile(gl, gl.VERTEX_SHADER, VERTEX_SHADER));
     gl.attachShader(program, compile(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER));

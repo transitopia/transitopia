@@ -87,13 +87,22 @@ export class TrainPlayback {
   private legCache = new Map<string, LegProfile>();
   private kin: (line: string) => Kinematics;
 
+  readonly file: MovementsFile;
+  private pp: PreparedPlan;
+  private g: TrackGraph;
+  private opts: PlaybackOptions;
+
   constructor(
-    readonly file: MovementsFile,
-    private pp: PreparedPlan,
-    private g: TrackGraph,
+    file: MovementsFile,
+    pp: PreparedPlan,
+    g: TrackGraph,
     kin: KinematicsConfig,
-    private opts: PlaybackOptions,
+    opts: PlaybackOptions,
   ) {
+    this.file = file;
+    this.pp = pp;
+    this.g = g;
+    this.opts = opts;
     this.kin = (line) => kinematicsFor(kin, "skytrain", line);
     this.paths = file.paths.map((packed) => {
       const segs: string[] = [];

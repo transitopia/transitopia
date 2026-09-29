@@ -26,7 +26,7 @@ export interface DecodedPositions {
 /** tripId → per-stop-sequence delays (seconds), plus a trip-level fallback. */
 export type TripDelays = Map<
   string,
-  { bySeq: [number, number][]; trip?: number }
+  { bySeq: [number, number][]; trip?: number | undefined }
 >;
 
 /** A trip TransLink reports as cancelled, or running with stops skipped. */
@@ -175,7 +175,7 @@ async function fetchFeed(
     `${BASE}/${endpoint}?apikey=${encodeURIComponent(apiKey)}`,
     {
       headers: { "User-Agent": "skytrain-viz/0.1" },
-      signal,
+      signal: signal ?? null,
     },
   );
   // Never include the URL in errors: it contains the key.

@@ -49,8 +49,6 @@ import type { KinematicsConfig } from "@transitopia/transit-core/movement/kinema
 
 export const kinematics = kinematicsConfig as unknown as KinematicsConfig;
 
-const BASE = import.meta.env.BASE_URL;
-
 export class PlanStore {
   private prepared = new Map<string, PreparedPlan>();
   private loading = new Map<string, Promise<PreparedPlan>>();
@@ -71,11 +69,25 @@ export class PlanStore {
     ScheduledCorrections | undefined
   >();
 
+  readonly manifest: FeedManifest;
+  /** Set when viewing a scenario (?scenario=<name>). */
+  readonly scenario: ScenarioManifest | undefined;
+  /** URL prefix of the published data (manifest paths are relative to it), ending in "/". */
+  readonly dataBase: string;
+  /** URL prefix of the RT service, or undefined for schedules only. */
+  private readonly apiBase: string | undefined;
+
   private constructor(
-    readonly manifest: FeedManifest,
-    /** Set when viewing a scenario (?scenario=<name>). */
-    readonly scenario?: ScenarioManifest,
-  ) {}
+    manifest: FeedManifest,
+    base: string,
+    apiBase: string | undefined,
+    scenario?: ScenarioManifest,
+  ) {
+    this.manifest = manifest;
+    this.dataBase = base;
+    this.apiBase = apiBase;
+    this.scenario = scenario;
+  }
 
   /** Enable track-level SkyTrain playback (movement files need the track graph). */
   setTrackGraph(g: TrackGraph): void {
@@ -109,7 +121,7 @@ export class PlanStore {
   private observationsFor(date: string): Observation[] | undefined {
     if (this.observationIndex === undefined) {
       this.observationIndex = null;
-      fetch(`${BASE}data/observations/index.json`)
+      fetch(`${this.dataBase}data/observations/index.json`)
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null)
         .then((idx) => {
@@ -126,7 +138,7 @@ export class PlanStore {
       if (obs === undefined) {
         this.fetchOnce(
           path,
-          `${BASE}${path}`,
+          `${this.dataBase}${path}`,
           this.observationFiles,
           (j) => (j as ObservationFile).observations,
         );
@@ -150,8 +162,10 @@ export class PlanStore {
           .catch(() => null);
       // The static index (build:dispatch) and, unless viewing a scenario, the live one.
       void Promise.all([
-        get(`${BASE}data/dispatch/index.json`),
-        this.scenario ? null : get(`${BASE}rt/dispatch`),
+        get(`${this.dataBase}data/dispatch/index.json`),
+        this.scenario || !this.apiBase ?
+          null
+        : get(`${this.apiBase}rt/dispatch`),
       ]).then(([idx, live]) => {
         this.dispatchIndex = idx ?? { schema: 1, byDate: {} };
         if (live) this.liveDispatch = { ...live.byDate, ...this.liveDispatch };
@@ -164,14 +178,19 @@ export class PlanStore {
     const key = `${date}|${entry.version}`;
     const p = this.patches.get(key);
     if (p === undefined) {
-      this.fetchOnce(key, `${BASE}${entry.path}`, this.patches, (j) => {
-        const patch = j as DispatchPatch;
-        for (const u of patch.unmatched)
-          console.warn(`Observation not applied (${u.reason}):`, u.obs);
-        for (const pr of patch.problems ?? [])
-          console.warn(`Disruption not fully applied: ${pr}`);
-        return patch;
-      });
+      this.fetchOnce(
+        key,
+        `${this.dataBase}${entry.path}`,
+        this.patches,
+        (j) => {
+          const patch = j as DispatchPatch;
+          for (const u of patch.unmatched)
+            console.warn(`Observation not applied (${u.reason}):`, u.obs);
+          for (const pr of patch.problems ?? [])
+            console.warn(`Disruption not fully applied: ${pr}`);
+          return patch;
+        },
+      );
       return undefined;
     }
     return p;
@@ -207,7 +226,7 @@ export class PlanStore {
     const index = this.movementIndexes.get(version);
     if (index === undefined) {
       const entry = this.manifest.feeds.find((f) => f.version === version);
-      const url = `${BASE}${entry?.movements ?? `data/feeds/${version}/movements/index.json`}`;
+      const url = `${this.dataBase}${entry?.movements ?? `data/feeds/${version}/movements/index.json`}`;
       this.fetchOnce(
         version,
         url,
@@ -226,7 +245,7 @@ export class PlanStore {
     if (file === undefined) {
       this.fetchOnce(
         fileKey,
-        `${BASE}${path}`,
+        `${this.dataBase}${path}`,
         this.movementFiles,
         (j) => j as MovementsFile,
       );
@@ -287,10 +306,14 @@ export class PlanStore {
     return out;
   }
 
-  static async load(scenario?: string): Promise<PlanStore> {
+  static async load(
+    base: string,
+    apiBase: string | undefined,
+    scenario?: string,
+  ): Promise<PlanStore> {
     if (scenario) {
       const res = await fetch(
-        `${BASE}data/scenarios/${encodeURIComponent(scenario)}/manifest.json`,
+        `${base}data/scenarios/${encodeURIComponent(scenario)}/manifest.json`,
       );
       if (!res.ok)
         throw new Error(
@@ -299,15 +322,17 @@ export class PlanStore {
       const sm = (await res.json()) as ScenarioManifest;
       return new PlanStore(
         { schema: 1, generatedAt: sm.builtAt, feeds: sm.feeds },
+        base,
+        apiBase,
         sm,
       );
     }
-    const res = await fetch(`${BASE}data/manifest.json`);
+    const res = await fetch(`${base}data/manifest.json`);
     if (!res.ok)
       throw new Error(
         `No timetable data (HTTP ${res.status}). Run "npm run data" first.`,
       );
-    return new PlanStore((await res.json()) as FeedManifest);
+    return new PlanStore((await res.json()) as FeedManifest, base, apiBase);
   }
 
   /** Track network to draw and route on. */
@@ -332,7 +357,7 @@ export class PlanStore {
     const p = this.prepared.get(feed.version);
     if (p) return p;
     if (!this.loading.has(feed.version)) {
-      const promise = fetch(`${BASE}${feed.path}`)
+      const promise = fetch(`${this.dataBase}${feed.path}`)
         .then((r) => {
           if (!r.ok)
             throw new Error(`Failed to load ${feed.path}: HTTP ${r.status}`);

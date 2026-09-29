@@ -140,7 +140,7 @@ export interface BuildInput {
   pp: PreparedPlan;
   platforms: Map<string, PlatformAssignment>;
   /** Per-pattern platform positions from role-based rules. */
-  patternPositions?: Map<number, Map<number, TrackPos>>;
+  patternPositions?: Map<number, Map<number, TrackPos>> | undefined;
   services: Set<string>;
   ops: OperationsConfig;
   kin: KinematicsConfig;

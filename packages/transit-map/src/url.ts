@@ -1,4 +1,5 @@
-// Shareable view state in the query string: ?date=2026-09-28&t=08:15:00&rate=10&paused=1&v=<vehicle>.
+// Shareable view state in the query string: ?date=2026-09-28&t=08:15:00&rate=10&paused=1&select=<vehicle>
+// (V2-PLAN.md §1.3; `v` is the older name for `select`).
 // No time parameters means "live". The map position lives in the hash (MapLibre's hash option).
 // `t` is service-day time, so it may exceed 24:00 for after-midnight trips.
 
@@ -36,7 +37,7 @@ export function readUrl(): UrlState {
   const rate = Number(q.get("rate"));
   if (q.has("rate") && Number.isFinite(rate) && rate !== 0) out.rate = rate;
   if (q.get("paused") === "1") out.paused = true;
-  const v = q.get("v");
+  const v = q.get("select") ?? q.get("v");
   if (v) out.vehicle = v;
   return out;
 }
@@ -51,7 +52,7 @@ export function writeUrl(clock: Clock, vehicle: string | undefined): void {
     if (clock.rate !== 1) q.set("rate", String(clock.rate));
     if (!clock.playing) q.set("paused", "1");
   }
-  if (vehicle) q.set("v", vehicle);
+  if (vehicle) q.set("select", vehicle);
   const scenario = new URLSearchParams(location.search).get("scenario");
   if (scenario) q.set("scenario", scenario);
   const search = q.toString();

@@ -162,12 +162,19 @@ export class RtTimeline {
   private fixTimes: number[] = [];
   private delaysMemo: { upTo: number; delays: TripDelay[] } | undefined;
 
+  private pp: PreparedPlan | undefined;
+  private kin: KinematicsConfig;
+  private opts: TimelineOptions;
+
   constructor(
     snapshots: RtSnapshot[],
-    private pp: PreparedPlan | undefined,
-    private kin: KinematicsConfig,
-    private opts: TimelineOptions,
+    pp: PreparedPlan | undefined,
+    kin: KinematicsConfig,
+    opts: TimelineOptions,
   ) {
+    this.pp = pp;
+    this.kin = kin;
+    this.opts = opts;
     const sorted = [...snapshots].sort((a, b) => a.fetchedAt - b.fetchedAt);
     for (const s of sorted) {
       this.fetchTimes.push(s.fetchedAt);

@@ -130,10 +130,13 @@ export class ProfileBuilder {
   private shapeStops = new Map<string, Map<string, number>>();
   private hours = new Set<string>();
 
-  constructor(
-    private pp: PreparedPlan,
-    private cfg: PredictionConfig,
-  ) {}
+  private pp: PreparedPlan;
+  private cfg: PredictionConfig;
+
+  constructor(pp: PreparedPlan, cfg: PredictionConfig) {
+    this.pp = pp;
+    this.cfg = cfg;
+  }
 
   add(snapshots: RtSnapshot[], hourLabel?: string): void {
     if (hourLabel) this.hours.add(hourLabel);
@@ -368,12 +371,22 @@ export type SkippedStops = (
 export class Predictor {
   private courses = new Map<string, Course>();
 
+  private pp: PreparedPlan;
+  private cfg: PredictionConfig;
+  private profile: RtProfileFile | undefined;
+  private skipped: SkippedStops | undefined;
+
   constructor(
-    private pp: PreparedPlan,
-    private cfg: PredictionConfig,
-    private profile?: RtProfileFile,
-    private skipped?: SkippedStops,
-  ) {}
+    pp: PreparedPlan,
+    cfg: PredictionConfig,
+    profile?: RtProfileFile,
+    skipped?: SkippedStops,
+  ) {
+    this.pp = pp;
+    this.cfg = cfg;
+    this.profile = profile;
+    this.skipped = skipped;
+  }
 
   /** The course for a trip at a local hour (cached per trip, band, and stops skipped that day). */
   course(trip: PreparedTrip, atMs: number): Course {
