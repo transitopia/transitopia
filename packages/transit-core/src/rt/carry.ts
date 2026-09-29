@@ -1,4 +1,4 @@
-// Carry real-time bus delays forward into schedule estimates (PLAN.md §4.5).
+// Carry real-time bus delays forward into schedule estimates (docs/skytrain-viz-PLAN.md §4.5).
 //
 // Each bus's latest fix gives its delay against the (profile-paced) schedule. The rest of that trip
 // runs shifted by that delay, and lateness carries into the bus's next trips, less the layover slack

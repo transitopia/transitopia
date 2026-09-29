@@ -1,5 +1,5 @@
 {
-  "$comment": "Vehicle motion and size assumptions. Keyed by route key, falling back to mode defaults. Sources: 'guess' unless noted; see docs/OPEN-QUESTIONS.md #9, #12, #13. accel/decel in m/s², speeds in km/h, lengths/widths in metres. 'minCruiseFraction': when the schedule allows more time than needed, run no slower than this fraction of maxSpeed and hold the remainder as extra dwell at the origin (PLAN.md §4.4). 'dwell' is used when GTFS arrival == departure (true for all SkyTrain stops).",
+  "$comment": "Vehicle motion and size assumptions. Keyed by route key, falling back to mode defaults. Sources: 'guess' unless noted; see docs/OPEN-QUESTIONS.md #9, #12, #13. accel/decel in m/s², speeds in km/h, lengths/widths in metres. 'minCruiseFraction': when the schedule allows more time than needed, run no slower than this fraction of maxSpeed and hold the remainder as extra dwell at the origin (docs/skytrain-viz-PLAN.md §4.4). 'dwell' is used when GTFS arrival == departure (true for all SkyTrain stops).",
   "modes": {
     "skytrain": { "accel": 1.0, "decel": 1.0, "maxSpeed": 80, "minCruiseFraction": 0.6, "dwell": 25, "length": 68, "width": 3.0, "profile": "trapezoid" },
     "rail":     { "accel": 0.5, "decel": 0.6, "maxSpeed": 120, "minCruiseFraction": 0.5, "dwell": 60, "length": 150, "width": 3.2, "profile": "trapezoid" },

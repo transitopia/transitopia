@@ -1,4 +1,4 @@
-// Validate the track graph against GTFS and the diagram checklist (PLAN.md §7). Exits non-zero on
+// Validate the track graph against GTFS and the diagram checklist (docs/skytrain-viz-PLAN.md §7). Exits non-zero on
 // errors; warnings are printed for review.
 //
 //   npm run validate:infra

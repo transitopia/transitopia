@@ -1,5 +1,5 @@
-// Smoothing SeaBus corrections as new AIS fixes arrive (PLAN.md §4.12), like buses' glide
-// (src/core/rt/timeline.ts). When a batch of fixes becomes known at time K, each vessel would jump
+// Smoothing SeaBus corrections as new AIS fixes arrive (docs/skytrain-viz-PLAN.md §4.12), like buses' glide
+// (packages/transit-core/src/rt/timeline.ts). When a batch of fixes becomes known at time K, each vessel would jump
 // from where it was drawn (`shown` corrections) to where the new corrections (`next`) put it.
 // Instead, its trip gets anchors that:
 //  - ahead (the vessel is further along than drawn): carry it from the drawn position to the new one

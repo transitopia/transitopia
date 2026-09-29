@@ -1,8 +1,8 @@
 // Probe aisstream.io for the SeaBus fleet: record raw messages for a while, then summarise what
 // the feed gives us (message types, report rates, timestamps, heading vs course, dimensions).
-// Output: data/raw/ais-probe/<start>.ndjson (raw messages; no key).
+// Output: var/raw/ais-probe/<start>.ndjson (raw messages; no key).
 //
-//   npx tsx scripts/probe-ais.ts [--minutes 30]
+//   npx tsx pipelines/probe-ais.ts [--minutes 30]
 
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";

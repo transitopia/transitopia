@@ -1,4 +1,4 @@
-// Disruption files (data/disruptions/*.json): loading and the service dates they touch. Shared by
+// Disruption files (regions/metro-vancouver/disruptions/*.json): loading and the service dates they touch. Shared by
 // build:dispatch and the RT service's live dispatch.
 
 import { readdir } from "node:fs/promises";
@@ -13,7 +13,7 @@ import { addDays, localDate } from "@transitopia/transit-core/time.ts";
 
 export { DISRUPTIONS_DIR };
 
-/** Confirmed and draft disruptions from data/disruptions/*.json. */
+/** Confirmed and draft disruptions from regions/metro-vancouver/disruptions/*.json. */
 export async function loadDisruptions(
   dir = DISRUPTIONS_DIR,
 ): Promise<Disruption[]> {

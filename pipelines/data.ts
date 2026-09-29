@@ -1,5 +1,5 @@
-// Rebuild all data in order (PLAN.md §4): latest GTFS → service plans → track network → platform
-// mapping → movements → validation. OSM tracks are committed (data/infrastructure/), so they are only
+// Rebuild all data in order (docs/skytrain-viz-PLAN.md §4): latest GTFS → service plans → track network → platform
+// mapping → movements → validation. OSM tracks are committed (regions/metro-vancouver/infrastructure/), so they are only
 // re-fetched with --osm.
 //
 //   npm run data            # typical: new timetable, same tracks
@@ -9,21 +9,21 @@ import { spawnSync } from "node:child_process";
 import { log } from "./lib/paths.ts";
 
 const steps: [string, string[]][] = [
-  ["Fetch latest GTFS", ["scripts/fetch-gtfs.ts"]],
-  ["Build service plans", ["scripts/build-schedule.ts"]],
+  ["Fetch latest GTFS", ["pipelines/fetch-gtfs.ts"]],
+  ["Build service plans", ["pipelines/build-schedule.ts"]],
   ...(process.argv.includes("--osm") ?
     ([
-      ["Fetch OSM tracks", ["scripts/fetch-osm.ts"]],
-      ["Import OSM tracks", ["scripts/import-osm.ts"]],
+      ["Fetch OSM tracks", ["pipelines/fetch-osm.ts"]],
+      ["Import OSM tracks", ["pipelines/import-osm.ts"]],
     ] as [string, string[]][])
   : []),
-  ["Validate track network", ["scripts/validate-infra.ts"]],
-  ["Publish tracks and platforms", ["scripts/build-infra.ts"]],
-  ["Infer and dispatch train runs", ["scripts/build-movements.ts"]],
-  ["Publish observations", ["scripts/build-observations.ts"]],
-  ["Dispatch dates with observations", ["scripts/build-dispatch.ts"]],
-  ["Learn bus travel-time profiles", ["scripts/build-rt-profile.ts"]],
-  ["Validate movements", ["scripts/validate-plan.ts"]],
+  ["Validate track network", ["pipelines/validate-infra.ts"]],
+  ["Publish tracks and platforms", ["pipelines/build-infra.ts"]],
+  ["Infer and dispatch train runs", ["pipelines/build-movements.ts"]],
+  ["Publish observations", ["pipelines/build-observations.ts"]],
+  ["Dispatch dates with observations", ["pipelines/build-dispatch.ts"]],
+  ["Learn bus travel-time profiles", ["pipelines/build-rt-profile.ts"]],
+  ["Validate movements", ["pipelines/validate-plan.ts"]],
 ];
 
 for (const [name, args] of steps) {

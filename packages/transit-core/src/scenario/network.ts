@@ -1,5 +1,5 @@
 // Compose a scenario track network: base network + optional future OSM track + custom track, then
-// rebuild topology with the same code as the OSM import (PLAN.md §4.8). Pieces are joined wherever
+// rebuild topology with the same code as the OSM import (docs/skytrain-viz-PLAN.md §4.8). Pieces are joined wherever
 // they share a coordinate; custom track endpoints snap to existing track within a few metres.
 
 import { distM, localProjector, type LonLat } from "../geo.ts";

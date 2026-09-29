@@ -1,4 +1,4 @@
-// In-memory track graph with switch-aware routing (PLAN.md §4.1, §4.4). Shared by build scripts,
+// In-memory track graph with switch-aware routing (docs/skytrain-viz-PLAN.md §4.1, §4.4). Shared by build scripts,
 // tests and the browser.
 //
 // Direction: a train on segment s moving with dir = +1 travels from s.from to s.to (increasing

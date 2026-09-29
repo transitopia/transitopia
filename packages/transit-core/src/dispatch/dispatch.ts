@@ -1,4 +1,4 @@
-// Dispatcher entry point (PLAN.md §4.11): inferred runs in, a signalling-feasible movement file out.
+// Dispatcher entry point (docs/skytrain-viz-PLAN.md §4.11): inferred runs in, a signalling-feasible movement file out.
 //
 //   dispatch(movements, plan, graph, config) → movements (schema 2) + summary
 //

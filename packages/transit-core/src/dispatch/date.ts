@@ -1,4 +1,4 @@
-// Dispatch one service date with its inputs (PLAN.md §4.11): the shared step behind static patches
+// Dispatch one service date with its inputs (docs/skytrain-viz-PLAN.md §4.11): the shared step behind static patches
 // (npm run build:dispatch) and live dispatch in the RT service. Pure and deterministic.
 //
 // Observations alone re-dispatch the date's inferred runs (a patch of the runs that changed).

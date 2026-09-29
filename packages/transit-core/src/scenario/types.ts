@@ -1,5 +1,5 @@
-// Scenario definitions (PLAN.md §4.8): alternate infrastructure and/or service, as config files in
-// data/scenarios/<name>/scenario.json, built by `npm run scenario <name>`.
+// Scenario definitions (docs/skytrain-viz-PLAN.md §4.8): alternate infrastructure and/or service, as config files in
+// regions/metro-vancouver/scenarios/<name>/scenario.json, built by `npm run scenario <name>`.
 
 import type { LonLat } from "../geo.ts";
 import type { LineKey, SegmentKind } from "../infra/types.ts";
@@ -8,7 +8,7 @@ export interface ScenarioSpec {
   name: string;
   description: string;
   infrastructure?: {
-    /** Include OSM track with a future opening_date (data/infrastructure/future.generated.geojson). */
+    /** Include OSM track with a future opening_date (regions/metro-vancouver/infrastructure/future.generated.geojson). */
     includeFuture?: boolean;
     /** Lines to assign to included future track. */
     futureLines?: LineKey[];
@@ -65,7 +65,7 @@ export type ServiceOperation =
       terminusName?: string;
     };
 
-/** Published per scenario at public/data/scenarios/<name>/manifest.json. */
+/** Published per scenario at var/public/data/scenarios/<name>/manifest.json. */
 export interface ScenarioManifest {
   schema: 1;
   name: string;

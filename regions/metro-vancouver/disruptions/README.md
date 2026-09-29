@@ -1,6 +1,6 @@
 # Disruptions
 
-Track out of service and reduced service for a period, applied by the dispatcher (PLAN.md §4.11). Put JSON files here, then run `npm run build:dispatch` (part of `npm run data`); the RT service re-dispatches live when a file changes. Only disruptions with `"status": "confirmed"` apply.
+Track out of service and reduced service for a period, applied by the dispatcher (docs/skytrain-viz-PLAN.md §4.11). Put JSON files here, then run `npm run build:dispatch` (part of `npm run data`); the RT service re-dispatches live when a file changes. Only disruptions with `"status": "confirmed"` apply.
 
 The RT service drafts disruptions from TransLink alerts into `drafts/` (gitignored). Review them with `npm run disruptions` (or `npm run disruptions -- pull` to draft from a running service's `/rt/alerts`), then `npm run disruptions -- confirm <id> --keep "<platform stop>"`: alerts rarely say which track stays open, so the command asks for it unless the alert named the platform to board from. Commit the confirmed file.
 

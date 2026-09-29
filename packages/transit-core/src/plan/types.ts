@@ -1,5 +1,5 @@
-// The service plan: the compact, per-feed-version schedule produced by scripts/build-schedule.ts and
-// consumed by the browser. See PLAN.md §4.2.
+// The service plan: the compact, per-feed-version schedule produced by pipelines/build-schedule.ts and
+// consumed by the browser. See docs/skytrain-viz-PLAN.md §4.2.
 
 import type { ServiceCalendar } from "../gtfs/calendar.ts";
 import type { LonLat } from "../geo.ts";
@@ -115,7 +115,7 @@ export interface ServicePlan {
   patterns: PlanPattern[];
   trips: PlanTrip[];
   calendar: ServiceCalendar;
-  /** Ferry berth pairs (SeaBus, PLAN.md §4.12); absent for plans built before them. */
+  /** Ferry berth pairs (SeaBus, docs/skytrain-viz-PLAN.md §4.12); absent for plans built before them. */
   ferry?: FerryBerthPlan;
 }
 

@@ -1,4 +1,4 @@
-// Browser side of real-time buses (PLAN.md §4.5–4.6). Near "now" it polls /rt/live; at other times
+// Browser side of real-time buses (docs/skytrain-viz-PLAN.md §4.5–4.6). Near "now" it polls /rt/live; at other times
 // it loads recorded hours from /rt/history. It also tracks recorder coverage, which decides per
 // instant whether buses are shown from RT data (observed/interpolated) or schedule (estimated), and
 // loads TransLink's service changes (cancelled trips, skipped stops, detours) for the days shown.
@@ -49,7 +49,7 @@ const LIVE_WINDOW_MS = 10 * 60_000;
 const LIVE_BUFFER_MS = 20 * 60_000;
 const MAX_HOURS_CACHED = 8;
 const PREDICTION = rtConfig.prediction as unknown as PredictionConfig;
-/** Thresholds that follow how often the server polls (src/core/rt/budget.ts). */
+/** Thresholds that follow how often the server polls (packages/transit-core/src/rt/budget.ts). */
 const CADENCE = cadence(rtConfig as unknown as CadenceConfig);
 /** Service changes for today and yesterday are refetched this often (cheap: they come from our server, which polls TransLink on its own schedule). */
 const CHANGES_REFRESH_MS = 60_000;

@@ -1,4 +1,4 @@
-// Real-time snapshot format shared by the RT service (server/) and the browser. One snapshot is one
+// Real-time snapshot format shared by the RT service (apps/server/src/) and the browser. One snapshot is one
 // upstream poll, filtered to our routes. History files store one compact snapshot per line (NDJSON).
 
 export interface RtVehicle {
@@ -44,7 +44,7 @@ export interface RtLiveResponse {
   stale: boolean;
   /** Why data is unavailable (e.g. no API key), for display. */
   error?: string;
-  /** Live dispatch (PLAN.md §4.11): service date (YYYYMMDD) → current patch version. */
+  /** Live dispatch (docs/skytrain-viz-PLAN.md §4.11): service date (YYYYMMDD) → current patch version. */
   dispatch?: Record<string, string>;
 }
 

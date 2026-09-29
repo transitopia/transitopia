@@ -1,8 +1,8 @@
-// Convert the OSM extract (scripts/fetch-osm.ts) into our track model (PLAN.md §4.1):
-//   data/infrastructure/tracks.generated.geojson   in-service track (committed; don't hand-edit)
-//   data/infrastructure/future.generated.geojson   track with a future opening_date (scenario material)
+// Convert the OSM extract (pipelines/fetch-osm.ts) into our track model (docs/skytrain-viz-PLAN.md §4.1):
+//   regions/metro-vancouver/infrastructure/tracks.generated.geojson   in-service track (committed; don't hand-edit)
+//   regions/metro-vancouver/infrastructure/future.generated.geojson   track with a future opening_date (scenario material)
 //
-// The network itself (segments, turns, stop positions) is built by src/core/infra/network.ts.
+// The network itself (segments, turns, stop positions) is built by packages/transit-core/src/infra/network.ts.
 
 import { join } from "node:path";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -113,7 +113,7 @@ async function main() {
   );
   const meta = {
     source:
-      "OpenStreetMap (© OpenStreetMap contributors, ODbL) via Overpass; scripts/import-osm.ts",
+      "OpenStreetMap (© OpenStreetMap contributors, ODbL) via Overpass; pipelines/import-osm.ts",
     ...(raw.osm3s?.timestamp_osm_base ?
       { osmTimestamp: raw.osm3s.timestamp_osm_base }
     : {}),

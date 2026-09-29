@@ -1,11 +1,11 @@
 // Build the compact service plan for each archived GTFS feed version, and the feed manifest.
-// Input:  data/raw/gtfs/<version>/google_transit.zip, data/config/routes.json,
-//         data/infrastructure/seabus.json + data/config/seabus.json (SeaBus berths and lanes)
-// Output: public/data/feeds/<version>/plan.json, public/data/manifest.json
-// See PLAN.md §4.2.
+// Input:  var/raw/gtfs/<version>/google_transit.zip, regions/metro-vancouver/config/routes.json,
+//         regions/metro-vancouver/infrastructure/seabus.json + regions/metro-vancouver/config/seabus.json (SeaBus berths and lanes)
+// Output: var/public/data/feeds/<version>/plan.json, var/public/data/manifest.json
+// See docs/skytrain-viz-PLAN.md §4.2.
 //
-//   tsx scripts/build-schedule.ts            # build any feed version not yet built
-//   tsx scripts/build-schedule.ts --force    # rebuild all
+//   tsx pipelines/build-schedule.ts            # build any feed version not yet built
+//   tsx pipelines/build-schedule.ts --force    # rebuild all
 
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";

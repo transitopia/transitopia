@@ -1,5 +1,5 @@
-// Disruptions (PLAN.md §4.10–4.11): track out of service and service changes for a period, as
-// dispatcher inputs. Written by hand in data/disruptions/*.json, or drafted from TransLink alerts and
+// Disruptions (docs/skytrain-viz-PLAN.md §4.10–4.11): track out of service and service changes for a period, as
+// dispatcher inputs. Written by hand in regions/metro-vancouver/disruptions/*.json, or drafted from TransLink alerts and
 // confirmed by a person (alerts don't say which track is closed).
 
 export interface Disruption {
@@ -41,7 +41,7 @@ export interface DisruptionFile {
   disruptions: Disruption[];
 }
 
-/** Published index (public/data/disruptions/index.json): service date (YYYYMMDD) → disruption ids. */
+/** Published index (var/public/data/disruptions/index.json): service date (YYYYMMDD) → disruption ids. */
 export interface DisruptionIndex {
   schema: 1;
   byDate: Record<string, string[]>;

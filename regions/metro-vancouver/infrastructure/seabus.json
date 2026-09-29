@@ -1,5 +1,5 @@
 {
-  "$comment": "SeaBus berths and crossing lanes, used instead of the GTFS shapes (a straight line between the terminals). Applied by build-schedule (src/core/plan/ferry-berths.ts). Berth pairing is in data/config/seabus.json. OPEN-QUESTIONS #24.",
+  "$comment": "SeaBus berths and crossing lanes, used instead of the GTFS shapes (a straight line between the terminals). Applied by build-schedule (packages/transit-core/src/plan/ferry-berths.ts). Berth pairing is in regions/metro-vancouver/config/seabus.json. OPEN-QUESTIONS #24.",
   "route": "seabus",
   "$approachM": "Vessels leave and enter a slip straight along its axis for this far before turning into a lane. guess",
   "approachM": 60,

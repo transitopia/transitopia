@@ -1,4 +1,4 @@
-// Signalling simulation for the dispatcher (PLAN.md §4.11). All trains of a service day are stepped
+// Signalling simulation for the dispatcher (docs/skytrain-viz-PLAN.md §4.11). All trains of a service day are stepped
 // together. A train follows its planned timetable profile exactly while that is safe; otherwise it
 // brakes for its movement authority and runs at line speed once released (recovering lost time).
 //

@@ -1,5 +1,5 @@
-// Collects GTFS-RT service changes for our bus routes per service date (src/core/rt/changes.ts) and
-// keeps them in data/rt-history/changes/YYYYMMDD.json, since TransLink's feeds drop a trip's
+// Collects GTFS-RT service changes for our bus routes per service date (packages/transit-core/src/rt/changes.ts) and
+// keeps them in var/rt-history/changes/YYYYMMDD.json, since TransLink's feeds drop a trip's
 // cancellation once it has run and an alert once it's over.
 
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";

@@ -1,4 +1,4 @@
-// SkyTrain track layers from the infrastructure model (PLAN.md §4.1, §4.9): every track, switch
+// SkyTrain track layers from the infrastructure model (docs/skytrain-viz-PLAN.md §4.1, §4.9): every track, switch
 // and pocket at true geometry. At city zoom parallel tracks (≈4 m apart) merge into one line; at
 // station zoom they separate. Yard tracks are grey; track OSM marks as under works is dashed.
 // With ?debug=1: segment ids, node kinds and mapped GTFS platforms.

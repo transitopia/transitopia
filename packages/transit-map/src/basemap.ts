@@ -1,5 +1,5 @@
 // Basemap style: Protomaps layers over the local PMTiles extract, with local glyphs and sprites
-// (scripts/tiles.ts). Nothing here calls third-party servers.
+// (pipelines/tiles.ts). Nothing here calls third-party servers.
 
 import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 import { layers, namedFlavor, type Flavor } from "@protomaps/basemaps";

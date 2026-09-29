@@ -26,7 +26,7 @@ V2 is one site with transit and cycling modes (walking returns later), backed by
 | Data license | **ODbL** wherever we can, including our own original content. No dual licensing (§10.2). |
 | Statistics | "On time" means **1 minute early to 3 minutes late** at timepoints. **Observed stop times are kept indefinitely** (§4.4). |
 | skytrain-viz polling | The request budget (§4.5) is implemented in skytrain-viz **now**, and carries over in the merge. |
-| Phase 0 timing | The repo merge **waits until this plan settles**. |
+| Phase 0 timing | Started 2026-09-29 (§9). |
 | Data snapshots | The server records all the time. Developers can pull snapshots of production data into their environment. Whether each dataset can be published depends on its source's license, checked source by source (§10.3). Data we may not publish stays private to the team. |
 | TransLink API | Unless TransLink approves a more useful request limit, stay within **1,000 requests a day** across all TransLink endpoints, polling more often at peak and less off-peak (§4.5). |
 | Attribution | Shown **dynamically**: the map credits exactly the datasets visible at the time (§4.6). |
@@ -170,6 +170,7 @@ transitopia/
   map-layers/                       # Planetiler Java profile(s): cycling, later more
   regions/
     metro-vancouver/                # region.json, config/, infrastructure/, scenarios/, fixtures/
+  var/                              # gitignored: downloads, recordings, build output (var/public = web root)
   infra/                            # docker-compose.yml, Caddyfile, provisioning, backup config
   docs/                             # OPEN-QUESTIONS.md, data-sources.md, ADRs
 ```
@@ -488,6 +489,12 @@ Each phase ends deployed.
 **Phase 0: Merge the repos**
 - Import skytrain-viz with its full history, create the workspaces layout, unify tooling and CI, merge the CLAUDE.md files, MIT license.
 - Done when both apps run locally and every skytrain-viz test and validator passes in the new layout.
+- *Status (2026-09-29, branch `v2`):* done locally. skytrain-viz's `rt-request-budget` branch was imported with its history. All 150 tests pass, and `validate:infra` and `validate:plan` give the same results as in skytrain-viz. CI runs lint, format, types, tests, builds, and both validators on a pinned GTFS snapshot. Choices made on the way:
+  - Runtime data (downloads, recordings, build output) lives in a gitignored `var/`, with `var/public/` as the transit viewer's web root, so browser URLs didn't change. `pipelines/lib/paths.ts` is the only place that knows the layout.
+  - `regions/metro-vancouver` is a workspace package, so config JSON is imported as `@transitopia/region-metro-vancouver/config/…`.
+  - skytrain-viz's standalone viewer lives in `packages/transit-map` (`npm run dev:transit`) until Phase 1 mounts the engine in `apps/web`. `apps/web` runs on port 5174.
+  - `map-style`, `db` and `shared` aren't created yet. They arrive with the phases that need them (1, 2 and 1–2).
+  - skytrain-viz's `docs/PLAN.md` is now `docs/skytrain-viz-PLAN.md` (the engine design), with paths updated.
 
 **Phase 1: New shell, Protomaps basemap, static transit**
 - The site moves to the Protomaps basemap and `map-style` (light and dark). The cycling styling is re-tuned, with before/after screenshots. Walking is removed.

@@ -1,6 +1,6 @@
-// Alert drafts (PLAN.md §4.10, M8.5): TransLink alerts for our rail lines → draft disruptions in
-// data/disruptions/drafts/, which a person confirms with `npm run disruptions -- confirm <id>`. Every
-// change to the alert set is appended to data/rt-history/alerts.ndjson.
+// Alert drafts (docs/skytrain-viz-PLAN.md §4.10, M8.5): TransLink alerts for our rail lines → draft disruptions in
+// regions/metro-vancouver/disruptions/drafts/, which a person confirms with `npm run disruptions -- confirm <id>`. Every
+// change to the alert set is appended to var/rt-history/alerts.ndjson.
 
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";

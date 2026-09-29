@@ -1,8 +1,8 @@
 // Screenshot the running app with the locally installed Chrome, for visual checks.
 //
-//   tsx scripts/screenshot.ts <out.png> [path-and-query] [--mobile] [--dark] [--wait ms] [--click x,y]
+//   tsx pipelines/screenshot.ts <out.png> [path-and-query] [--mobile] [--dark] [--wait ms] [--click x,y]
 //
-// Example: tsx scripts/screenshot.ts /tmp/a.png "/?date=2026-09-28&t=08:00:00&paused=1#map=13/49.28/-123.11"
+// Example: tsx pipelines/screenshot.ts /tmp/a.png "/?date=2026-09-28&t=08:00:00&paused=1#map=13/49.28/-123.11"
 // Requires `npm run dev` (http://localhost:5173). Browser console errors are printed.
 
 import { chromium } from "playwright-core";

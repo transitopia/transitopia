@@ -1,5 +1,5 @@
 {
-  "$comment": "SkyTrain operating assumptions for run inference and movements (PLAN.md §4.3–4.4). All 'guess' unless noted; see docs/OPEN-QUESTIONS.md #1–#8, #18. Times in seconds, distances in metres, speeds in km/h.",
+  "$comment": "SkyTrain operating assumptions for run inference and movements (docs/skytrain-viz-PLAN.md §4.3–4.4). All 'guess' unless noted; see docs/OPEN-QUESTIONS.md #1–#8, #18. Times in seconds, distances in metres, speeds in km/h.",
   "fleets": {
     "$comment": "Lines whose trains are interchangeable, so a run may continue from one line's trip onto another's (interlining). Expo and Millennium share rolling stock and OMC 1 (diagram v3).",
     "groups": [["expo", "millennium"], ["canada"]]

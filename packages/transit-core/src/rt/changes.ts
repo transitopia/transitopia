@@ -1,5 +1,5 @@
 // Service changes TransLink publishes in GTFS-RT for our bus routes, collected per service date by
-// the RT service (server/rt/changes.ts) and served at /rt/changes?date=YYYYMMDD:
+// the RT service (apps/server/src/rt/changes.ts) and served at /rt/changes?date=YYYYMMDD:
 //  - cancelled trips (TripUpdates schedule_relationship CANCELED). The feed drops a trip once its
 //    time has passed, so only a recording keeps them for replaying the day. Seen 2026-09-29: some
 //    list only their remaining stops as skipped (cancelled part-way, "resuming at Lonsdale Quay");

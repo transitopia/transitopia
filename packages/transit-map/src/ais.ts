@@ -1,4 +1,4 @@
-// Browser side of SeaBus AIS (PLAN.md §4.12): fetches a service date's fixes from /rt/ais/fixes
+// Browser side of SeaBus AIS (docs/skytrain-viz-PLAN.md §4.12): fetches a service date's fixes from /rt/ais/fixes
 // (polling for new ones while the date is in progress) and turns them into schedule corrections
 // with the core matcher. The RT service holds the only upstream connection. When new fixes arrive,
 // vessels glide from where they were drawn to their corrected positions (core/ais/glide.ts) instead

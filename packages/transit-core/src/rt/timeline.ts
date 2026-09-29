@@ -1,6 +1,6 @@
-// Turns a series of RT snapshots into bus positions at any instant, with provenance (PLAN.md §4.5):
+// Turns a series of RT snapshots into bus positions at any instant, with provenance (docs/skytrain-viz-PLAN.md §4.5):
 //  - between two fixes of the same vehicle ≤ maxInterpolateS apart (which, like maxExtrapolateS, can
-//    depend on the time, following how often positions are polled: src/core/rt/budget.ts): moved along the trip's shape,
+//    depend on the time, following how often positions are polled: packages/transit-core/src/rt/budget.ts): moved along the trip's shape,
 //    paced by the travel-time profile (stops and slow sections) and fitted to both fixes;
 //  - after the latest fix: predicted along the shape with the profile for ≤ maxExtrapolateS. Each new
 //    fix corrects the prediction: a bus found to be further ahead glides forward to it; one found to
@@ -16,7 +16,7 @@
 //    it's drawn there, as a layover; elsewhere it isn't drawn until it starts the trip. Buses lay over and reposition off their route, or their GPS says so (seen: a 99 whose
 //    next trip was westbound reported driving east along Broadway, sitting 15 min, looping via
 //    Victoria and starting at Commercial–Broadway Bay 5);
-//  - TransLink's service changes (GTFS-RT, src/core/rt/changes.ts): a bus off its route while a
+//  - TransLink's service changes (GTFS-RT, packages/transit-core/src/rt/changes.ts): a bus off its route while a
 //    detour alert covers it is labelled as on detour (and never taken for shifted GPS); stops its trip
 //    skips aren't its next stop and get no dwell (see Predictor); a bus still reporting a cancelled
 //    trip is labelled so;

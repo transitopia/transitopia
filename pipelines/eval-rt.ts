@@ -1,4 +1,4 @@
-// Evaluate live bus prediction against recorded GTFS-RT data (PLAN.md §4.5).
+// Evaluate live bus prediction against recorded GTFS-RT data (docs/skytrain-viz-PLAN.md §4.5).
 //
 // Builds a travel-time profile from the training hours, then replays the test hours: from each fix,
 // predict where the bus will be at its next fixes and compare with where they actually put it
@@ -7,11 +7,11 @@
 //   timetable — the timetable's running times with default stop dwells, adapted to the bus's pace
 //   profile — learned profile (falling back to timetable), adapted to the bus's pace
 //
-//   npx tsx scripts/eval-rt.ts [--test 2026-09-26T16,2026-09-26T17] [--test-last 3] [--set paceWeight=0.3] [--no-live]
+//   npx tsx pipelines/eval-rt.ts [--test 2026-09-26T16,2026-09-26T17] [--test-last 3] [--set paceWeight=0.3] [--no-live]
 //                              [--subsample <seconds>|schedule]
 // Default: test on the last 3 complete hours, train on all other complete hours. --subsample replays
 // the live view as if positions had been polled only this often (or on the poll schedule in
-// data/config/rt.json, src/core/rt/budget.ts), still scoring it against every recorded fix.
+// regions/metro-vancouver/config/rt.json, packages/transit-core/src/rt/budget.ts), still scoring it against every recorded fix.
 //
 // Then replays the test hours as the live view sees them (each fix known only from the snapshot that
 // first carried it) and measures what's displayed: jumps when a snapshot arrives, error against each
@@ -120,7 +120,7 @@ async function main() {
   );
   if (hours.length < 2)
     throw new Error(
-      "Need at least two complete recorded hours in data/rt-history/",
+      "Need at least two complete recorded hours in var/rt-history/",
     );
   const testLabels =
     opt("--test")?.split(",")

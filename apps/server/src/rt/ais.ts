@@ -1,6 +1,6 @@
-// AIS feed (PLAN.md §4.12): one WebSocket to aisstream.io per leader process, filtered to the SeaBus
+// AIS feed (docs/skytrain-viz-PLAN.md §4.12): one WebSocket to aisstream.io per leader process, filtered to the SeaBus
 // fleet. Fixes are kept in memory for the last two days, recorded in batches with the RT recorder
-// format (data/ais-history/, same hourly files and coverage index), and served per service date.
+// format (var/ais-history/, same hourly files and coverage index), and served per service date.
 // Client requests never touch the upstream connection.
 
 import { readFile } from "node:fs/promises";

@@ -1,7 +1,7 @@
-// Appends each snapshot to hourly NDJSON files and maintains a coverage index (PLAN.md §4.6):
-//   data/rt-history/YYYY-MM-DD/HH.ndjson      (current hour, appended)
-//   data/rt-history/YYYY-MM-DD/HH.ndjson.gz   (closed hours, compressed)
-//   data/rt-history/coverage.json             ({ intervals: [[startMs, endMs], ...] })
+// Appends each snapshot to hourly NDJSON files and maintains a coverage index (docs/skytrain-viz-PLAN.md §4.6):
+//   var/rt-history/YYYY-MM-DD/HH.ndjson      (current hour, appended)
+//   var/rt-history/YYYY-MM-DD/HH.ndjson.gz   (closed hours, compressed)
+//   var/rt-history/coverage.json             ({ intervals: [[startMs, endMs], ...] })
 // Dates and hours are local (America/Vancouver) time of the fetch.
 
 import { createReadStream, createWriteStream } from "node:fs";

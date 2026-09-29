@@ -1,9 +1,9 @@
-// Learn bus travel-time profiles from recorded GTFS-RT positions (PLAN.md §4.5):
-//   data/rt-history/**  →  public/data/feeds/<version>/rt-profile.json (one per feed with data)
+// Learn bus travel-time profiles from recorded GTFS-RT positions (docs/skytrain-viz-PLAN.md §4.5):
+//   var/rt-history/**  →  var/public/data/feeds/<version>/rt-profile.json (one per feed with data)
 //
 //   npm run build:rt-profile
 // The live view uses the profile to predict buses between fixes; without one it falls back to the
-// timetable. Rebuild as history accumulates. Check the effect with `npx tsx scripts/eval-rt.ts`.
+// timetable. Rebuild as history accumulates. Check the effect with `npx tsx pipelines/eval-rt.ts`.
 
 import { join } from "node:path";
 import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
@@ -19,7 +19,7 @@ async function main() {
   const cfg = rtConfig.prediction as unknown as PredictionConfig;
   const hours = await loadRecordedHours();
   if (!hours.length) {
-    log("No recorded RT history (data/rt-history/); skipping");
+    log("No recorded RT history (var/rt-history/); skipping");
     return;
   }
   const plans = await planLoader();

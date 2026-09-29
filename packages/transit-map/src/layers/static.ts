@@ -1,5 +1,5 @@
 // Static transit layers drawn by MapLibre: route lines from GTFS shapes, and stations.
-// Track-level SkyTrain geometry (PLAN.md §4.1) will replace the SkyTrain shapes in M3.
+// Track-level SkyTrain geometry (docs/skytrain-viz-PLAN.md §4.1) will replace the SkyTrain shapes in M3.
 
 import type { FeatureCollection, Feature } from "geojson";
 import type { GeoJSONSource, Map as MlMap } from "maplibre-gl";

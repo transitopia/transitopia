@@ -1,5 +1,5 @@
 // Mounts the RT service at /rt/* in the Vite dev and preview servers, so `npm run dev` also polls
-// and records real-time bus positions (PLAN.md §4.6). Set SKYTRAIN_RT=off to disable.
+// and records real-time bus positions (docs/skytrain-viz-PLAN.md §4.6). Set SKYTRAIN_RT=off to disable.
 
 import type { Plugin, PreviewServer, ViteDevServer } from "vite";
 import { RtService } from "./rt/service.ts";

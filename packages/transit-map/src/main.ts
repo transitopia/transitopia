@@ -282,7 +282,7 @@ async function main(): Promise<void> {
 
   // Real-time buses: replace schedule estimates wherever RT data covers the instant.
   const rt = new RtClient();
-  // SeaBus: AIS fixes anchor the timetable (PLAN.md §4.12).
+  // SeaBus: AIS fixes anchor the timetable (docs/skytrain-viz-PLAN.md §4.12).
   const ais = new AisClient();
   // Schedule estimates for buses stop at stops, using the same travel-time profile as live prediction.
   store.pacerFor = (pp) => rt.predictorFor(pp)?.pacer;

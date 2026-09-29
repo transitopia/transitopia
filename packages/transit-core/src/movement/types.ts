@@ -1,10 +1,10 @@
 // Movement files: the inferred physical train runs for one service-day type (a distinct set of
-// active GTFS service_ids), built by scripts/build-movements.ts and played back in the browser
-// (PLAN.md §4.3–4.4). Times are GTFS service-day seconds.
+// active GTFS service_ids), built by pipelines/build-movements.ts and played back in the browser
+// (docs/skytrain-viz-PLAN.md §4.3–4.4). Times are GTFS service-day seconds.
 //
 // To stay small, revenue trips are stored by reference: their times come from the service plan and
 // their track paths from `patterns` (one routed path per stop-to-stop hop). Only deadheads, turnbacks
-// and holds are stored explicitly, plus the times of trips the dispatcher changed (PLAN.md §4.11).
+// and holds are stored explicitly, plus the times of trips the dispatcher changed (docs/skytrain-viz-PLAN.md §4.11).
 
 import type { ParkedTrain } from "../corrections/reconcile.ts";
 
@@ -89,7 +89,7 @@ export interface Run {
   id: string;
   /** Line of the first trip (runs may interline within a fleet). */
   line: string;
-  /** Consist placeholder for future data (PLAN.md §4.3 step 4). */
+  /** Consist placeholder for future data (docs/skytrain-viz-PLAN.md §4.3 step 4). */
   consist?: { type?: string; cars?: number; carNumbers?: string[] };
   events: RunEvent[];
   /** Yard the run starts from / ends at (segment index of the yard lead), if any. */
@@ -113,7 +113,7 @@ export interface PatternPaths {
 }
 
 export interface MovementsFile {
-  /** 1: timetable positions only; 2: dispatched (signalling-aware, PLAN.md §4.11). */
+  /** 1: timetable positions only; 2: dispatched (signalling-aware, docs/skytrain-viz-PLAN.md §4.11). */
   schema: 1 | 2;
   feedVersion: string;
   /** Sorted active service_ids this file is for. */

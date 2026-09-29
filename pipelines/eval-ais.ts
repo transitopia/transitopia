@@ -1,7 +1,7 @@
-// Evaluate recorded SeaBus AIS fixes against the timetable (PLAN.md §4.12): how many fixes match a
+// Evaluate recorded SeaBus AIS fixes against the timetable (docs/skytrain-viz-PLAN.md §4.12): how many fixes match a
 // trip, how late each vessel ran, which vessel ran which block, and which berths were used.
 //
-//   npx tsx scripts/eval-ais.ts [YYYYMMDD]      # default: today's service date
+//   npx tsx pipelines/eval-ais.ts [YYYYMMDD]      # default: today's service date
 
 import { join } from "node:path";
 import {
@@ -45,7 +45,7 @@ const fixes = (
   await readRecordedFixes(new Recorder(AIS_HISTORY_DIR, 75_000), date)
 ).map((f) => ({ ...f, name: names.get(f.mmsi) ?? f.name }));
 if (!fixes.length) {
-  console.log(`No recorded AIS fixes for ${date} (data/ais-history/).`);
+  console.log(`No recorded AIS fixes for ${date} (var/ais-history/).`);
   process.exit(0);
 }
 const r = aisCorrections(pp, date, fixes, "seabus", cfg);

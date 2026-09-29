@@ -1,11 +1,11 @@
 // Infer train runs and build movement files for every service-day type of every built feed
-// (PLAN.md §4.3–4.4):
-//   public/data/feeds/<version>/movements/<services>.json
-//   public/data/feeds/<version>/movements/index.json
+// (docs/skytrain-viz-PLAN.md §4.3–4.4):
+//   var/public/data/feeds/<version>/movements/<services>.json
+//   var/public/data/feeds/<version>/movements/index.json
 //
 //   npm run build:movements [-- --verbose] [--no-dispatch]
 //
-// Movements are dispatched (signalling-aware, PLAN.md §4.11) unless --no-dispatch.
+// Movements are dispatched (signalling-aware, docs/skytrain-viz-PLAN.md §4.11) unless --no-dispatch.
 
 import { join } from "node:path";
 import { CONFIG_DIR, FEEDS_OUT_DIR, readJson } from "./lib/paths.ts";

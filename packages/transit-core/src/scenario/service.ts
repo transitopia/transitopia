@@ -1,4 +1,4 @@
-// Scenario service operations (PLAN.md §4.8): produce a modified service plan. Run times for new
+// Scenario service operations (docs/skytrain-viz-PLAN.md §4.8): produce a modified service plan. Run times for new
 // hops come from the physical minimum over the approximate distance (straight line × curvature
 // allowance) times a padding factor, plus dwell. Movement building later fits real track paths.
 

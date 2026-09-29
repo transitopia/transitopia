@@ -1,4 +1,4 @@
-// Map GTFS rail platform stops onto track positions (PLAN.md §4.1).
+// Map GTFS rail platform stops onto track positions (docs/skytrain-viz-PLAN.md §4.1).
 //
 // GTFS platform coordinates are platform-specific but not always precise, and some tracks are
 // stacked (Dunsmuir tunnel, King Edward), so "nearest track" is ambiguous. We choose, for every

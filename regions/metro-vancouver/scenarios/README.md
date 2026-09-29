@@ -1,6 +1,6 @@
 # Scenarios
 
-Alternate infrastructure and/or service, built with the same pipeline as the real network (PLAN.md §4.8).
+Alternate infrastructure and/or service, built with the same pipeline as the real network (docs/skytrain-viz-PLAN.md §4.8).
 
 ```sh
 npm run scenario -- broadway-subway          # build
@@ -14,7 +14,7 @@ Each scenario is a directory containing `scenario.json`:
   "name": "Broadway Subway",
   "description": "…shown in the app",
   "infrastructure": {
-    "includeFuture": true,               // OSM track with a future opening_date (data/infrastructure/future.generated.geojson)
+    "includeFuture": true,               // OSM track with a future opening_date (regions/metro-vancouver/infrastructure/future.generated.geojson)
     "futureLines": ["millennium"],       // lines to assign to that track
     "customTrack": "custom-track.geojson", // extra track: LineStrings with {kind?, lines?, name?}
     "removeWays": []                     // OSM way ids to drop from the base network
@@ -39,7 +39,7 @@ Service operations so far:
 - `extend` (continue a line past a terminus through new stations).
 - `truncate` (`{ "op": "truncate", "route": "99", "at": [lon, lat], "keep": [lon, lat], "terminusName": "Arbutus Station" }`): cut every trip at its stop nearest `at` and keep the side toward `keep`. Trips entirely on the cut side are removed.
 
-Buses in scenarios are schedule-only: live and recorded positions are never mixed into a hypothetical network. Run times come from distance and kinematics (`data/config/kinematics.json`) × `padding`, plus `dwell`. More operations (headway patterns, short-turns, removing trips) are future work (see PLAN.md §4.8).
+Buses in scenarios are schedule-only: live and recorded positions are never mixed into a hypothetical network. Run times come from distance and kinematics (`regions/metro-vancouver/config/kinematics.json`) × `padding`, plus `dwell`. More operations (headway patterns, short-turns, removing trips) are future work (see docs/skytrain-viz-PLAN.md §4.8).
 
 ## broadway-subway
 

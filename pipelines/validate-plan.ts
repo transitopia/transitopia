@@ -1,4 +1,4 @@
-// Validate built movement files (PLAN.md §7): continuity (no teleports), conflicts (two trains on the
+// Validate built movement files (docs/skytrain-viz-PLAN.md §7): continuity (no teleports), conflicts (two trains on the
 // same piece of track at once), and fleet in service over the day.
 //
 //   npm run validate:plan [-- --key 1+1101] [--step 5]

@@ -1,4 +1,4 @@
-// AIS fixes → schedule corrections for timetable vessels (SeaBus), PLAN.md §4.12.
+// AIS fixes → schedule corrections for timetable vessels (SeaBus), docs/skytrain-viz-PLAN.md §4.12.
 //
 // Each fix is matched to the trip whose berth-to-berth path it lies on and whose timetable puts
 // the vessel nearest that point at that time. The fix becomes a time anchor on that trip ("the

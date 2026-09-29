@@ -1,4 +1,4 @@
-// Dispatch patches (PLAN.md §4.11): what one service date's inputs (observations, disruptions)
+// Dispatch patches (docs/skytrain-viz-PLAN.md §4.11): what one service date's inputs (observations, disruptions)
 // change in its base plan. Built at build time for static hosting and by the RT service live, in
 // the same format; clients apply the patch for the date they show.
 
@@ -35,7 +35,7 @@ export interface DispatchPatch {
   problems?: string[];
 }
 
-/** Published index of patches (public/data/dispatch/index.json, or the RT service's /rt/dispatch). */
+/** Published index of patches (var/public/data/dispatch/index.json, or the RT service's /rt/dispatch). */
 export interface DispatchIndex {
   schema: 1;
   /** Service date (YYYYMMDD) → patch version and path (relative to the site root: data/… or rt/…). */

@@ -1,9 +1,9 @@
 // Build the local vector basemap: a PMTiles extract of the Protomaps daily planet build clipped to
 // Metro Vancouver, plus the fonts and sprites the Protomaps style needs, so the app makes no
-// third-party map requests at runtime. See PLAN.md §4.9.
+// third-party map requests at runtime. See docs/skytrain-viz-PLAN.md §4.9.
 //
-//   tsx scripts/tiles.ts            # skip steps whose output already exists
-//   tsx scripts/tiles.ts --force    # rebuild everything
+//   tsx pipelines/tiles.ts            # skip steps whose output already exists
+//   tsx pipelines/tiles.ts --force    # rebuild everything
 
 import { execFile } from "node:child_process";
 import { createWriteStream } from "node:fs";

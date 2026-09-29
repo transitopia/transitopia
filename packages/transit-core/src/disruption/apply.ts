@@ -1,4 +1,4 @@
-// Apply disruptions to one service date's plan (PLAN.md §4.11, M8.3): reroute trips onto the track
+// Apply disruptions to one service date's plan (docs/skytrain-viz-PLAN.md §4.11, M8.3): reroute trips onto the track
 // that stays open, close the other, thin the service. The result is re-inferred and dispatched like
 // any other date, so single-track working, turnbacks and knock-on delays come from the simulation.
 // Pure: (plan, graph, platforms, disruptions, date) → modified plan + closures.

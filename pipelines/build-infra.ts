@@ -1,6 +1,6 @@
-// Publish the track network and per-feed platform mapping for the browser (PLAN.md §4.1):
-//   public/data/infra/tracks.geojson                 segments, nodes, stop positions
-//   public/data/feeds/<version>/platforms.json       GTFS stop_id → track position
+// Publish the track network and per-feed platform mapping for the browser (docs/skytrain-viz-PLAN.md §4.1):
+//   var/public/data/infra/tracks.geojson                 segments, nodes, stop positions
+//   var/public/data/feeds/<version>/platforms.json       GTFS stop_id → track position
 //
 //   npm run build:infra
 

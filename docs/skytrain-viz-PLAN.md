@@ -1,6 +1,6 @@
 # SkyTrain Viz: Implementation Plan
 
-Status: **implemented through M7** (2026-09-25). Operations questions still open are tracked in [docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md). They refine config values and don't block anything.
+Status: **implemented through M7** (2026-09-25). Operations questions still open are tracked in [docs/OPEN-QUESTIONS.md](OPEN-QUESTIONS.md). They refine config values and don't block anything.
 
 ## Implementation status
 
@@ -14,8 +14,8 @@ Status: **implemented through M7** (2026-09-25). Operations questions still open
 | M5 Canada Line | ✅ | Came with M3/M4: the graph covers all lines, including Capstan and the Bridgeport OMC. |
 | M6 corrections | ✅ | Observations reference service date + trip, or stop + time. Delays are absorbed at layovers. Cancellations, consists and provenance are shown. |
 | M7 scenarios | ✅ | Future OSM track, custom GeoJSON track, `extend` service operation. Demo: `broadway-subway`. |
-| M8 dispatcher | ✅ | §4.11. **M8.5 alerts ✅**: the RT service polls TransLink alerts every 5 min, drafts disruptions for single-tracking and headway phrases (`data/disruptions/drafts/`, pre-filling the open platform when the alert names it), and `npm run disruptions` lists, confirms or discards them; the Sep 28–30 Canada Line and Sep 28 Expo Line (Edmonds–Royal Oak) works are confirmed from real alerts. Known: at full evening service a single-tracked Expo section gridlocks unless thinned (`singleTrackHeadwayS`, a guess); Sep 28 still breaks 25 waits (pull-ins reversing into wrong-road running at Production Way–University). **M8.4 live ✅**: the RT service's leader re-dispatches dates whose observations or disruptions change (checked every 30 s), keeps every version in `data/dispatch-history/`, advertises current versions in `/rt/live` and serves immutable patches at `/rt/dispatch/<date>/<version>.json`; the app prefers them to the static patches. No checkpoints yet: a changed date takes a full 3–5 s re-dispatch, in the background (the simulation yields to the event loop). **M8.3 disruptions ✅**: `data/disruptions/*.json` (single-track sections, reduced headways) re-plan and re-dispatch their dates; first case: Canada Line Bridgeport–Richmond-Brighouse, Sep 27–30 nights. **M8.2 anchors ✅**: SkyTrain observations re-dispatch their date centrally (`build:dispatch` → per-date patches the app loads); browsers no longer reconcile rail. **M8.1 core ✅**: `build:movements` dispatches every base plan (moving block, junction locks, sections, stub berths). Conflicting pairs per weekday 1,124 → 1 (a broken deadlock); added delay p95 ≈ 3 min on weekdays, ≈ 0 on weekends. Known: 1–2 deadlocks after midnight on weekdays (pull-ins near Edmonds/Lougheed), resolved by the breaker; 4–6 s per service day (budget 1 s). |
-| M9 SeaBus AIS | ✅ | §4.12. Live vessel positions from aisstream.io anchor the SeaBus timetable: names per block, delays, observed positions. Recorded to `data/ais-history/`. |
+| M8 dispatcher | ✅ | §4.11. **M8.5 alerts ✅**: the RT service polls TransLink alerts every 5 min, drafts disruptions for single-tracking and headway phrases (`regions/metro-vancouver/disruptions/drafts/`, pre-filling the open platform when the alert names it), and `npm run disruptions` lists, confirms or discards them; the Sep 28–30 Canada Line and Sep 28 Expo Line (Edmonds–Royal Oak) works are confirmed from real alerts. Known: at full evening service a single-tracked Expo section gridlocks unless thinned (`singleTrackHeadwayS`, a guess); Sep 28 still breaks 25 waits (pull-ins reversing into wrong-road running at Production Way–University). **M8.4 live ✅**: the RT service's leader re-dispatches dates whose observations or disruptions change (checked every 30 s), keeps every version in `var/dispatch-history/`, advertises current versions in `/rt/live` and serves immutable patches at `/rt/dispatch/<date>/<version>.json`; the app prefers them to the static patches. No checkpoints yet: a changed date takes a full 3–5 s re-dispatch, in the background (the simulation yields to the event loop). **M8.3 disruptions ✅**: `regions/metro-vancouver/disruptions/*.json` (single-track sections, reduced headways) re-plan and re-dispatch their dates; first case: Canada Line Bridgeport–Richmond-Brighouse, Sep 27–30 nights. **M8.2 anchors ✅**: SkyTrain observations re-dispatch their date centrally (`build:dispatch` → per-date patches the app loads); browsers no longer reconcile rail. **M8.1 core ✅**: `build:movements` dispatches every base plan (moving block, junction locks, sections, stub berths). Conflicting pairs per weekday 1,124 → 1 (a broken deadlock); added delay p95 ≈ 3 min on weekdays, ≈ 0 on weekends. Known: 1–2 deadlocks after midnight on weekdays (pull-ins near Edmonds/Lougheed), resolved by the breaker; 4–6 s per service day (budget 1 s). |
+| M9 SeaBus AIS | ✅ | §4.12. Live vessel positions from aisstream.io anchor the SeaBus timetable: names per block, delays, observed positions. Recorded to `var/ais-history/`. |
 | Public deploy | ⏳ | Not started (Cloudflare Worker + Durable Object poller, R2 for tiles/history). |
 | Service alerts → schedule overrides | ✅ | Via M8.3/M8.5: alerts become draft disruptions a person confirms (§4.10). |
 
@@ -121,7 +121,7 @@ Every vehicle state carries a **provenance** field (`observed | interpolated | e
 
 ### 4.1 Infrastructure model (the track graph)
 
-This is the heart of the project. It lives as versioned data in `data/infrastructure/`, not in code.
+This is the heart of the project. It lives as versioned data in `regions/metro-vancouver/infrastructure/`, not in code.
 
 **Entities**
 
@@ -137,10 +137,10 @@ This is the heart of the project. It lives as versioned data in `data/infrastruc
 
 **Sourcing pipeline**
 
-1. `scripts/fetch-osm.ts` runs an Overpass query for `railway=subway` ways plus `railway=switch` nodes in the Metro Vancouver bbox. Output goes to `data/raw/osm/` with a timestamp.
-2. `scripts/import-osm.ts` converts OSM into our graph format: splits ways at switches and shared nodes, classifies segments from `service=*` and `name`, and emits `data/infrastructure/tracks.generated.geojson`.
-3. **Hand fixes** live in `data/infrastructure/overrides.json`: platform↔stop_id mapping, switch pairings OSM doesn't encode, corrections, and yard metadata. They're applied on top of the import, so OSM can be re-pulled without losing the fixes.
-4. The validator (§7) checks the result against GTFS (every platform and stop pair routable) and against a hand-written diagram checklist (`data/infrastructure/diagram-checklist.json`: every crossover and pocket from the Wikipedia diagram, plus Capstan).
+1. `pipelines/fetch-osm.ts` runs an Overpass query for `railway=subway` ways plus `railway=switch` nodes in the Metro Vancouver bbox. Output goes to `var/raw/osm/` with a timestamp.
+2. `pipelines/import-osm.ts` converts OSM into our graph format: splits ways at switches and shared nodes, classifies segments from `service=*` and `name`, and emits `regions/metro-vancouver/infrastructure/tracks.generated.geojson`.
+3. **Hand fixes** live in `regions/metro-vancouver/infrastructure/overrides.json`: platform↔stop_id mapping, switch pairings OSM doesn't encode, corrections, and yard metadata. They're applied on top of the import, so OSM can be re-pulled without losing the fixes.
+4. The validator (§7) checks the result against GTFS (every platform and stop pair routable) and against a hand-written diagram checklist (`regions/metro-vancouver/infrastructure/diagram-checklist.json`: every crossover and pocket from the Wikipedia diagram, plus Capstan).
 
 **Rendering at scale**
 
@@ -150,10 +150,10 @@ This is the heart of the project. It lives as versioned data in `data/infrastruc
 
 ### 4.2 Timetables (GTFS → service plan)
 
-Scripts: `scripts/fetch-gtfs.ts` and `scripts/build-schedule.ts`.
+Scripts: `pipelines/fetch-gtfs.ts` and `pipelines/build-schedule.ts`.
 
-- **Feed discovery**: fetch the undated `google_transit.zip` and read `feed_info.txt` (`feed_version`, `feed_start_date`, `feed_end_date`). If the version is new, archive it to `data/raw/gtfs/<feed_version>/` and build it. Previously built versions are kept (cheap), and there's no backfill of historical feeds. Run this on demand locally; later, on a schedule.
-- **Manifest**: `public/data/manifest.json` lists the feed versions with their validity ranges. `feedFor(date)` picks the newest feed whose range covers the date. That handles "current plus future timetables", including a newer feed superseding the tail of an older one. The date picker is bounded by the union of the ranges.
+- **Feed discovery**: fetch the undated `google_transit.zip` and read `feed_info.txt` (`feed_version`, `feed_start_date`, `feed_end_date`). If the version is new, archive it to `var/raw/gtfs/<feed_version>/` and build it. Previously built versions are kept (cheap), and there's no backfill of historical feeds. Run this on demand locally; later, on a schedule.
+- **Manifest**: `var/public/data/manifest.json` lists the feed versions with their validity ranges. `feedFor(date)` picks the newest feed whose range covers the date. That handles "current plus future timetables", including a newer feed superseding the tail of an older one. The date picker is bounded by the union of the ranges.
 - **Filter** to the target routes **by name**: 3 SkyTrain lines, SeaBus, WCE, 99, R1–R6.
 - **Normalize** into a compact service plan per feed version:
   - trips, each with route, direction, headsign, service_id, block_id, shape_id, and `(stop_id, arr, dep)` in seconds since service-day start
@@ -164,7 +164,7 @@ Scripts: `scripts/fetch-gtfs.ts` and `scripts/build-schedule.ts`.
 
 ### 4.3 Train-run inference (schedule → physical trains)
 
-Script: `scripts/infer-runs.ts`. This is where the "best guess" lives, so it should be explicit, configurable, and replaceable.
+Script: `pipelines/infer-runs.ts`. This is where the "best guess" lives, so it should be explicit, configurable, and replaceable.
 
 For each SkyTrain line and each distinct service-day pattern:
 
@@ -182,7 +182,7 @@ Output: **runs**, each an ordered list of movements (revenue trips and deadheads
 
 ### 4.4 Movement plan and routing
 
-Script: `scripts/build-movements.ts`. The same code builds scenarios, and it will feed the dispatcher (§4.11).
+Script: `pipelines/build-movements.ts`. The same code builds scenarios, and it will feed the dispatcher (§4.11).
 
 - **Routing**: each leg (platform → platform, yard → platform, turnback) is routed on the track graph by shortest path, respecting switch pairings. Legs start and end on the specified platform's track.
 - **Timed paths**: each leg becomes a list of `(edgeId, fromOffset, toOffset)` plus a time profile. Per-line kinematics (accel, decel, top speed, dwell; all in config) are fitted so run time matches the schedule. Slack goes into the dwell.
@@ -191,25 +191,25 @@ Script: `scripts/build-movements.ts`. The same code builds scenarios, and it wil
 
 ### 4.5 SeaBus, West Coast Express, and buses
 
-- **SeaBus and WCE** are schedule-based, interpolated along GTFS shapes with ease-in/out between stops. Vessels and trainsets are chained by block_id (for SeaBus, a block is one vessel: 2 in service, 3 at weekday peaks, 1 late evening; see OPEN-QUESTIONS #14). Out-of-service vessels are hidden. SeaBus runs berth to berth along keep-right lanes traced from AIS instead of its GTFS shapes: `src/core/plan/ferry-berths.ts`, applied by build-schedule, runs every vessel between the same pair of berths (west–west or east–east, set in `data/config/seabus.json`; OPEN-QUESTIONS #24). Live AIS fixes anchor its timetable (§4.12). No infrastructure model. WCE mid-day and overnight storage is an open question: whether to show parked trainsets at all.
-- **Bus route lines** are split by coverage (`src/core/plan/coverage.ts`): sections served by under 25 % of the route's busiest section (e.g. the 99 east of Commercial–Broadway) and sections where no passengers can be aboard are drawn dotted. The latter comes from GTFS `pickup_type`/`drop_off_type` (kept per pattern stop as `access`): e.g. the 99 drops off at Commercial Dr @ N Grandview Hwy (58491), lays over at N Grandview Hwy @ Commercial Dr (58620: no pickup or drop-off) and picks up at Commercial–Broadway Bay 5 (50913). Stops where nobody can board or alight get no marker.
+- **SeaBus and WCE** are schedule-based, interpolated along GTFS shapes with ease-in/out between stops. Vessels and trainsets are chained by block_id (for SeaBus, a block is one vessel: 2 in service, 3 at weekday peaks, 1 late evening; see OPEN-QUESTIONS #14). Out-of-service vessels are hidden. SeaBus runs berth to berth along keep-right lanes traced from AIS instead of its GTFS shapes: `packages/transit-core/src/plan/ferry-berths.ts`, applied by build-schedule, runs every vessel between the same pair of berths (west–west or east–east, set in `regions/metro-vancouver/config/seabus.json`; OPEN-QUESTIONS #24). Live AIS fixes anchor its timetable (§4.12). No infrastructure model. WCE mid-day and overnight storage is an open question: whether to show parked trainsets at all.
+- **Bus route lines** are split by coverage (`packages/transit-core/src/plan/coverage.ts`): sections served by under 25 % of the route's busiest section (e.g. the 99 east of Commercial–Broadway) and sections where no passengers can be aboard are drawn dotted. The latter comes from GTFS `pickup_type`/`drop_off_type` (kept per pattern stop as `access`): e.g. the 99 drops off at Commercial Dr @ N Grandview Hwy (58491), lays over at N Grandview Hwy @ Commercial Dr (58620: no pickup or drop-off) and picks up at Commercial–Broadway Bay 5 (50913). Stops where nobody can board or alight get no marker.
 - **Buses (99, R1–R6)** are resolved per vehicle, in priority order:
   1. **Observed**: a live or recorded snapshot position at (or within one poll interval of) *t*.
   2. **Interpolated**: between two observations of the same vehicle less than ~3 min apart, moved along the trip's shape rather than in a straight line.
   3. **Estimated**: scheduled trip interpolation along the shape. This is used when no RT data covers *t*: the recorder wasn't running, future times, or a gap.
 
-  Fixes arrive ~20–60 s old and ~30 s apart, so the live view always predicts (`src/core/rt/profile.ts`, `timeline.ts`):
-  - **Travel-time profile** learned from the recorded history (`npm run build:rt-profile` → `public/data/feeds/<v>/rt-profile.json`): pace per 50 m bin along each trip shape by time-of-day band (congestion, signals) and expected dwell per stop. With ~30 s fixes most dwells show up as slow bins around the stop, so slow time within 75 m of a stop (vs the pace nearby) is moved into its dwell; this makes buses visibly stop, at a small cost in average accuracy (a smooth "expected" position is closer on average than a stop-or-go guess). Gaps fall back to the all-day profile, then the timetable's running times with a default dwell, then a default speed.
+  Fixes arrive ~20–60 s old and ~30 s apart, so the live view always predicts (`packages/transit-core/src/rt/profile.ts`, `timeline.ts`):
+  - **Travel-time profile** learned from the recorded history (`npm run build:rt-profile` → `var/public/data/feeds/<v>/rt-profile.json`): pace per 50 m bin along each trip shape by time-of-day band (congestion, signals) and expected dwell per stop. With ~30 s fixes most dwells show up as slow bins around the stop, so slow time within 75 m of a stop (vs the pace nearby) is moved into its dwell; this makes buses visibly stop, at a small cost in average accuracy (a smooth "expected" position is closer on average than a stop-or-go guess). Gaps fall back to the all-day profile, then the timetable's running times with a default dwell, then a default speed.
   - **Prediction** walks the bus forward from its last fix with the profile, stopping at each upcoming stop for its expected dwell (stops behind the fix are passed). A bus whose predicted dwell ends leaves on time even without a new fix (RT reporting gaps are likelier than long dwells; revisit with ground truth).
   - **Corrections glide**: when a new fix becomes known (client receipt live, fetch time when recorded), a bus that turns out further ahead glides forward (≤ 8 m/s faster, ≤ 25 s); one that turns out behind holds still until the prediction catches up, never reversing. Corrections > 600 m snap.
   - Between two known fixes (recorded playback), motion follows the profile scaled to fit both fixes, so stops show there too.
   - **Schedule estimates** for buses (no RT coverage, e.g. fast-forwarding past the live edge) use the same profile between timetable times ≥ 3 min apart, scaled to meet them: the bus stops at each stop and holds at those anchor stops until its timetable time.
-  - **Delays carry forward** (`src/core/rt/carry.ts`): each bus's delay against that paced schedule, measured where RT prediction leaves it (fix + 90 s), shifts the rest of its trip; lateness carries into its next 2 trips less layover beyond a 120 s turnaround, early running doesn't. A bus unreported for > 90 s continues as a delay-shifted estimate (unless its block is shown from RT) instead of vanishing, and fast-forwarding past the live edge keeps every known delay. Hand-over from RT to estimate: median 8 m, p90 14 m (measured in the app at 10×). Positions stay provenance *estimated*.
+  - **Delays carry forward** (`packages/transit-core/src/rt/carry.ts`): each bus's delay against that paced schedule, measured where RT prediction leaves it (fix + 90 s), shifts the rest of its trip; lateness carries into its next 2 trips less layover beyond a 120 s turnaround, early running doesn't. A bus unreported for > 90 s continues as a delay-shifted estimate (unless its block is shown from RT) instead of vanishing, and fast-forwarding past the live edge keeps every known delay. Hand-over from RT to estimate: median 8 m, p90 14 m (measured in the app at 10×). Positions stay provenance *estimated*.
   - Predictions are *interpolated*, not *observed* (only within 10 s of a fix). Implausible fixes (null island, > 45 m/s jumps) are dropped.
   - **Standing and layovers**: a bus never moves backwards along its trip. A fix behind the furthest point reached (≤ 150 m) holds it there, standing; lone spikes ahead that the next fix contradicts are dropped. **Between trips** (before its trip's scheduled departure, or a late start that hasn't left its first stop or layover spot) a bus is drawn only at its next trip's first stop (on the route, within 100 m along it), standing and facing along the route with a "Between trips" note and no delay; elsewhere (GPS off route, repositioning) it isn't drawn until it starts the trip. In recorded playback a bus whose next fix is hidden stands where it was rather than being predicted on.
   - **Shifted GPS**: some buses report positions offset hundreds of metres from where they are (seen 2026-09-26: an R4 and a 99 ~350–620 m north of their routes for 30+ min, on time; TransLink's stop matching stalls on such buses, so its next stop stays at stop 1 and its delay grows by 30 s every 30 s). Fixes 150 m–1 km off the trip's shape are placed on the route at their along-route position when they progress plausibly from the last placed fix (≤ 15 m/s, steady offset) or fit the timetable (± 20 min); they're *interpolated* and noted in the inspect panel. When TransLink's next stop is > 200 m behind the bus, next stop and delay come from the position instead. Fixes that can't be placed (e.g. buses going to/from the depot, > 1 km off) are shown as reported with a note and no delay. Recorded data: 98.7 % of fixes within 50 m of their shape, 0.2 % 300 m–1 km (mostly those two buses), 0.2 % > 1 km (mostly null-island fixes).
-  - **Service changes** (`src/core/rt/changes.ts`, OPEN-QUESTIONS #28): TransLink publishes cancellations as trip updates (`CANCELED`) and as "no service" alerts naming the trip. It publishes skipped stops as `SKIPPED` stop time updates, and detours only as alerts: route (maybe direction), affected stops, and the path in words. There's no shape and no `TripModifications`, so detour paths aren't drawn. Cancelled trips get no schedule estimate, carry no delay, and absorb none. A bus still reporting one is drawn from its fixes with a note. A "no service" alert that lists stops is a partial cancellation, so only those stops count as skipped. Skipped stops are never a bus's next stop and get no predicted dwell. A bus off its route within 3 km of a stop named by an active detour alert for its route (and direction) is labelled "On detour" with the alert's text, keeps TransLink's delay, and is never taken for shifted GPS.
-  - Evaluate with `npx tsx scripts/eval-rt.ts` (train on older hours, replay the latest as the live view would). On 2026-09-26 (8 h train, 3 h test): median error 30 s ahead 94 → 50 m, 60 s ahead 188 → 70 m; live display error vs fixes 120 → 64 m; jumps when data arrives: median 63 → 0 m, > 50 m in 52 % → 0.6 % of updates.
+  - **Service changes** (`packages/transit-core/src/rt/changes.ts`, OPEN-QUESTIONS #28): TransLink publishes cancellations as trip updates (`CANCELED`) and as "no service" alerts naming the trip. It publishes skipped stops as `SKIPPED` stop time updates, and detours only as alerts: route (maybe direction), affected stops, and the path in words. There's no shape and no `TripModifications`, so detour paths aren't drawn. Cancelled trips get no schedule estimate, carry no delay, and absorb none. A bus still reporting one is drawn from its fixes with a note. A "no service" alert that lists stops is a partial cancellation, so only those stops count as skipped. Skipped stops are never a bus's next stop and get no predicted dwell. A bus off its route within 3 km of a stop named by an active detour alert for its route (and direction) is labelled "On detour" with the alert's text, keeps TransLink's delay, and is never taken for shifted GPS.
+  - Evaluate with `npx tsx pipelines/eval-rt.ts` (train on older hours, replay the latest as the live view would). On 2026-09-26 (8 h train, 3 h test): median error 30 s ahead 94 → 50 m, 60 s ahead 188 → 70 m; live display error vs fixes 120 → 64 m; jumps when data arrives: median 63 → 0 m, > 50 m in 52 % → 0.6 % of updates.
 
 ### 4.6 RT service (proxy + cache + recorder)
 
@@ -218,19 +218,19 @@ This is one small service with two jobs. It runs locally as a Node process (star
 **Live proxy, built so it never hammers TransLink**
 
 - **One upstream poller**: a single loop per feed fetches `gtfsposition`, `gtfsrealtime` (delays, cancellations, skipped stops) and `gtfsalerts` on a time-of-day schedule, regardless of how many clients are connected. Client requests never trigger upstream fetches. They read the latest cached snapshot.
-- **Request budget** (2026-09-29; OPEN-QUESTIONS #29): TransLink's terms allow an API key 1,000 requests a day, so the schedule (`data/config/rt.json` → `poll`) fits all three feeds into at most ~970 requests in any 24 hours. Positions are polled every 60 s at weekday peaks (06:30–09:30, 15:00–18:30), every 90 s at weekend midday, every 150 s otherwise and every 5 min overnight. Trip updates and alerts are polled 4–30 and 20–60 min apart. A ledger of the last 24 hours' requests (`data/rt-history/requests.json`) enforces the cap, counting failed attempts too, and survives restarts: a restarted leader continues each feed's schedule from its last request instead of polling at once, and serves the last recorded snapshot meanwhile. `/rt/status` reports `budget`. Thresholds that assumed ~20 s fixes (stale data, recorder coverage, interpolation and prediction limits, alert grace) follow the interval in use (`src/core/rt/budget.ts`). `npx tsx scripts/eval-rt.ts --subsample schedule` replays recorded history as if polled on the schedule.
+- **Request budget** (2026-09-29; OPEN-QUESTIONS #29): TransLink's terms allow an API key 1,000 requests a day, so the schedule (`regions/metro-vancouver/config/rt.json` → `poll`) fits all three feeds into at most ~970 requests in any 24 hours. Positions are polled every 60 s at weekday peaks (06:30–09:30, 15:00–18:30), every 90 s at weekend midday, every 150 s otherwise and every 5 min overnight. Trip updates and alerts are polled 4–30 and 20–60 min apart. A ledger of the last 24 hours' requests (`var/rt-history/requests.json`) enforces the cap, counting failed attempts too, and survives restarts: a restarted leader continues each feed's schedule from its last request instead of polling at once, and serves the last recorded snapshot meanwhile. `/rt/status` reports `budget`. Thresholds that assumed ~20 s fixes (stale data, recorder coverage, interpolation and prediction limits, alert grace) follow the interval in use (`packages/transit-core/src/rt/budget.ts`). `npx tsx pipelines/eval-rt.ts --subsample schedule` replays recorded history as if polled on the schedule.
 - Decodes the protobuf, filters to our routes, and serves compact JSON at `GET /rt/live`, with `Cache-Control: public, max-age=10` and CORS. In the public version the CDN edge absorbs traffic, and the upstream rate stays within the budget.
 - **Backoff**: on upstream errors it keeps serving the last snapshot, marked `stale: true` with its age. The client falls back to estimates when data is older than ~2 min.
 - The key is read from `.secrets` locally, or from a Worker secret in production. It never reaches the browser.
 
 **Recorder**
 
-- Every poll result (already filtered to our routes) is appended to **hourly chunk files**: `data/rt-history/YYYY-MM-DD/HH.ndjson.gz`, one line per snapshot with `{ts, vehicles:[{id, tripId, routeId, lat, lon, bearing?, stopSeq?, status?, delay?}]}`. Size is about a few MB per day.
+- Every poll result (already filtered to our routes) is appended to **hourly chunk files**: `var/rt-history/YYYY-MM-DD/HH.ndjson.gz`, one line per snapshot with `{ts, vehicles:[{id, tripId, routeId, lat, lon, bearing?, stopSeq?, status?, delay?}]}`. Size is about a few MB per day.
 - `GET /rt/history?date=YYYY-MM-DD&hour=HH` serves a chunk. `GET /rt/coverage?from&to` returns the time ranges where the recorder was running (gaps longer than 2 poll intervals count as uncovered).
-- **Service changes**: each trip-updates and alerts poll updates `data/rt-history/changes/YYYYMMDD.json` for our bus routes. It holds cancelled trips and skipped stops per service date, and route alerts with when each was first and last seen. It exists because the feeds forget a trip once it has run and an alert once it's over. `GET /rt/changes?date=YYYYMMDD` serves it, and the client refetches today's and yesterday's every minute.
+- **Service changes**: each trip-updates and alerts poll updates `var/rt-history/changes/YYYYMMDD.json` for our bus routes. It holds cancelled trips and skipped stops per service date, and route alerts with when each was first and last seen. It exists because the feeds forget a trip once it has run and an alert once it's over. `GET /rt/changes?date=YYYYMMDD` serves it, and the client refetches today's and yesterday's every minute.
 - The file layout maps directly onto R2 objects for the public version.
 
-**Live dispatch** (§4.11): the same leader process runs the dispatcher. `GET /rt/dispatch` lists the current patch version per service date and `/rt/live` carries the same pointer; `GET /rt/dispatch/<date>/<version>.json` serves a patch (immutable, cacheable forever). Versions are content hashes of the inputs, so re-checking unchanged inputs costs nothing and a restart reloads them from `data/dispatch-history/`.
+**Live dispatch** (§4.11): the same leader process runs the dispatcher. `GET /rt/dispatch` lists the current patch version per service date and `/rt/live` carries the same pointer; `GET /rt/dispatch/<date>/<version>.json` serves a patch (immutable, cacheable forever). Versions are content hashes of the inputs, so re-checking unchanged inputs costs nothing and a restart reloads them from `var/dispatch-history/`.
 
 **Client indicator**
 
@@ -267,30 +267,30 @@ SkyTrain observations go through the **dispatcher** (§4.11, M8.2): `railInputs(
 
 Sources:
 
-- `data/observations/*.json` files
+- `regions/metro-vancouver/observations/*.json` files
 - later, a rail RT adapter if TransLink publishes one
 
 The bus RT history is effectively the first observation source. It uses the same reconciler concepts in a simpler form.
 
 ### 4.8 Scenarios (config files)
 
-A scenario is a directory in `data/scenarios/<name>/`:
+A scenario is a directory in `regions/metro-vancouver/scenarios/<name>/`:
 
 - `infrastructure.json`: a diff against the base graph (add, remove, or modify segments, switches, platforms, and yards; new segments as GeoJSON)
 - `service.json`: either `{ "base": "gtfs" }` or a service-pattern spec that generates trips, e.g. line, pattern (origin → destination, stopping platforms), headways by time band, and short-turn rules
 - optional `config.json`: overrides for kinematics, fleet caps, and turnback times
 
-`npm run scenario <name>` runs the full pipeline (apply diff → validate → generate trips → infer runs → route → conflict check) and writes `public/data/scenarios/<name>/`. The app picks scenarios via `?scenario=<name>`. There's no editing UI. Recomputes stay central (build time or the RT service, §4.11); browsers don't run the pipeline.
+`npm run scenario <name>` runs the full pipeline (apply diff → validate → generate trips → infer runs → route → conflict check) and writes `var/public/data/scenarios/<name>/`. The app picks scenarios via `?scenario=<name>`. There's no editing UI. Recomputes stay central (build time or the RT service, §4.11); browsers don't run the pipeline.
 
 ### 4.9 Frontend
 
 - **Stack**: TypeScript + Vite, plain TS with a tiny reactive store, and **MapLibre GL JS** for all map rendering.
-- **Vehicles**: rendered by a small WebGL2 layer (`src/app/layers/gl-polygons.ts`) through MapLibre's public `CustomLayerInterface`. Geometry is built on the CPU each frame (a few hundred to-scale shapes) relative to the viewport centre, and the offset is folded into the matrix in float64, so positions stay precise at station zoom. Picking is also done on the CPU. *(Decision, 2026-09-25: deck.gl's MapLibre integration reads private `map.transform` internals and breaks on maplibre-gl v6, so a dependency-free custom layer is more robust.)*
+- **Vehicles**: rendered by a small WebGL2 layer (`packages/transit-map/src/layers/gl-polygons.ts`) through MapLibre's public `CustomLayerInterface`. Geometry is built on the CPU each frame (a few hundred to-scale shapes) relative to the viewport centre, and the offset is folded into the matrix in float64, so positions stay precise at station zoom. Picking is also done on the CPU. *(Decision, 2026-09-25: deck.gl's MapLibre integration reads private `map.transform` internals and breaks on maplibre-gl v6, so a dependency-free custom layer is more robust.)*
 - **Basemap**:
   - a **PMTiles** extract of the Protomaps basemap, clipped to Metro Vancouver (`pmtiles extract`, maxzoom 15, overzoomed above that), served as a static file with HTTP range requests through the `pmtiles` MapLibre protocol
   - styled with `@protomaps/basemaps` in muted light and dark flavours so transit layers stand out
   - glyphs and sprites hosted locally, so there are no third-party tile or font calls
-  - `npm run tiles` builds it into `public/tiles/` (gitignored, roughly 50–150 MB)
+  - `npm run tiles` builds it into `var/public/tiles/` (gitignored, roughly 50–150 MB)
   - public-hosting note: Cloudflare Pages has a 25 MB per-file limit, so the PMTiles file will go on R2
 - **Time controls**, the only chrome beyond the map, laid out as a bottom bar on desktop and a compact bottom sheet on phones:
   - play/pause
@@ -319,9 +319,9 @@ A scenario is a directory in `data/scenarios/<name>/`:
    - platform reassignments → role-based pins (like `patternPlatforms`).
 3. **Apply per date.** Confirmed overrides become dispatcher inputs (§4.11) for their active period: closures, service changes and platform pins. The RT service re-dispatches the affected dates and publishes them like any other dispatch version. Parsing produces a draft that a person confirms, because alerts don't say which track is closed.
 4. **Show it.** A banner or badge when the displayed time has an active alert, the alert text in the inspect card, and provenance "adjusted by TransLink alert" on affected trains.
-5. **Hand overrides.** The same format takes manual entries (`data/disruptions/`, M8.3), for disruptions without a parseable alert.
+5. **Hand overrides.** The same format takes manual entries (`regions/metro-vancouver/disruptions/`, M8.3), for disruptions without a parseable alert.
 
-**As built:** steps 1–5 are done. The RT leader polls `gtfsalerts` every 5 min and appends changes to `data/rt-history/alerts.ndjson`; `src/core/disruption/alerts.ts` turns "single-track (in both directions) between X Station and/& Y Station", "board all trains from Platform N (at both stations)" and "X Station - Y Station - N minutes" into a draft; `npm run disruptions` confirms it into `data/disruptions/`. Other alerts (elevators, fares, the Braid arrangement, LIM rail replacement) are listed as unparsed. When single-tracking comes without a headway, through service is thinned to `dispatch.singleTrackHeadwayS` (standing in for the short-turns operators add; generating short-turn trips is future work).
+**As built:** steps 1–5 are done. The RT leader polls `gtfsalerts` every 5 min and appends changes to `var/rt-history/alerts.ndjson`; `packages/transit-core/src/disruption/alerts.ts` turns "single-track (in both directions) between X Station and/& Y Station", "board all trains from Platform N (at both stations)" and "X Station - Y Station - N minutes" into a draft; `npm run disruptions` confirms it into `regions/metro-vancouver/disruptions/`. Other alerts (elevators, fares, the Braid arrangement, LIM rail replacement) are listed as unparsed. When single-tracking comes without a headway, through service is thinned to `dispatch.singleTrackHeadwayS` (standing in for the short-turns operators add; generating short-turn trips is future work).
 
 **Open points:**
 - Which track is closed when an alert says only "single-track": needs ground truth, as at Braid (the confirm step asks for it).
@@ -332,7 +332,7 @@ A scenario is a directory in `data/scenarios/<name>/`:
 
 **Why.** Each train's position comes from the timetable independently of every other train, so nothing stops two trains occupying the same track. `validate:plan` reports ~1,100 conflicting pairs on a weekday. Most are terminus berths (Waterfront 324, Production Way–University 226; OPEN-QUESTIONS #21). Some are head-on meetings on track used in both directions. For example, on 2026-09-28 at 10:02:35 two Braid short-turns meet at the crossover south of Sapperton; the real train waits ~30 s there (#20). Corrections make this worse, because `reconcile()` shifts runs at playback, after any consistency check. And disruptions such as single-tracking (§4.10) can't be shown credibly without a model of who waits for whom.
 
-**What.** A dispatcher (`src/core/dispatch/`, DOM-free) turns the inferred runs (§4.3) into a feasible movement plan by simulating SkyTrain's signalling. It is the one place where the timetable, infrastructure state, service changes and observations meet:
+**What.** A dispatcher (`packages/transit-core/src/dispatch/`, DOM-free) turns the inferred runs (§4.3) into a feasible movement plan by simulating SkyTrain's signalling. It is the one place where the timetable, infrastructure state, service changes and observations meet:
 
 ```
 dispatch(plan, runs, graph, inputs) → movement plan + per-train delays, holds and provenance spans
@@ -366,7 +366,7 @@ The existing leg solver reproduces motion between stops. The movement schema goe
 
 **Central live dispatch** (the RT service now, its Durable Object in the public version)
 - **Input sources:**
-  - committed files (`data/observations/`, `data/disruptions/`)
+  - committed files (`regions/metro-vancouver/observations/`, `regions/metro-vancouver/disruptions/`)
   - confirmed alert overrides (§4.10)
   - later, authenticated observation submissions
 
@@ -409,41 +409,28 @@ The existing leg solver reproduces motion between stops. The movement schema goe
 
 TransLink publishes no real-time data for the SeaBus, but the vessels broadcast AIS. [aisstream.io](https://aisstream.io/documentation) streams it free over a WebSocket, filtered by MMSI and bounding box. Its key (`AISSTREAM_API_KEY` in `.secrets`) must stay on the server, and there's no SLA and no history, so we record our own.
 
-- **Ingest** (`server/rt/ais.ts`): the RT service's leader keeps one WebSocket open (reconnecting with backoff) for the fleet's MMSIs (`data/config/seabus.json`), keeps two days of fixes in memory, and records them in batches every 10 s with the RT recorder's format (`data/ais-history/YYYY-MM-DD/HH.ndjson.gz`; an empty batch while connected keeps coverage going). `GET /rt/ais/fixes?date=YYYYMMDD[&after=cursor]` serves a service date's fixes; the cursor counts arrivals (bursts arrive out of time order) and `epoch` changes on restart.
-- **Matching** (`src/core/ais/match.ts`, pure): each fix matches the trip whose berth-to-berth path it lies on (within 200 m, course within 60° of the path) and whose timetable is nearest (±10 min). A moving fix anchors the trip ("here at t"); a docked fix only moves the timetable if it contradicts it (still docked after departure, or docked before arrival). Lateness carries into the vessel's next trips, less layover slack beyond a 90 s turnaround. Each block takes the name of the vessel with the most fixes on it. Fixes that match nothing (the layup berth, the spare) are ignored, so out-of-service vessels stay hidden.
-- **Display**: the browser (`src/app/ais.ts`) polls the fixes for dates in progress, runs the matcher and passes the result to the schedule engine as `ScheduleCorrections`, like sightings. Vessels are drawn on our lanes, shifted to agree with the fixes: observed within 90 s of a fix, interpolated between, carried (estimated) after. Manual observations take precedence.
-- **Smoothing** (`src/core/ais/glide.ts`, like buses' glide): when new fixes arrive at time K, each vessel glides from where it was drawn to where the new corrections put it instead of jumping: drawn behind, it catches up at up to 4 m/s extra over 3–30 s; drawn ahead, it holds (≤ 90 s). Under 5 m nothing changes; over 400 m (or across trips, other than leaving the dock) it jumps. The glide is expressed as anchors, used only for display times in its window; elsewhere every fix is used (hindsight), so replays interpolate between fixes and never jump. Live check (2026-09-29 AM peak, 3 min): largest step 8 m per 250 ms frame; a 300 m correction became a 30 s catch-up.
+- **Ingest** (`apps/server/src/rt/ais.ts`): the RT service's leader keeps one WebSocket open (reconnecting with backoff) for the fleet's MMSIs (`regions/metro-vancouver/config/seabus.json`), keeps two days of fixes in memory, and records them in batches every 10 s with the RT recorder's format (`var/ais-history/YYYY-MM-DD/HH.ndjson.gz`; an empty batch while connected keeps coverage going). `GET /rt/ais/fixes?date=YYYYMMDD[&after=cursor]` serves a service date's fixes; the cursor counts arrivals (bursts arrive out of time order) and `epoch` changes on restart.
+- **Matching** (`packages/transit-core/src/ais/match.ts`, pure): each fix matches the trip whose berth-to-berth path it lies on (within 200 m, course within 60° of the path) and whose timetable is nearest (±10 min). A moving fix anchors the trip ("here at t"); a docked fix only moves the timetable if it contradicts it (still docked after departure, or docked before arrival). Lateness carries into the vessel's next trips, less layover slack beyond a 90 s turnaround. Each block takes the name of the vessel with the most fixes on it. Fixes that match nothing (the layup berth, the spare) are ignored, so out-of-service vessels stay hidden.
+- **Display**: the browser (`packages/transit-map/src/ais.ts`) polls the fixes for dates in progress, runs the matcher and passes the result to the schedule engine as `ScheduleCorrections`, like sightings. Vessels are drawn on our lanes, shifted to agree with the fixes: observed within 90 s of a fix, interpolated between, carried (estimated) after. Manual observations take precedence.
+- **Smoothing** (`packages/transit-core/src/ais/glide.ts`, like buses' glide): when new fixes arrive at time K, each vessel glides from where it was drawn to where the new corrections put it instead of jumping: drawn behind, it catches up at up to 4 m/s extra over 3–30 s; drawn ahead, it holds (≤ 90 s). Under 5 m nothing changes; over 400 m (or across trips, other than leaving the dock) it jumps. The glide is expressed as anchors, used only for display times in its window; elsewhere every fix is used (hindsight), so replays interpolate between fixes and never jump. Live check (2026-09-29 AM peak, 3 min): largest step 8 m per 250 ms frame; a 300 m correction became a 30 s catch-up.
 - **Why anchors, not raw positions**: fixes arrive irregularly from volunteer receivers (30-minute probe, 2026-09-28 evening: per vessel in service a median ~60 s apart, p90 2–3 min, max ~4 min). Anchoring the timetable degrades gracefully to "schedule + known delay" instead of freezing or jumping.
-- **Tools**: `scripts/probe-ais.ts` records raw messages and summarises the feed; `scripts/eval-ais.ts [date]` reports matches, lateness, vessels per block and the berths used.
+- **Tools**: `pipelines/probe-ais.ts` records raw messages and summarises the feed; `pipelines/eval-ais.ts [date]` reports matches, lateness, vessels per block and the berths used.
 - **Berth pair of the day**: the plan carries every pair's paths (`ServicePlan.ferry`) and trips use the default pair's. When a day's docked fixes are mostly (≥ 2, more than all others together) at another pair's berths, the matcher sets `ScheduleCorrections.shapes`, and the engine draws that whole day along the other pair's paths (distance scaled; timing unchanged). Route lines show both pairs: the day's pair solid, the other dotted (map global state `ferryPair`, set from the day shown).
 - **Later**: lanes regenerated from recorded tracks.
 
 ## 5. Repository layout
 
-```
-skytrain-viz/
-  CLAUDE.md, README.md, PLAN.md, LICENSE
-  docs/OPEN-QUESTIONS.md      # operations questions → config values
-  .secrets                    # gitignored; TRANSLINK_API_KEY=...
-  data/
-    raw/                      # gitignored: GTFS zips, OSM extracts, basemap source
-    rt-history/               # gitignored: recorder output
-    infrastructure/           # committed: tracks.generated.geojson, overrides.json, diagram-checklist.json
-    config/                   # committed: kinematics, dwell, turnbacks, yards, consists, fleet caps
-    observations/             # committed: manual corrections
-    disruptions/              # planned: closures and service changes (dispatcher inputs, §4.11)
-    scenarios/                # committed: scenario bundles
-  scripts/                    # tsx: fetch-gtfs, build-schedule, fetch-osm, import-osm, infer-runs,
-                              #      build-movements, validate-*, scenario, tiles
-  src/
-    core/                     # DOM-free; shared by scripts, tests, workers
-      gtfs/  infra/  runs/  movement/  dispatch/  corrections/  scenario/  rt/
-    app/                      # map, layers, clock, controls, inspect
-  server/                     # RT service: poller, cache, recorder, history endpoints, later live dispatch (Node)
-  worker/                     # later: Cloudflare Worker + Durable Object port of server/
-  public/                     # static assets; public/data and public/tiles are gitignored build output
-  test/
-```
+skytrain-viz was merged into the Transitopia monorepo on 2026-09-29 (see [V2-PLAN.md §4.1](../V2-PLAN.md)). Paths in this document have been updated to the merged layout:
+
+| skytrain-viz | Transitopia |
+|---|---|
+| `src/core/` | `packages/transit-core/src/` (DOM-free; shared by pipelines, tests and the server) |
+| `src/app/`, `index.html` | `packages/transit-map/` (engine + standalone viewer, `npm run dev:transit`) |
+| `server/` | `apps/server/src/` |
+| `scripts/` | `pipelines/` |
+| `test/` | `test/` in each workspace |
+| `data/{config,infrastructure,scenarios,observations,disruptions}/` | `regions/metro-vancouver/…` (committed) |
+| `data/{raw,rt-history,ais-history,dispatch-history}/`, `public/{data,tiles,basemap-assets}/` | `var/…` (gitignored; `var/public/` is served at the viewer's web root) |
 
 ## 6. Milestones
 
@@ -460,7 +447,7 @@ Each milestone ends with something you can look at.
 9. **M8 – Dispatcher** (§4.11), in steps that each end with something to look at:
    1. *Core:* base plans are built through the dispatcher with no inputs (moving block, route locking, berths). Done when `validate:plan` shows no conflicts outside yards, the added delay is small (p95 target set from the first build), and the Braid meeting is gone.
    2. *Anchors:* rail observations go through the dispatcher; `warp()` is retired for rail.
-   3. *Disruptions from files:* `data/disruptions/*.json` closures and service changes. First case: Canada Line single-tracking between Bridgeport and Richmond-Brighouse (Sep 27–30).
+   3. *Disruptions from files:* `regions/metro-vancouver/disruptions/*.json` closures and service changes. First case: Canada Line single-tracking between Bridgeport and Richmond-Brighouse (Sep 27–30).
    4. *Live central dispatch:* input-triggered re-dispatch in the RT service with checkpoints, versioned patches, a `/rt/live` pointer, and patch loading in the client.
    5. *Alerts:* §4.10 alerts become draft disruption inputs, confirmed by a person.
 10. **Later – Public deploy.** Static host, Worker + Durable Object for the poller, recorder and dispatcher, R2 for tiles, history and dispatch versions.
@@ -494,7 +481,7 @@ Each milestone ends with something you can look at.
 | Risk | Mitigation |
 |---|---|
 | The OSM track graph has gaps or errors. | Overrides file survives re-imports; validator and diagram checklist; start with Expo+Millennium. |
-| Run inference is implausible (fleet counts, turnbacks, layups). | Everything lives in config; fleet chart; block_id hint; corrections layer; [open questions](docs/OPEN-QUESTIONS.md). |
+| Run inference is implausible (fleet counts, turnbacks, layups). | Everything lives in config; fleet chart; block_id hint; corrections layer; [open questions](OPEN-QUESTIONS.md). |
 | RT API limits or outages. | Single poller with fixed upstream rate; stale-snapshot serving; automatic estimated fallback with a visible badge. |
 | The recorder only covers time when it was running (a local laptop). | Honest coverage strip. The public version moves the recorder to an always-on Durable Object. |
 | GTFS changes (new signup periods, route IDs, platform stops). | Select by name; per-feed builds; the validator fails loudly on unmapped platforms. |

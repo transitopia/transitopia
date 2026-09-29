@@ -1,5 +1,5 @@
-// Validate and publish observation files (PLAN.md §4.7):
-//   data/observations/*.json → public/data/observations/<name>.json + index.json (by service date)
+// Validate and publish observation files (docs/skytrain-viz-PLAN.md §4.7):
+//   regions/metro-vancouver/observations/*.json → var/public/data/observations/<name>.json + index.json (by service date)
 //
 //   npm run build:observations
 

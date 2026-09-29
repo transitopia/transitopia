@@ -1,4 +1,4 @@
-// Observations → dispatcher inputs for SkyTrain (PLAN.md §4.7, §4.11), and corrections for
+// Observations → dispatcher inputs for SkyTrain (docs/skytrain-viz-PLAN.md §4.7, §4.11), and corrections for
 // timetable vehicles (SeaBus, WCE, buses without real-time data).
 //
 // SkyTrain sightings become anchors: "the train running trip X was at stop i at time t". The

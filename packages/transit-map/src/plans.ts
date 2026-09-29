@@ -138,7 +138,7 @@ export class PlanStore {
   }
 
   /**
-   * The dispatch patch for a date (observations, disruptions; PLAN.md §4.11): null if there is
+   * The dispatch patch for a date (observations, disruptions; docs/skytrain-viz-PLAN.md §4.11): null if there is
    * none, undefined while loading. Patches are dispatched centrally, never in the browser.
    */
   private patchFor(date: string): DispatchPatch | null | undefined {

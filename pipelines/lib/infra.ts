@@ -26,7 +26,7 @@ export interface TurnOverride {
 
 export interface Overrides {
   osm: { includeWays: number[]; excludeWays: number[] };
-  /** GeoJSON file (in data/infrastructure/) of track missing from OSM, joined by coordinates. */
+  /** GeoJSON file (in regions/metro-vancouver/infrastructure/) of track missing from OSM, joined by coordinates. */
   addTrack?: string;
   turns: { add: TurnOverride[]; remove: TurnOverride[] };
   platforms: PlatformOverride[];

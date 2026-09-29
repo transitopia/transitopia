@@ -1,5 +1,5 @@
 // Schedule-based vehicle positions: a pure function of (plan, service date, time). This is the
-// "estimated" layer for every mode; SkyTrain will switch to track-level movements (PLAN.md §4.4),
+// "estimated" layer for every mode; SkyTrain will switch to track-level movements (docs/skytrain-viz-PLAN.md §4.4),
 // and buses overlay real-time observations on top (§4.5).
 
 import {
@@ -330,7 +330,7 @@ export type TripPacer = (
 
 /**
  * Adjustments for timetable vehicles: observations (see reconcileScheduled) and delays carried
- * forward from real-time data (see src/core/rt/carry.ts).
+ * forward from real-time data (see packages/transit-core/src/rt/carry.ts).
  */
 export interface ScheduleCorrections {
   /**

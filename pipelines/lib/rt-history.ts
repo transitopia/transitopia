@@ -1,4 +1,4 @@
-// Read recorded GTFS-RT snapshots (data/rt-history/<date>/<HH>.ndjson[.gz], written by the RT
+// Read recorded GTFS-RT snapshots (var/rt-history/<date>/<HH>.ndjson[.gz], written by the RT
 // recorder) and the prepared plans they belong to.
 
 import { existsSync } from "node:fs";

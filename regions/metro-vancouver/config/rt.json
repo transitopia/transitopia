@@ -1,6 +1,6 @@
 {
-  "$comment": "Real-time (GTFS-RT) service settings; see PLAN.md \u00a74.6. Upstream request rate is fixed by the poll schedule no matter how many clients connect.",
-  "$poll": "TransLink's Open API terms allow an API key 'a maximum of 1,000 requests per day' (https://www.translink.ca/about-us/doing-business-with-translink/app-developer-resources/terms-of-use, checked 2026-09-29; unclear whether that covers GTFS-RT). Until TransLink says otherwise, the leader stays under dailyCap across all three feeds in any 24 hours (a ledger in data/rt-history/requests.json enforces it across restarts), polling most often at peak. Bands (local time) are guesses at when buses are busiest; at most ~970 in any 24 hours (~965 on a weekday, ~815 on a weekend day) (src/core/rt/budget.ts, test/rt-budget.test.ts). Holidays run the weekday schedule. SkyTrain alerts with a recognised operating change become draft disruptions (PLAN.md \u00a74.10), so alertsS delays drafts by up to that long. OPEN-QUESTIONS #29.",
+  "$comment": "Real-time (GTFS-RT) service settings; see docs/skytrain-viz-PLAN.md \u00a74.6. Upstream request rate is fixed by the poll schedule no matter how many clients connect.",
+  "$poll": "TransLink's Open API terms allow an API key 'a maximum of 1,000 requests per day' (https://www.translink.ca/about-us/doing-business-with-translink/app-developer-resources/terms-of-use, checked 2026-09-29; unclear whether that covers GTFS-RT). Until TransLink says otherwise, the leader stays under dailyCap across all three feeds in any 24 hours (a ledger in var/rt-history/requests.json enforces it across restarts), polling most often at peak. Bands (local time) are guesses at when buses are busiest; at most ~970 in any 24 hours (~965 on a weekday, ~815 on a weekend day) (packages/transit-core/src/rt/budget.ts, test/rt-budget.test.ts). Holidays run the weekday schedule. SkyTrain alerts with a recognised operating change become draft disruptions (docs/skytrain-viz-PLAN.md \u00a74.10), so alertsS delays drafts by up to that long. OPEN-QUESTIONS #29.",
   "poll": {
     "dailyCap": 1000,
     "weekday": [
@@ -31,12 +31,12 @@
   "clientPollS": 10,
   "$detourNearM": "A bus off its route while a TransLink detour alert covers it counts as on detour only within this distance of a stop the alert lists (guess; long-running detours would otherwise switch off shifted-GPS handling route-wide). See docs/OPEN-QUESTIONS.md #28.",
   "detourNearM": 3000,
-  "$dispatchCheckS": "Live dispatch (PLAN.md §4.11): how often the RT service checks data/observations and data/disruptions for changes. Only changed inputs re-dispatch a date; client requests never do.",
+  "$dispatchCheckS": "Live dispatch (docs/skytrain-viz-PLAN.md §4.11): how often the RT service checks regions/metro-vancouver/observations and regions/metro-vancouver/disruptions for changes. Only changed inputs re-dispatch a date; client requests never do.",
   "dispatchCheckS": 30,
   "$dispatchWindowDays": "Live dispatch covers service dates this many days either side of today; older and later dates come from build:dispatch.",
   "dispatchWindowDays": 7,
   "serverPort": 8787,
-  "$prediction": "Live bus prediction and learned travel-time profiles (src/core/rt/profile.ts, PLAN.md \u00a74.5). Values are guesses tuned against recorded data with scripts/eval-rt.ts unless noted; see docs/OPEN-QUESTIONS.md #25.",
+  "$prediction": "Live bus prediction and learned travel-time profiles (packages/transit-core/src/rt/profile.ts, docs/skytrain-viz-PLAN.md \u00a74.5). Values are guesses tuned against recorded data with pipelines/eval-rt.ts unless noted; see docs/OPEN-QUESTIONS.md #25.",
   "prediction": {
     "binM": 50,
     "$bandStartHours": "Time-of-day bands: night, AM peak, midday, PM peak, evening (local hours).",
@@ -52,7 +52,7 @@
     "$stationaryM": "GPS noise on a standing bus is ~5-10 m (measured: recorded fixes).",
     "stationaryM": 15,
     "stopZoneM": 60,
-    "$stopExcessM": "Slow time within this of a stop (vs the median pace of bins away from stops within baselineWindowM) is counted as dwell, since 30 s fixes smear dwells into nearby bins. Tuned with scripts/eval-rt.ts (2026-09-26): 75 m gives dwells of p25/p50/p75 22/32/45 s (plausible for RapidBus stops at signals) for ~2 m median / ~12 m p90 more error at 60 s than 0 m (no concentration, where buses visibly don't stop); 150 m costs 5/30 m.",
+    "$stopExcessM": "Slow time within this of a stop (vs the median pace of bins away from stops within baselineWindowM) is counted as dwell, since 30 s fixes smear dwells into nearby bins. Tuned with pipelines/eval-rt.ts (2026-09-26): 75 m gives dwells of p25/p50/p75 22/32/45 s (plausible for RapidBus stops at signals) for ~2 m median / ~12 m p90 more error at 60 s than 0 m (no concentration, where buses visibly don't stop); 150 m costs 5/30 m.",
     "stopExcessM": 75,
     "baselineWindowM": 600,
     "minBinMetres": 150,
@@ -67,7 +67,7 @@
       0.7,
       1.5
     ],
-    "$catchUpMps": "Glide: tuned with scripts/eval-rt.ts (2026-09-26): 8 m/s over \u2264 25 s keeps apparent speed p99 \u2248 24 m/s for ~1 m of median accuracy vs 12 m/s / 15 s.",
+    "$catchUpMps": "Glide: tuned with pipelines/eval-rt.ts (2026-09-26): 8 m/s over \u2264 25 s keeps apparent speed p99 \u2248 24 m/s for ~1 m of median accuracy vs 12 m/s / 15 s.",
     "catchUpMps": 8,
     "minGlideS": 2,
     "maxGlideS": 25,
@@ -75,7 +75,7 @@
     "$scheduleAnchorS": "Schedule estimates for buses: TransLink gives every stop a time, interpolated between timepoints; pin to the timetable at most every this many seconds and let the profile place stops and slow sections in between. Guess.",
     "scheduleAnchorS": 180
   },
-  "$carry": "Carrying RT bus delays into schedule estimates (src/core/rt/carry.ts). Guesses; see docs/OPEN-QUESTIONS.md #25.",
+  "$carry": "Carrying RT bus delays into schedule estimates (packages/transit-core/src/rt/carry.ts). Guesses; see docs/OPEN-QUESTIONS.md #25.",
   "carry": {
     "minLayoverS": 120,
     "maxTrips": 2

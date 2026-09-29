@@ -1,12 +1,12 @@
-// Review and confirm disruptions (PLAN.md §4.10–4.11, M8.5).
+// Review and confirm disruptions (docs/skytrain-viz-PLAN.md §4.10–4.11, M8.5).
 //
 //   npm run disruptions                               # list confirmed, drafts, and alerts we couldn't parse
 //   npm run disruptions -- pull [--from <url>]        # draft from the running RT service's /rt/alerts
 //   npm run disruptions -- confirm <id> [--keep "<platform stop>"]
 //   npm run disruptions -- discard <id>
 //
-// The RT service drafts disruptions from TransLink alerts into data/disruptions/drafts/ (gitignored).
-// A draft applies only once confirmed: that writes data/disruptions/<id>.json with status "confirmed"
+// The RT service drafts disruptions from TransLink alerts into regions/metro-vancouver/disruptions/drafts/ (gitignored).
+// A draft applies only once confirmed: that writes regions/metro-vancouver/disruptions/<id>.json with status "confirmed"
 // (commit it), after checking which track stays open, which alerts rarely say.
 
 import { readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -130,7 +130,7 @@ async function confirm(id: string) {
   );
   await rm(path);
   log(
-    `Confirmed ${id} → data/disruptions/${id}.json (commit it). The RT service applies it within ${rtConfig.dispatchCheckS} s; run npm run build:dispatch for the static site.`,
+    `Confirmed ${id} → regions/metro-vancouver/disruptions/${id}.json (commit it). The RT service applies it within ${rtConfig.dispatchCheckS} s; run npm run build:dispatch for the static site.`,
   );
 }
 
