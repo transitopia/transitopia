@@ -1,5 +1,33 @@
 {
   "$comment": "SeaBus operating assumptions. Geometry (berths, lanes) is in data/infrastructure/seabus.json. OPEN-QUESTIONS #24.",
   "$pair": "The berth every vessel uses at each terminal. On a given day all vessels use west–west or east–east, with rare exceptions: the wheelhouse sees the passenger ramps better from one side, so a vessel always loads facing the same way (Braden, 2026-09-28). The timetable allows it: one vessel leaves at least 7 min before the next arrives, even at the weekday peak. Which pair is used varies by day and isn't known in advance; west is from the one sighting (Burrard Pacific Breeze at the West berths, 2026-09-26 14:15/14:29, Braden). guess",
-  "pair": { "waterfront": "west", "lonsdale": "west" }
+  "pair": { "waterfront": "west", "lonsdale": "west" },
+  "$ais": "Live vessel positions from aisstream.io (PLAN.md §4.12; key AISSTREAM_API_KEY in .secrets). The RT service's leader keeps one WebSocket open, records fixes to data/ais-history/ and serves them at /rt/ais/fixes; the browser turns them into timetable anchors (src/core/ais/match.ts).",
+  "ais": {
+    "$vessels": "MMSIs from MarineTraffic / VesselFinder / MyShipTracking, cross-checked (2026-09-28). Burrard Beaver is the spare.",
+    "vessels": [
+      { "mmsi": "316011649", "name": "Burrard Beaver" },
+      { "mmsi": "316014621", "name": "Burrard Pacific Breeze" },
+      { "mmsi": "316028554", "name": "Burrard Otter II" },
+      { "mmsi": "316042365", "name": "Burrard Chinook" }
+    ],
+    "$boundingBox": "Burrard Inlet around the crossing and the layup berth, [[lat, lon], [lat, lon]] (aisstream order).",
+    "boundingBox": [[49.27, -123.14], [49.33, -123.05]],
+    "$batchS": "Fixes are recorded in batches this often (an empty batch while connected keeps recorder coverage going).",
+    "batchS": 10,
+    "$maxBackoffS": "Reconnect backoff doubles from 5 s up to this.",
+    "maxBackoffS": 300,
+    "$match": "Matching fixes to trips. Probe 2026-09-29: fixes arrive in bursts (receivers upload intermittently), minutes apart; docked positions agree with the berth dock points to ~5 m. Guesses unless noted; OPEN-QUESTIONS #27.",
+    "match": {
+      "$maxOffsetM": "Lanes are traced to ±30 m and vessels wander ~100 m around them (AIS tracks).",
+      "maxOffsetM": 200,
+      "maxShiftS": 600,
+      "stationaryKn": 0.5,
+      "dockRadiusM": 40,
+      "courseToleranceDeg": 60,
+      "$minTurnaroundS": "Timetabled layovers are 2–4 min; a late vessel catches up by shortening them to this.",
+      "minTurnaroundS": 90,
+      "maxCarryTrips": 3
+    }
+  }
 }

@@ -3,6 +3,7 @@ node_modules/
 dist/
 data/raw/
 data/rt-history/
+data/ais-history/
 data/dispatch-history/
 data/disruptions/drafts/
 public/data/

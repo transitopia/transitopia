@@ -10,7 +10,7 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 
 ## Ground rules
 
-- **Never print, log, commit, or bundle the API key.** It lives in `.secrets` (`TRANSLINK_API_KEY=...`, gitignored). Only `server/` (and later `worker/`) reads it. Browser code must never see it.
+- **Never print, log, commit, or bundle the API keys.** They live in `.secrets` (`TRANSLINK_API_KEY=...`, `AISSTREAM_API_KEY=...`, gitignored). Only `server/` (and later `worker/`) and scripts read them. Browser code must never see them.
 - **Never let client requests trigger TransLink API calls.** A single poller fetches upstream on a fixed interval. Clients only read the cached snapshot. Only one process per machine polls and records: the leader holds `data/rt-history/.lock` ({pid, port}), and any other RT service instance forwards `/rt/*` to it.
 - **Dispatching is central.** The signalling-aware dispatcher (PLAN.md §4.11) runs only at build time and in the RT service, and every visitor gets the same versioned result. Browsers never run it, and client requests never trigger a dispatch.
 - **Positions are a pure function of (plan, overlays, t).** Don't introduce frame-stepped simulation state. Seek, rewind, and fast-forward depend on this.
@@ -51,6 +51,7 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 - Timetable vehicles (SeaBus, WCE, buses without RT): `reconcileScheduled()` in the app, as before.
 - Disruptions (`data/disruptions/*.json`, format in its README): single-track sections and reduced headways for a period. `build:dispatch` re-plans each affected date (`src/core/disruption/apply.ts` → re-inferred runs with closures → dispatch). Only `"status": "confirmed"` entries apply. The RT service drafts them from TransLink alerts into `data/disruptions/drafts/` (gitignored); never confirm a draft without knowing which track stays open.
 - A future rail real-time adapter should emit `Observation`s rather than touch playback.
+- SeaBus AIS (PLAN.md §4.12): the RT leader streams aisstream.io and records to `data/ais-history/`; the browser turns fixes into `ScheduleCorrections` with `aisCorrections()` (`src/core/ais/match.ts`). Fixes anchor the timetable rather than being drawn raw, because they arrive in bursts.
 
 ## Scenarios
 
@@ -89,6 +90,8 @@ npm run build:dispatch   # re-dispatch dates with observations or disruptions �
 npm run disruptions      # list/confirm/discard disruptions drafted from TransLink alerts [-- pull | confirm <id> [--keep "<stop>"] | discard <id>] (working)
 npm run build:rt-profile # learn bus travel-time profiles from data/rt-history → public/data/feeds/<v>/rt-profile.json (working)
 npx tsx scripts/eval-rt.ts [--test-last 3] [--set key=value] # replay recorded RT: prediction error and live-view jumps, old vs new
+npx tsx scripts/probe-ais.ts [--minutes 30] # record raw aisstream.io messages for the SeaBus fleet and summarise them
+npx tsx scripts/eval-ais.ts [YYYYMMDD]      # recorded SeaBus AIS vs the timetable: matches, lateness, vessels per block, berths
 npm run scenario -- <name> # build data/scenarios/<name>/ → view at /?scenario=<name> (working; see data/scenarios/README.md)
 npx tsx scripts/screenshot.ts out.png "/?date=2026-09-28&t=08:00:00&paused=1#map=14/49.28/-123.11" [--mobile] [--dark] [--pick expo]
 npm test                 # vitest
@@ -97,8 +100,8 @@ npm run typecheck
 
 ## Workflow
 
-- Gitignored build and runtime output: `data/raw/`, `data/rt-history/`, `data/dispatch-history/`, `public/data/`, `public/tiles/`, `public/basemap-assets/`.
-- The dev server loads `server/` once: restart `npm run dev` after changing it.
+- Gitignored build and runtime output: `data/raw/`, `data/rt-history/`, `data/ais-history/`, `data/dispatch-history/`, `public/data/`, `public/tiles/`, `public/basemap-assets/`.
+- Vite restarts the dev server's RT service by itself when `server/` files imported by `vite.config.ts` change (seen 2026-09-28); restart `npm run dev` if a change isn't picked up.
 - Route colours and names are baked into `plan.json` from `data/config/routes.json`; rebuild with `npx tsx scripts/build-schedule.ts --force` after editing it.
 - After changing infrastructure, config, or pipeline code, rebuild and run both validators before calling the work done.
 - For visual changes, run the app and look at it (`scripts/screenshot.ts` drives the local Chrome; `window.skytrain` is a debug handle with `map`, `clock`, `store`, `vehicles()`), especially at station zoom around Waterfront, Columbia/Sapperton, Commercial–Broadway, Lougheed, Edmonds (OMC 1), and Bridgeport, where the track work is densest. Check the phone layout too.
