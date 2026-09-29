@@ -16,7 +16,7 @@ const infra: FerryInfra = {
     'north>south': [[-123.102, 49.295], [-123.103, 49.29], [-123.102, 49.285]],
   },
 };
-const cfg: FerryConfig = { pairs: [{ south: 'west', north: 'west' }, { south: 'east', north: 'east' }] };
+const cfg: FerryConfig = { pair: { south: 'west', north: 'west' } };
 
 function makePlan(trips: PlanTrip[]): ServicePlan {
   return {
@@ -73,28 +73,27 @@ describe('berthPath', () => {
 });
 
 describe('applyFerryBerths', () => {
-  it('keeps other patterns in place and gives each vessel one berth pair all day', () => {
+  it('runs every vessel between the configured berths, keeping pattern ids', () => {
     const trips = [...shuttle('a', 21600, 8), ...shuttle('b', 22500, 8), { id: 'bus1', pattern: 0, service: 'wk', headsign: '', start: 0, arr: [0, 600] }];
     const plan = makePlan(trips);
     const report = applyFerryBerths(plan, infra, cfg);
+    expect(plan.patterns.map((p) => p.id)).toEqual([0, 1, 2]);
     expect(plan.patterns[0]!.shape).toBe('bus');
-    expect(plan.patterns).toHaveLength(5);
     expect(plan.shapes.gn).toBeUndefined();
-    const pairOf = (t: PlanTrip) => plan.patterns[t.pattern]!.shape.includes('-west') ? 'west' : 'east';
-    const a = new Set(plan.trips.filter((t) => t.block === 'a').map(pairOf));
-    const b = new Set(plan.trips.filter((t) => t.block === 'b').map(pairOf));
-    expect([...a]).toEqual(['west']);
-    expect([...b]).toEqual(['east']);
-    expect(report.vessels.get('wk')).toEqual([1, 1]);
-    expect(report.sharedBerthS).toBe(0);
-    // Each pattern ends at its berths.
-    for (const t of plan.trips.filter((x) => x.block)) {
-      const p = plan.patterns[t.pattern]!;
+    for (const [pi, from, to] of [[1, 'south', 'north'], [2, 'north', 'south']] as const) {
+      const p = plan.patterns[pi]!;
       const coords = plan.shapes[p.shape]!;
-      const [from, to] = p.direction === 0 ? ['south', 'north'] : ['north', 'south'];
-      expect(coords[0]).toEqual(infra.terminals[from]!.berths[pairOf(t)]!.dock);
-      expect(coords[coords.length - 1]).toEqual(infra.terminals[to]!.berths[pairOf(t)]!.dock);
+      expect(coords[0]).toEqual(infra.terminals[from]!.berths.west!.dock);
+      expect(coords[coords.length - 1]).toEqual(infra.terminals[to]!.berths.west!.dock);
       expect(p.dist[1]).toBeGreaterThan(2200);
     }
+    // a docks at :12–:15 and b at :27–:30 of each half hour: the shared berth is free 12 min between them.
+    expect(report.sharedBerthS).toBe(0);
+    expect(report.minBerthGapS).toBe(720);
+  });
+
+  it('reports vessels docked at the same berth at once', () => {
+    const plan = makePlan([...shuttle('a', 21600, 4), ...shuttle('b', 21660, 4)]);
+    expect(applyFerryBerths(plan, infra, cfg).sharedBerthS).toBeGreaterThan(0);
   });
 });

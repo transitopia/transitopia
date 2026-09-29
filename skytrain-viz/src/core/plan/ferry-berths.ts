@@ -1,12 +1,9 @@
 // Ferry berths and lanes (SeaBus): replaces a route's GTFS shapes with berth-to-berth paths along
-// per-direction lanes, and assigns each vessel (GTFS block) a berth pair for the day. Runs at plan
-// build time, so playback is unchanged: trips just point at berth-specific patterns.
-//
-// Pattern ids of other routes stay stable (movement files reference them): each original pattern
-// becomes its first pair's variant in place, and other pairs' variants are appended.
+// per-direction lanes. Every vessel uses the same berth pair all day. Runs at plan build time, so
+// playback is unchanged. Patterns keep their ids (movement files reference pattern ids).
 
-import { cumulativeLengths, distM, localProjector, round, type LonLat } from '../geo.ts';
-import type { PlanPattern, PlanTrip, ServicePlan } from './types.ts';
+import { distM, localProjector, round, cumulativeLengths, type LonLat } from '../geo.ts';
+import type { PlanTrip, ServicePlan } from './types.ts';
 
 export interface FerryBerth {
   /** Vessel centre when berthed. */
@@ -24,8 +21,8 @@ export interface FerryInfra {
 }
 
 export interface FerryConfig {
-  /** Terminal → berth, in order of preference. */
-  pairs: Record<string, string>[];
+  /** Terminal → the berth every vessel uses. */
+  pair: Record<string, string>;
 }
 
 /** A stop further than this from every berth of its nearest terminal isn't a terminal stop. */
@@ -34,16 +31,16 @@ const MAX_TERMINAL_M = 500;
 const SMOOTH_PASSES = 3;
 
 export interface FerryBerthReport {
-  /** service → pair index → number of vessels (blocks). */
-  vessels: Map<string, number[]>;
-  /** Seconds two vessels are assigned the same berth at once (should be 0). */
+  /** Seconds two vessels are docked at the same berth at once (should be 0). */
   sharedBerthS: number;
+  /** Shortest time between one vessel leaving a berth and the next arriving (s). */
+  minBerthGapS: number;
 }
 
 export function applyFerryBerths(plan: ServicePlan, infra: FerryInfra, cfg: FerryConfig): FerryBerthReport {
-  const report: FerryBerthReport = { vessels: new Map(), sharedBerthS: 0 };
-  const originals = plan.patterns.filter((p) => p.route === infra.route);
-  if (!originals.length) return report;
+  const report: FerryBerthReport = { sharedBerthS: 0, minBerthGapS: Infinity };
+  const patterns = plan.patterns.filter((p) => p.route === infra.route);
+  const oldShapes = new Set(patterns.map((p) => p.shape));
 
   const terminalOf = (stopIndex: number): string => {
     const s = plan.stops[stopIndex]!;
@@ -59,80 +56,49 @@ export function applyFerryBerths(plan: ServicePlan, infra: FerryInfra, cfg: Ferr
     return best;
   };
 
-  // Variant pattern per (original pattern, pair).
   const ends = new Map<number, { from: string; to: string }>();
-  const variants = new Map<number, number[]>();
-  const oldShapes = new Set(originals.map((p) => p.shape));
-  for (const p of originals) {
+  for (const p of patterns) {
+    if (p.stops.length !== 2) throw new Error(`${infra.route}: pattern ${p.id} has intermediate stops`);
     const from = terminalOf(p.stops[0]!);
-    const to = terminalOf(p.stops[p.stops.length - 1]!);
+    const to = terminalOf(p.stops[1]!);
     ends.set(p.id, { from, to });
-    const ids: number[] = [];
-    cfg.pairs.forEach((pair, k) => {
-      const coords = berthPath(infra, from, pair[from]!, to, pair[to]!);
-      const shape = `${infra.route}:${from}-${pair[from]}>${to}-${pair[to]}`;
-      plan.shapes[shape] = coords;
-      const cum = cumulativeLengths(coords);
-      const dist = p.stops.map((_, i) => (i === 0 ? 0 : i === p.stops.length - 1 ? Math.round(cum[cum.length - 1]!) : NaN));
-      if (dist.some(Number.isNaN)) throw new Error(`${infra.route}: pattern ${p.id} has intermediate stops`);
-      if (k === 0) {
-        p.shape = shape;
-        p.dist = dist;
-        ids.push(p.id);
-      } else {
-        const v: PlanPattern = { ...p, id: plan.patterns.length, shape, dist };
-        plan.patterns.push(v);
-        ids.push(v.id);
-      }
-    });
-    variants.set(p.id, ids);
+    const coords = berthPath(infra, from, cfg.pair[from]!, to, cfg.pair[to]!);
+    const cum = cumulativeLengths(coords);
+    p.shape = `${infra.route}:${from}-${cfg.pair[from]}>${to}-${cfg.pair[to]}`;
+    p.dist = [0, Math.round(cum[cum.length - 1]!)];
+    plan.shapes[p.shape] = coords;
   }
   for (const id of oldShapes) if (!plan.patterns.some((p) => p.shape === id)) delete plan.shapes[id];
 
-  // Group trips into vessels (blocks) per service.
-  const vessels = new Map<string, PlanTrip[]>();
+  // Check the shared berths: per service, when each vessel (block) lies docked at each terminal.
+  const blocks = new Map<string, PlanTrip[]>();
   for (const t of plan.trips) {
-    if (!variants.has(t.pattern)) continue;
-    const key = `${t.service}|${t.block ?? `trip:${t.id}`}`;
-    let list = vessels.get(key);
-    if (!list) vessels.set(key, (list = []));
+    if (!ends.has(t.pattern) || !t.block) continue;
+    const key = `${t.service}|${t.block}`;
+    let list = blocks.get(key);
+    if (!list) blocks.set(key, (list = []));
     list.push(t);
   }
-  const end = (t: PlanTrip) => t.start + t.arr[t.arr.length - 1]!;
-  interface Vessel { service: string; trips: PlanTrip[]; span: [number, number]; docked: { terminal: string; t0: number; t1: number }[] }
-  const list: Vessel[] = [];
-  for (const [key, trips] of vessels) {
+  const docked = new Map<string, [number, number][]>();
+  for (const [key, trips] of blocks) {
     trips.sort((a, b) => a.start - b.start);
-    const docked: Vessel['docked'] = [];
     for (let i = 0; i + 1 < trips.length; i++) {
       const terminal = ends.get(trips[i]!.pattern)!.to;
-      if (ends.get(trips[i + 1]!.pattern)!.from === terminal) docked.push({ terminal, t0: end(trips[i]!), t1: trips[i + 1]!.start });
+      if (ends.get(trips[i + 1]!.pattern)!.from !== terminal) continue;
+      const k = `${key.split('|')[0]}|${terminal}`;
+      let list = docked.get(k);
+      if (!list) docked.set(k, (list = []));
+      list.push([trips[i]!.start + trips[i]!.arr[trips[i]!.arr.length - 1]!, trips[i + 1]!.start]);
     }
-    list.push({ service: key.split('|')[0]!, trips, span: [trips[0]!.start, end(trips[trips.length - 1]!)], docked });
   }
-  list.sort((a, b) => a.span[0] - b.span[0]);
-
-  const assigned: { v: Vessel; pair: number }[] = [];
-  const overlap = (a0: number, a1: number, b0: number, b1: number) => Math.max(0, Math.min(a1, b1) - Math.max(a0, b0));
-  for (const v of list) {
-    let best = 0;
-    let bestCost: [number, number] = [Infinity, Infinity];
-    for (let k = 0; k < cfg.pairs.length; k++) {
-      let shared = 0;
-      let concurrent = 0;
-      for (const a of assigned) {
-        if (a.pair !== k || a.v.service !== v.service) continue;
-        if (overlap(...a.v.span, ...v.span) > 0) concurrent++;
-        for (const d of v.docked) for (const e of a.v.docked) if (d.terminal === e.terminal) shared += overlap(d.t0, d.t1, e.t0, e.t1);
-      }
-      if (shared < bestCost[0] || (shared === bestCost[0] && concurrent < bestCost[1])) [best, bestCost] = [k, [shared, concurrent]];
+  for (const list of docked.values()) {
+    list.sort((a, b) => a[0] - b[0]);
+    let free = -Infinity;
+    for (const [t0, t1] of list) {
+      if (t0 < free) report.sharedBerthS += Math.min(free, t1) - t0;
+      else if (free > -Infinity) report.minBerthGapS = Math.min(report.minBerthGapS, t0 - free);
+      free = Math.max(free, t1);
     }
-    assigned.push({ v, pair: best });
-    report.sharedBerthS += bestCost[0];
-    let counts = report.vessels.get(v.service);
-    if (!counts) report.vessels.set(v.service, (counts = cfg.pairs.map(() => 0)));
-    counts[best]!++;
-    for (const t of v.trips) t.pattern = variants.get(t.pattern)![best]!;
   }
   return report;
 }

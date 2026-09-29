@@ -5,17 +5,17 @@
   "approachM": 60,
   "terminals": {
     "waterfront": {
-      "$comment": "Two slips opening to the northeast, either side of the central pier; West is the northwestern one (Sep 26: Burrard Pacific Breeze at the West berth, Braden). dock = vessel centre when berthed, outBearing = slip axis pointing out to open water. Read off the basemap's pier outlines at zoom 17.5, not imagery: verify.",
+      "$comment": "Two slips opening to the northeast, either side of the central pier; West is the northwestern one (Sep 26: Burrard Pacific Breeze at the West berth, Braden). dock = vessel centre when berthed, outBearing = slip axis pointing out to open water. Read off the basemap's pier outlines at zoom 17.5 (berth positions checked by Braden, 2026-09-28).",
       "berths": {
         "west": { "dock": [-123.109351, 49.287077], "outBearing": 63 },
         "east": { "dock": [-123.109105, 49.286792], "outBearing": 63 }
       }
     },
     "lonsdale": {
-      "$comment": "Two slips opening to the south-southwest between the exit and boarding floats. Read off the basemap's pier outlines at zoom 17.5, not imagery: verify. The layup/maintenance berth northwest of the terminal (where Burrard Beaver was parked on 2026-09-28) isn't used: vessels out of service are hidden.",
+      "$comment": "Two slips opening to the south-southwest between the exit and boarding floats. Read off the basemap's pier outlines at zoom 17.5 (axis from the float edges; berth positions checked by Braden, 2026-09-28). The layup/maintenance berth northwest of the terminal (where Burrard Beaver was parked on 2026-09-28) isn't used: vessels out of service are hidden.",
       "berths": {
-        "west": { "dock": [-123.083965, 49.309758], "outBearing": 204 },
-        "east": { "dock": [-123.083542, 49.30958], "outBearing": 204 }
+        "west": { "dock": [-123.083965, 49.309758], "outBearing": 213 },
+        "east": { "dock": [-123.083542, 49.30958], "outBearing": 213 }
       }
     }
   },

@@ -315,8 +315,8 @@ export async function buildPlan(zipPath: string): Promise<ServicePlan> {
     await readJson<FerryInfra>(join(ROOT, 'data', 'infrastructure', 'seabus.json')),
     await readJson<FerryConfig>(join(CONFIG_DIR, 'seabus.json')),
   );
-  for (const [service, counts] of ferry.vessels) log(`  SeaBus service ${service}: vessels per berth pair ${counts.join('/')}`);
-  if (ferry.sharedBerthS > 0) log(`  warn: SeaBus vessels share a berth for ${ferry.sharedBerthS} s`);
+  if (ferry.sharedBerthS > 0) log(`  warn: SeaBus vessels are docked at the same berth for ${ferry.sharedBerthS} s`);
+  else log(`  SeaBus: one berth pair for all vessels; berths free for ≥ ${Math.round(ferry.minBerthGapS / 60)} min between vessels`);
   return plan;
 }
 
