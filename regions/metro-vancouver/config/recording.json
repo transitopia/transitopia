@@ -1,0 +1,31 @@
+{
+  "$comment": "What the server keeps and derives from real-time data (V2-PLAN.md §4.4). Read by apps/server/src/jobs/.",
+  "$retentionDays": "Raw real-time data (GTFS-RT positions, AIS fixes: database rows and hourly files) is deleted after this many days. Decided (V2-PLAN.md §0 'Retention'). Observed stop times, statistics, service changes, alerts and GTFS feeds are kept indefinitely.",
+  "retentionDays": 60,
+  "$observed": "Observed stop times from recorded positions (packages/transit-core/src/rt/observed.ts). Guesses; see docs/OPEN-QUESTIONS.md #30.",
+  "observed": {
+    "maxOffsetM": 100,
+    "maxGapS": 600,
+    "stopToleranceM": 30,
+    "backtrackM": 50
+  },
+  "$stats": "Daily per-route statistics (packages/transit-core/src/rt/stats.ts). onTimeS is decided (V2-PLAN.md §0 'Statistics': 1 min early to 3 min late at timepoints). maxPrecisionS, minTripCoverage, bunchingShare and the bands are guesses; see docs/OPEN-QUESTIONS.md #30. Bands are seconds since the service day's start, by a trip's first scheduled departure.",
+  "stats": {
+    "onTimeS": [-60, 180],
+    "maxPrecisionS": 300,
+    "minTripCoverage": 0.9,
+    "bunchingShare": 0.25,
+    "bands": [
+      { "id": "early", "fromS": 0, "toS": 21600 },
+      { "id": "am-peak", "fromS": 21600, "toS": 32400 },
+      { "id": "midday", "fromS": 32400, "toS": 54000 },
+      { "id": "pm-peak", "fromS": 54000, "toS": 66600 },
+      { "id": "evening", "fromS": 66600, "toS": 79200 },
+      { "id": "night", "fromS": 79200, "toS": 108000 }
+    ]
+  },
+  "$afterServiceDayH": "A service date's observed stop times and statistics are computed once this many hours after its start (the service day runs past midnight: the last trips end around 02:00-03:00).",
+  "afterServiceDayH": 29,
+  "$dataBuildAt": "Local time of the daily transit data build on the server (GTFS static from gtfs-static.translink.ca, which isn't part of the Open API budget).",
+  "dataBuildAt": "03:30"
+}
