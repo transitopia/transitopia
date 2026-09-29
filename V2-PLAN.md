@@ -501,7 +501,7 @@ Each phase ends deployed.
 - `/transit` mounts the engine with React controls and inspect. It uses schedules only, with buses marked *estimated*.
 - The dataset registry and the dynamic attribution control (§4.6), with TransLink's legend whenever transit is visible. Cloudflare Web Analytics.
 - Done when it's live, checked at station zoom (Waterfront, Columbia/Sapperton, Commercial–Broadway, Lougheed, Edmonds, Bridgeport) and on phones, and the cycling map is at least as good as before.
-- *Status (2026-09-29, branch `v2`):* built and checked locally, not yet deployed. Done:
+- *Status (2026-09-29):* **live** at transitopia.org (deployed from the `prod` branch). Done:
   - `packages/map-style` (Protomaps, light and dark) for the whole site. The basemap is a BC extract clipped to the Geofabrik boundary (1.9 GB at z15), refreshed weekly by `build_basemap.yml`.
   - Cycling re-tuned on it: Noto Sans labels, sprite icons as `transitopia:*`, and a dark palette. Before/after screenshots compared at five views plus phone.
   - `/transit` mounts `TransitEngine` on the shared map, with React time bar, legend and vehicle card, and a notice outside the region. Walking is removed (old `/walking` links redirect to `/cycling`).
@@ -509,7 +509,7 @@ Each phase ends deployed.
   - Dataset registry (`packages/shared/datasets.ts`) and attribution control, with TransLink's legend in the expanded credits and the vehicle card. Cloudflare Web Analytics is injected when `CF_WEB_ANALYTICS_TOKEN` is set.
   - Transit data built daily by `build_transit_data.yml` for `data.transitopia.org`. Buses are schedule-only in production (no `VITE_TRANSIT_API` until Phase 2).
   - TypeScript is strict repo-wide (`exactOptionalPropertyTypes`, `erasableSyntaxOnly`), since the site type-checks the engine sources it imports.
-- Left to go live (needs Cloudflare access; steps in `deployment/README.md`): the `transitopia-data` R2 bucket, custom domain, CORS and GitHub secrets; the site's Cloudflare build settings for the new `apps/web` path; a first run of both new workflows.
+- Deployment: the `transitopia-data` R2 bucket behind `data.transitopia.org` (CORS for the site, localhost and Pages previews; `Cache-Control` set on upload), the tile worker's `ALLOWED_ORIGINS` with wildcard subdomains for previews, and the site built from `apps/web` on Cloudflare Pages (`transitopia-web`).
 
 **Phase 2: Server, PostgreSQL, live data → parity**
 - Provision the FullHost VM, Postgres, Caddy, backups and monitoring.

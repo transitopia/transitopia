@@ -45,7 +45,10 @@ One-time setup (done):
 2. Add a CORS policy allowing `GET` and `HEAD` from `https://www.transitopia.org` (and
    `https://transitopia.org`, `https://*.transitopia-web.pages.dev`, `http://localhost:5173`).
 3. Cache: `data/manifest.json` should be short-lived (e.g. 5 minutes); everything else can be cached
-   for longer. (Content-hashed paths are planned, V2-PLAN.md §5.2.)
+   for longer. (Content-hashed paths are planned, V2-PLAN.md §5.2.) The workflow stores
+   `Cache-Control` on each object when it uploads (5 minutes for the manifest, a day for the rest),
+   and a Cache Rule for `data.transitopia.org` makes the edge follow it (Cloudflare doesn't cache
+   `.json` by default). Set the same headers when uploading by hand, or an overwrite drops them.
 4. Add GitHub secrets `RCLONE_CONFIG_TRANSITOPIA_DATA_R2_ACCESS_KEY_ID` and
    `RCLONE_CONFIG_TRANSITOPIA_DATA_R2_SECRET_ACCESS_KEY` (an R2 API token that can write the bucket;
    the endpoint is shared with the maps bucket).

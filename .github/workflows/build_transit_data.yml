@@ -51,7 +51,11 @@ jobs:
           rclone --version
       # Everything but the manifest first, so a client never reads a manifest pointing at files that
       # aren't there yet. Old files are kept (copy, not sync) for clients holding an older manifest.
+      # Cache-Control is stored on each object: the manifest is short-lived so new builds show up
+      # within minutes; the rest isn't content-addressed yet (some paths are rewritten), so a day.
       - name: Upload
         run: |
-          rclone copy var/public/data transitopia_data_r2:transitopia-data/data --exclude manifest.json --s3-no-check-bucket
-          rclone copy var/public/data/manifest.json transitopia_data_r2:transitopia-data/data --s3-no-check-bucket
+          rclone copy var/public/data transitopia_data_r2:transitopia-data/data --exclude manifest.json \
+            --header-upload "Cache-Control: public, max-age=86400" --s3-no-check-bucket
+          rclone copy var/public/data/manifest.json transitopia_data_r2:transitopia-data/data \
+            --header-upload "Cache-Control: public, max-age=300" --s3-no-check-bucket
