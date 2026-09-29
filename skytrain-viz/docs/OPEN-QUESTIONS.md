@@ -36,8 +36,7 @@ Evidence cited below comes from feed `26SEP_20260925`, OSM (2026-09-25), and the
    - *Assumption:* reverse via the tail track beyond the platform where one exists, otherwise via the nearest crossover; minimum layover 2 min.
 7. **Daytime use of named pockets:** Metrotown, Vanness, Holdom, Moody Centre, Great Northern, "Mainline Pocket" near OMC 1. Are gap trains or spares stored there during the day?
    - *Assumption:* unused except for turnbacks that GTFS requires.
-8. **Richmond-Brighouse and YVR-Airport terminus platforms.** GTFS gives no platform number at these termini. Are they single-platform or two-platform stations?
-   - *Assumption:* taken from OSM geometry.
+8. ✅ **Richmond-Brighouse and YVR-Airport terminus platforms.** GTFS has an "@ Platform 1" stop and an unnumbered "@ Canada Line" stop at each. Both are single-platform, single-track stations (Braden, 2026-09-28). OSM agrees: the platform mapping puts both GTFS stops at each station ("@ Platform 1" and "@ Canada Line") on the one track there (`w551355748.0` at Richmond-Brighouse, `w551364384.0` at YVR-Airport). Trains arrive and depart from the same platform, so each terminus holds one train at a time.
 
 ## Fleet and consists
 
