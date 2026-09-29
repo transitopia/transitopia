@@ -86,6 +86,42 @@ export function tzOffsetMs(epochMs: number, tz = TIMEZONE): number {
   return asUtc - Math.floor(epochMs / 1000) * 1000;
 }
 
+/** A known fact about a time zone: its UTC offset at an instant. */
+export interface TimezoneCheck {
+  /** ISO 8601 instant. */
+  at: string;
+  utcOffsetMinutes: number;
+  /** Why this should hold, for the error message. */
+  reason: string;
+}
+
+/**
+ * Problems with the runtime's time zone data (tzdata, via ICU), or an empty list. Every local time
+ * here comes from that data, so an outdated copy silently shifts service days and schedules; this
+ * lets callers refuse to run instead.
+ */
+export function checkTimezoneData(
+  checks: readonly TimezoneCheck[],
+  tz = TIMEZONE,
+): string[] {
+  const problems: string[] = [];
+  for (const c of checks) {
+    const at = Date.parse(c.at);
+    const got = Math.round(tzOffsetMs(at, tz) / 60_000);
+    if (got !== c.utcOffsetMinutes)
+      problems.push(
+        `${tz} at ${c.at} is UTC${formatOffset(got)}, expected UTC${formatOffset(c.utcOffsetMinutes)}: ${c.reason}`,
+      );
+  }
+  return problems;
+}
+
+function formatOffset(minutes: number): string {
+  const sign = minutes < 0 ? "−" : "+";
+  const m = Math.abs(minutes);
+  return `${sign}${Math.floor(m / 60)}${m % 60 ? `:${String(m % 60).padStart(2, "0")}` : ""}`;
+}
+
 /** Instant for a local wall-clock time (ambiguous times resolve to the earlier instant). */
 export function fromWallTime(w: WallTime, tz = TIMEZONE): number {
   const naive = Date.UTC(

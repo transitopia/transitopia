@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addDays,
+  checkTimezoneData,
   dayOfWeek,
   formatServiceTime,
   localDate,
@@ -85,5 +86,24 @@ describe("serviceDayStart (noon minus 12h)", () => {
   it("maps instants back to local dates", () => {
     expect(localDate(Date.parse("2026-09-26T06:59:00Z"))).toBe("20260925");
     expect(localDate(Date.parse("2026-09-26T07:01:00Z"))).toBe("20260926");
+  });
+});
+
+describe("checkTimezoneData", () => {
+  const checks = [
+    {
+      at: "2026-11-02T20:00:00Z",
+      utcOffsetMinutes: -420,
+      reason: "British Columbia's permanent UTC-7",
+    },
+  ];
+  it("passes when the runtime's data agrees", () => {
+    expect(checkTimezoneData(checks)).toEqual([]);
+  });
+  it("explains a disagreement", () => {
+    const problems = checkTimezoneData(checks, "America/Los_Angeles");
+    expect(problems).toEqual([
+      "America/Los_Angeles at 2026-11-02T20:00:00Z is UTC−8, expected UTC−7: British Columbia's permanent UTC-7",
+    ]);
   });
 });

@@ -123,6 +123,7 @@ npx tsx pipelines/screenshot.ts out.png "/transit?date=2026-09-28&t=08:00:00&pau
 
 - Formatting is prettier (config at the root) and linting is oxlint. Markdown, `regions/` data, `var/` and `map-layers/` aren't prettier-formatted (`.prettierignore`).
 - CI (`.github/workflows/checks.yml`) runs lint, format-check, typecheck, tests and builds, and both validators against a pinned GTFS snapshot (`FIXTURE_FEED_DATE`).
+- Time zones come from the runtime's tzdata (via ICU), never hard-coded. BC moved to permanent UTC−7 in 2026 (tzdata 2026b), so older data gets every time after 2026-11-01 wrong by an hour: the time tests fail and the server refuses to start (`timezoneChecks` in `regions/metro-vancouver/region.json`). Homebrew's `node` uses Homebrew's icu4c, whose tzdata can lag Node's own builds: use an official Node build, or set `ICU_TIMEZONE_FILES_DIR` to a folder with current `.res` files from https://github.com/unicode-org/icu-data/tree/main/tzdata/icunew/<version>/44/le.
 - Everything under `var/` is gitignored: `var/raw/`, `var/rt-history/`, `var/ais-history/`, `var/dispatch-history/`, `var/public/{data,tiles,basemap-assets}/`.
 - Browser-facing URLs (`/data/…`, `/tiles/…`) are paths under `var/public/`, not repo paths: published indexes store them as `data/…`.
 - Where the site reads its data: `apps/web/src/config.ts` (local defaults: `var/public` via `/dev-data/`) and `apps/web/.env.production`. Without `VITE_TRANSIT_API` the engine makes no RT requests at all (schedules only).
