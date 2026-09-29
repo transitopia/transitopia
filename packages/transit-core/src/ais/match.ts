@@ -12,11 +12,21 @@
 // docked fixes are at another pair's berths than the default, the whole day is drawn along that
 // pair's paths. Pure: (plan, date, fixes, config) → corrections.
 
-import { bearingDeg, distM, pointAlong, projectOnto, type LonLat } from '../geo.ts';
-import { distanceAt, solveLeg } from '../movement/kinematics.ts';
-import type { PreparedPlan, PreparedTrip, ScheduleCorrections } from '../schedule/engine.ts';
-import type { PlanPattern } from '../plan/types.ts';
-import { serviceDayStart } from '../time.ts';
+import {
+  bearingDeg,
+  distM,
+  pointAlong,
+  projectOnto,
+  type LonLat,
+} from "../geo.ts";
+import { distanceAt, solveLeg } from "../movement/kinematics.ts";
+import type {
+  PreparedPlan,
+  PreparedTrip,
+  ScheduleCorrections,
+} from "../schedule/engine.ts";
+import type { PlanPattern } from "../plan/types.ts";
+import { serviceDayStart } from "../time.ts";
 
 export interface AisFix {
   mmsi: string;
@@ -60,7 +70,7 @@ export interface AisDay {
   unmatched: number;
 }
 
-const SOURCE = 'AIS';
+const SOURCE = "AIS";
 
 interface Match {
   trip: PreparedTrip;
@@ -72,20 +82,47 @@ interface Match {
 }
 
 /** Corrections for one service date's vessels on `route` from its AIS fixes. */
-export function aisCorrections(pp: PreparedPlan, serviceDate: string, fixes: AisFix[], route: string, cfg: AisMatchConfig): AisDay {
+export function aisCorrections(
+  pp: PreparedPlan,
+  serviceDate: string,
+  fixes: AisFix[],
+  route: string,
+  cfg: AisMatchConfig,
+): AisDay {
   const dayStart = serviceDayStart(serviceDate);
-  const trips = [...pp.servicesOn(serviceDate)].flatMap((s) => pp.tripsByService.get(s) ?? []).filter((t) => t.route.key === route);
-  const out: AisDay = { corrections: { trips: new Map(), cancelled: new Set(), consists: new Map() }, vessels: new Map(), matched: 0, unmatched: 0 };
+  const trips = [...pp.servicesOn(serviceDate)]
+    .flatMap((s) => pp.tripsByService.get(s) ?? [])
+    .filter((t) => t.route.key === route);
+  const out: AisDay = {
+    corrections: {
+      trips: new Map(),
+      cancelled: new Set(),
+      consists: new Map(),
+    },
+    vessels: new Map(),
+    matched: 0,
+    unmatched: 0,
+  };
   if (!trips.length) return out;
 
   const ferry = pp.plan.ferry?.route === route ? pp.plan.ferry : undefined;
   if (ferry) {
     out.pair = berthPair(pp, fixes, cfg);
-    if (out.pair !== ferry.default) out.corrections.shapes = new Map(Object.entries(ferry.pairs[out.pair]!.shapes).map(([id, shape]) => [Number(id), shape]));
+    if (out.pair !== ferry.default)
+      out.corrections.shapes = new Map(
+        Object.entries(ferry.pairs[out.pair]!.shapes).map(([id, shape]) => [
+          Number(id),
+          shape,
+        ]),
+      );
   }
-  const shapeOf = (p: PlanPattern) => out.corrections.shapes?.get(p.id) ?? p.shape;
+  const shapeOf = (p: PlanPattern) =>
+    out.corrections.shapes?.get(p.id) ?? p.shape;
 
-  const perTrip = new Map<PreparedTrip, { anchors: Map<number, number>; observed: { t: number; source: string }[] }>();
+  const perTrip = new Map<
+    PreparedTrip,
+    { anchors: Map<number, number>; observed: { t: number; source: string }[] }
+  >();
   const votes = new Map<string, Map<string, { name?: string; n: number }>>();
   const sorted = [...fixes].sort((a, b) => a.ts - b.ts);
   for (const f of sorted) {
@@ -112,7 +149,9 @@ export function aisCorrections(pp: PreparedPlan, serviceDate: string, fixes: Ais
   // still drawn as observed).
   const corr = out.corrections;
   for (const [trip, e] of perTrip) {
-    const anchors = [...e.anchors].map(([sched, shift]) => ({ sched, shift })).sort((a, b) => a.sched - b.sched);
+    const anchors = [...e.anchors]
+      .map(([sched, shift]) => ({ sched, shift }))
+      .sort((a, b) => a.sched - b.sched);
     if (!anchors.length) anchors.push({ sched: trip.trip.start, shift: 0 });
     corr.trips.set(trip.trip.id, { anchors, observed: e.observed });
   }
@@ -122,15 +161,22 @@ export function aisCorrections(pp: PreparedPlan, serviceDate: string, fixes: Ais
     let late = anchors[anchors.length - 1]!.shift;
     const lastSeen = e.observed[e.observed.length - 1]!.t;
     let cur = trip;
-    for (let k = 0; k < cfg.maxCarryTrips && late > 0 && cur.next && !perTrip.has(cur.next); k++) {
+    for (
+      let k = 0;
+      k < cfg.maxCarryTrips && late > 0 && cur.next && !perTrip.has(cur.next);
+      k++
+    ) {
       const next: PreparedTrip = cur.next;
-      late -= Math.max(0, next.trip.start - cur.arr[cur.arr.length - 1]! - cfg.minTurnaroundS);
+      late -= Math.max(
+        0,
+        next.trip.start - cur.arr[cur.arr.length - 1]! - cfg.minTurnaroundS,
+      );
       if (late <= 0) break;
       const mins = Math.round(late / 60);
       corr.trips.set(next.trip.id, {
         anchors: [{ sched: next.trip.start, shift: late }],
         observed: [],
-        estimate: `AIS (${mins > 0 ? `+${mins} min` : 'late'} carried from ${fmt(lastSeen)})`,
+        estimate: `AIS (${mins > 0 ? `+${mins} min` : "late"} carried from ${fmt(lastSeen)})`,
       });
       cur = next;
     }
@@ -138,14 +184,22 @@ export function aisCorrections(pp: PreparedPlan, serviceDate: string, fixes: Ais
   // Vessel names per block: the vessel with the most matched fixes.
   for (const [vehicleId, v] of votes) {
     const [mmsi, best] = [...v].sort((a, b) => b[1].n - a[1].n)[0]!;
-    out.vessels.set(vehicleId, { mmsi, ...(best.name ? { name: best.name } : {}), fixes: best.n });
+    out.vessels.set(vehicleId, {
+      mmsi,
+      ...(best.name ? { name: best.name } : {}),
+      fixes: best.n,
+    });
     if (best.name) corr.consists.set(vehicleId, { name: best.name });
   }
   return out;
 }
 
 /** The berth pair most docked fixes were at, if clearly so; else the plan's default. */
-export function berthPair(pp: PreparedPlan, fixes: AisFix[], cfg: AisMatchConfig): string {
+export function berthPair(
+  pp: PreparedPlan,
+  fixes: AisFix[],
+  cfg: AisMatchConfig,
+): string {
   const ferry = pp.plan.ferry!;
   const votes = new Map<string, number>();
   for (const f of fixes) {
@@ -161,11 +215,19 @@ export function berthPair(pp: PreparedPlan, fixes: AisFix[], cfg: AisMatchConfig
     if (best) votes.set(best, (votes.get(best) ?? 0) + 1);
   }
   const total = [...votes.values()].reduce((a, b) => a + b, 0);
-  for (const [pair, n] of votes) if (n >= cfg.pairMinFixes && n > total - n) return pair;
+  for (const [pair, n] of votes)
+    if (n >= cfg.pairMinFixes && n > total - n) return pair;
   return ferry.default;
 }
 
-function matchFix(pp: PreparedPlan, trips: PreparedTrip[], f: AisFix, s: number, cfg: AisMatchConfig, shapeOf: (p: PlanPattern) => string): Match | undefined {
+function matchFix(
+  pp: PreparedPlan,
+  trips: PreparedTrip[],
+  f: AisFix,
+  s: number,
+  cfg: AisMatchConfig,
+  shapeOf: (p: PlanPattern) => string,
+): Match | undefined {
   const p: LonLat = [f.lon, f.lat];
   const stationary = f.sog !== undefined && f.sog <= cfg.stationaryKn;
   let best: (Match & { cost: number }) | undefined;
@@ -180,24 +242,42 @@ function matchFix(pp: PreparedPlan, trips: PreparedTrip[], f: AisFix, s: number,
     if (!coords || !cum) continue;
     const total = cum[cum.length - 1]!;
     // Distance along the drawn shape → along the pattern (they differ for another berth pair).
-    const toPattern = trip.pattern.dist[trip.pattern.dist.length - 1]! / Math.max(1, total);
+    const toPattern =
+      trip.pattern.dist[trip.pattern.dist.length - 1]! / Math.max(1, total);
     let m: Match | undefined;
     if (stationary && distM(p, coords[0]!) <= cfg.dockRadiusM) {
       // Docked at the origin berth: late if still there after departure time.
-      m = s > dep ? { trip, sched: dep, shift: s - dep, anchor: true } : { trip, sched: dep, shift: 0, anchor: false };
-    } else if (stationary && distM(p, coords[coords.length - 1]!) <= cfg.dockRadiusM) {
+      m =
+        s > dep ?
+          { trip, sched: dep, shift: s - dep, anchor: true }
+        : { trip, sched: dep, shift: 0, anchor: false };
+    } else if (
+      stationary
+      && distM(p, coords[coords.length - 1]!) <= cfg.dockRadiusM
+    ) {
       // Docked at the destination berth: early if there before the scheduled arrival. After the
       // vessel's next departure it's that trip, running late.
       if (trip.next && s > trip.next.dep[0]!) continue;
-      m = s < arr ? { trip, sched: arr, shift: s - arr, anchor: true } : { trip, sched: arr, shift: 0, anchor: false };
+      m =
+        s < arr ?
+          { trip, sched: arr, shift: s - arr, anchor: true }
+        : { trip, sched: arr, shift: 0, anchor: false };
     } else if (!stationary || f.sog === undefined) {
       const pr = projectOnto(coords, cum, p, 0, cfg.maxOffsetM);
-      if (pr.offset > cfg.maxOffsetM || pr.along <= 0 || pr.along >= total) continue;
-      if (f.cog !== undefined && f.sog !== undefined && f.sog > cfg.stationaryKn) {
+      if (pr.offset > cfg.maxOffsetM || pr.along <= 0 || pr.along >= total)
+        continue;
+      if (
+        f.cog !== undefined
+        && f.sog !== undefined
+        && f.sog > cfg.stationaryKn
+      ) {
         const a = pointAlong(coords, cum, Math.max(0, pr.along - 20));
         const b = pointAlong(coords, cum, Math.min(total, pr.along + 20));
         const dir = bearingDeg([a.lon, a.lat], [b.lon, b.lat]);
-        if (Math.abs(((f.cog - dir + 540) % 360) - 180) > cfg.courseToleranceDeg) continue;
+        if (
+          Math.abs(((f.cog - dir + 540) % 360) - 180) > cfg.courseToleranceDeg
+        )
+          continue;
       }
       const sched = schedTimeAt(trip, pr.along * toPattern);
       m = { trip, sched, shift: s - sched, anchor: true };
@@ -205,7 +285,8 @@ function matchFix(pp: PreparedPlan, trips: PreparedTrip[], f: AisFix, s: number,
     if (!m || Math.abs(m.shift) > cfg.maxShiftS) continue;
     // Prefer the trip the timetable agrees with most; for a docked vessel consistent with several
     // (all vessels share the berths), the arrival or departure nearest in time.
-    const cost = Math.abs(m.shift) + (m.anchor ? 0 : Math.abs(m.sched - s) * 1e-3);
+    const cost =
+      Math.abs(m.shift) + (m.anchor ? 0 : Math.abs(m.sched - s) * 1e-3);
     if (!best || cost < best.cost) best = { ...m, cost };
   }
   return best;
@@ -234,5 +315,5 @@ export function schedTimeAt(trip: PreparedTrip, along: number): number {
 function fmt(sec: number): string {
   const h = Math.floor(sec / 3600) % 24;
   const m = Math.floor((sec % 3600) / 60);
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }

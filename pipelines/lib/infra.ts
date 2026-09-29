@@ -1,13 +1,19 @@
 // Shared loaders for scripts: the track graph (with overrides) and the newest built service plan.
 
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { INFRA_DIR, PUBLIC_DIR, PUBLIC_DATA_DIR, readJson } from './paths.ts';
-import { TrackGraph } from '@transitopia/transit-core/infra/graph.ts';
-import type { InfraCollection } from '@transitopia/transit-core/infra/types.ts';
-import type { PatternPlatformRule, PlatformOverride } from '@transitopia/transit-core/infra/platforms.ts';
-import type { FeedManifest, ServicePlan } from '@transitopia/transit-core/plan/types.ts';
-import type { LonLat } from '@transitopia/transit-core/geo.ts';
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { INFRA_DIR, PUBLIC_DIR, PUBLIC_DATA_DIR, readJson } from "./paths.ts";
+import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
+import type { InfraCollection } from "@transitopia/transit-core/infra/types.ts";
+import type {
+  PatternPlatformRule,
+  PlatformOverride,
+} from "@transitopia/transit-core/infra/platforms.ts";
+import type {
+  FeedManifest,
+  ServicePlan,
+} from "@transitopia/transit-core/plan/types.ts";
+import type { LonLat } from "@transitopia/transit-core/geo.ts";
 
 export { INFRA_DIR };
 
@@ -29,30 +35,48 @@ export interface Overrides {
 }
 
 export async function loadOverrides(): Promise<Overrides> {
-  return readJson<Overrides>(join(INFRA_DIR, 'overrides.json'));
+  return readJson<Overrides>(join(INFRA_DIR, "overrides.json"));
 }
 
 export async function loadTracks(): Promise<InfraCollection> {
-  return JSON.parse(await readFile(join(INFRA_DIR, 'tracks.generated.geojson'), 'utf8')) as InfraCollection;
+  return JSON.parse(
+    await readFile(join(INFRA_DIR, "tracks.generated.geojson"), "utf8"),
+  ) as InfraCollection;
 }
 
-export async function loadGraph(): Promise<{ graph: TrackGraph; overrides: Overrides; tracks: InfraCollection }> {
-  const [tracks, overrides] = await Promise.all([loadTracks(), loadOverrides()]);
+export async function loadGraph(): Promise<{
+  graph: TrackGraph;
+  overrides: Overrides;
+  tracks: InfraCollection;
+}> {
+  const [tracks, overrides] = await Promise.all([
+    loadTracks(),
+    loadOverrides(),
+  ]);
   const graph = TrackGraph.fromCollection(tracks);
   for (const t of overrides.turns.add) graph.setTurn(t.node, t.a, t.b, true);
-  for (const t of overrides.turns.remove) graph.setTurn(t.node, t.a, t.b, false);
+  for (const t of overrides.turns.remove)
+    graph.setTurn(t.node, t.a, t.b, false);
   return { graph, overrides, tracks };
 }
 
 /** The newest built plan (the feed covering the latest dates). */
 export async function loadLatestPlan(): Promise<ServicePlan> {
-  const manifest = await readJson<FeedManifest>(join(PUBLIC_DATA_DIR, 'manifest.json'));
-  const feed = [...manifest.feeds].sort((a, b) => (a.start < b.start ? 1 : -1))[0];
-  if (!feed) throw new Error('No built feeds; run npm run data:gtfs');
+  const manifest = await readJson<FeedManifest>(
+    join(PUBLIC_DATA_DIR, "manifest.json"),
+  );
+  const feed = [...manifest.feeds].sort((a, b) =>
+    a.start < b.start ? 1 : -1,
+  )[0];
+  if (!feed) throw new Error("No built feeds; run npm run data:gtfs");
   return readJson<ServicePlan>(join(PUBLIC_DIR, feed.path));
 }
 
 export async function loadAllPlans(): Promise<ServicePlan[]> {
-  const manifest = await readJson<FeedManifest>(join(PUBLIC_DATA_DIR, 'manifest.json'));
-  return Promise.all(manifest.feeds.map((f) => readJson<ServicePlan>(join(PUBLIC_DIR, f.path))));
+  const manifest = await readJson<FeedManifest>(
+    join(PUBLIC_DATA_DIR, "manifest.json"),
+  );
+  return Promise.all(
+    manifest.feeds.map((f) => readJson<ServicePlan>(join(PUBLIC_DIR, f.path))),
+  );
 }

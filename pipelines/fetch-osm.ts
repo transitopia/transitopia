@@ -5,13 +5,16 @@
 //
 // OSM data © OpenStreetMap contributors, ODbL.
 
-import { mkdir, writeFile, copyFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { RAW_DIR, log } from './lib/paths.ts';
+import { mkdir, writeFile, copyFile } from "node:fs/promises";
+import { join } from "node:path";
+import { RAW_DIR, log } from "./lib/paths.ts";
 
 /** Metro Vancouver, [south, west, north, east] (Overpass order). */
-const BBOX = [49.1, -123.3, 49.35, -122.7].join(',');
-const ENDPOINTS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+const BBOX = [49.1, -123.3, 49.35, -122.7].join(",");
+const ENDPOINTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+];
 
 // Tracks: every railway=subway way, plus route-relation member ways tagged construction/disused
 // (existing track under works; see import-osm.ts).
@@ -39,15 +42,18 @@ out body;
 out skel qt;`;
 
 async function main() {
-  const dir = join(RAW_DIR, 'osm');
+  const dir = join(RAW_DIR, "osm");
   await mkdir(dir, { recursive: true });
   let lastErr: unknown;
   for (const url of ENDPOINTS) {
     try {
       log(`Querying ${url}`);
       const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'skytrain-viz/0.1' },
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "skytrain-viz/0.1",
+        },
         body: new URLSearchParams({ data: QUERY }),
         signal: AbortSignal.timeout(240_000),
       });
@@ -57,7 +63,7 @@ async function main() {
       const date = new Date().toISOString().slice(0, 10);
       const out = join(dir, `skytrain-${date}.json`);
       await writeFile(out, text);
-      await copyFile(out, join(dir, 'latest.json'));
+      await copyFile(out, join(dir, "latest.json"));
       const counts: Record<string, number> = {};
       for (const e of data.elements) counts[e.type] = (counts[e.type] ?? 0) + 1;
       log(`Saved ${out}: ${JSON.stringify(counts)}`);

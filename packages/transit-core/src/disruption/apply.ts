@@ -3,13 +3,13 @@
 // any other date, so single-track working, turnbacks and knock-on delays come from the simulation.
 // Pure: (plan, graph, platforms, disruptions, date) → modified plan + closures.
 
-import type { Dir, TrackGraph, TrackPos } from '../infra/graph.ts';
-import { routePattern } from '../infra/patterns.ts';
-import type { PlatformAssignment } from '../infra/platforms.ts';
-import type { Closure } from '../movement/build.ts';
-import type { PlanPattern, PlanTrip, ServicePlan } from '../plan/types.ts';
-import { serviceDayStart } from '../time.ts';
-import type { Disruption } from './types.ts';
+import type { Dir, TrackGraph, TrackPos } from "../infra/graph.ts";
+import { routePattern } from "../infra/patterns.ts";
+import type { PlatformAssignment } from "../infra/platforms.ts";
+import type { Closure } from "../movement/build.ts";
+import type { PlanPattern, PlanTrip, ServicePlan } from "../plan/types.ts";
+import { serviceDayStart } from "../time.ts";
+import type { Disruption } from "./types.ts";
 
 export interface DisruptionNotice {
   id: string;
@@ -46,7 +46,8 @@ export function periodsOn(d: Disruption, date: string): [number, number][] {
     const from = (Date.parse(p.from) - day) / 1000;
     const until = (Date.parse(p.until) - day) / 1000;
     // Only periods overlapping the day's service count (an alert ending at 04:00 is the night before's).
-    if (until > SERVICE_FROM_S && from < SERVICE_UNTIL_S) out.push([Math.max(0, from), until]);
+    if (until > SERVICE_FROM_S && from < SERVICE_UNTIL_S)
+      out.push([Math.max(0, from), until]);
   }
   return out;
 }
@@ -66,31 +67,54 @@ export interface ApplyInput {
 
 export function applyDisruptions(input: ApplyInput): DisruptedDay {
   const { graph: g, platforms, services, date } = input;
-  const plan: ServicePlan = { ...input.plan, patterns: [...input.plan.patterns], trips: [...input.plan.trips] };
+  const plan: ServicePlan = {
+    ...input.plan,
+    patterns: [...input.plan.patterns],
+    trips: [...input.plan.trips],
+  };
   const patternPositions = new Map(input.patternPositions ?? []);
-  const out: DisruptedDay = { plan, patternPositions, closures: [], notices: [], cancelled: [], problems: [] };
+  const out: DisruptedDay = {
+    plan,
+    patternPositions,
+    closures: [],
+    notices: [],
+    cancelled: [],
+    problems: [],
+  };
   const stations = plan.stations;
-  const stationOf = (si: number) => plan.stops[si]!.parent ?? plan.stops[si]!.name.replace(/\s*@.*$/, '');
-  const resolveStation = (x: string) => stations.find((s) => s.id === x || s.name === x)?.id ?? stations.find((s) => s.name.toLowerCase() === x.toLowerCase())?.id;
+  const stationOf = (si: number) =>
+    plan.stops[si]!.parent ?? plan.stops[si]!.name.replace(/\s*@.*$/, "");
+  const resolveStation = (x: string) =>
+    stations.find((s) => s.id === x || s.name === x)?.id
+    ?? stations.find((s) => s.name.toLowerCase() === x.toLowerCase())?.id;
   const tripEnd = (t: PlanTrip) => t.start + t.arr[t.arr.length - 1]!;
 
   for (const d of input.disruptions) {
-    if (d.status === 'draft') continue;
+    if (d.status === "draft") continue;
     const periods = periodsOn(d, date);
     if (!periods.length) continue;
     const from = Math.min(...periods.map((p) => p[0]));
     const to = Math.max(...periods.map((p) => p[1]));
-    const inPeriod = (t: PlanTrip) => periods.some(([a, b]) => t.start < b && tripEnd(t) > a);
+    const inPeriod = (t: PlanTrip) =>
+      periods.some(([a, b]) => t.start < b && tripEnd(t) > a);
     const lines = new Set<string>();
 
     for (const st of d.singleTrack ?? []) {
       lines.add(st.line);
       const A = resolveStation(st.between[0]);
       const B = resolveStation(st.between[1]);
-      const keepStop = plan.stops.find((s) => s.id === st.keep || s.name === st.keep);
+      const keepStop = plan.stops.find(
+        (s) => s.id === st.keep || s.name === st.keep,
+      );
       const keepPos = keepStop && platforms.get(keepStop.id)?.pos;
       if (!A || !B || !keepPos) {
-        out.problems.push(`${d.id}: unknown ${!A ? st.between[0] : !B ? st.between[1] : st.keep}`);
+        out.problems.push(
+          `${d.id}: unknown ${
+            !A ? st.between[0]
+            : !B ? st.between[1]
+            : st.keep
+          }`,
+        );
         continue;
       }
       const kept = openTrack(g, keepPos);
@@ -101,16 +125,19 @@ export function applyDisruptions(input: ApplyInput): DisruptedDay {
         const sts = p.stops.map(stationOf);
         const ia = sts.indexOf(A);
         const ib = sts.indexOf(B);
-        if (ia >= 0 && ib >= 0) for (let i = Math.min(ia, ib); i <= Math.max(ia, ib); i++) section.add(sts[i]!);
+        if (ia >= 0 && ib >= 0)
+          for (let i = Math.min(ia, ib); i <= Math.max(ia, ib); i++)
+            section.add(sts[i]!);
       }
       // Stations whose stops stay put: the ends, unless they're single-track too.
       const ends = new Set(st.pinEnds ? [] : [A, B]);
       // Closed: track the section's hops use that isn't the open track or an end station's platform.
       const endSegs = new Set<string>();
-      for (const s of plan.stops) if (s.parent && ends.has(s.parent)) {
-        const a = platforms.get(s.id);
-        if (a) endSegs.add(a.pos.seg);
-      }
+      for (const s of plan.stops)
+        if (s.parent && ends.has(s.parent)) {
+          const a = platforms.get(s.id);
+          if (a) endSegs.add(a.pos.seg);
+        }
       const closed = new Set<string>();
       const affected: PlanPattern[] = [];
       for (const p of linePatterns) {
@@ -121,16 +148,20 @@ export function applyDisruptions(input: ApplyInput): DisruptedDay {
         r.hops.forEach((h, i) => {
           if (!h || !section.has(sts[i]!) || !section.has(sts[i + 1]!)) return;
           touches = true;
-          for (const piece of h.pieces) if (!kept.has(piece.seg) && !endSegs.has(piece.seg)) closed.add(piece.seg);
+          for (const piece of h.pieces)
+            if (!kept.has(piece.seg) && !endSegs.has(piece.seg))
+              closed.add(piece.seg);
         });
-        if (touches || sts.some((s) => section.has(s) && !ends.has(s))) affected.push(p);
+        if (touches || sts.some((s) => section.has(s) && !ends.has(s)))
+          affected.push(p);
         // With pinned ends, hops into and out of the section run on the open track too.
-        if (st.pinEnds) r.hops.forEach((h, i) => {
-          if (!h || (section.has(sts[i]!) === section.has(sts[i + 1]!))) return;
-          const inside = section.has(sts[i]!) ? i : i + 1;
-          const own = platforms.get(plan.stops[p.stops[inside]!]!.id)?.pos;
-          if (own && !kept.has(own.seg)) closed.add(own.seg);
-        });
+        if (st.pinEnds)
+          r.hops.forEach((h, i) => {
+            if (!h || section.has(sts[i]!) === section.has(sts[i + 1]!)) return;
+            const inside = section.has(sts[i]!) ? i : i + 1;
+            const own = platforms.get(plan.stops[p.stops[inside]!]!.id)?.pos;
+            if (own && !kept.has(own.seg)) closed.add(own.seg);
+          });
       }
       // Clone the affected patterns with their section stops pinned to the open track.
       const clones = new Set<number>();
@@ -144,11 +175,15 @@ export function applyDisruptions(input: ApplyInput): DisruptedDay {
           const own = platforms.get(plan.stops[si]!.id)?.pos;
           if (own && kept.has(own.seg)) return;
           if (ends.has(s)) return; // an end station keeps its platform; the train crosses over nearby
-          const onKept = plan.stops.map((x) => (x.parent === s ? platforms.get(x.id)?.pos : undefined)).find((pos) => pos && kept.has(pos.seg));
+          const onKept = plan.stops
+            .map((x) => (x.parent === s ? platforms.get(x.id)?.pos : undefined))
+            .find((pos) => pos && kept.has(pos.seg));
           if (onKept) pins.set(i, onKept);
           else {
             ok = false;
-            out.problems.push(`${d.id}: no platform on the open track at ${stations.find((x) => x.id === s)?.name ?? s}`);
+            out.problems.push(
+              `${d.id}: no platform on the open track at ${stations.find((x) => x.id === s)?.name ?? s}`,
+            );
           }
         });
         if (!ok) continue;
@@ -158,24 +193,46 @@ export function applyDisruptions(input: ApplyInput): DisruptedDay {
         clones.add(id);
         cloneOf.set(p.id, id);
       }
-      plan.trips = plan.trips.map((t) => (services.has(t.service) && cloneOf.has(t.pattern) && inPeriod(t) ? { ...t, pattern: cloneOf.get(t.pattern)! } : t));
+      plan.trips = plan.trips.map((t) =>
+        services.has(t.service) && cloneOf.has(t.pattern) && inPeriod(t) ?
+          { ...t, pattern: cloneOf.get(t.pattern)! }
+        : t,
+      );
       out.closures.push({ segs: closed, from, to, patterns: clones });
     }
 
     // Single-tracking without a stated headway: thin the through service to the configured default.
     const defaults = (d.singleTrack ?? [])
-      .filter((st) => input.singleTrackHeadwayS && !(d.headway ?? []).some((h) => h.line === st.line))
-      .map((st) => ({ line: st.line, between: st.between, minS: input.singleTrackHeadwayS! }));
+      .filter(
+        (st) =>
+          input.singleTrackHeadwayS
+          && !(d.headway ?? []).some((h) => h.line === st.line),
+      )
+      .map((st) => ({
+        line: st.line,
+        between: st.between,
+        minS: input.singleTrackHeadwayS!,
+      }));
     for (const hw of [...(d.headway ?? []), ...defaults]) {
       lines.add(hw.line);
-      const section = hw.between ? new Set(hw.between.map(resolveStation).filter((x): x is string => Boolean(x))) : undefined;
+      const section =
+        hw.between ?
+          new Set(
+            hw.between
+              .map(resolveStation)
+              .filter((x): x is string => Boolean(x)),
+          )
+        : undefined;
       const lastKept = new Map<number, number>();
       const drop = new Set<string>();
       const candidates = plan.trips
         .filter((t) => services.has(t.service) && inPeriod(t))
         .filter((t) => {
           const p = plan.patterns[t.pattern]!;
-          return p.route === hw.line && (!section || p.stops.some((si) => section.has(stationOf(si))));
+          return (
+            p.route === hw.line
+            && (!section || p.stops.some((si) => section.has(stationOf(si))))
+          );
         })
         .sort((a, b) => a.start - b.start || (a.id < b.id ? -1 : 1));
       for (const t of candidates) {
@@ -187,7 +244,14 @@ export function applyDisruptions(input: ApplyInput): DisruptedDay {
       plan.trips = plan.trips.filter((t) => !drop.has(t.id));
       out.cancelled.push(...drop);
     }
-    out.notices.push({ id: d.id, lines: [...lines].sort(), from, to, text: d.text, source: d.source });
+    out.notices.push({
+      id: d.id,
+      lines: [...lines].sort(),
+      from,
+      to,
+      text: d.text,
+      source: d.source,
+    });
   }
   return out;
 }

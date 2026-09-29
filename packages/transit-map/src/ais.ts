@@ -4,18 +4,38 @@
 // vessels glide from where they were drawn to their corrected positions (core/ais/glide.ts) instead
 // of jumping; times the fixes already cover use every fix (hindsight), so replays never jump.
 
-import rtConfig from '@transitopia/region-metro-vancouver/config/rt.json';
-import seabusConfig from '@transitopia/region-metro-vancouver/config/seabus.json';
-import { decodeFixes, serviceDateWindow, type AisFixesResponse } from '@transitopia/transit-core/ais/fixes.ts';
-import { aisCorrections, type AisDay, type AisFix, type AisMatchConfig } from '@transitopia/transit-core/ais/match.ts';
-import { glideCorrections, type Glide, type GlideConfig } from '@transitopia/transit-core/ais/glide.ts';
-import type { PreparedPlan, ScheduleCorrections } from '@transitopia/transit-core/schedule/engine.ts';
-import { serviceDayStart } from '@transitopia/transit-core/time.ts';
+import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json";
+import seabusConfig from "@transitopia/region-metro-vancouver/config/seabus.json";
+import {
+  decodeFixes,
+  serviceDateWindow,
+  type AisFixesResponse,
+} from "@transitopia/transit-core/ais/fixes.ts";
+import {
+  aisCorrections,
+  type AisDay,
+  type AisFix,
+  type AisMatchConfig,
+} from "@transitopia/transit-core/ais/match.ts";
+import {
+  glideCorrections,
+  type Glide,
+  type GlideConfig,
+} from "@transitopia/transit-core/ais/glide.ts";
+import type {
+  PreparedPlan,
+  ScheduleCorrections,
+} from "@transitopia/transit-core/schedule/engine.ts";
+import { serviceDayStart } from "@transitopia/transit-core/time.ts";
 
 const BASE = import.meta.env.BASE_URL;
-const ROUTE = 'seabus';
-const MATCH = Object.fromEntries(Object.entries(seabusConfig.ais.match).filter(([k]) => !k.startsWith('$'))) as unknown as AisMatchConfig;
-const GLIDE = Object.fromEntries(Object.entries(seabusConfig.ais.glide).filter(([k]) => !k.startsWith('$'))) as unknown as GlideConfig;
+const ROUTE = "seabus";
+const MATCH = Object.fromEntries(
+  Object.entries(seabusConfig.ais.match).filter(([k]) => !k.startsWith("$")),
+) as unknown as AisMatchConfig;
+const GLIDE = Object.fromEntries(
+  Object.entries(seabusConfig.ais.glide).filter(([k]) => !k.startsWith("$")),
+) as unknown as GlideConfig;
 const NAMES = new Map(seabusConfig.ais.vessels.map((v) => [v.mmsi, v.name]));
 const MAX_DATES = 4;
 
@@ -30,7 +50,12 @@ interface DateFixes {
   /** Epoch ms when the latest new fixes arrived, until folded into a glide. */
   arrivedAt?: number;
   /** Corrections from all fixes, and a glide from what was shown to them (service-day seconds). */
-  memo?: { pp: PreparedPlan; n: number; day: AisDay; glide?: Glide & { from: number } };
+  memo?: {
+    pp: PreparedPlan;
+    n: number;
+    day: AisDay;
+    glide?: Glide & { from: number };
+  };
 }
 
 export class AisClient {
@@ -46,12 +71,18 @@ export class AisClient {
   }
 
   /** SeaBus corrections for a service date at display time t (epoch ms), fetching fixes as needed. */
-  correctionsFor(date: string, pp: PreparedPlan, t: number): ScheduleCorrections | undefined {
+  correctionsFor(
+    date: string,
+    pp: PreparedPlan,
+    t: number,
+  ): ScheduleCorrections | undefined {
     const day = this.dayFor(date, pp);
     if (!day) return undefined;
     const glide = this.dates.get(date)?.memo?.glide;
     const sec = (t - serviceDayStart(date)) / 1000;
-    return glide && sec >= glide.from && sec <= glide.until ? glide.corrections : day.corrections;
+    return glide && sec >= glide.from && sec <= glide.until ?
+        glide.corrections
+      : day.corrections;
   }
 
   /** The berth pair in use on a service date, per its AIS fixes; undefined without any. */
@@ -63,10 +94,22 @@ export class AisClient {
     if (!this.available) return undefined;
     let d = this.dates.get(date);
     if (!d) {
-      this.dates.set(date, (d = { fixes: [], cursor: 0, epoch: 0, complete: false, loading: false, nextPollAt: 0 }));
-      while (this.dates.size > MAX_DATES) this.dates.delete(this.dates.keys().next().value!);
+      this.dates.set(
+        date,
+        (d = {
+          fixes: [],
+          cursor: 0,
+          epoch: 0,
+          complete: false,
+          loading: false,
+          nextPollAt: 0,
+        }),
+      );
+      while (this.dates.size > MAX_DATES)
+        this.dates.delete(this.dates.keys().next().value!);
     }
-    if (!d.complete && !d.loading && Date.now() >= d.nextPollAt) void this.fetch(date, d);
+    if (!d.complete && !d.loading && Date.now() >= d.nextPollAt)
+      void this.fetch(date, d);
     if (!d.fixes.length) return undefined;
     if (d.memo?.pp !== pp || d.memo.n !== d.fixes.length) {
       const prev = d.memo?.pp === pp ? d.memo : undefined;
@@ -75,8 +118,19 @@ export class AisClient {
       if (prev && d.arrivedAt !== undefined) {
         // Glide from what was on screen when the fixes arrived (mid-glide, if one was running).
         const k = (d.arrivedAt - serviceDayStart(date)) / 1000;
-        const shown = prev.glide && k >= prev.glide.from && k <= prev.glide.until ? prev.glide.corrections : prev.day.corrections;
-        const g = glideCorrections(pp, date, ROUTE, shown, day.corrections, k, GLIDE);
+        const shown =
+          prev.glide && k >= prev.glide.from && k <= prev.glide.until ?
+            prev.glide.corrections
+          : prev.day.corrections;
+        const g = glideCorrections(
+          pp,
+          date,
+          ROUTE,
+          shown,
+          day.corrections,
+          k,
+          GLIDE,
+        );
         if (g.until > k) glide = { ...g, from: k };
       }
       d.arrivedAt = undefined;
@@ -88,14 +142,20 @@ export class AisClient {
   private async fetch(date: string, d: DateFixes): Promise<void> {
     d.loading = true;
     try {
-      const res = await fetch(`${BASE}rt/ais/fixes?date=${date}${d.cursor ? `&after=${d.cursor}` : ''}`, { cache: 'no-cache' });
+      const res = await fetch(
+        `${BASE}rt/ais/fixes?date=${date}${d.cursor ? `&after=${d.cursor}` : ""}`,
+        { cache: "no-cache" },
+      );
       if (res.status === 404) {
         this.available = false;
         return;
       }
       const body = (await res.json()) as AisFixesResponse;
       this.error = body.error;
-      const fresh = decodeFixes(body.fixes).map((f) => ({ ...f, name: NAMES.get(f.mmsi) ?? f.name }));
+      const fresh = decodeFixes(body.fixes).map((f) => ({
+        ...f,
+        name: NAMES.get(f.mmsi) ?? f.name,
+      }));
       // A restarted service numbers fixes afresh: start over.
       if (body.epoch !== d.epoch) {
         d.fixes = [];
@@ -114,7 +174,7 @@ export class AisClient {
       d.cursor = body.cursor;
       d.complete = Date.now() > serviceDateWindow(date)[1] + 60_000;
     } catch {
-      this.error = 'Real-time service unreachable';
+      this.error = "Real-time service unreachable";
     } finally {
       d.loading = false;
       d.nextPollAt = Date.now() + rtConfig.clientPollS * 1000;

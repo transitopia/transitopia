@@ -9,7 +9,7 @@ export interface Kinematics {
   dwell: number; // s
   length: number; // m
   width: number; // m
-  profile: 'trapezoid' | 'linear';
+  profile: "trapezoid" | "linear";
 }
 
 export interface KinematicsConfig {
@@ -18,10 +18,18 @@ export interface KinematicsConfig {
   sizing: { minPixelLength: number; minPixelWidth: number };
 }
 
-export function kinematicsFor(cfg: KinematicsConfig, mode: string, routeKey: string): Kinematics {
+export function kinematicsFor(
+  cfg: KinematicsConfig,
+  mode: string,
+  routeKey: string,
+): Kinematics {
   const base = cfg.modes[mode] ?? cfg.modes.bus;
   if (!base) throw new Error(`No kinematics for mode ${mode}`);
-  const over = Object.fromEntries(Object.entries(cfg.routes[routeKey] ?? {}).filter(([k]) => !k.startsWith('$')));
+  const over = Object.fromEntries(
+    Object.entries(cfg.routes[routeKey] ?? {}).filter(
+      ([k]) => !k.startsWith("$"),
+    ),
+  );
   return { ...base, ...over };
 }
 
@@ -36,9 +44,21 @@ export interface LegProfile {
   linear: boolean;
 }
 
-export function solveLeg(distance: number, duration: number, k: Kinematics): LegProfile {
-  const base = { distance, duration, hold: 0, v: 0, a: k.accel, b: k.decel, linear: false };
-  if (k.profile === 'linear' || distance <= 0 || duration <= 0) {
+export function solveLeg(
+  distance: number,
+  duration: number,
+  k: Kinematics,
+): LegProfile {
+  const base = {
+    distance,
+    duration,
+    hold: 0,
+    v: 0,
+    a: k.accel,
+    b: k.decel,
+    linear: false,
+  };
+  if (k.profile === "linear" || distance <= 0 || duration <= 0) {
     return { ...base, v: duration > 0 ? distance / duration : 0, linear: true };
   }
   const a = k.accel;
@@ -82,7 +102,8 @@ export function distanceAt(p: LegProfile, t: number): number {
   if (tt < ta) return 0.5 * a * tt * tt;
   if (tt < ta + tc) return da + v * (tt - ta);
   const td = tt - ta - tc;
-  if (td < tb) return Math.min(distance, da + v * tc + v * td - 0.5 * b * td * td);
+  if (td < tb)
+    return Math.min(distance, da + v * tc + v * td - 0.5 * b * td * td);
   return distance;
 }
 
@@ -101,7 +122,11 @@ export function speedAt(p: LegProfile, t: number): number {
 }
 
 /** Shortest time to cover a distance from standstill to standstill (s), at `speedFactor` × max speed. */
-export function minLegTime(distance: number, k: Kinematics, speedFactor = 1): number {
+export function minLegTime(
+  distance: number,
+  k: Kinematics,
+  speedFactor = 1,
+): number {
   if (distance <= 0) return 0;
   const c = 1 / (2 * k.accel) + 1 / (2 * k.decel);
   const v = Math.min((k.maxSpeed / 3.6) * speedFactor, Math.sqrt(distance / c));

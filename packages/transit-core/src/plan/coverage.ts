@@ -5,8 +5,8 @@
 // GTFS pickup/drop-off types decide where passengers can be aboard). Cells no passenger trip covers
 // are "empty"; sections well below the route's busiest cell are "limited".
 
-import { cumulativeLengths, distM, pointAlong, type LonLat } from '../geo.ts';
-import { passengerLegs, type PlanPattern, type ServicePlan } from './types.ts';
+import { cumulativeLengths, distM, pointAlong, type LonLat } from "../geo.ts";
+import { passengerLegs, type PlanPattern, type ServicePlan } from "./types.ts";
 
 export interface RouteSection {
   route: string;
@@ -18,7 +18,10 @@ export interface RouteSection {
 }
 
 /** Distance ranges along a pattern's shape where passengers can be aboard. */
-function passengerRanges(p: PlanPattern, shapeLength: number): [number, number][] {
+function passengerRanges(
+  p: PlanPattern,
+  shapeLength: number,
+): [number, number][] {
   const legs = passengerLegs(p);
   const out: [number, number][] = [];
   legs.forEach((carried, i) => {
@@ -33,7 +36,7 @@ function passengerRanges(p: PlanPattern, shapeLength: number): [number, number][
   return out;
 }
 
-type Cls = 'frequent' | 'limited' | 'empty';
+type Cls = "frequent" | "limited" | "empty";
 /** Where lines overlap, more service wins. */
 const RANK: Record<Cls, number> = { frequent: 2, limited: 1, empty: 0 };
 
@@ -48,8 +51,18 @@ class SegmentGrid {
   add(a: LonLat, b: LonLat): void {
     const [ax, ay] = this.xy(a);
     const [bx, by] = this.xy(b);
-    const keys = new Set([this.key(ax, ay), this.key(bx, by), this.key((ax + bx) / 2, (ay + by) / 2)]);
-    for (const k of keys) (this.cells.get(k) ?? this.cells.set(k, []).get(k)!).push([ax, ay, bx, by]);
+    const keys = new Set([
+      this.key(ax, ay),
+      this.key(bx, by),
+      this.key((ax + bx) / 2, (ay + by) / 2),
+    ]);
+    for (const k of keys)
+      (this.cells.get(k) ?? this.cells.set(k, []).get(k)!).push([
+        ax,
+        ay,
+        bx,
+        by,
+      ]);
   }
   /** Distance (m) from p to the nearest drawn segment, up to about one cell. */
   near(p: LonLat): number {
@@ -59,11 +72,15 @@ class SegmentGrid {
     let best = Infinity;
     for (let i = -1; i <= 1; i++)
       for (let j = -1; j <= 1; j++)
-        for (const [ax, ay, bx, by] of this.cells.get(`${cx + i},${cy + j}`) ?? []) {
+        for (const [ax, ay, bx, by] of this.cells.get(`${cx + i},${cy + j}`)
+          ?? []) {
           const dx = bx - ax;
           const dy = by - ay;
           const l2 = dx * dx + dy * dy;
-          const f = l2 > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)) : 0;
+          const f =
+            l2 > 0 ?
+              Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2))
+            : 0;
           best = Math.min(best, Math.hypot(ax + dx * f - x, ay + dy * f - y));
         }
     return best;
@@ -92,25 +109,36 @@ export interface CoverageOptions {
   emptyNearM?: number;
 }
 
-const cellKey = (lon: number, lat: number) => `${Math.round(lon / 0.0004)},${Math.round(lat / 0.00027)}`;
+const cellKey = (lon: number, lat: number) =>
+  `${Math.round(lon / 0.0004)},${Math.round(lat / 0.00027)}`;
 
-export function routeSections(plan: ServicePlan, routeKeys: Set<string>, opts: CoverageOptions = {}): RouteSection[] {
+export function routeSections(
+  plan: ServicePlan,
+  routeKeys: Set<string>,
+  opts: CoverageOptions = {},
+): RouteSection[] {
   const share = opts.limitedShare ?? 0.25;
   const step = opts.stepM ?? 15;
   const minRun = opts.minRunM ?? 150;
   const mergeM = opts.mergeM ?? 10;
   const emptyNearM = opts.emptyNearM ?? 15;
   const trips = new Map<number, number>();
-  for (const t of plan.trips) trips.set(t.pattern, (trips.get(t.pattern) ?? 0) + 1);
+  for (const t of plan.trips)
+    trips.set(t.pattern, (trips.get(t.pattern) ?? 0) + 1);
 
   const out: RouteSection[] = [];
   for (const route of routeKeys) {
     // Patterns without trips (e.g. superseded by a scenario) aren't drawn.
-    const patterns = plan.patterns.filter((p) => p.route === route && (trips.get(p.id) ?? 0) > 0);
+    const patterns = plan.patterns.filter(
+      (p) => p.route === route && (trips.get(p.id) ?? 0) > 0,
+    );
     // Samples per shape (every `step` metres plus every vertex, so identical shapes give identical
     // lines, corners included), and passenger-carrying trips per grid cell (each pattern counts a
     // cell once). `carried`: some pattern on this shape can have passengers aboard here.
-    const samples = new Map<string, { lon: number; lat: number; d: number; cell: string; carried: boolean }[]>();
+    const samples = new Map<
+      string,
+      { lon: number; lat: number; d: number; cell: string; carried: boolean }[]
+    >();
     const cellTrips = new Map<string, number>();
     const carriedGrid = new SegmentGrid();
     for (const p of patterns) {
@@ -128,34 +156,55 @@ export function routeSections(plan: ServicePlan, routeKeys: Set<string>, opts: C
         for (const d of ds) {
           if (list.length && d - list[list.length - 1]!.d < 1) continue;
           const q = pointAlong(coords, cum, d);
-          list.push({ lon: q.lon, lat: q.lat, d, cell: cellKey(q.lon, q.lat), carried: false });
+          list.push({
+            lon: q.lon,
+            lat: q.lat,
+            d,
+            cell: cellKey(q.lon, q.lat),
+            carried: false,
+          });
         }
         samples.set(p.shape, list);
       }
       const ranges = passengerRanges(p, total);
-      const carried = list.filter((s) => ranges.some(([a, b]) => s.d >= a - 1 && s.d <= b + 1));
+      const carried = list.filter((s) =>
+        ranges.some(([a, b]) => s.d >= a - 1 && s.d <= b + 1),
+      );
       for (const s of carried) {
         s.carried = true;
         // For "a passenger line is close by", leave out the tips of passenger stretches: otherwise
         // the line itself (and identical variants) ran solid past a last drop-off.
-        const inner = ranges.some(([a, b]) => s.d >= (a > 0 ? a + emptyNearM : a) && s.d <= (b < total ? b - emptyNearM : b));
+        const inner = ranges.some(
+          ([a, b]) =>
+            s.d >= (a > 0 ? a + emptyNearM : a)
+            && s.d <= (b < total ? b - emptyNearM : b),
+        );
         if (inner) carriedGrid.add([s.lon, s.lat], [s.lon, s.lat]);
       }
-      for (const cell of new Set(carried.map((s) => s.cell))) cellTrips.set(cell, (cellTrips.get(cell) ?? 0) + (trips.get(p.id) ?? 0));
+      for (const cell of new Set(carried.map((s) => s.cell)))
+        cellTrips.set(
+          cell,
+          (cellTrips.get(cell) ?? 0) + (trips.get(p.id) ?? 0),
+        );
     }
     const max = Math.max(0, ...cellTrips.values());
     const minSamples = Math.ceil(minRun / step);
     // Classified runs of every shape, merged below.
     const runs: { cls: Cls; pts: LonLat[]; weight: number }[] = [];
     const shapeTrips = new Map<string, number>();
-    for (const p of patterns) shapeTrips.set(p.shape, (shapeTrips.get(p.shape) ?? 0) + (trips.get(p.id) ?? 0));
+    for (const p of patterns)
+      shapeTrips.set(
+        p.shape,
+        (shapeTrips.get(p.shape) ?? 0) + (trips.get(p.id) ?? 0),
+      );
     for (const [shape, list] of samples) {
       const cls: Cls[] = list.map((s) => {
         // No passengers: judged per point (the grid is too coarse; it ran solid lines a cell past
         // a last drop-off), from this shape's legs or any passenger line of the route close by.
-        if (!s.carried && carriedGrid.near([s.lon, s.lat]) > emptyNearM) return 'empty';
+        if (!s.carried && carriedGrid.near([s.lon, s.lat]) > emptyNearM)
+          return "empty";
         const n = cellTrips.get(s.cell) ?? 0;
-        return n === 0 || n < max * share ? 'limited' : 'frequent';
+        return n === 0 || n < max * share ? "limited" : "frequent";
       });
       // Smooth frequent/limited: short runs take their neighbours' class. No-passenger runs come
       // straight from the timetable, so they're kept however short.
@@ -164,9 +213,10 @@ export function routeSections(plan: ServicePlan, routeKeys: Set<string>, opts: C
         let j = i;
         while (j < cls.length && cls[j] === cls[i]) j++;
         const isEdge = i === 0 || j === cls.length;
-        if (j - i < minSamples && !isEdge && cls[i] !== 'empty') {
-          const neighbour = cls[i - 1] !== 'empty' ? cls[i - 1]! : cls[j]!;
-          if (neighbour !== 'empty') for (let k = i; k < j; k++) cls[k] = neighbour;
+        if (j - i < minSamples && !isEdge && cls[i] !== "empty") {
+          const neighbour = cls[i - 1] !== "empty" ? cls[i - 1]! : cls[j]!;
+          if (neighbour !== "empty")
+            for (let k = i; k < j; k++) cls[k] = neighbour;
         }
         i = j;
       }
@@ -174,8 +224,15 @@ export function routeSections(plan: ServicePlan, routeKeys: Set<string>, opts: C
       let start = 0;
       for (let k = 1; k <= list.length; k++) {
         if (k < list.length && cls[k] === cls[start]) continue;
-        const pts = list.slice(start, Math.min(list.length, k + 1)).map((s) => [s.lon, s.lat] as LonLat);
-        if (pts.length >= 2) runs.push({ cls: cls[start]!, pts, weight: shapeTrips.get(shape) ?? 0 });
+        const pts = list
+          .slice(start, Math.min(list.length, k + 1))
+          .map((s) => [s.lon, s.lat] as LonLat);
+        if (pts.length >= 2)
+          runs.push({
+            cls: cls[start]!,
+            pts,
+            weight: shapeTrips.get(shape) ?? 0,
+          });
         start = k;
       }
     }
@@ -186,19 +243,49 @@ export function routeSections(plan: ServicePlan, routeKeys: Set<string>, opts: C
     // layover runs overlap, the arrival run stays attached to its passenger line and the departure
     // run is trimmed to where it leaves it.
     const grid = new SegmentGrid();
-    const passenger = runs.filter((r) => r.cls !== 'empty').sort((a, b) => RANK[b.cls] - RANK[a.cls] || b.weight - a.weight || b.pts.length - a.pts.length);
-    for (const run of passenger) for (let k = 1; k < run.pts.length; k++) grid.add(run.pts[k - 1]!, run.pts[k]!);
-    const attach = (r: (typeof runs)[number]) => (grid.near(r.pts[0]!) <= 3 ? 0 : grid.near(r.pts[r.pts.length - 1]!) <= 3 ? 1 : 2);
+    const passenger = runs
+      .filter((r) => r.cls !== "empty")
+      .sort(
+        (a, b) =>
+          RANK[b.cls] - RANK[a.cls]
+          || b.weight - a.weight
+          || b.pts.length - a.pts.length,
+      );
+    for (const run of passenger)
+      for (let k = 1; k < run.pts.length; k++)
+        grid.add(run.pts[k - 1]!, run.pts[k]!);
+    const attach = (r: (typeof runs)[number]) =>
+      grid.near(r.pts[0]!) <= 3 ? 0
+      : grid.near(r.pts[r.pts.length - 1]!) <= 3 ? 1
+      : 2;
     const empties = runs
-      .filter((r) => r.cls === 'empty')
+      .filter((r) => r.cls === "empty")
       .map((r) => ({ r, a: attach(r) }))
-      .sort((x, y) => x.a - y.a || y.r.weight - x.r.weight || y.r.pts.length - x.r.pts.length);
-    for (const run of passenger) out.push({ route, limited: run.cls !== 'frequent', empty: false, coords: run.pts });
+      .sort(
+        (x, y) =>
+          x.a - y.a
+          || y.r.weight - x.r.weight
+          || y.r.pts.length - x.r.pts.length,
+      );
+    for (const run of passenger)
+      out.push({
+        route,
+        limited: run.cls !== "frequent",
+        empty: false,
+        coords: run.pts,
+      });
     for (const { r: run, a } of empties) {
       const covered = run.pts.map((p) => grid.near(p) <= mergeM);
       // Never trim the first metres off the end attached to a passenger line (that's the join).
       const keepFrom = (k0: number, dk: number) => {
-        for (let k = k0; k >= 0 && k < run.pts.length && distM(run.pts[k]!, run.pts[k0]!) <= mergeM; k += dk) covered[k] = false;
+        for (
+          let k = k0;
+          k >= 0
+          && k < run.pts.length
+          && distM(run.pts[k]!, run.pts[k0]!) <= mergeM;
+          k += dk
+        )
+          covered[k] = false;
       };
       if (a === 0) keepFrom(0, 1);
       if (a === 1) keepFrom(run.pts.length - 1, -1);
@@ -210,9 +297,17 @@ export function routeSections(plan: ServicePlan, routeKeys: Set<string>, opts: C
         }
         let j = i;
         while (j < run.pts.length && !covered[j]) j++;
-        const pts = run.pts.slice(Math.max(0, i - 1), Math.min(run.pts.length, j + 1));
+        const pts = run.pts.slice(
+          Math.max(0, i - 1),
+          Math.min(run.pts.length, j + 1),
+        );
         if (pts.length >= 2) {
-          out.push({ route, limited: run.cls !== 'frequent', empty: run.cls === 'empty', coords: pts });
+          out.push({
+            route,
+            limited: run.cls !== "frequent",
+            empty: run.cls === "empty",
+            coords: pts,
+          });
           for (let k = 1; k < pts.length; k++) grid.add(pts[k - 1]!, pts[k]!);
         }
         i = j;

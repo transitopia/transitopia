@@ -4,7 +4,11 @@
 // vertices keep sub-centimetre precision at any zoom ("relative to centre" rendering).
 // Mercator projection only.
 
-import type { CustomLayerInterface, CustomRenderMethodInput, Map as MlMap } from 'maplibre-gl';
+import type {
+  CustomLayerInterface,
+  CustomRenderMethodInput,
+  Map as MlMap,
+} from "maplibre-gl";
 
 const VERTEX_SHADER = `#version 300 es
 uniform mat4 u_matrix;
@@ -27,11 +31,16 @@ void main() {
 /** Interleaved vertex: x, y (float32 mercator offsets) + rgba (uint8, premultiplied). */
 export const VERTEX_BYTES = 12;
 
-function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
+function compile(
+  gl: WebGL2RenderingContext,
+  type: number,
+  src: string,
+): WebGLShader {
   const s = gl.createShader(type)!;
   gl.shaderSource(s, src);
   gl.compileShader(s);
-  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(`Shader compile failed: ${gl.getShaderInfoLog(s)}`);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+    throw new Error(`Shader compile failed: ${gl.getShaderInfoLog(s)}`);
   return s;
 }
 
@@ -49,8 +58,8 @@ function multiply(a: ArrayLike<number>, b: ArrayLike<number>): Float64Array {
 }
 
 export class GlPolygonLayer implements CustomLayerInterface {
-  readonly type = 'custom' as const;
-  readonly renderingMode = '2d' as const;
+  readonly type = "custom" as const;
+  readonly renderingMode = "2d" as const;
   private gl: WebGL2RenderingContext | undefined;
   private program: WebGLProgram | undefined;
   private buffer: WebGLBuffer | undefined;
@@ -65,22 +74,24 @@ export class GlPolygonLayer implements CustomLayerInterface {
   constructor(readonly id: string) {}
 
   onAdd(map: MlMap, gl: WebGLRenderingContext | WebGL2RenderingContext): void {
-    if (!(gl instanceof WebGL2RenderingContext)) throw new Error('WebGL2 is required');
+    if (!(gl instanceof WebGL2RenderingContext))
+      throw new Error("WebGL2 is required");
     this.map = map;
     this.gl = gl;
     const program = gl.createProgram()!;
     gl.attachShader(program, compile(gl, gl.VERTEX_SHADER, VERTEX_SHADER));
     gl.attachShader(program, compile(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER));
     gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`Program link failed: ${gl.getProgramInfoLog(program)}`);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS))
+      throw new Error(`Program link failed: ${gl.getProgramInfoLog(program)}`);
     this.program = program;
-    this.uMatrix = gl.getUniformLocation(program, 'u_matrix');
+    this.uMatrix = gl.getUniformLocation(program, "u_matrix");
     this.buffer = gl.createBuffer()!;
     this.vao = gl.createVertexArray()!;
     gl.bindVertexArray(this.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
-    const aPos = gl.getAttribLocation(program, 'a_pos');
-    const aColor = gl.getAttribLocation(program, 'a_color');
+    const aPos = gl.getAttribLocation(program, "a_pos");
+    const aColor = gl.getAttribLocation(program, "a_color");
     gl.enableVertexAttribArray(aPos);
     gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, VERTEX_BYTES, 0);
     gl.enableVertexAttribArray(aColor);
@@ -89,7 +100,10 @@ export class GlPolygonLayer implements CustomLayerInterface {
     this.dirty = true;
   }
 
-  onRemove(_map: MlMap, gl: WebGLRenderingContext | WebGL2RenderingContext): void {
+  onRemove(
+    _map: MlMap,
+    gl: WebGLRenderingContext | WebGL2RenderingContext,
+  ): void {
     const g = gl as WebGL2RenderingContext;
     if (this.buffer) g.deleteBuffer(this.buffer);
     if (this.vao) g.deleteVertexArray(this.vao);
@@ -98,7 +112,11 @@ export class GlPolygonLayer implements CustomLayerInterface {
   }
 
   /** Replace the geometry. `data` holds `vertexCount` interleaved vertices (see VERTEX_BYTES). */
-  setGeometry(data: ArrayBuffer, vertexCount: number, origin: [number, number]): void {
+  setGeometry(
+    data: ArrayBuffer,
+    vertexCount: number,
+    origin: [number, number],
+  ): void {
     this.data = data;
     this.vertexCount = vertexCount;
     this.origin = origin;
@@ -106,16 +124,40 @@ export class GlPolygonLayer implements CustomLayerInterface {
     this.map?.triggerRepaint();
   }
 
-  render(gl: WebGLRenderingContext | WebGL2RenderingContext, options: CustomRenderMethodInput): void {
+  render(
+    gl: WebGLRenderingContext | WebGL2RenderingContext,
+    options: CustomRenderMethodInput,
+  ): void {
     const g = gl as WebGL2RenderingContext;
-    if (!this.program || !this.vao || !this.buffer || this.vertexCount === 0) return;
+    if (!this.program || !this.vao || !this.buffer || this.vertexCount === 0)
+      return;
     if (this.dirty) {
       g.bindBuffer(g.ARRAY_BUFFER, this.buffer);
       g.bufferData(g.ARRAY_BUFFER, this.data, g.DYNAMIC_DRAW);
       this.dirty = false;
     }
-    const translate = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, this.origin[0], this.origin[1], 0, 1];
-    const matrix = multiply(options.defaultProjectionData.mainMatrix as ArrayLike<number>, translate);
+    const translate = [
+      1,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      this.origin[0],
+      this.origin[1],
+      0,
+      1,
+    ];
+    const matrix = multiply(
+      options.defaultProjectionData.mainMatrix as ArrayLike<number>,
+      translate,
+    );
     g.useProgram(this.program);
     g.uniformMatrix4fv(this.uMatrix, false, new Float32Array(matrix));
     g.bindVertexArray(this.vao);

@@ -101,23 +101,43 @@ export function decodeSnapshot(line: string): RtSnapshot {
   return {
     fetchedAt: o.t,
     headerTs: o.h,
-    vehicles: o.v.map(([id, label, tripId, routeKey, lat, lon, bearing, ts, stopSeq, stopId, status, delay, speed]) => {
-      const v: RtVehicle = { id, routeKey, lat, lon, ts };
-      if (label !== null) v.label = label;
-      if (tripId !== null) v.tripId = tripId;
-      if (bearing !== null) v.bearing = bearing;
-      if (stopSeq !== null) v.stopSeq = stopSeq;
-      if (stopId !== null) v.stopId = stopId;
-      if (status !== null) v.status = status;
-      if (delay !== null) v.delay = delay;
-      if (speed !== undefined && speed !== null) v.speed = speed;
-      return v;
-    }),
+    vehicles: o.v.map(
+      ([
+        id,
+        label,
+        tripId,
+        routeKey,
+        lat,
+        lon,
+        bearing,
+        ts,
+        stopSeq,
+        stopId,
+        status,
+        delay,
+        speed,
+      ]) => {
+        const v: RtVehicle = { id, routeKey, lat, lon, ts };
+        if (label !== null) v.label = label;
+        if (tripId !== null) v.tripId = tripId;
+        if (bearing !== null) v.bearing = bearing;
+        if (stopSeq !== null) v.stopSeq = stopSeq;
+        if (stopId !== null) v.stopId = stopId;
+        if (status !== null) v.status = status;
+        if (delay !== null) v.delay = delay;
+        if (speed !== undefined && speed !== null) v.speed = speed;
+        return v;
+      },
+    ),
   };
 }
 
 /** Merge a point into sorted, non-overlapping coverage intervals (mutates and returns `intervals`). */
-export function extendCoverage(intervals: [number, number][], t: number, gapMs: number): [number, number][] {
+export function extendCoverage(
+  intervals: [number, number][],
+  t: number,
+  gapMs: number,
+): [number, number][] {
   const last = intervals[intervals.length - 1];
   if (last && t >= last[0] && t - last[1] <= gapMs) {
     last[1] = Math.max(last[1], t);
@@ -139,7 +159,11 @@ export function extendCoverage(intervals: [number, number][], t: number, gapMs: 
   return intervals;
 }
 
-export function coverageContains(intervals: [number, number][], t: number, slackMs = 0): boolean {
+export function coverageContains(
+  intervals: [number, number][],
+  t: number,
+  slackMs = 0,
+): boolean {
   let lo = 0;
   let hi = intervals.length - 1;
   while (lo <= hi) {

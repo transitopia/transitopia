@@ -8,7 +8,9 @@ const RAD = Math.PI / 180;
 export function distM(a: LonLat, b: LonLat): number {
   const dLat = (b[1] - a[1]) * RAD;
   const dLon = (b[0] - a[0]) * RAD;
-  const s = Math.sin(dLat / 2) ** 2 + Math.cos(a[1] * RAD) * Math.cos(b[1] * RAD) * Math.sin(dLon / 2) ** 2;
+  const s =
+    Math.sin(dLat / 2) ** 2
+    + Math.cos(a[1] * RAD) * Math.cos(b[1] * RAD) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
 }
 
@@ -18,14 +20,16 @@ export function bearingDeg(a: LonLat, b: LonLat): number {
   const φ2 = b[1] * RAD;
   const Δλ = (b[0] - a[0]) * RAD;
   const y = Math.sin(Δλ) * Math.cos(φ2);
-  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  const x =
+    Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
   return (Math.atan2(y, x) / RAD + 360) % 360;
 }
 
 /** Cumulative distance at each vertex; cum[0] = 0, cum[n-1] = total length. */
 export function cumulativeLengths(coords: LonLat[]): Float64Array {
   const cum = new Float64Array(coords.length);
-  for (let i = 1; i < coords.length; i++) cum[i] = cum[i - 1]! + distM(coords[i - 1]!, coords[i]!);
+  for (let i = 1; i < coords.length; i++)
+    cum[i] = cum[i - 1]! + distM(coords[i - 1]!, coords[i]!);
   return cum;
 }
 
@@ -49,14 +53,23 @@ export interface PointAlong {
   bearing: number;
 }
 
-export function pointAlong(coords: LonLat[], cum: Float64Array, d: number): PointAlong {
-  if (coords.length === 1) return { lon: coords[0]![0], lat: coords[0]![1], bearing: 0 };
+export function pointAlong(
+  coords: LonLat[],
+  cum: Float64Array,
+  d: number,
+): PointAlong {
+  if (coords.length === 1)
+    return { lon: coords[0]![0], lat: coords[0]![1], bearing: 0 };
   const i = segmentIndex(cum, d);
   const a = coords[i]!;
   const b = coords[i + 1]!;
   const len = cum[i + 1]! - cum[i]!;
   const f = len > 0 ? Math.min(1, Math.max(0, (d - cum[i]!) / len)) : 0;
-  return { lon: a[0] + (b[0] - a[0]) * f, lat: a[1] + (b[1] - a[1]) * f, bearing: bearingDeg(a, b) };
+  return {
+    lon: a[0] + (b[0] - a[0]) * f,
+    lat: a[1] + (b[1] - a[1]) * f,
+    bearing: bearingDeg(a, b),
+  };
 }
 
 /**
@@ -106,13 +119,18 @@ export function projectOnto(
     // Not before fromAlong: clamp within the segment containing it (skipping the segment would
     // match a point just behind fromAlong to some distant part of the line instead).
     const segLen = cum[i + 1]! - cum[i]!;
-    if (cum[i]! + segLen * f < fromAlong) f = segLen > 0 ? Math.min(1, (fromAlong - cum[i]!) / segLen) : 1;
+    if (cum[i]! + segLen * f < fromAlong)
+      f = segLen > 0 ? Math.min(1, (fromAlong - cum[i]!) / segLen) : 1;
     const along = cum[i]! + segLen * f;
     const off = Math.hypot(ax + dx * f - px, ay + dy * f - py);
     if (off < best.offset) best = { along, offset: off };
     else if (best.offset < acceptM && off > best.offset + 500) break;
   }
-  if (!Number.isFinite(best.offset)) best = { along: Math.max(fromAlong, cum[cum.length - 1]!), offset: Infinity };
+  if (!Number.isFinite(best.offset))
+    best = {
+      along: Math.max(fromAlong, cum[cum.length - 1]!),
+      offset: Infinity,
+    };
   return best;
 }
 

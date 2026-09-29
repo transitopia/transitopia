@@ -44,7 +44,11 @@ export class Clock {
 
   /** Live = playing at 1× within a few seconds of wall-clock time. */
   isLive(): boolean {
-    return this._playing && this._rate === 1 && Math.abs(this.now() - Date.now()) < LIVE_TOLERANCE_MS;
+    return (
+      this._playing
+      && this._rate === 1
+      && Math.abs(this.now() - Date.now()) < LIVE_TOLERANCE_MS
+    );
   }
 
   setBounds(lo: number, hi: number): void {

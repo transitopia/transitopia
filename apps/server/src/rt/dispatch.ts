@@ -7,17 +7,37 @@
 // Versions are kept in data/dispatch-history/<date>/<version>.json, so any version can be served
 // again (and, later, an "as known then" view).
 
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import rtConfig from '@transitopia/region-metro-vancouver/config/rt.json' with { type: 'json' };
-import { OBSERVATIONS_DIR, DISRUPTIONS_DIR, DISPATCH_HISTORY_DIR, PUBLIC_DATA_DIR, readJson } from '@transitopia/pipelines/lib/paths.ts';
-import { DispatchContexts } from '@transitopia/pipelines/lib/dispatch-context.ts';
-import { datesOf, loadDisruptions } from '@transitopia/pipelines/lib/disruptions.ts';
-import { activeDisruptions, dateVersion, dispatchDate, type DateInputs } from '@transitopia/transit-core/dispatch/date.ts';
-import type { DispatchIndex, DispatchPatch } from '@transitopia/transit-core/dispatch/patch.ts';
-import type { Observation, ObservationFile } from '@transitopia/transit-core/corrections/types.ts';
-import { observationProblems } from '@transitopia/transit-core/corrections/validate.ts';
-import { addDays, localDate } from '@transitopia/transit-core/time.ts';
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
+import {
+  OBSERVATIONS_DIR,
+  DISRUPTIONS_DIR,
+  DISPATCH_HISTORY_DIR,
+  PUBLIC_DATA_DIR,
+  readJson,
+} from "@transitopia/pipelines/lib/paths.ts";
+import { DispatchContexts } from "@transitopia/pipelines/lib/dispatch-context.ts";
+import {
+  datesOf,
+  loadDisruptions,
+} from "@transitopia/pipelines/lib/disruptions.ts";
+import {
+  activeDisruptions,
+  dateVersion,
+  dispatchDate,
+  type DateInputs,
+} from "@transitopia/transit-core/dispatch/date.ts";
+import type {
+  DispatchIndex,
+  DispatchPatch,
+} from "@transitopia/transit-core/dispatch/patch.ts";
+import type {
+  Observation,
+  ObservationFile,
+} from "@transitopia/transit-core/corrections/types.ts";
+import { observationProblems } from "@transitopia/transit-core/corrections/validate.ts";
+import { addDays, localDate } from "@transitopia/transit-core/time.ts";
 
 export interface LiveDispatchOptions {
   observationsDir?: string;
@@ -55,8 +75,11 @@ export class LiveDispatcher {
     if (this.running) return;
     this.running = true;
     const tick = async () => {
-      await this.check().catch((e) => this.log(`check failed: ${(e as Error).message}`));
-      if (this.running) this.timer = setTimeout(tick, rtConfig.dispatchCheckS * 1000);
+      await this.check().catch((e) =>
+        this.log(`check failed: ${(e as Error).message}`),
+      );
+      if (this.running)
+        this.timer = setTimeout(tick, rtConfig.dispatchCheckS * 1000);
     };
     void tick();
   }
@@ -72,16 +95,31 @@ export class LiveDispatcher {
   }
 
   index(): DispatchIndex {
-    return { schema: 1, byDate: Object.fromEntries([...this.current].sort().map(([d, v]) => [d, { version: v, path: `rt/dispatch/${d}/${v}.json` }])) };
+    return {
+      schema: 1,
+      byDate: Object.fromEntries(
+        [...this.current]
+          .sort()
+          .map(([d, v]) => [
+            d,
+            { version: v, path: `rt/dispatch/${d}/${v}.json` },
+          ]),
+      ),
+    };
   }
 
   /** A published patch version (from memory, or the history on disk). */
-  async patch(date: string, version: string): Promise<DispatchPatch | undefined> {
+  async patch(
+    date: string,
+    version: string,
+  ): Promise<DispatchPatch | undefined> {
     if (!/^\d{8}$/.test(date) || !/^[0-9a-z]+$/.test(version)) return undefined;
     const hit = this.patches.get(`${date}/${version}`);
     if (hit) return hit;
     try {
-      return JSON.parse(await readFile(join(this.historyDir, date, `${version}.json`), 'utf8')) as DispatchPatch;
+      return JSON.parse(
+        await readFile(join(this.historyDir, date, `${version}.json`), "utf8"),
+      ) as DispatchPatch;
     } catch {
       return undefined;
     }
@@ -89,34 +127,52 @@ export class LiveDispatcher {
 
   /** Re-dispatch every date near today whose inputs changed (one check at a time). */
   check(): Promise<void> {
-    this.checking ??= this.runCheck().finally(() => (this.checking = undefined));
+    this.checking ??= this.runCheck().finally(
+      () => (this.checking = undefined),
+    );
     return this.checking;
   }
 
   private async runCheck(): Promise<void> {
     // A rebuild (npm run data / build:movements) replaces the base plans: start from the new ones.
-    const built = await stat(join(PUBLIC_DATA_DIR, 'manifest.json')).then((s) => s.mtimeMs, () => 0);
+    const built = await stat(join(PUBLIC_DATA_DIR, "manifest.json")).then(
+      (s) => s.mtimeMs,
+      () => 0,
+    );
     if (built !== this.builtAt) {
       this.builtAt = built;
       this.contexts.reset();
     }
-    const [observations, disruptions] = await Promise.all([this.loadObservations(), loadDisruptions(this.disruptionsDir)]);
+    const [observations, disruptions] = await Promise.all([
+      this.loadObservations(),
+      loadDisruptions(this.disruptionsDir),
+    ]);
     const today = localDate(this.now());
     const lo = addDays(today, -rtConfig.dispatchWindowDays);
     const hi = addDays(today, rtConfig.dispatchWindowDays);
     const dates = new Set<string>();
     for (const o of observations) {
-      const d = o.date.replaceAll('-', '');
+      const d = o.date.replaceAll("-", "");
       if (d >= lo && d <= hi) dates.add(d);
     }
-    for (const d of disruptions) if (d.status !== 'draft') for (const x of datesOf(d)) if (x >= lo && x <= hi) dates.add(x);
+    for (const d of disruptions)
+      if (d.status !== "draft")
+        for (const x of datesOf(d)) if (x >= lo && x <= hi) dates.add(x);
     // Dates whose inputs went away fall back to the base plan.
-    for (const d of [...this.current.keys()]) if (!dates.has(d)) this.current.delete(d);
+    for (const d of [...this.current.keys()])
+      if (!dates.has(d)) this.current.delete(d);
     for (const date of [...dates].sort()) {
-      const inputs: DateInputs = { date, observations: observations.filter((o) => o.date.replaceAll('-', '') === date), disruptions };
+      const inputs: DateInputs = {
+        date,
+        observations: observations.filter(
+          (o) => o.date.replaceAll("-", "") === date,
+        ),
+        disruptions,
+      };
       const ctx = await this.contexts.forDate(date);
       if (!ctx) continue;
-      if (!inputs.observations.length && !activeDisruptions(inputs).length) continue;
+      if (!inputs.observations.length && !activeDisruptions(inputs).length)
+        continue;
       const version = dateVersion(ctx, inputs);
       if (this.current.get(date) === version) continue;
       const existing = await this.patch(date, version);
@@ -126,16 +182,25 @@ export class LiveDispatcher {
         continue;
       }
       const t0 = performance.now();
-      const patch = await dispatchDate(ctx, inputs, new Date(this.now()).toISOString());
+      const patch = await dispatchDate(
+        ctx,
+        inputs,
+        new Date(this.now()).toISOString(),
+      );
       await mkdir(join(this.historyDir, date), { recursive: true });
-      await writeFile(join(this.historyDir, date, `${version}.json`), JSON.stringify(patch));
+      await writeFile(
+        join(this.historyDir, date, `${version}.json`),
+        JSON.stringify(patch),
+      );
       this.patches.set(`${date}/${version}`, patch);
       this.current.set(date, version);
-      this.log(`${date} → version ${version}: ${patch.summary.inputs.join(', ')} (${Math.round(performance.now() - t0)} ms)`);
+      this.log(
+        `${date} → version ${version}: ${patch.summary.inputs.join(", ")} (${Math.round(performance.now() - t0)} ms)`,
+      );
     }
     // Keep only current versions in memory; older ones are on disk.
     for (const key of [...this.patches.keys()]) {
-      const [d, v] = key.split('/');
+      const [d, v] = key.split("/");
       if (this.current.get(d!) !== v) this.patches.delete(key);
     }
   }
@@ -143,15 +208,20 @@ export class LiveDispatcher {
   private async loadObservations(): Promise<Observation[]> {
     let files: string[] = [];
     try {
-      files = (await readdir(this.observationsDir)).filter((f) => f.endsWith('.json'));
+      files = (await readdir(this.observationsDir)).filter((f) =>
+        f.endsWith(".json"),
+      );
     } catch {
       return [];
     }
     const out: Observation[] = [];
     for (const f of files.sort()) {
       try {
-        const file = await readJson<ObservationFile>(join(this.observationsDir, f));
-        for (const o of file.observations) if (!observationProblems(o).length) out.push(o);
+        const file = await readJson<ObservationFile>(
+          join(this.observationsDir, f),
+        );
+        for (const o of file.observations)
+          if (!observationProblems(o).length) out.push(o);
       } catch (e) {
         this.log(`skipping ${f}: ${(e as Error).message}`);
       }

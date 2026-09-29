@@ -6,15 +6,32 @@
 // arrival takes the earliest feasible departure, preferring its GTFS block) → add yard pull-outs and
 // pull-ins → emit events, splitting deadheads at reversals so playback only handles one-direction moves.
 
-import type { Dir, Path, PathPiece, TrackGraph, TrackPos } from '../infra/graph.ts';
-import { REVENUE_KIND_PENALTY, routePattern } from '../infra/patterns.ts';
-import type { PlatformAssignment } from '../infra/platforms.ts';
-import type { PreparedPlan, PreparedTrip } from '../schedule/engine.ts';
-import { kinematicsFor, minLegTime, type KinematicsConfig } from './kinematics.ts';
-import type { Berth, MovementsFile, MoveKind, PackedPath, Run, RunEvent } from './types.ts';
-import type { LineKey, SegmentKind } from '../infra/types.ts';
-import type { PlanStop } from '../plan/types.ts';
-import { distM } from '../geo.ts';
+import type {
+  Dir,
+  Path,
+  PathPiece,
+  TrackGraph,
+  TrackPos,
+} from "../infra/graph.ts";
+import { REVENUE_KIND_PENALTY, routePattern } from "../infra/patterns.ts";
+import type { PlatformAssignment } from "../infra/platforms.ts";
+import type { PreparedPlan, PreparedTrip } from "../schedule/engine.ts";
+import {
+  kinematicsFor,
+  minLegTime,
+  type KinematicsConfig,
+} from "./kinematics.ts";
+import type {
+  Berth,
+  MovementsFile,
+  MoveKind,
+  PackedPath,
+  Run,
+  RunEvent,
+} from "./types.ts";
+import type { LineKey, SegmentKind } from "../infra/types.ts";
+import type { PlanStop } from "../plan/types.ts";
+import { distM } from "../geo.ts";
 
 export interface OperationsConfig {
   fleets: { groups: string[][] };
@@ -53,7 +70,7 @@ interface TripInfo {
   block?: string;
 }
 
-const YARD = new Set<SegmentKind>(['yard']);
+const YARD = new Set<SegmentKind>(["yard"]);
 /** Turnback choice: route-metre cost of a reversal, and of departing from a non-GTFS platform. */
 const REVERSAL_COST_M = 200;
 const OFF_PLATFORM_COST_M = 500;
@@ -61,7 +78,12 @@ const OFF_PLATFORM_COST_M = 500;
 const BLOCK_MIN_LAYOVER_S = 30;
 /** A berth counts as occupied this long before arrival and after departure (s). */
 const BERTH_MARGIN_S = 20;
-const PLATFORM_KINDS = new Set<SegmentKind>(['main', 'pocket', 'tail', 'siding']);
+const PLATFORM_KINDS = new Set<SegmentKind>([
+  "main",
+  "pocket",
+  "tail",
+  "siding",
+]);
 
 export function pieceDir(p: PathPiece): Dir {
   return p.to >= p.from ? 1 : -1;
@@ -73,7 +95,12 @@ export function splitAtReversals(pieces: PathPiece[]): PathPiece[][] {
   let cur: PathPiece[] = [];
   for (const p of pieces) {
     const prev = cur[cur.length - 1];
-    if (prev && prev.seg === p.seg && pieceDir(prev) !== pieceDir(p) && Math.abs(prev.to - p.from) < 1e-6) {
+    if (
+      prev
+      && prev.seg === p.seg
+      && pieceDir(prev) !== pieceDir(p)
+      && Math.abs(prev.to - p.from) < 1e-6
+    ) {
       out.push(cur);
       cur = [];
     }
@@ -85,15 +112,18 @@ export function splitAtReversals(pieces: PathPiece[]): PathPiece[][] {
 
 function reversePath(p: Path): Path {
   return {
-    pieces: [...p.pieces].reverse().map((x) => ({ seg: x.seg, from: x.to, to: x.from })),
+    pieces: [...p.pieces]
+      .reverse()
+      .map((x) => ({ seg: x.seg, from: x.to, to: x.from })),
     length: p.length,
     reversals: p.reversals,
-    startDir: (-p.endDir) as Dir,
-    endDir: (-p.startDir) as Dir,
+    startDir: -p.endDir as Dir,
+    endDir: -p.startDir as Dir,
   };
 }
 
-const lengthOf = (pieces: PathPiece[]) => pieces.reduce((s, p) => s + Math.abs(p.to - p.from), 0);
+const lengthOf = (pieces: PathPiece[]) =>
+  pieces.reduce((s, p) => s + Math.abs(p.to - p.from), 0);
 
 /** Track out of service for part of a day (a disruption): trips of `patterns` route around it. */
 export interface Closure {
@@ -116,14 +146,25 @@ export interface BuildInput {
   kin: KinematicsConfig;
 }
 
-export function buildMovements({ graph: g, pp, platforms, patternPositions, services, ops, kin, closures = [] }: BuildInput): MovementsFile {
+export function buildMovements({
+  graph: g,
+  pp,
+  platforms,
+  patternPositions,
+  services,
+  ops,
+  kin,
+  closures = [],
+}: BuildInput): MovementsFile {
   /** Track closed at service time t (disruptions), and a cache-key tag for it. */
   const closedAt = (t: number): { closed?: Set<string>; tag: string } => {
     const i = closures.findIndex((c) => t >= c.from && t <= c.to);
-    return i < 0 ? { tag: '' } : { closed: closures[i]!.segs, tag: `c${i}|` };
+    return i < 0 ? { tag: "" } : { closed: closures[i]!.segs, tag: `c${i}|` };
   };
   const plan = pp.plan;
-  const railRoutes = new Set(plan.routes.filter((r) => r.kind === 'skytrain').map((r) => r.key));
+  const railRoutes = new Set(
+    plan.routes.filter((r) => r.kind === "skytrain").map((r) => r.key),
+  );
   const fleetOf = new Map<string, number>();
   ops.fleets.groups.forEach((grp, i) => grp.forEach((l) => fleetOf.set(l, i)));
 
@@ -143,8 +184,13 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
   const pathIndex = new Map<string, number>();
   const addPath = (pieces: PathPiece[]): number => {
     const packed: PackedPath = [];
-    for (const p of pieces) packed.push(segIdx(p.seg), Math.round(p.from * 100) / 100, Math.round(p.to * 100) / 100);
-    const key = packed.join(',');
+    for (const p of pieces)
+      packed.push(
+        segIdx(p.seg),
+        Math.round(p.from * 100) / 100,
+        Math.round(p.to * 100) / 100,
+      );
+    const key = packed.join(",");
     let i = pathIndex.get(key);
     if (i === undefined) {
       i = paths.length;
@@ -156,11 +202,18 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
 
   // --- patterns ---
   const patternRoutes = new Map<number, ReturnType<typeof routePattern>>();
-  const patternsOut: MovementsFile['patterns'] = {};
+  const patternsOut: MovementsFile["patterns"] = {};
   for (const p of plan.patterns) {
     if (!railRoutes.has(p.route)) continue;
     const closure = closures.find((c) => c.patterns.has(p.id));
-    const r = routePattern(g, plan, platforms, p, patternPositions, closure?.segs);
+    const r = routePattern(
+      g,
+      plan,
+      platforms,
+      p,
+      patternPositions,
+      closure?.segs,
+    );
     if (r.failures.length) continue;
     patternRoutes.set(p.id, r);
     patternsOut[p.id] = { hops: r.hops.map((h) => addPath(h!.pieces)) };
@@ -169,7 +222,13 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
   // Normal direction of traffic per segment: the directions revenue trips use it in (bit 1: +, 2: −).
   const revenueDirs = new Map<string, number>();
   for (const r of patternRoutes.values()) {
-    for (const h of r.hops) for (const p of h!.pieces) if (p.to !== p.from) revenueDirs.set(p.seg, (revenueDirs.get(p.seg) ?? 0) | (p.to > p.from ? 1 : 2));
+    for (const h of r.hops)
+      for (const p of h!.pieces)
+        if (p.to !== p.from)
+          revenueDirs.set(
+            p.seg,
+            (revenueDirs.get(p.seg) ?? 0) | (p.to > p.from ? 1 : 2),
+          );
   }
   const againstTraffic = (seg: string, dir: Dir) => {
     const d = revenueDirs.get(seg);
@@ -177,7 +236,8 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
   };
 
   // --- trips ---
-  const stationOf = (si: number) => plan.stops[si]!.parent ?? plan.stops[si]!.name.replace(/\s*@.*$/, '');
+  const stationOf = (si: number) =>
+    plan.stops[si]!.parent ?? plan.stops[si]!.name.replace(/\s*@.*$/, "");
   const trips: TripInfo[] = [];
   let unplaced = 0;
   for (const service of services) {
@@ -233,7 +293,12 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
    * Path from a platform to the nearest yard (for pull-ins), extended into the yard. `reversed`: the
    * path will be run backwards (a pull-out), so traffic direction is judged the other way round.
    */
-  const toYard = (pos: TrackPos, dir: Dir, reversed = false, at = -1): Path | null => {
+  const toYard = (
+    pos: TrackPos,
+    dir: Dir,
+    reversed = false,
+    at = -1,
+  ): Path | null => {
     const { closed, tag } = closedAt(at);
     const key = `${tag}${pk(pos)}|${dir}|${reversed}`;
     let r = yardCache.get(key);
@@ -245,14 +310,22 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
       allowReverseAtStart: true,
       goalKinds: YARD,
       maxLength: ops.yard.maxDeadheadM * (1 + ops.yard.againstTrafficPenalty),
-      dirPenalty: reversed ? (seg, d) => againstTraffic(seg, (-d) as Dir) : againstTraffic,
+      dirPenalty:
+        reversed ? (seg, d) => againstTraffic(seg, -d as Dir) : againstTraffic,
     });
     if (r) {
       const last = r.pieces[r.pieces.length - 1]!;
       const ys = g.segment(last.seg);
       const d = pieceDir(last);
       const into = Math.min(ys.length, ops.yard.runIntoYardM);
-      r.pieces.push({ seg: last.seg, from: last.to, to: d === 1 ? Math.min(ys.length, last.to + into) : Math.max(0, last.to - into) });
+      r.pieces.push({
+        seg: last.seg,
+        from: last.to,
+        to:
+          d === 1 ?
+            Math.min(ys.length, last.to + into)
+          : Math.max(0, last.to - into),
+      });
       r.length += into;
     }
     yardCache.set(key, r);
@@ -260,12 +333,22 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
   };
 
   // Empty moves: turnbacks at their own speed, pull-outs and pull-ins slower (config).
-  const speedFactorFor = (kind: MoveKind) => (kind === 'turnback' ? ops.turnback.speedFactor : ops.yard.deadheadSpeedFactor);
+  const speedFactorFor = (kind: MoveKind) =>
+    kind === "turnback" ?
+      ops.turnback.speedFactor
+    : ops.yard.deadheadSpeedFactor;
   // Minimum time for a (possibly reversing) deadhead path.
-  const deadheadTime = (line: string, path: Path, kind: MoveKind = 'turnback') => {
-    const k = kinematicsFor(kin, 'skytrain', line);
+  const deadheadTime = (
+    line: string,
+    path: Path,
+    kind: MoveKind = "turnback",
+  ) => {
+    const k = kinematicsFor(kin, "skytrain", line);
     const subs = splitAtReversals(path.pieces);
-    const moving = subs.reduce((s, sub) => s + minLegTime(lengthOf(sub), k, speedFactorFor(kind)), 0);
+    const moving = subs.reduce(
+      (s, sub) => s + minLegTime(lengthOf(sub), k, speedFactorFor(kind)),
+      0,
+    );
     return moving + Math.max(0, subs.length - 1) * ops.turnback.reversalS;
   };
 
@@ -274,12 +357,18 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
   const fromArrivalBerth = (a: TripInfo, d: TripInfo): Path | null => {
     const r = patternRoutes.get(d.t.pattern.id)!;
     const second = r.positions[1]!;
-    const dir = (-a.dir1) as Dir;
+    const dir = -a.dir1 as Dir;
     const { closed, tag } = closedAt(a.arr);
     const key = `${tag}${pk(a.pos1)}|${dir}|${pk(second)}`;
     let p = berthCache.get(key);
     if (p !== undefined) return p;
-    p = g.route(a.pos1, second, { fromDir: dir, allowReversals: false, maxLength: 12_000, kindPenalty: REVENUE_KIND_PENALTY, ...(closed ? { closed } : {}) });
+    p = g.route(a.pos1, second, {
+      fromDir: dir,
+      allowReversals: false,
+      maxLength: 12_000,
+      kindPenalty: REVENUE_KIND_PENALTY,
+      ...(closed ? { closed } : {}),
+    });
     if (p && p.reversals > 0) p = null;
     berthCache.set(key, p);
     return p;
@@ -289,8 +378,16 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
   const pullUp = (pos: TrackPos, len: number): TrackPos => {
     const s = g.segment(pos.seg);
     const margin = 10;
-    if (g.isDeadEnd(pos.seg, -1)) return { seg: pos.seg, offset: Math.min(s.length - len / 2, len / 2 + margin) };
-    if (g.isDeadEnd(pos.seg, 1)) return { seg: pos.seg, offset: Math.max(len / 2, s.length - len / 2 - margin) };
+    if (g.isDeadEnd(pos.seg, -1))
+      return {
+        seg: pos.seg,
+        offset: Math.min(s.length - len / 2, len / 2 + margin),
+      };
+    if (g.isDeadEnd(pos.seg, 1))
+      return {
+        seg: pos.seg,
+        offset: Math.max(len / 2, s.length - len / 2 - margin),
+      };
     return pos;
   };
   /** This line's dead-ended running tracks within 150 m of a stop (cached per stop and line). */
@@ -302,10 +399,10 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
       list = [...g.segments.values()]
         .filter(
           (sg) =>
-            PLATFORM_KINDS.has(sg.kind) &&
-            sg.lines.includes(line as LineKey) &&
-            (g.isDeadEnd(sg.id, 1) || g.isDeadEnd(sg.id, -1)) &&
-            sg.coords.some((c) => distM(c, [stop.lon, stop.lat]) < 150),
+            PLATFORM_KINDS.has(sg.kind)
+            && sg.lines.includes(line as LineKey)
+            && (g.isDeadEnd(sg.id, 1) || g.isDeadEnd(sg.id, -1))
+            && sg.coords.some((c) => distM(c, [stop.lon, stop.lat]) < 150),
         )
         .map((sg) => sg.id);
       stubCache.set(key, list);
@@ -313,12 +410,17 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
     return list;
   };
   /** Stub terminus: the line has dead-ended platform tracks here, so waiting trains block a berth. */
-  const atStubTerminus = (a: TripInfo) => stubsNear(plan.stops[a.t.pattern.stops[a.t.pattern.stops.length - 1]!]!, a.line).length > 0;
+  const atStubTerminus = (a: TripInfo) =>
+    stubsNear(
+      plan.stops[a.t.pattern.stops[a.t.pattern.stops.length - 1]!]!,
+      a.line,
+    ).length > 0;
   /**
    * Surplus trains at stub termini go back to the yard rather than queue for a far-off departure
    * (operators run them empty between scheduled trains; OPEN-QUESTIONS #21).
    */
-  const tooLongAtStub = (a: TripInfo, link: Link) => link.d.dep - a.arr > ops.turnback.stubMaxLayoverS && atStubTerminus(a);
+  const tooLongAtStub = (a: TripInfo, link: Link) =>
+    link.d.dep - a.arr > ops.turnback.stubMaxLayoverS && atStubTerminus(a);
   /**
    * A stub terminus holds at most one waiting train per dead-ended track (e.g. Waterfront Expo: the
    * turnback stub and Platform 2). A train arriving when they're all taken is surplus and returns to
@@ -327,11 +429,18 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
    */
   const waitingAtStub = new Map<string, [number, number][]>();
   const stubFull = (a: TripInfo) => {
-    const cap = stubsNear(plan.stops[a.t.pattern.stops[a.t.pattern.stops.length - 1]!]!, a.line).length;
+    const cap = stubsNear(
+      plan.stops[a.t.pattern.stops[a.t.pattern.stops.length - 1]!]!,
+      a.line,
+    ).length;
     if (!cap) return false;
     // Counted when this train needs a berth: after unloading and changing ends at the platform.
     const at = a.arr + ops.turnback.unloadS + ops.turnback.reversalS;
-    return (waitingAtStub.get(a.station1) ?? []).filter(([from, to]) => from <= at && at < to).length >= cap;
+    return (
+      (waitingAtStub.get(a.station1) ?? []).filter(
+        ([from, to]) => from <= at && at < to,
+      ).length >= cap
+    );
   };
 
   // --- chaining (FIFO per terminus, preferring the GTFS block) ---
@@ -347,10 +456,18 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
   // GTFS block successors (same service and block, next by departure).
   const blockNext = new Map<TripInfo, TripInfo>();
   const byBlock = new Map<string, TripInfo[]>();
-  for (const t of trips) if (t.block) (byBlock.get(`${t.t.trip.service}|${t.block}`) ?? byBlock.set(`${t.t.trip.service}|${t.block}`, []).get(`${t.t.trip.service}|${t.block}`)!).push(t);
+  for (const t of trips)
+    if (t.block)
+      (
+        byBlock.get(`${t.t.trip.service}|${t.block}`)
+        ?? byBlock
+          .set(`${t.t.trip.service}|${t.block}`, [])
+          .get(`${t.t.trip.service}|${t.block}`)!
+      ).push(t);
   for (const list of byBlock.values()) {
     list.sort((x, y) => x.dep - y.dep);
-    for (let i = 0; i + 1 < list.length; i++) blockNext.set(list[i]!, list[i + 1]!);
+    for (let i = 0; i + 1 < list.length; i++)
+      blockNext.set(list[i]!, list[i + 1]!);
   }
 
   /**
@@ -358,48 +475,81 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
    * reverse in place and leave from the arrival berth. Returns the cheaper feasible one. `trusted`
    * (GTFS block successors) skips the time check: the timetable says it's done.
    */
-  const tryLink = (a: TripInfo, d: TripInfo, gap: number, trusted: boolean): Link | undefined => {
+  const tryLink = (
+    a: TripInfo,
+    d: TripInfo,
+    gap: number,
+    trusted: boolean,
+  ): Link | undefined => {
     let link: Link | undefined;
     let cost = Infinity;
     const path = turnback(a, d);
-    if (path && (trusted || ops.turnback.unloadS + deadheadTime(a.line, path) <= gap)) {
+    if (
+      path
+      && (trusted || ops.turnback.unloadS + deadheadTime(a.line, path) <= gap)
+    ) {
       link = { d, path };
       cost = path.length + REVERSAL_COST_M * path.reversals;
     }
     const berthHop = fromArrivalBerth(a, d);
-    if (berthHop && (trusted || ops.turnback.unloadS + ops.turnback.reversalS <= gap) && REVERSAL_COST_M + OFF_PLATFORM_COST_M < cost) {
-      link = { d, path: { pieces: [], length: 0, reversals: 1, startDir: berthHop.startDir, endDir: berthHop.startDir }, berthHop };
+    if (
+      berthHop
+      && (trusted || ops.turnback.unloadS + ops.turnback.reversalS <= gap)
+      && REVERSAL_COST_M + OFF_PLATFORM_COST_M < cost
+    ) {
+      link = {
+        d,
+        path: {
+          pieces: [],
+          length: 0,
+          reversals: 1,
+          startDir: berthHop.startDir,
+          endDir: berthHop.startDir,
+        },
+        berthHop,
+      };
     }
     return link;
   };
 
   const arrivals = [...trips].sort((a, b) => a.arr - b.arr);
-  const termini: MovementsFile['stats']['termini'] = {};
+  const termini: MovementsFile["stats"]["termini"] = {};
   const stationNames = new Map(plan.stations.map((s) => [s.id, s.name]));
-  const stationName = (id: string) => stationNames.get(id) ?? pp.stopById.get(id)?.name ?? id;
+  const stationName = (id: string) =>
+    stationNames.get(id) ?? pp.stopById.get(id)?.name ?? id;
   for (const a of arrivals) {
-    const st = (termini[stationName(a.station1)] ??= { chained: 0, unchained: 0, reasons: {} });
+    const st = (termini[stationName(a.station1)] ??= {
+      chained: 0,
+      unchained: 0,
+      reasons: {},
+    });
     const reason = (r: string) => (st.reasons[r] = (st.reasons[r] ?? 0) + 1);
     const list = departuresAt.get(`${a.fleet}|${a.station1}`);
     if (!list) {
       st.unchained++;
-      reason('no departures of this fleet here');
+      reason("no departures of this fleet here");
       continue;
     }
     if (stubFull(a)) {
       st.unchained++;
-      reason('stub terminus full: returns to yard');
+      reason("stub terminus full: returns to yard");
       continue;
     }
     let chosen: Link | undefined;
     let sawCandidate = false;
-    let lastReason = 'no departure within max layover';
+    let lastReason = "no departure within max layover";
     // 1. The GTFS block's own next trip, if it leaves from here: the timetable planners made that
     //    turn work, so it's trusted even with a short layover.
     const bn = blockNext.get(a);
-    if (bn && !hasPrev.has(bn) && bn.station0 === a.station1 && bn.fleet === a.fleet) {
+    if (
+      bn
+      && !hasPrev.has(bn)
+      && bn.station0 === a.station1
+      && bn.fleet === a.fleet
+    ) {
       const gap = bn.dep - a.arr;
-      if (gap >= BLOCK_MIN_LAYOVER_S && gap <= ops.turnback.maxLayoverS) chosen = tryLink(a, bn, gap, true);
+      if (gap >= BLOCK_MIN_LAYOVER_S && gap <= ops.turnback.maxLayoverS)
+        chosen = tryLink(a, bn, gap, true);
       if (chosen && tooLongAtStub(a, chosen)) chosen = undefined;
     }
     // 2. Otherwise first come, first served: the earliest feasible departure.
@@ -411,11 +561,14 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
       sawCandidate = true;
       const link = tryLink(a, d, gap, false);
       if (!link) {
-        lastReason = turnback(a, d) ? 'turnback too slow' : 'no turnback path or berth route';
+        lastReason =
+          turnback(a, d) ? "turnback too slow" : (
+            "no turnback path or berth route"
+          );
         continue;
       }
       if (tooLongAtStub(a, link)) {
-        lastReason = 'surplus at stub terminus: returns to yard';
+        lastReason = "surplus at stub terminus: returns to yard";
         break;
       }
       chosen = link;
@@ -425,10 +578,14 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
       next.set(a, chosen);
       hasPrev.add(chosen.d);
       st.chained++;
-      if (atStubTerminus(a)) (waitingAtStub.get(a.station1) ?? waitingAtStub.set(a.station1, []).get(a.station1)!).push([a.arr, chosen.d.dep]);
+      if (atStubTerminus(a))
+        (
+          waitingAtStub.get(a.station1)
+          ?? waitingAtStub.set(a.station1, []).get(a.station1)!
+        ).push([a.arr, chosen.d.dep]);
     } else {
       st.unchained++;
-      reason(sawCandidate ? lastReason : 'no departure within max layover');
+      reason(sawCandidate ? lastReason : "no departure within max layover");
     }
   }
 
@@ -442,11 +599,13 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
     path: Path,
     kind: MoveKind,
     window: { start: number; end: number },
-    anchor: 'start' | 'end',
+    anchor: "start" | "end",
   ) => {
-    const k = kinematicsFor(kin, 'skytrain', line);
+    const k = kinematicsFor(kin, "skytrain", line);
     const subs = splitAtReversals(path.pieces);
-    const times = subs.map((s) => minLegTime(lengthOf(s), k, speedFactorFor(kind)));
+    const times = subs.map((s) =>
+      minLegTime(lengthOf(s), k, speedFactorFor(kind)),
+    );
     const revs = Math.max(0, subs.length - 1) * ops.turnback.reversalS;
     const need = times.reduce((a, b) => a + b, 0) + revs;
     const avail = window.end - window.start;
@@ -455,25 +614,53 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
     // Turnbacks wait out their slack at the first reversal point when that is a tail/pocket/siding,
     // clearing the arrival platform and keeping the departure platform free. (Never on main track,
     // where through trains need to pass.)
-    const firstRev = subs.length > 1 ? g.segment(subs[0]![subs[0]!.length - 1]!.seg) : undefined;
-    const slackAtReversal = kind === 'turnback' && firstRev !== undefined && firstRev.kind !== 'main';
+    const firstRev =
+      subs.length > 1 ?
+        g.segment(subs[0]![subs[0]!.length - 1]!.seg)
+      : undefined;
+    const slackAtReversal =
+      kind === "turnback" && firstRev !== undefined && firstRev.kind !== "main";
     const slack = slackAtReversal ? Math.max(0, avail - need) : 0;
-    let t = anchor === 'start' ? window.start : window.end - need * scale;
+    let t = anchor === "start" ? window.start : window.end - need * scale;
     subs.forEach((sub, i) => {
       if (i > 0) {
         const last = subs[i - 1]![subs[i - 1]!.length - 1]!;
         const dt = ops.turnback.reversalS * scale + (i === 1 ? slack : 0);
-        events.push({ k: 'hold', t0: t, t1: t + dt, seg: segIdx(last.seg), offset: last.to, dir: pieceDir(sub[0]!), kind: 'layover' });
+        events.push({
+          k: "hold",
+          t0: t,
+          t1: t + dt,
+          seg: segIdx(last.seg),
+          offset: last.to,
+          dir: pieceDir(sub[0]!),
+          kind: "layover",
+        });
         t += dt;
       }
       const dt = times[i]! * scale;
-      events.push({ k: 'move', t0: t, t1: t + dt, path: pathOf(sub), kind });
+      events.push({ k: "move", t0: t, t1: t + dt, path: pathOf(sub), kind });
       t += dt;
     });
     return t;
   };
-  const hold = (events: RunEvent[], t0: number, t1: number, pos: TrackPos, dir: Dir, kind: 'layover' | 'yard' = 'layover') => {
-    if (t1 > t0 + 1e-6) events.push({ k: 'hold', t0, t1, seg: segIdx(pos.seg), offset: pos.offset, dir, kind });
+  const hold = (
+    events: RunEvent[],
+    t0: number,
+    t1: number,
+    pos: TrackPos,
+    dir: Dir,
+    kind: "layover" | "yard" = "layover",
+  ) => {
+    if (t1 > t0 + 1e-6)
+      events.push({
+        k: "hold",
+        t0,
+        t1,
+        seg: segIdx(pos.seg),
+        offset: pos.offset,
+        dir,
+        kind,
+      });
   };
 
   // --- berth allocation for in-place turnbacks ---
@@ -489,13 +676,31 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
     depart?: Berth;
   }
   const visits = new Map<TripInfo, Visit>();
-  const occupied = new Map<string, { from: number; to: number; offset: number }[]>();
-  const trainLen = (line: string) => kinematicsFor(kin, 'skytrain', line).length;
+  const occupied = new Map<
+    string,
+    { from: number; to: number; offset: number }[]
+  >();
+  const trainLen = (line: string) =>
+    kinematicsFor(kin, "skytrain", line).length;
   const isFree = (pos: TrackPos, from: number, to: number, len: number) =>
-    !(occupied.get(pos.seg) ?? []).some((o) => o.from < to && from < o.to && Math.abs(o.offset - pos.offset) < len);
-  const noRev = (a: TrackPos, dir: Dir | undefined, b: TrackPos, at: number) => {
+    !(occupied.get(pos.seg) ?? []).some(
+      (o) =>
+        o.from < to && from < o.to && Math.abs(o.offset - pos.offset) < len,
+    );
+  const noRev = (
+    a: TrackPos,
+    dir: Dir | undefined,
+    b: TrackPos,
+    at: number,
+  ) => {
     const { closed } = closedAt(at);
-    const p = g.route(a, b, { fromDir: dir, allowReversals: false, maxLength: 12_000, kindPenalty: REVENUE_KIND_PENALTY, ...(closed ? { closed } : {}) });
+    const p = g.route(a, b, {
+      fromDir: dir,
+      allowReversals: false,
+      maxLength: 12_000,
+      kindPenalty: REVENUE_KIND_PENALTY,
+      ...(closed ? { closed } : {}),
+    });
     return p && p.reversals === 0 ? p : null;
   };
   for (const a of arrivals) {
@@ -514,9 +719,14 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
     // termini), each pulled up to the buffer so the train clears the switch behind it. A buffer
     // far beyond the platform is closed track, not a berth (Braid), so the train stays at the platform.
     const up = pullUp(a.pos1, len);
-    const candidates: TrackPos[] = [Math.abs(up.offset - a.pos1.offset) <= ops.turnback.maxPullUpM ? up : a.pos1];
+    const candidates: TrackPos[] = [
+      Math.abs(up.offset - a.pos1.offset) <= ops.turnback.maxPullUpM ?
+        up
+      : a.pos1,
+    ];
     for (const seg of stubsNear(lastStop, a.line)) {
-      if (!candidates.some((x) => x.seg === seg)) candidates.push(pullUp({ seg, offset: 0 }, len));
+      if (!candidates.some((x) => x.seg === seg))
+        candidates.push(pullUp({ seg, offset: 0 }, len));
     }
     let chosen: Visit | undefined;
     for (const pos of candidates) {
@@ -525,36 +735,67 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
         chosen = { pos, arriveDir: a.dir1, departDir: defaultDepart };
         break;
       }
-      const inHop = noRev(ra.positions[n - 2]!, ra.hops[n - 2]!.startDir, pos, a.arr);
+      const inHop = noRev(
+        ra.positions[n - 2]!,
+        ra.hops[n - 2]!.startDir,
+        pos,
+        a.arr,
+      );
       if (!inHop) continue;
-      const outHop = noRev(pos, (-inHop.endDir) as Dir, rd.positions[1]!, a.arr);
+      const outHop = noRev(pos, -inHop.endDir as Dir, rd.positions[1]!, a.arr);
       if (!outHop) continue;
       chosen = {
         pos,
         arriveDir: inHop.endDir,
         departDir: outHop.startDir,
-        arrive: { seg: segIdx(pos.seg), offset: pos.offset, dir: inHop.endDir, hop: addPath(inHop.pieces) },
-        depart: { seg: segIdx(pos.seg), offset: pos.offset, dir: outHop.startDir, hop: addPath(outHop.pieces) },
+        arrive: {
+          seg: segIdx(pos.seg),
+          offset: pos.offset,
+          dir: inHop.endDir,
+          hop: addPath(inHop.pieces),
+        },
+        depart: {
+          seg: segIdx(pos.seg),
+          offset: pos.offset,
+          dir: outHop.startDir,
+          hop: addPath(outHop.pieces),
+        },
       };
       break;
     }
     // No free berth: keep the default and let validate:plan report the conflict.
     chosen ??= { pos: a.pos1, arriveDir: a.dir1, departDir: defaultDepart };
     visits.set(a, chosen);
-    (occupied.get(chosen.pos.seg) ?? occupied.set(chosen.pos.seg, []).get(chosen.pos.seg)!).push({ from, to, offset: chosen.pos.offset });
+    (
+      occupied.get(chosen.pos.seg)
+      ?? occupied.set(chosen.pos.seg, []).get(chosen.pos.seg)!
+    ).push({ from, to, offset: chosen.pos.offset });
   }
 
-  const starts = trips.filter((t) => !hasPrev.has(t)).sort((a, b) => a.dep - b.dep);
+  const starts = trips
+    .filter((t) => !hasPrev.has(t))
+    .sort((a, b) => a.dep - b.dep);
   let runNo = 0;
   for (const first of starts) {
     const events: RunEvent[] = [];
-    const run: Run = { id: `${first.line}-${String(++runNo).padStart(3, '0')}`, line: first.line, events };
+    const run: Run = {
+      id: `${first.line}-${String(++runNo).padStart(3, "0")}`,
+      line: first.line,
+      events,
+    };
     // Pull-out: nearest yard behind the first platform, reversed.
-    const back = toYard(first.pos0, (-first.dir0) as Dir, true, first.dep);
+    const back = toYard(first.pos0, -first.dir0 as Dir, true, first.dep);
     const readyAt = first.dep - ops.yard.pullOutLeadS;
     if (back) {
       const out = reversePath(back);
-      const t = emitDeadhead(events, first.line, out, 'pullout', { start: readyAt - 3600, end: readyAt }, 'end');
+      const t = emitDeadhead(
+        events,
+        first.line,
+        out,
+        "pullout",
+        { start: readyAt - 3600, end: readyAt },
+        "end",
+      );
       hold(events, t, first.dep, first.pos0, first.dir0);
       run.fromYard = back.pieces[back.pieces.length - 1]!.seg;
     } else hold(events, readyAt, first.dep, first.pos0, first.dir0);
@@ -565,7 +806,7 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
       const link = next.get(cur);
       const visit = visits.get(cur);
       events.push({
-        k: 'trip',
+        k: "trip",
         trip: cur.t.trip.id,
         pattern: cur.t.pattern.id,
         ...(berth ? { berth } : {}),
@@ -577,7 +818,13 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
       if (visit) {
         // In-place turnback at the allocated berth.
         if (visit.depart) berth = visit.depart;
-        else if (link.berthHop) berth = { seg: segIdx(visit.pos.seg), offset: visit.pos.offset, dir: link.berthHop.startDir, hop: addPath(link.berthHop.pieces) };
+        else if (link.berthHop)
+          berth = {
+            seg: segIdx(visit.pos.seg),
+            offset: visit.pos.offset,
+            dir: link.berthHop.startDir,
+            hop: addPath(link.berthHop.pieces),
+          };
         const unloadEnd = Math.min(cur.arr + ops.turnback.unloadS, d.dep);
         hold(events, cur.arr, unloadEnd, visit.pos, visit.arriveDir);
         hold(events, unloadEnd, d.dep, visit.pos, visit.departDir);
@@ -593,7 +840,14 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
         const boardS = 30;
         // Finish before departure (boarding time if there's room); emitDeadhead compresses if short.
         const end = d.dep - boardS >= unloadEnd + need ? d.dep - boardS : d.dep;
-        const t = emitDeadhead(events, cur.line, path, 'turnback', { start: unloadEnd, end }, 'start');
+        const t = emitDeadhead(
+          events,
+          cur.line,
+          path,
+          "turnback",
+          { start: unloadEnd, end },
+          "start",
+        );
         hold(events, t, d.dep, d.pos0, d.dir0);
       } else {
         // Reverse in place (visits without an allocation don't reach here).
@@ -607,7 +861,14 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
     const unloadEnd = last.arr + ops.turnback.unloadS;
     hold(events, last.arr, unloadEnd, last.pos1, last.dir1);
     if (inPath) {
-      emitDeadhead(events, last.line, inPath, 'pullin', { start: unloadEnd, end: unloadEnd + 3600 }, 'start');
+      emitDeadhead(
+        events,
+        last.line,
+        inPath,
+        "pullin",
+        { start: unloadEnd, end: unloadEnd + 3600 },
+        "start",
+      );
       run.toYard = inPath.pieces[inPath.pieces.length - 1]!.seg;
     }
     runs.push(run);
@@ -619,13 +880,16 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
     let t0: number | undefined;
     let t1 = 0;
     for (const e of run.events) {
-      if (e.k === 'trip') {
+      if (e.k === "trip") {
         const t = pp.tripIndex.get(e.trip)!;
         t0 ??= t.dep[0]!;
         t1 = t.arr[t.arr.length - 1]!;
       }
     }
-    if (t0 !== undefined) (intervals.get(run.line) ?? intervals.set(run.line, []).get(run.line)!).push([t0, t1]);
+    if (t0 !== undefined)
+      (
+        intervals.get(run.line) ?? intervals.set(run.line, []).get(run.line)!
+      ).push([t0, t1]);
   }
   const peakInService: Record<string, number> = {};
   for (const [line, ivs] of intervals) {
@@ -647,6 +911,12 @@ export function buildMovements({ graph: g, pp, platforms, patternPositions, serv
     paths,
     patterns: patternsOut,
     runs,
-    stats: { trips: trips.length, runs: runs.length, peakInService, unplacedTrips: unplaced, termini },
+    stats: {
+      trips: trips.length,
+      runs: runs.length,
+      peakInService,
+      unplacedTrips: unplaced,
+      termini,
+    },
   };
 }

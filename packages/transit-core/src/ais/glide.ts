@@ -9,8 +9,15 @@
 // cross between trips other than leaving the dock, still jump. Pure: the result is a function of
 // (plan, shown, next, K); the caller uses it for display times in [K, until] and `next` otherwise.
 
-import { distM } from '../geo.ts';
-import { schedAt, scheduledVehicles, shiftAt, type PreparedPlan, type ScheduleCorrections, type VehicleState } from '../schedule/engine.ts';
+import { distM } from "../geo.ts";
+import {
+  schedAt,
+  scheduledVehicles,
+  shiftAt,
+  type PreparedPlan,
+  type ScheduleCorrections,
+  type VehicleState,
+} from "../schedule/engine.ts";
 
 export interface GlideConfig {
   /** Differences smaller than this aren't smoothed (m). */
@@ -34,11 +41,23 @@ export interface Glide {
 type Anchors = { sched: number; shift: number }[];
 
 /** @param k service-day second at which `next` became known. */
-export function glideCorrections(pp: PreparedPlan, serviceDate: string, route: string, shown: ScheduleCorrections | undefined, next: ScheduleCorrections, k: number, cfg: GlideConfig): Glide {
+export function glideCorrections(
+  pp: PreparedPlan,
+  serviceDate: string,
+  route: string,
+  shown: ScheduleCorrections | undefined,
+  next: ScheduleCorrections,
+  k: number,
+  cfg: GlideConfig,
+): Glide {
   const routes = new Set([route]);
   const byId = (vs: VehicleState[]) => new Map(vs.map((v) => [v.id, v]));
-  const before = byId(scheduledVehicles(pp, { serviceDate, sec: k, routes }, shown));
-  const after = byId(scheduledVehicles(pp, { serviceDate, sec: k, routes }, next));
+  const before = byId(
+    scheduledVehicles(pp, { serviceDate, sec: k, routes }, shown),
+  );
+  const after = byId(
+    scheduledVehicles(pp, { serviceDate, sec: k, routes }, next),
+  );
   const trips = new Map(next.trips);
   let until = k;
 
@@ -54,8 +73,16 @@ export function glideCorrections(pp: PreparedPlan, serviceDate: string, route: s
     // Where the vessel was drawn, as a scheduled time on the new trip: on that trip, or docked at
     // its origin on the previous trip (its layover).
     let sOld: number;
-    if (ov.tripId === trip.trip.id) sOld = Math.min(end, Math.max(start, schedAt(shown?.trips.get(trip.trip.id)?.anchors, k)));
-    else if (pp.tripIndex.get(ov.tripId)?.next === trip && ov.status === 'layover') sOld = start;
+    if (ov.tripId === trip.trip.id)
+      sOld = Math.min(
+        end,
+        Math.max(start, schedAt(shown?.trips.get(trip.trip.id)?.anchors, k)),
+      );
+    else if (
+      pp.tripIndex.get(ov.tripId)?.next === trip
+      && ov.status === "layover"
+    )
+      sOld = start;
     else continue;
 
     const nAnchors: Anchors | undefined = next.trips.get(trip.trip.id)?.anchors;
@@ -63,18 +90,29 @@ export function glideCorrections(pp: PreparedPlan, serviceDate: string, route: s
     let anchors: Anchors;
     let glideEnd: number;
     if (sNew > sOld) {
-      const g = Math.min(cfg.maxGlideS, Math.max(cfg.minGlideS, gap / cfg.catchUpMps));
+      const g = Math.min(
+        cfg.maxGlideS,
+        Math.max(cfg.minGlideS, gap / cfg.catchUpMps),
+      );
       // s2: where `next` has the vessel when the glide ends; from there on, `next` exactly.
       const s2 = schedAt(nAnchors, k + g);
       if (s2 <= sOld) continue;
-      anchors = [{ sched: sOld, shift: k - sOld }, { sched: s2, shift: k + g - s2 }, ...(nAnchors ?? []).filter((a) => a.sched > s2)];
+      anchors = [
+        { sched: sOld, shift: k - sOld },
+        { sched: s2, shift: k + g - s2 },
+        ...(nAnchors ?? []).filter((a) => a.sched > s2),
+      ];
       glideEnd = k + g;
     } else if (sNew < sOld) {
       // Hold at sOld until `next` reaches it.
       const k2 = sOld + shiftAt(nAnchors, sOld);
       if (k2 - k > cfg.maxHoldS) continue;
       const s1 = sOld + 0.01;
-      anchors = [{ sched: sOld, shift: k - sOld }, { sched: s1, shift: k2 - s1 }, ...(nAnchors ?? []).filter((a) => a.sched > s1)];
+      anchors = [
+        { sched: sOld, shift: k - sOld },
+        { sched: s1, shift: k2 - s1 },
+        ...(nAnchors ?? []).filter((a) => a.sched > s1),
+      ];
       glideEnd = k2;
     } else continue;
 

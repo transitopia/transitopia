@@ -1,4 +1,4 @@
-import { dayOfWeek } from '../time.ts';
+import { dayOfWeek } from "../time.ts";
 
 /** A calendar.txt row. days[0] = Monday … days[6] = Sunday. */
 export interface CalendarEntry {
@@ -21,11 +21,15 @@ export interface ServiceCalendar {
 }
 
 /** Service IDs running on a service date, applying calendar ranges and calendar_dates exceptions. */
-export function activeServices(cal: ServiceCalendar, date: string): Set<string> {
+export function activeServices(
+  cal: ServiceCalendar,
+  date: string,
+): Set<string> {
   const active = new Set<string>();
   const dow = dayOfWeek(date);
   for (const c of cal.calendar) {
-    if (date >= c.start && date <= c.end && c.days[dow]) active.add(c.serviceId);
+    if (date >= c.start && date <= c.end && c.days[dow])
+      active.add(c.serviceId);
   }
   for (const e of cal.exceptions) {
     if (e.date !== date) continue;
@@ -36,12 +40,18 @@ export function activeServices(cal: ServiceCalendar, date: string): Set<string> 
 }
 
 /** Index exceptions by date for repeated lookups. */
-export function indexCalendar(cal: ServiceCalendar): (date: string) => Set<string> {
+export function indexCalendar(
+  cal: ServiceCalendar,
+): (date: string) => Set<string> {
   const byDate = new Map<string, CalendarException[]>();
   for (const e of cal.exceptions) {
     let list = byDate.get(e.date);
     if (!list) byDate.set(e.date, (list = []));
     list.push(e);
   }
-  return (date) => activeServices({ calendar: cal.calendar, exceptions: byDate.get(date) ?? [] }, date);
+  return (date) =>
+    activeServices(
+      { calendar: cal.calendar, exceptions: byDate.get(date) ?? [] },
+      date,
+    );
 }

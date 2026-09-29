@@ -3,18 +3,18 @@
 //
 //   npm run validate:plan [-- --key 1+1101] [--step 5]
 
-import { join } from 'node:path';
-import { readdir } from 'node:fs/promises';
-import { CONFIG_DIR, FEEDS_OUT_DIR, readJson } from './lib/paths.ts';
-import { loadAllPlans, loadGraph } from './lib/infra.ts';
-import { dispatchSummary } from './lib/movements.ts';
-import { preparePlan } from '@transitopia/transit-core/schedule/engine.ts';
-import { TrainPlayback } from '@transitopia/transit-core/movement/playback.ts';
-import type { MovementsFile } from '@transitopia/transit-core/movement/types.ts';
-import type { KinematicsConfig } from '@transitopia/transit-core/movement/kinematics.ts';
-import type { OperationsConfig } from '@transitopia/transit-core/movement/build.ts';
-import { distM } from '@transitopia/transit-core/geo.ts';
-import { formatServiceTime } from '@transitopia/transit-core/time.ts';
+import { join } from "node:path";
+import { readdir } from "node:fs/promises";
+import { CONFIG_DIR, FEEDS_OUT_DIR, readJson } from "./lib/paths.ts";
+import { loadAllPlans, loadGraph } from "./lib/infra.ts";
+import { dispatchSummary } from "./lib/movements.ts";
+import { preparePlan } from "@transitopia/transit-core/schedule/engine.ts";
+import { TrainPlayback } from "@transitopia/transit-core/movement/playback.ts";
+import type { MovementsFile } from "@transitopia/transit-core/movement/types.ts";
+import type { KinematicsConfig } from "@transitopia/transit-core/movement/kinematics.ts";
+import type { OperationsConfig } from "@transitopia/transit-core/movement/build.ts";
+import { distM } from "@transitopia/transit-core/geo.ts";
+import { formatServiceTime } from "@transitopia/transit-core/time.ts";
 
 /** Largest plausible movement between samples: 90 km/h. */
 const MAX_SPEED_MS = 25;
@@ -26,26 +26,38 @@ const arg = (name: string) => {
 
 async function main() {
   const { graph } = await loadGraph();
-  const kin = await readJson<KinematicsConfig>(join(CONFIG_DIR, 'kinematics.json'));
-  const ops = await readJson<OperationsConfig>(join(CONFIG_DIR, 'operations.json'));
-  const step = Number(arg('--step') ?? 5);
+  const kin = await readJson<KinematicsConfig>(
+    join(CONFIG_DIR, "kinematics.json"),
+  );
+  const ops = await readJson<OperationsConfig>(
+    join(CONFIG_DIR, "operations.json"),
+  );
+  const step = Number(arg("--step") ?? 5);
   let failures = 0;
   for (const plan of await loadAllPlans()) {
     const pp = preparePlan(plan, kin);
-    const dir = join(FEEDS_OUT_DIR, plan.feedVersion, 'movements');
-    const keys = (await readdir(dir)).filter((f) => f.endsWith('.json') && f !== 'index.json').map((f) => f.replace(/\.json$/, ''));
-    for (const key of keys.filter((k) => !arg('--key') || k === arg('--key'))) {
+    const dir = join(FEEDS_OUT_DIR, plan.feedVersion, "movements");
+    const keys = (await readdir(dir))
+      .filter((f) => f.endsWith(".json") && f !== "index.json")
+      .map((f) => f.replace(/\.json$/, ""));
+    for (const key of keys.filter((k) => !arg("--key") || k === arg("--key"))) {
       const file = await readJson<MovementsFile>(join(dir, `${key}.json`));
-      const pb = new TrainPlayback(file, pp, graph, kin, { deadheadSpeedFactor: ops.yard.deadheadSpeedFactor, turnbackSpeedFactor: ops.turnback.speedFactor });
+      const pb = new TrainPlayback(file, pp, graph, kin, {
+        deadheadSpeedFactor: ops.yard.deadheadSpeedFactor,
+        turnbackSpeedFactor: ops.turnback.speedFactor,
+      });
       const last = new Map<string, { lon: number; lat: number; t: number }>();
       const jumps = new Map<string, { t: number; d: number }>();
       const conflicts = new Map<string, { t: number; d: number }>();
       const byPlace = new Map<string, number>();
       const nearestStation = (lon: number, lat: number) =>
-        plan.stations.reduce((b, st) => {
-          const d = distM([st.lon, st.lat], [lon, lat]);
-          return d < b.d ? { d, name: st.name } : b;
-        }, { d: Infinity, name: '' });
+        plan.stations.reduce(
+          (b, st) => {
+            const d = distM([st.lon, st.lat], [lon, lat]);
+            return d < b.d ? { d, name: st.name } : b;
+          },
+          { d: Infinity, name: "" },
+        );
       const fleet = new Map<string, number>();
       const fleetAt = new Map<string, [number, number]>();
       for (let t = 3 * 3600; t <= 28 * 3600; t += step) {
@@ -56,7 +68,8 @@ async function main() {
           const prev = last.get(v.id);
           if (prev && t - prev.t <= step) {
             const d = distM([prev.lon, prev.lat], [v.lon, v.lat]);
-            if (d > MAX_SPEED_MS * step + 50 && !jumps.has(v.id)) jumps.set(v.id, { t, d });
+            if (d > MAX_SPEED_MS * step + 50 && !jumps.has(v.id))
+              jumps.set(v.id, { t, d });
           }
           last.set(v.id, { lon: v.lon, lat: v.lat, t });
         }
@@ -69,7 +82,12 @@ async function main() {
         // Conflicts: two trains overlapping on the same track segment.
         // Yards are outside signalling (manual operation): trains stored there may share a drawn track.
         const bySeg = new Map<string, typeof vs>();
-        for (const v of vs) if (v.track && graph.segment(v.track.seg).kind !== 'yard') (bySeg.get(v.track.seg) ?? bySeg.set(v.track.seg, []).get(v.track.seg)!).push(v);
+        for (const v of vs)
+          if (v.track && graph.segment(v.track.seg).kind !== "yard")
+            (
+              bySeg.get(v.track.seg)
+              ?? bySeg.set(v.track.seg, []).get(v.track.seg)!
+            ).push(v);
         for (const list of bySeg.values()) {
           for (let i = 0; i < list.length; i++) {
             for (let j = i + 1; j < list.length; j++) {
@@ -77,11 +95,11 @@ async function main() {
               const b = list[j]!;
               const gap = Math.abs(a.track!.offset - b.track!.offset);
               if (gap < (a.length + b.length) / 2) {
-                const k = [a.id, b.id].sort().join(' & ');
+                const k = [a.id, b.id].sort().join(" & ");
                 if (!conflicts.has(k)) {
                   conflicts.set(k, { t, d: gap });
                   const st = nearestStation(a.lon, a.lat);
-                  const where = `${st.d < 400 ? st.name : `near ${st.name}`} (${[a.status, b.status].sort().join(' + ')})`;
+                  const where = `${st.d < 400 ? st.name : `near ${st.name}`} (${[a.status, b.status].sort().join(" + ")})`;
                   byPlace.set(where, (byPlace.get(where) ?? 0) + 1);
                 }
               }
@@ -90,24 +108,40 @@ async function main() {
         }
       }
       console.log(`${plan.feedVersion} [${key}]: ${dispatchSummary(file)}`);
-      for (const f of file.dispatch?.forced.slice(0, 5) ?? []) console.log(`  deadlock broken: ${f.run} at ${formatServiceTime(f.t)} ${f.where} (${f.why})`);
+      for (const f of file.dispatch?.forced.slice(0, 5) ?? [])
+        console.log(
+          `  deadlock broken: ${f.run} at ${formatServiceTime(f.t)} ${f.where} (${f.why})`,
+        );
       console.log(
-        `${plan.feedVersion} [${key}]: ${file.runs.length} runs; peak trains visible: ` +
-          [...fleetAt].map(([l, [n, t]]) => `${l} ${n} @${formatServiceTime(t)}`).join(', '),
+        `${plan.feedVersion} [${key}]: ${file.runs.length} runs; peak trains visible: `
+          + [...fleetAt]
+            .map(([l, [n, t]]) => `${l} ${n} @${formatServiceTime(t)}`)
+            .join(", "),
       );
-      for (const [id, j] of [...jumps].slice(0, 10)) console.log(`  teleport: ${id} jumps ${Math.round(j.d)} m at ${formatServiceTime(j.t, true)}`);
+      for (const [id, j] of [...jumps].slice(0, 10))
+        console.log(
+          `  teleport: ${id} jumps ${Math.round(j.d)} m at ${formatServiceTime(j.t, true)}`,
+        );
       if (jumps.size > 10) console.log(`  … ${jumps.size - 10} more teleports`);
       if (conflicts.size) {
-        console.log(`  ${conflicts.size} conflicting pairs (two trains overlapping on one track); top places:`);
-        for (const [where, n] of [...byPlace].sort((x, y) => y[1] - x[1]).slice(0, Number(arg('--top') ?? 8))) console.log(`    ${String(n).padStart(4)}  ${where}`);
+        console.log(
+          `  ${conflicts.size} conflicting pairs (two trains overlapping on one track); top places:`,
+        );
+        for (const [where, n] of [...byPlace]
+          .sort((x, y) => y[1] - x[1])
+          .slice(0, Number(arg("--top") ?? 8)))
+          console.log(`    ${String(n).padStart(4)}  ${where}`);
       }
-      if (process.argv.includes('--verbose')) {
-        for (const [pair, c] of conflicts) console.log(`  conflict: ${pair} (${Math.round(c.d)} m between centres) at ${formatServiceTime(c.t, true)}`);
+      if (process.argv.includes("--verbose")) {
+        for (const [pair, c] of conflicts)
+          console.log(
+            `  conflict: ${pair} (${Math.round(c.d)} m between centres) at ${formatServiceTime(c.t, true)}`,
+          );
       }
       failures += jumps.size;
     }
   }
-  console.log(failures ? `${failures} teleports` : 'OK: no teleports');
+  console.log(failures ? `${failures} teleports` : "OK: no teleports");
   if (failures) process.exit(1);
 }
 

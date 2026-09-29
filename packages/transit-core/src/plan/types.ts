@@ -1,11 +1,11 @@
 // The service plan: the compact, per-feed-version schedule produced by scripts/build-schedule.ts and
 // consumed by the browser. See PLAN.md §4.2.
 
-import type { ServiceCalendar } from '../gtfs/calendar.ts';
-import type { LonLat } from '../geo.ts';
+import type { ServiceCalendar } from "../gtfs/calendar.ts";
+import type { LonLat } from "../geo.ts";
 
-export type RouteKind = 'skytrain' | 'shape' | 'bus';
-export type RouteMode = 'skytrain' | 'ferry' | 'rail' | 'bus';
+export type RouteKind = "skytrain" | "shape" | "bus";
+export type RouteMode = "skytrain" | "ferry" | "rail" | "bus";
 
 export interface PlanRoute {
   key: string;
@@ -59,7 +59,10 @@ export const STOP_NO_DROPOFF = 2;
 
 /** Whether passengers can board or alight at stop i of a pattern. */
 export function isPassengerStop(p: PlanPattern, i: number): boolean {
-  return ((p.access?.[i] ?? 0) & (STOP_NO_PICKUP | STOP_NO_DROPOFF)) !== (STOP_NO_PICKUP | STOP_NO_DROPOFF);
+  return (
+    ((p.access?.[i] ?? 0) & (STOP_NO_PICKUP | STOP_NO_DROPOFF))
+    !== (STOP_NO_PICKUP | STOP_NO_DROPOFF)
+  );
 }
 
 /**
@@ -70,14 +73,18 @@ export function isPassengerStop(p: PlanPattern, i: number): boolean {
 export function passengerLegs(p: PlanPattern): boolean[] {
   const n = p.stops.length;
   const canBoard = (i: number) => ((p.access?.[i] ?? 0) & STOP_NO_PICKUP) === 0;
-  const canAlight = (i: number) => ((p.access?.[i] ?? 0) & STOP_NO_DROPOFF) === 0;
+  const canAlight = (i: number) =>
+    ((p.access?.[i] ?? 0) & STOP_NO_DROPOFF) === 0;
   const boardedBy: boolean[] = [];
   let any = false;
   for (let i = 0; i < n; i++) boardedBy.push((any ||= canBoard(i)));
   const alightFrom: boolean[] = Array(n).fill(false);
   any = false;
   for (let i = n - 1; i >= 0; i--) alightFrom[i] = any ||= canAlight(i);
-  return Array.from({ length: n - 1 }, (_, i) => boardedBy[i]! && alightFrom[i + 1]!);
+  return Array.from(
+    { length: n - 1 },
+    (_, i) => boardedBy[i]! && alightFrom[i + 1]!,
+  );
 }
 
 export interface PlanTrip {
@@ -141,20 +148,36 @@ export interface FeedManifest {
 }
 
 /** The newest feed whose validity range covers the service date. */
-export function feedForDate(manifest: FeedManifest, date: string): FeedManifestEntry | undefined {
+export function feedForDate(
+  manifest: FeedManifest,
+  date: string,
+): FeedManifestEntry | undefined {
   let best: FeedManifestEntry | undefined;
   for (const f of manifest.feeds) {
     if (date < f.start || date > f.end) continue;
-    if (!best || f.start > best.start || (f.start === best.start && f.version > best.version)) best = f;
+    if (
+      !best
+      || f.start > best.start
+      || (f.start === best.start && f.version > best.version)
+    )
+      best = f;
   }
   return best;
 }
 
 /** Union of all feed ranges, for bounding the date picker. */
-export function manifestRange(manifest: FeedManifest): { start: string; end: string } | undefined {
+export function manifestRange(
+  manifest: FeedManifest,
+): { start: string; end: string } | undefined {
   if (!manifest.feeds.length) return undefined;
   return {
-    start: manifest.feeds.reduce((m, f) => (f.start < m ? f.start : m), manifest.feeds[0]!.start),
-    end: manifest.feeds.reduce((m, f) => (f.end > m ? f.end : m), manifest.feeds[0]!.end),
+    start: manifest.feeds.reduce(
+      (m, f) => (f.start < m ? f.start : m),
+      manifest.feeds[0]!.start,
+    ),
+    end: manifest.feeds.reduce(
+      (m, f) => (f.end > m ? f.end : m),
+      manifest.feeds[0]!.end,
+    ),
   };
 }

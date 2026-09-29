@@ -28,18 +28,34 @@ export type Observation =
    * says whether that time is its arrival or departure there (default: while stopped), which matters
    * at termini where one vehicle both arrives and departs.
    */
-  | (Base & { kind: 'at_platform'; trip?: string; stop: string; time: string; line?: string; event?: 'arrive' | 'depart'; consist?: Consist })
+  | (Base & {
+      kind: "at_platform";
+      trip?: string;
+      stop: string;
+      time: string;
+      line?: string;
+      event?: "arrive" | "depart";
+      consist?: Consist;
+    })
   /** `trip` ran `seconds` late (+) or early (−) from `time` (default: its start). */
-  | (Base & { kind: 'delay'; trip: string; seconds: number; time?: string })
+  | (Base & { kind: "delay"; trip: string; seconds: number; time?: string })
   /** `trip` did not run. */
-  | (Base & { kind: 'cancel'; trip: string })
+  | (Base & { kind: "cancel"; trip: string })
   /** The train running `trip` is this consist (applies to its whole inferred run). */
-  | (Base & { kind: 'consist'; trip: string; consist: Consist })
+  | (Base & { kind: "consist"; trip: string; consist: Consist })
   /**
    * A train standing out of service (e.g. parked on a siding) on the track nearest `at`, seen at
    * `time`. Shown from `from` to `until` (default ±15 min around `time`).
    */
-  | (Base & { kind: 'parked'; at: [number, number]; time: string; from?: string; until?: string; line?: string; consist?: Consist });
+  | (Base & {
+      kind: "parked";
+      at: [number, number];
+      time: string;
+      from?: string;
+      until?: string;
+      line?: string;
+      consist?: Consist;
+    });
 
 export interface ObservationFile {
   $comment?: string;

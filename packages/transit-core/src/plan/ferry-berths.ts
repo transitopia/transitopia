@@ -4,8 +4,14 @@
 // lists every pair's shapes, so a day known (from AIS) to use another pair can be drawn along them.
 // Runs at plan build time. Patterns keep their ids (movement files reference pattern ids).
 
-import { distM, localProjector, round, cumulativeLengths, type LonLat } from '../geo.ts';
-import type { FerryBerthPlan, PlanTrip, ServicePlan } from './types.ts';
+import {
+  distM,
+  localProjector,
+  round,
+  cumulativeLengths,
+  type LonLat,
+} from "../geo.ts";
+import type { FerryBerthPlan, PlanTrip, ServicePlan } from "./types.ts";
 
 export interface FerryBerth {
   /** Vessel centre when berthed. */
@@ -39,7 +45,11 @@ export interface FerryBerthReport {
   minBerthGapS: number;
 }
 
-export function applyFerryBerths(plan: ServicePlan, infra: FerryInfra, cfg: FerryConfig): FerryBerthReport {
+export function applyFerryBerths(
+  plan: ServicePlan,
+  infra: FerryInfra,
+  cfg: FerryConfig,
+): FerryBerthReport {
   const report: FerryBerthReport = { sharedBerthS: 0, minBerthGapS: Infinity };
   const patterns = plan.patterns.filter((p) => p.route === infra.route);
   const oldShapes = new Set(patterns.map((p) => p.shape));
@@ -54,20 +64,37 @@ export function applyFerryBerths(plan: ServicePlan, infra: FerryInfra, cfg: Ferr
         if (d < bestD) [best, bestD] = [name, d];
       }
     }
-    if (!best || bestD > MAX_TERMINAL_M) throw new Error(`${infra.route}: stop ${s.name} is ${Math.round(bestD)} m from any berth`);
+    if (!best || bestD > MAX_TERMINAL_M)
+      throw new Error(
+        `${infra.route}: stop ${s.name} is ${Math.round(bestD)} m from any berth`,
+      );
     return best;
   };
 
   // Pairs: berth names every terminal has.
   const terminals = Object.values(infra.terminals);
-  const pairNames = Object.keys(terminals[0]?.berths ?? {}).filter((b) => terminals.every((t) => t.berths[b]));
-  if (!pairNames.includes(cfg.defaultPair)) throw new Error(`${infra.route}: default berth pair "${cfg.defaultPair}" isn't at every terminal`);
-  const ferry: FerryBerthPlan = { route: infra.route, default: cfg.defaultPair, pairs: {} };
-  for (const pair of pairNames) ferry.pairs[pair] = { docks: terminals.map((t) => t.berths[pair]!.dock), shapes: {} };
+  const pairNames = Object.keys(terminals[0]?.berths ?? {}).filter((b) =>
+    terminals.every((t) => t.berths[b]),
+  );
+  if (!pairNames.includes(cfg.defaultPair))
+    throw new Error(
+      `${infra.route}: default berth pair "${cfg.defaultPair}" isn't at every terminal`,
+    );
+  const ferry: FerryBerthPlan = {
+    route: infra.route,
+    default: cfg.defaultPair,
+    pairs: {},
+  };
+  for (const pair of pairNames)
+    ferry.pairs[pair] = {
+      docks: terminals.map((t) => t.berths[pair]!.dock),
+      shapes: {},
+    };
 
   const ends = new Map<number, { from: string; to: string }>();
   for (const p of patterns) {
-    if (p.stops.length !== 2) throw new Error(`${infra.route}: pattern ${p.id} has intermediate stops`);
+    if (p.stops.length !== 2)
+      throw new Error(`${infra.route}: pattern ${p.id} has intermediate stops`);
     const from = terminalOf(p.stops[0]!);
     const to = terminalOf(p.stops[1]!);
     ends.set(p.id, { from, to });
@@ -81,7 +108,8 @@ export function applyFerryBerths(plan: ServicePlan, infra: FerryInfra, cfg: Ferr
     p.dist = [0, Math.round(cum[cum.length - 1]!)];
   }
   if (patterns.length) plan.ferry = ferry;
-  for (const id of oldShapes) if (!plan.patterns.some((p) => p.shape === id)) delete plan.shapes[id];
+  for (const id of oldShapes)
+    if (!plan.patterns.some((p) => p.shape === id)) delete plan.shapes[id];
 
   // Check the shared berths: per service, when each vessel (block) lies docked at each terminal.
   const blocks = new Map<string, PlanTrip[]>();
@@ -98,10 +126,13 @@ export function applyFerryBerths(plan: ServicePlan, infra: FerryInfra, cfg: Ferr
     for (let i = 0; i + 1 < trips.length; i++) {
       const terminal = ends.get(trips[i]!.pattern)!.to;
       if (ends.get(trips[i + 1]!.pattern)!.from !== terminal) continue;
-      const k = `${key.split('|')[0]}|${terminal}`;
+      const k = `${key.split("|")[0]}|${terminal}`;
       let list = docked.get(k);
       if (!list) docked.set(k, (list = []));
-      list.push([trips[i]!.start + trips[i]!.arr[trips[i]!.arr.length - 1]!, trips[i + 1]!.start]);
+      list.push([
+        trips[i]!.start + trips[i]!.arr[trips[i]!.arr.length - 1]!,
+        trips[i + 1]!.start,
+      ]);
     }
   }
   for (const list of docked.values()) {
@@ -109,7 +140,8 @@ export function applyFerryBerths(plan: ServicePlan, infra: FerryInfra, cfg: Ferr
     let free = -Infinity;
     for (const [t0, t1] of list) {
       if (t0 < free) report.sharedBerthS += Math.min(free, t1) - t0;
-      else if (free > -Infinity) report.minBerthGapS = Math.min(report.minBerthGapS, t0 - free);
+      else if (free > -Infinity)
+        report.minBerthGapS = Math.min(report.minBerthGapS, t0 - free);
       free = Math.max(free, t1);
     }
   }
@@ -117,16 +149,28 @@ export function applyFerryBerths(plan: ServicePlan, infra: FerryInfra, cfg: Ferr
 }
 
 /** Dock → slip approach → lane → slip approach → dock, with corners smoothed. */
-export function berthPath(infra: FerryInfra, from: string, fromBerth: string, to: string, toBerth: string): LonLat[] {
+export function berthPath(
+  infra: FerryInfra,
+  from: string,
+  fromBerth: string,
+  to: string,
+  toBerth: string,
+): LonLat[] {
   const a = infra.terminals[from]?.berths[fromBerth];
   const b = infra.terminals[to]?.berths[toBerth];
   const lane = infra.lanes[`${from}>${to}`];
-  if (!a || !b || !lane) throw new Error(`${infra.route}: no berth or lane for ${from}-${fromBerth} > ${to}-${toBerth}`);
+  if (!a || !b || !lane)
+    throw new Error(
+      `${infra.route}: no berth or lane for ${from}-${fromBerth} > ${to}-${toBerth}`,
+    );
   const proj = localProjector((a.dock[1] + b.dock[1]) / 2);
   const out = (berth: FerryBerth): LonLat => {
     const [x, y] = proj.toXY(berth.dock);
     const r = (berth.outBearing * Math.PI) / 180;
-    return proj.toLonLat(x + infra.approachM * Math.sin(r), y + infra.approachM * Math.cos(r));
+    return proj.toLonLat(
+      x + infra.approachM * Math.sin(r),
+      y + infra.approachM * Math.cos(r),
+    );
   };
   let pts = [a.dock, out(a), ...lane, out(b), b.dock].map(proj.toXY);
   // Chaikin corner cutting, keeping both docks fixed.
@@ -136,7 +180,8 @@ export function berthPath(infra: FerryInfra, from: string, fromBerth: string, to
       const [x0, y0] = pts[i]!;
       const [x1, y1] = pts[i + 1]!;
       if (i > 0) next.push([0.75 * x0 + 0.25 * x1, 0.75 * y0 + 0.25 * y1]);
-      if (i + 2 < pts.length) next.push([0.25 * x0 + 0.75 * x1, 0.25 * y0 + 0.75 * y1]);
+      if (i + 2 < pts.length)
+        next.push([0.25 * x0 + 0.75 * x1, 0.25 * y0 + 0.75 * y1]);
     }
     next.push(pts[pts.length - 1]!);
     pts = next;

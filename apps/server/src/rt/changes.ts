@@ -2,10 +2,14 @@
 // keeps them in data/rt-history/changes/YYYYMMDD.json, since TransLink's feeds drop a trip's
 // cancellation once it has run and an alert once it's over.
 
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { emptyDayChanges, type RtDayChanges, type RtRouteAlert } from '@transitopia/transit-core/rt/changes.ts';
-import { localDate } from '@transitopia/transit-core/time.ts';
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import {
+  emptyDayChanges,
+  type RtDayChanges,
+  type RtRouteAlert,
+} from "@transitopia/transit-core/rt/changes.ts";
+import { localDate } from "@transitopia/transit-core/time.ts";
 
 /** Days kept in memory; older ones are read from disk when asked for. */
 const MAX_DAYS_CACHED = 4;
@@ -36,7 +40,7 @@ export class ServiceChanges {
     let d = this.days.get(date);
     if (d) return d;
     try {
-      d = JSON.parse(await readFile(this.path(date), 'utf8')) as RtDayChanges;
+      d = JSON.parse(await readFile(this.path(date), "utf8")) as RtDayChanges;
     } catch {
       d = emptyDayChanges(date);
     }
@@ -44,7 +48,8 @@ export class ServiceChanges {
     const again = this.days.get(date);
     if (again) return again;
     this.days.set(date, d);
-    while (this.days.size > MAX_DAYS_CACHED) this.days.delete(this.days.keys().next().value!);
+    while (this.days.size > MAX_DAYS_CACHED)
+      this.days.delete(this.days.keys().next().value!);
     return d;
   }
 
@@ -70,7 +75,10 @@ export class ServiceChanges {
   }
 
   /** Alerts for our bus routes in one alerts poll, recorded under today's (local) date. */
-  async updateAlerts(alerts: Omit<RtRouteAlert, 'seen'>[], now = Date.now()): Promise<void> {
+  async updateAlerts(
+    alerts: Omit<RtRouteAlert, "seen">[],
+    now = Date.now(),
+  ): Promise<void> {
     if (!alerts.length) return;
     const date = localDate(now);
     const d = await this.get(date);
@@ -96,7 +104,7 @@ export class ServiceChanges {
         await writeFile(tmp, JSON.stringify(d));
         await rename(tmp, this.path(date));
       })
-      .catch((e) => console.error('[rt] service changes write error:', e));
+      .catch((e) => console.error("[rt] service changes write error:", e));
   }
 
   /** Resolves when queued writes are done (tests). */

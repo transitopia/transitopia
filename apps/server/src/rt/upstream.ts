@@ -1,8 +1,8 @@
 // Fetch and decode TransLink GTFS-realtime feeds, reduced to the fields we use.
 
-import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
+import GtfsRealtimeBindings from "gtfs-realtime-bindings";
 
-const BASE = 'https://gtfsapi.translink.ca/v3';
+const BASE = "https://gtfsapi.translink.ca/v3";
 
 export interface DecodedPosition {
   vehicleId: string;
@@ -24,7 +24,10 @@ export interface DecodedPositions {
 }
 
 /** tripId → per-stop-sequence delays (seconds), plus a trip-level fallback. */
-export type TripDelays = Map<string, { bySeq: [number, number][]; trip?: number }>;
+export type TripDelays = Map<
+  string,
+  { bySeq: [number, number][]; trip?: number }
+>;
 
 /** A trip TransLink reports as cancelled, or running with stops skipped. */
 export interface TripChange {
@@ -53,18 +56,36 @@ type FeedObject = {
       currentStatus?: number;
     };
     tripUpdate?: {
-      trip?: { tripId?: string; routeId?: string; startDate?: string; scheduleRelationship?: number };
+      trip?: {
+        tripId?: string;
+        routeId?: string;
+        startDate?: string;
+        scheduleRelationship?: number;
+      };
       delay?: number;
-      stopTimeUpdate?: { stopSequence?: number; stopId?: string; scheduleRelationship?: number; arrival?: { delay?: number }; departure?: { delay?: number } }[];
+      stopTimeUpdate?: {
+        stopSequence?: number;
+        stopId?: string;
+        scheduleRelationship?: number;
+        arrival?: { delay?: number };
+        departure?: { delay?: number };
+      }[];
     };
     id?: string;
     alert?: {
       activePeriod?: { start?: number; end?: number }[];
-      informedEntity?: { routeId?: string; stopId?: string; directionId?: number; trip?: { tripId?: string } }[];
+      informedEntity?: {
+        routeId?: string;
+        stopId?: string;
+        directionId?: number;
+        trip?: { tripId?: string };
+      }[];
       cause?: number;
       effect?: number;
       headerText?: { translation?: { text?: string; language?: string }[] };
-      descriptionText?: { translation?: { text?: string; language?: string }[] };
+      descriptionText?: {
+        translation?: { text?: string; language?: string }[];
+      };
     };
   }[];
 };
@@ -83,33 +104,59 @@ export interface DecodedAlert {
   description: string;
 }
 
-const english = (t?: { translation?: { text?: string; language?: string }[] }) =>
-  (t?.translation?.find((x) => !x.language || x.language.startsWith('en')) ?? t?.translation?.[0])?.text ?? '';
+const english = (t?: {
+  translation?: { text?: string; language?: string }[];
+}) =>
+  (
+    t?.translation?.find((x) => !x.language || x.language.startsWith("en"))
+    ?? t?.translation?.[0]
+  )?.text ?? "";
 
 /** Service alerts (all routes; callers filter to theirs). */
-export async function fetchAlerts(apiKey: string, signal?: AbortSignal): Promise<DecodedAlert[]> {
-  const feed = await fetchFeed('gtfsalerts', apiKey, signal);
+export async function fetchAlerts(
+  apiKey: string,
+  signal?: AbortSignal,
+): Promise<DecodedAlert[]> {
+  const feed = await fetchFeed("gtfsalerts", apiKey, signal);
   const out: DecodedAlert[] = [];
   for (const e of feed.entity ?? []) {
     const a = e.alert;
     if (!a || !e.id) continue;
     out.push({
       id: e.id,
-      routeIds: [...new Set((a.informedEntity ?? []).map((x) => x.routeId).filter((x): x is string => Boolean(x)))],
-      stopIds: [...new Set((a.informedEntity ?? []).map((x) => x.stopId).filter((x): x is string => Boolean(x)))],
+      routeIds: [
+        ...new Set(
+          (a.informedEntity ?? [])
+            .map((x) => x.routeId)
+            .filter((x): x is string => Boolean(x)),
+        ),
+      ],
+      stopIds: [
+        ...new Set(
+          (a.informedEntity ?? [])
+            .map((x) => x.stopId)
+            .filter((x): x is string => Boolean(x)),
+        ),
+      ],
       entities: [
         ...new Map(
           (a.informedEntity ?? [])
             .filter((x) => x.routeId)
             .map((x) => {
-              const ent: DecodedAlert['entities'][number] = { routeId: x.routeId! };
-              if (x.directionId !== undefined && x.directionId !== null) ent.directionId = x.directionId;
+              const ent: DecodedAlert["entities"][number] = {
+                routeId: x.routeId!,
+              };
+              if (x.directionId !== undefined && x.directionId !== null)
+                ent.directionId = x.directionId;
               if (x.trip?.tripId) ent.tripId = x.trip.tripId;
               return [JSON.stringify(ent), ent] as const;
             }),
         ).values(),
       ],
-      periods: (a.activePeriod ?? []).map((p) => ({ ...(p.start ? { start: p.start * 1000 } : {}), ...(p.end ? { end: p.end * 1000 } : {}) })),
+      periods: (a.activePeriod ?? []).map((p) => ({
+        ...(p.start ? { start: p.start * 1000 } : {}),
+        ...(p.end ? { end: p.end * 1000 } : {}),
+      })),
       ...(a.cause !== undefined ? { cause: a.cause } : {}),
       ...(a.effect !== undefined ? { effect: a.effect } : {}),
       header: english(a.headerText),
@@ -119,21 +166,34 @@ export async function fetchAlerts(apiKey: string, signal?: AbortSignal): Promise
   return out;
 }
 
-async function fetchFeed(endpoint: string, apiKey: string, signal?: AbortSignal): Promise<FeedObject> {
-  const res = await fetch(`${BASE}/${endpoint}?apikey=${encodeURIComponent(apiKey)}`, {
-    headers: { 'User-Agent': 'skytrain-viz/0.1' },
-    signal,
-  });
+async function fetchFeed(
+  endpoint: string,
+  apiKey: string,
+  signal?: AbortSignal,
+): Promise<FeedObject> {
+  const res = await fetch(
+    `${BASE}/${endpoint}?apikey=${encodeURIComponent(apiKey)}`,
+    {
+      headers: { "User-Agent": "skytrain-viz/0.1" },
+      signal,
+    },
+  );
   // Never include the URL in errors: it contains the key.
   if (!res.ok) throw new Error(`TransLink ${endpoint}: HTTP ${res.status}`);
   const buf = new Uint8Array(await res.arrayBuffer());
   const { FeedMessage } = GtfsRealtimeBindings.transit_realtime;
   const msg = FeedMessage.decode(buf);
-  return FeedMessage.toObject(msg, { longs: Number, enums: Number }) as FeedObject;
+  return FeedMessage.toObject(msg, {
+    longs: Number,
+    enums: Number,
+  }) as FeedObject;
 }
 
-export async function fetchPositions(apiKey: string, signal?: AbortSignal): Promise<DecodedPositions> {
-  const feed = await fetchFeed('gtfsposition', apiKey, signal);
+export async function fetchPositions(
+  apiKey: string,
+  signal?: AbortSignal,
+): Promise<DecodedPositions> {
+  const feed = await fetchFeed("gtfsposition", apiKey, signal);
   const headerTs = (feed.header?.timestamp ?? Date.now() / 1000) * 1000;
   const positions: DecodedPosition[] = [];
   for (const e of feed.entity ?? []) {
@@ -157,8 +217,11 @@ export async function fetchPositions(apiKey: string, signal?: AbortSignal): Prom
 }
 
 /** Trip updates: delays per trip, and trips cancelled or skipping stops. */
-export async function fetchTripUpdates(apiKey: string, signal?: AbortSignal): Promise<{ delays: TripDelays; changes: TripChange[] }> {
-  const feed = await fetchFeed('gtfsrealtime', apiKey, signal);
+export async function fetchTripUpdates(
+  apiKey: string,
+  signal?: AbortSignal,
+): Promise<{ delays: TripDelays; changes: TripChange[] }> {
+  const feed = await fetchFeed("gtfsrealtime", apiKey, signal);
   const delays: TripDelays = new Map();
   const changes: TripChange[] = [];
   for (const e of feed.entity ?? []) {
@@ -174,7 +237,8 @@ export async function fetchTripUpdates(apiKey: string, signal?: AbortSignal): Pr
         continue;
       }
       const d = u.arrival?.delay ?? u.departure?.delay;
-      if (u.stopSequence !== undefined && d !== undefined) bySeq.push([u.stopSequence, d]);
+      if (u.stopSequence !== undefined && d !== undefined)
+        bySeq.push([u.stopSequence, d]);
     }
     if (cancelled || skippedStopIds.length) {
       const c: TripChange = { tripId, cancelled, skippedStopIds };
@@ -190,7 +254,11 @@ export async function fetchTripUpdates(apiKey: string, signal?: AbortSignal): Pr
 }
 
 /** Delay at the vehicle's current/next stop. */
-export function delayFor(delays: TripDelays, tripId: string | undefined, stopSeq: number | undefined): number | undefined {
+export function delayFor(
+  delays: TripDelays,
+  tripId: string | undefined,
+  stopSeq: number | undefined,
+): number | undefined {
   if (!tripId) return undefined;
   const d = delays.get(tripId);
   if (!d) return undefined;

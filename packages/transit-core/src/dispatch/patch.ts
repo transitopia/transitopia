@@ -2,10 +2,10 @@
 // change in its base plan. Built at build time for static hosting and by the RT service live, in
 // the same format; clients apply the patch for the date they show.
 
-import type { Observation } from '../corrections/types.ts';
-import type { DispatchSummary, MovementsFile, Run } from '../movement/types.ts';
-import type { ParkedTrain } from '../corrections/reconcile.ts';
-import type { DisruptionNotice } from '../disruption/apply.ts';
+import type { Observation } from "../corrections/types.ts";
+import type { DispatchSummary, MovementsFile, Run } from "../movement/types.ts";
+import type { ParkedTrain } from "../corrections/reconcile.ts";
+import type { DisruptionNotice } from "../disruption/apply.ts";
 
 export interface DispatchPatch {
   schema: 1;
@@ -46,7 +46,12 @@ export interface DispatchIndex {
 export function makePatch(
   base: MovementsFile,
   dispatched: MovementsFile,
-  meta: { date: string; version: string; builtAt: string; unmatched: DispatchPatch['unmatched'] },
+  meta: {
+    date: string;
+    version: string;
+    builtAt: string;
+    unmatched: DispatchPatch["unmatched"];
+  },
 ): DispatchPatch {
   const baseRuns = new Map(base.runs.map((r) => [r.id, JSON.stringify(r)]));
   return {
@@ -57,7 +62,9 @@ export function makePatch(
     baseBuiltAt: base.builtAt,
     version: meta.version,
     builtAt: meta.builtAt,
-    runs: dispatched.runs.filter((r) => baseRuns.get(r.id) !== JSON.stringify(r)),
+    runs: dispatched.runs.filter(
+      (r) => baseRuns.get(r.id) !== JSON.stringify(r),
+    ),
     notices: [],
     parked: dispatched.parked ?? [],
     summary: dispatched.dispatch!,
@@ -66,11 +73,16 @@ export function makePatch(
 }
 
 /** The date's plan: the base with the patch's runs swapped in (or the patch's own plan). */
-export function applyPatch(base: MovementsFile, patch: DispatchPatch): MovementsFile {
-  if (patch.file) return { ...patch.file, dispatch: patch.summary, parked: patch.parked };
+export function applyPatch(
+  base: MovementsFile,
+  patch: DispatchPatch,
+): MovementsFile {
+  if (patch.file)
+    return { ...patch.file, dispatch: patch.summary, parked: patch.parked };
   const replace = new Map(patch.runs.map((r) => [r.id, r]));
   const runs = base.runs.map((r) => replace.get(r.id) ?? r);
-  for (const r of patch.runs) if (!base.runs.some((b) => b.id === r.id)) runs.push(r);
+  for (const r of patch.runs)
+    if (!base.runs.some((b) => b.id === r.id)) runs.push(r);
   return { ...base, runs, dispatch: patch.summary, parked: patch.parked };
 }
 

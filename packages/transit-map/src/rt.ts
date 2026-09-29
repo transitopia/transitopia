@@ -3,16 +3,44 @@
 // instant whether buses are shown from RT data (observed/interpolated) or schedule (estimated), and
 // loads TransLink's service changes (cancelled trips, skipped stops, detours) for the days shown.
 
-import rtConfig from '@transitopia/region-metro-vancouver/config/rt.json';
-import { coverageContains, decodeSnapshot, type RtCoverageResponse, type RtLiveResponse, type RtSnapshot } from '@transitopia/transit-core/rt/types.ts';
-import { RtTimeline } from '@transitopia/transit-core/rt/timeline.ts';
-import { Predictor, type PredictionConfig, type RtProfileFile } from '@transitopia/transit-core/rt/profile.ts';
-import type { PreparedPlan, ScheduleCorrections, VehicleState } from '@transitopia/transit-core/schedule/engine.ts';
-import { delayCorrections, type TripDelay } from '@transitopia/transit-core/rt/carry.ts';
-import { changesView, type ChangesView, type RtDayChanges } from '@transitopia/transit-core/rt/changes.ts';
-import { addDays, localDate, toWallTime } from '@transitopia/transit-core/time.ts';
-import { kinematics } from './plans.ts';
-import { cadence, type CadenceConfig } from '@transitopia/transit-core/rt/budget.ts';
+import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json";
+import {
+  coverageContains,
+  decodeSnapshot,
+  type RtCoverageResponse,
+  type RtLiveResponse,
+  type RtSnapshot,
+} from "@transitopia/transit-core/rt/types.ts";
+import { RtTimeline } from "@transitopia/transit-core/rt/timeline.ts";
+import {
+  Predictor,
+  type PredictionConfig,
+  type RtProfileFile,
+} from "@transitopia/transit-core/rt/profile.ts";
+import type {
+  PreparedPlan,
+  ScheduleCorrections,
+  VehicleState,
+} from "@transitopia/transit-core/schedule/engine.ts";
+import {
+  delayCorrections,
+  type TripDelay,
+} from "@transitopia/transit-core/rt/carry.ts";
+import {
+  changesView,
+  type ChangesView,
+  type RtDayChanges,
+} from "@transitopia/transit-core/rt/changes.ts";
+import {
+  addDays,
+  localDate,
+  toWallTime,
+} from "@transitopia/transit-core/time.ts";
+import { kinematics } from "./plans.ts";
+import {
+  cadence,
+  type CadenceConfig,
+} from "@transitopia/transit-core/rt/budget.ts";
 
 const BASE = import.meta.env.BASE_URL;
 /** Live mode applies when the clock is within this of wall-clock time. */
@@ -27,7 +55,7 @@ const CADENCE = cadence(rtConfig as unknown as CadenceConfig);
 const CHANGES_REFRESH_MS = 60_000;
 const MAX_CHANGE_DAYS_CACHED = 6;
 
-export type RtMode = 'live' | 'recorded' | 'estimated' | 'unavailable';
+export type RtMode = "live" | "recorded" | "estimated" | "unavailable";
 
 interface DayChanges {
   data?: RtDayChanges;
@@ -36,7 +64,7 @@ interface DayChanges {
 }
 
 interface HourChunk {
-  status: 'loading' | 'ready' | 'missing';
+  status: "loading" | "ready" | "missing";
   snapshots: RtSnapshot[];
 }
 
@@ -50,15 +78,25 @@ export class RtClient {
   private coverageRange: [number, number] | undefined;
   private coverageFetchedAt = 0;
   private timeline: RtTimeline | undefined;
-  private timelineKey = '';
-  private carryMemo: { delays: TripDelay[]; pp: PreparedPlan; version: number; result: ReturnType<typeof delayCorrections> } | undefined;
+  private timelineKey = "";
+  private carryMemo:
+    | {
+        delays: TripDelay[];
+        pp: PreparedPlan;
+        version: number;
+        result: ReturnType<typeof delayCorrections>;
+      }
+    | undefined;
   private changes = new Map<string, DayChanges>();
   /** Bumped whenever loaded service changes differ. */
   private changesVersion = 0;
   private view: { version: number; view: ChangesView } | undefined;
-  private cancelledMemo = new Map<string, { version: number; corr: ScheduleCorrections | undefined }>();
+  private cancelledMemo = new Map<
+    string,
+    { version: number; corr: ScheduleCorrections | undefined }
+  >();
   /** Per feed version: the predictor, once its travel-time profile has loaded (or turned out missing). */
-  private predictors = new Map<string, Predictor | 'loading'>();
+  private predictors = new Map<string, Predictor | "loading">();
   private listeners = new Set<() => void>();
   available = true;
 
@@ -76,7 +114,8 @@ export class RtClient {
     const nearNow = Math.abs(t - Date.now()) < LIVE_WINDOW_MS;
     if (nearNow) this.ensureLivePolling();
     else this.stopLivePolling();
-    if (!nearNow || t < Date.now() - CADENCE.maxInterpolateLimitS * 1000) this.ensureHours(t);
+    if (!nearNow || t < Date.now() - CADENCE.maxInterpolateLimitS * 1000)
+      this.ensureHours(t);
     if (this.available) this.ensureChanges(t);
   }
 
@@ -85,8 +124,14 @@ export class RtClient {
     const now = Date.now();
     const includesNow = from <= now && now <= to;
     const stale = includesNow && now - this.coverageFetchedAt > 60_000;
-    if (!this.coverageRange || from < this.coverageRange[0] || to > this.coverageRange[1] || stale) {
-      if (now - this.coverageFetchedAt > 5_000) void this.fetchCoverage(from, to);
+    if (
+      !this.coverageRange
+      || from < this.coverageRange[0]
+      || to > this.coverageRange[1]
+      || stale
+    ) {
+      if (now - this.coverageFetchedAt > 5_000)
+        void this.fetchCoverage(from, to);
     }
     const out = this.coverage.filter(([a, b]) => b >= from && a <= to);
     // The live buffer extends coverage to the present even before the index is refreshed.
@@ -96,27 +141,42 @@ export class RtClient {
   }
 
   /** RT vehicles at t, or undefined when RT data doesn't cover t (use schedule estimates). */
-  vehiclesAt(t: number, pp: PreparedPlan | undefined, routes?: Set<string>): { mode: RtMode; vehicles?: VehicleState[] } {
-    if (!this.available) return { mode: 'unavailable' };
+  vehiclesAt(
+    t: number,
+    pp: PreparedPlan | undefined,
+    routes?: Set<string>,
+  ): { mode: RtMode; vehicles?: VehicleState[] } {
+    if (!this.available) return { mode: "unavailable" };
     const liveSpan = this.liveSpan();
-    const inLive = liveSpan !== undefined && t >= liveSpan[0] && t <= liveSpan[1] + CADENCE.staleAfterMs(liveSpan[1]);
-    const covered = inLive || coverageContains(this.coverage, t, CADENCE.coverageGapMs(t));
-    if (!covered) return { mode: 'estimated' };
+    const inLive =
+      liveSpan !== undefined
+      && t >= liveSpan[0]
+      && t <= liveSpan[1] + CADENCE.staleAfterMs(liveSpan[1]);
+    const covered =
+      inLive || coverageContains(this.coverage, t, CADENCE.coverageGapMs(t));
+    if (!covered) return { mode: "estimated" };
 
     const snapshots = inLive ? this.live : this.snapshotsAround(t);
-    if (!snapshots) return { mode: 'estimated' };
-    return { mode: inLive ? 'live' : 'recorded', vehicles: this.timelineFor(snapshots, inLive, pp).vehiclesAt(t, routes) };
+    if (!snapshots) return { mode: "estimated" };
+    return {
+      mode: inLive ? "live" : "recorded",
+      vehicles: this.timelineFor(snapshots, inLive, pp).vehiclesAt(t, routes),
+    };
   }
 
-  private timelineFor(snapshots: RtSnapshot[], live: boolean, pp: PreparedPlan | undefined): RtTimeline {
+  private timelineFor(
+    snapshots: RtSnapshot[],
+    live: boolean,
+    pp: PreparedPlan | undefined,
+  ): RtTimeline {
     const predictor = pp ? this.predictorFor(pp) : undefined;
-    const key = `${live ? 'live' : 'rec'}:${snapshots.length}:${snapshots[0]?.fetchedAt}:${snapshots.at(-1)?.fetchedAt}:${pp?.plan.feedVersion}:${predictor ? 'p' : ''}:${this.changesVersion}`;
+    const key = `${live ? "live" : "rec"}:${snapshots.length}:${snapshots[0]?.fetchedAt}:${snapshots.at(-1)?.fetchedAt}:${pp?.plan.feedVersion}:${predictor ? "p" : ""}:${this.changesVersion}`;
     if (key !== this.timelineKey || !this.timeline) {
       this.timelineKey = key;
       this.timeline = new RtTimeline(snapshots, pp, kinematics, {
         maxInterpolateS: CADENCE.maxInterpolateS,
         maxExtrapolateS: CADENCE.maxExtrapolateS,
-        source: live ? 'GTFS-RT live' : 'GTFS-RT recorded',
+        source: live ? "GTFS-RT live" : "GTFS-RT recorded",
         changes: this.changesView(),
         detourNearM: rtConfig.detourNearM,
         ...(predictor ? { prediction: { cfg: PREDICTION, predictor } } : {}),
@@ -130,15 +190,40 @@ export class RtClient {
    * they affect. Uses the live buffer from its start onwards (including the future, when
    * fast-forwarding past the live edge), else recorded data covering t.
    */
-  delayCorrections(t: number, pp: PreparedPlan | undefined): { byDate: Map<string, ScheduleCorrections>; carried: Set<string> } | undefined {
+  delayCorrections(
+    t: number,
+    pp: PreparedPlan | undefined,
+  ):
+    | { byDate: Map<string, ScheduleCorrections>; carried: Set<string> }
+    | undefined {
     if (!this.available || !pp || !this.predictorFor(pp)) return undefined;
     const fromLive = this.live.length > 0 && t >= this.live[0]!.fetchedAt;
-    const recorded = !fromLive && coverageContains(this.coverage, t, CADENCE.coverageGapMs(t)) ? this.snapshotsAround(t) : undefined;
+    const recorded =
+      (
+        !fromLive
+        && coverageContains(this.coverage, t, CADENCE.coverageGapMs(t))
+      ) ?
+        this.snapshotsAround(t)
+      : undefined;
     const snapshots = fromLive ? this.live : recorded;
     if (!snapshots) return undefined;
     const delays = this.timelineFor(snapshots, fromLive, pp).tripDelays(t);
-    if (this.carryMemo?.delays !== delays || this.carryMemo.pp !== pp || this.carryMemo.version !== this.changesVersion) {
-      this.carryMemo = { delays, pp, version: this.changesVersion, result: delayCorrections(pp, delays, rtConfig.carry, this.changesView().cancelled) };
+    if (
+      this.carryMemo?.delays !== delays
+      || this.carryMemo.pp !== pp
+      || this.carryMemo.version !== this.changesVersion
+    ) {
+      this.carryMemo = {
+        delays,
+        pp,
+        version: this.changesVersion,
+        result: delayCorrections(
+          pp,
+          delays,
+          rtConfig.carry,
+          this.changesView().cancelled,
+        ),
+      };
     }
     return this.carryMemo.result;
   }
@@ -148,9 +233,16 @@ export class RtClient {
     let m = this.cancelledMemo.get(date);
     if (m?.version !== this.changesVersion) {
       const ids = this.changesView().cancelledTrips(date);
-      m = { version: this.changesVersion, corr: ids.length ? { trips: new Map(), cancelled: new Set(ids), consists: new Map() } : undefined };
+      m = {
+        version: this.changesVersion,
+        corr:
+          ids.length ?
+            { trips: new Map(), cancelled: new Set(ids), consists: new Map() }
+          : undefined,
+      };
       this.cancelledMemo.set(date, m);
-      if (this.cancelledMemo.size > MAX_CHANGE_DAYS_CACHED) this.cancelledMemo.delete(this.cancelledMemo.keys().next().value!);
+      if (this.cancelledMemo.size > MAX_CHANGE_DAYS_CACHED)
+        this.cancelledMemo.delete(this.cancelledMemo.keys().next().value!);
     }
     return m.corr;
   }
@@ -158,8 +250,13 @@ export class RtClient {
   /** Lookups over every loaded day's service changes. */
   private changesView(): ChangesView {
     if (this.view?.version !== this.changesVersion) {
-      const days = [...this.changes.values()].flatMap((d) => (d.data ? [d.data] : []));
-      this.view = { version: this.changesVersion, view: changesView(days, CADENCE.alertGraceMs) };
+      const days = [...this.changes.values()].flatMap((d) =>
+        d.data ? [d.data] : [],
+      );
+      this.view = {
+        version: this.changesVersion,
+        view: changesView(days, CADENCE.alertGraceMs),
+      };
     }
     return this.view.view;
   }
@@ -171,7 +268,13 @@ export class RtClient {
     const recentFrom = addDays(localDate(now), -1);
     for (const date of [addDays(today, -1), today]) {
       let e = this.changes.get(date);
-      if (e && (e.loading || date < recentFrom || now - e.fetchedAt < CHANGES_REFRESH_MS)) continue;
+      if (
+        e
+        && (e.loading
+          || date < recentFrom
+          || now - e.fetchedAt < CHANGES_REFRESH_MS)
+      )
+        continue;
       if (!e) this.changes.set(date, (e = { fetchedAt: 0, loading: false }));
       const entry = e;
       entry.loading = true;
@@ -181,7 +284,8 @@ export class RtClient {
         .catch(() => undefined)
         .then((data) => {
           entry.loading = false;
-          if (!data || JSON.stringify(data) === JSON.stringify(entry.data)) return;
+          if (!data || JSON.stringify(data) === JSON.stringify(entry.data))
+            return;
           entry.data = data;
           this.changesVersion++;
           this.emit();
@@ -199,17 +303,22 @@ export class RtClient {
   predictorFor(pp: PreparedPlan): Predictor | undefined {
     const version = pp.plan.feedVersion;
     const p = this.predictors.get(version);
-    if (p === 'loading') return undefined;
+    if (p === "loading") return undefined;
     if (p) return p;
-    this.predictors.set(version, 'loading');
+    this.predictors.set(version, "loading");
     // Scenario plans ("<version>~<name>") share the base feed's profile.
-    const base = version.split('~')[0];
+    const base = version.split("~")[0];
     fetch(`${BASE}data/feeds/${base}/rt-profile.json`)
       .then((r) => (r.ok ? (r.json() as Promise<RtProfileFile>) : undefined))
       .catch(() => undefined)
       .then((profile) => {
         // Without a profile, the timetable still gives better predictions than a fixed speed.
-        this.predictors.set(version, new Predictor(pp, PREDICTION, profile, (date, tripId) => this.changesView().skipped(date, tripId)));
+        this.predictors.set(
+          version,
+          new Predictor(pp, PREDICTION, profile, (date, tripId) =>
+            this.changesView().skipped(date, tripId),
+          ),
+        );
         this.emit();
       });
     return undefined;
@@ -228,7 +337,11 @@ export class RtClient {
 
   private liveSpan(): [number, number] | undefined {
     const last = this.live.at(-1);
-    if (!last || Date.now() - last.fetchedAt > CADENCE.staleAfterMs(last.fetchedAt)) return undefined;
+    if (
+      !last
+      || Date.now() - last.fetchedAt > CADENCE.staleAfterMs(last.fetchedAt)
+    )
+      return undefined;
     return [this.live[0]!.fetchedAt, last.fetchedAt];
   }
 
@@ -236,33 +349,41 @@ export class RtClient {
     if (this.liveTimer !== undefined) return;
     const poll = async () => {
       try {
-        const res = await fetch(`${BASE}rt/live`, { cache: 'no-cache' });
+        const res = await fetch(`${BASE}rt/live`, { cache: "no-cache" });
         if (res.status === 404) {
           // No RT service (e.g. a static build without the proxy).
           this.available = false;
-          this.liveError = 'Real-time service not available';
+          this.liveError = "Real-time service not available";
           this.emit();
           return;
         }
         const body = (await res.json()) as RtLiveResponse;
         this.liveError = body.error;
-        if (body.dispatch && JSON.stringify(body.dispatch) !== JSON.stringify(this.dispatch)) {
+        if (
+          body.dispatch
+          && JSON.stringify(body.dispatch) !== JSON.stringify(this.dispatch)
+        ) {
           this.dispatch = body.dispatch;
           this.emit();
         }
         if (body.snapshot && !body.stale) {
-          const s: RtSnapshot = { ...body.snapshot, receivedAt: Math.max(Date.now(), body.snapshot.fetchedAt) };
+          const s: RtSnapshot = {
+            ...body.snapshot,
+            receivedAt: Math.max(Date.now(), body.snapshot.fetchedAt),
+          };
           if (!this.live.length || s.fetchedAt > this.live.at(-1)!.fetchedAt) {
             this.live.push(s);
             const cutoff = Date.now() - LIVE_BUFFER_MS;
-            while (this.live.length > 2 && this.live[0]!.fetchedAt < cutoff) this.live.shift();
+            while (this.live.length > 2 && this.live[0]!.fetchedAt < cutoff)
+              this.live.shift();
             this.emit();
           }
         }
       } catch {
-        this.liveError = 'Real-time service unreachable';
+        this.liveError = "Real-time service unreachable";
       }
-      if (this.liveTimer !== undefined) this.liveTimer = setTimeout(poll, rtConfig.clientPollS * 1000);
+      if (this.liveTimer !== undefined)
+        this.liveTimer = setTimeout(poll, rtConfig.clientPollS * 1000);
     };
     this.liveTimer = setTimeout(poll, 0);
   }
@@ -277,8 +398,8 @@ export class RtClient {
 
   private hourId(t: number): { id: string; date: string; hour: string } {
     const w = toWallTime(t);
-    const date = `${w.year}-${String(w.month).padStart(2, '0')}-${String(w.day).padStart(2, '0')}`;
-    const hour = String(w.hour).padStart(2, '0');
+    const date = `${w.year}-${String(w.month).padStart(2, "0")}-${String(w.day).padStart(2, "0")}`;
+    const hour = String(w.hour).padStart(2, "0");
     return { id: `${date}T${hour}`, date, hour };
   }
 
@@ -293,30 +414,32 @@ export class RtClient {
     }
     for (const [id, { date, hour }] of ids) {
       if (this.hours.has(id)) continue;
-      const chunk: HourChunk = { status: 'loading', snapshots: [] };
+      const chunk: HourChunk = { status: "loading", snapshots: [] };
       this.hours.set(id, chunk);
       void this.loadHour(date, hour, chunk);
     }
     // Evict least-recently-added hours beyond the cache size.
-    while (this.hours.size > MAX_HOURS_CACHED) this.hours.delete(this.hours.keys().next().value!);
+    while (this.hours.size > MAX_HOURS_CACHED)
+      this.hours.delete(this.hours.keys().next().value!);
   }
 
-  private async loadHour(date: string, hour: string, chunk: HourChunk): Promise<void> {
+  private async loadHour(
+    date: string,
+    hour: string,
+    chunk: HourChunk,
+  ): Promise<void> {
     try {
       const res = await fetch(`${BASE}rt/history?date=${date}&hour=${hour}`);
       if (!res.ok) {
-        chunk.status = 'missing';
+        chunk.status = "missing";
         return;
       }
       const text = await res.text();
-      chunk.snapshots = text
-        .split('\n')
-        .filter(Boolean)
-        .map(decodeSnapshot);
-      chunk.status = 'ready';
+      chunk.snapshots = text.split("\n").filter(Boolean).map(decodeSnapshot);
+      chunk.status = "ready";
       this.emit();
     } catch {
-      chunk.status = 'missing';
+      chunk.status = "missing";
     }
   }
 
@@ -330,7 +453,7 @@ export class RtClient {
       if (seen.has(id)) continue;
       seen.add(id);
       const chunk = this.hours.get(id);
-      if (!chunk || chunk.status === 'loading') return undefined;
+      if (!chunk || chunk.status === "loading") return undefined;
       out.push(...chunk.snapshots);
     }
     return out.sort((a, b) => a.fetchedAt - b.fetchedAt);
@@ -342,7 +465,9 @@ export class RtClient {
     const lo = from - 86_400_000;
     const hi = to + 86_400_000;
     try {
-      const res = await fetch(`${BASE}rt/coverage?from=${Math.round(lo)}&to=${Math.round(hi)}`);
+      const res = await fetch(
+        `${BASE}rt/coverage?from=${Math.round(lo)}&to=${Math.round(hi)}`,
+      );
       if (res.status === 404) {
         this.available = false;
         return;

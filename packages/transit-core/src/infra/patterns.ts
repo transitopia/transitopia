@@ -2,16 +2,20 @@
 // the train's direction carried from hop to hop (no reversing between stops). Used by the validator
 // and by movement building (PLAN.md §4.4).
 
-import type { PlanPattern, ServicePlan } from '../plan/types.ts';
-import type { Dir, Path, TrackGraph, TrackPos } from './graph.ts';
-import type { PlatformAssignment } from './platforms.ts';
+import type { PlanPattern, ServicePlan } from "../plan/types.ts";
+import type { Dir, Path, TrackGraph, TrackPos } from "./graph.ts";
+import type { PlatformAssignment } from "./platforms.ts";
 
 /**
  * Revenue trains run through on main track: entering a pocket, siding or tail costs this much
  * extra (m), so they're used only when a hop needs them. Without it, near-equal lengths let hops
  * cut through centre pockets (Metrotown's pocket was 0.4 m longer than the main line past it).
  */
-export const REVENUE_KIND_PENALTY = { pocket: 500, siding: 200, tail: 500 } as const;
+export const REVENUE_KIND_PENALTY = {
+  pocket: 500,
+  siding: 200,
+  tail: 500,
+} as const;
 
 export interface PatternRoute {
   pattern: PlanPattern;
@@ -41,11 +45,13 @@ export function routePattern(
   const pins = patternPositions?.get(pattern.id);
   pattern.stops.forEach((si, i) => {
     const a = platforms.get(plan.stops[si]!.id);
-    positions.push(pins?.get(i) ?? (a ? a.pos : { seg: '', offset: 0 }));
+    positions.push(pins?.get(i) ?? (a ? a.pos : { seg: "", offset: 0 }));
   });
   const hops: (Path | undefined)[] = [];
   // Try both initial directions; keep the one that routes the whole pattern best.
-  let best: { hops: (Path | undefined)[]; fails: number; len: number; startDir?: Dir } | undefined;
+  let best:
+    | { hops: (Path | undefined)[]; fails: number; len: number; startDir?: Dir }
+    | undefined;
   for (const d0 of [1, -1] as Dir[]) {
     const hs: (Path | undefined)[] = [];
     let dir: Dir | undefined = d0;
@@ -55,7 +61,16 @@ export function routePattern(
     for (let i = 0; i + 1 < positions.length; i++) {
       const a = positions[i]!;
       const b = positions[i + 1]!;
-      const p: Path | null = a.seg && b.seg ? g.route(a, b, { fromDir: dir, allowReversals: false, maxLength: 12_000, kindPenalty: REVENUE_KIND_PENALTY, ...(closed ? { closed } : {}) }) : null;
+      const p: Path | null =
+        a.seg && b.seg ?
+          g.route(a, b, {
+            fromDir: dir,
+            allowReversals: false,
+            maxLength: 12_000,
+            kindPenalty: REVENUE_KIND_PENALTY,
+            ...(closed ? { closed } : {}),
+          })
+        : null;
       if (!p || p.reversals > 0) {
         hs.push(undefined);
         fails++;
@@ -67,12 +82,23 @@ export function routePattern(
       len += p.length;
       dir = p.endDir;
     }
-    if (!best || fails < best.fails || (fails === best.fails && len < best.len)) best = { hops: hs, fails, len, startDir };
+    if (!best || fails < best.fails || (fails === best.fails && len < best.len))
+      best = { hops: hs, fails, len, startDir };
   }
   hops.push(...best!.hops);
   hops.forEach((h, i) => {
-    if (!h) failures.push(`${plan.stops[pattern.stops[i]!]!.name} → ${plan.stops[pattern.stops[i + 1]!]!.name}`);
+    if (!h)
+      failures.push(
+        `${plan.stops[pattern.stops[i]!]!.name} → ${plan.stops[pattern.stops[i + 1]!]!.name}`,
+      );
   });
   const last = hops[hops.length - 1];
-  return { pattern, positions, hops, startDir: best!.startDir, endDir: last?.endDir, failures };
+  return {
+    pattern,
+    positions,
+    hops,
+    startDir: best!.startDir,
+    endDir: last?.endDir,
+    failures,
+  };
 }

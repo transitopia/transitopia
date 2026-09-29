@@ -51,30 +51,61 @@ export function emptyDayChanges(date: string): RtDayChanges {
  * `graceMs`, the alerts poll interval, since a removal is only seen at the next poll). Without a
  * period start it applies from when it was first seen.
  */
-export function alertActiveAt(a: RtRouteAlert, t: number, graceMs: number): boolean {
+export function alertActiveAt(
+  a: RtRouteAlert,
+  t: number,
+  graceMs: number,
+): boolean {
   if (t > a.seen[1] + graceMs) return false;
   const from = (start: number | undefined) => start ?? a.seen[0] - graceMs;
   if (!a.periods.length) return t >= from(undefined);
-  return a.periods.some((p) => t >= from(p.start) && (p.end === undefined || t <= p.end));
+  return a.periods.some(
+    (p) => t >= from(p.start) && (p.end === undefined || t <= p.end),
+  );
 }
 
 /** Detour alerts covering a bus on a trip at t. */
-export function detoursFor(alerts: RtRouteAlert[], routeKey: string, directionId: number | undefined, tripId: string | undefined, t: number, graceMs: number): RtRouteAlert[] {
+export function detoursFor(
+  alerts: RtRouteAlert[],
+  routeKey: string,
+  directionId: number | undefined,
+  tripId: string | undefined,
+  t: number,
+  graceMs: number,
+): RtRouteAlert[] {
   return alerts.filter(
     (a) =>
-      a.effect === EFFECT_DETOUR &&
-      a.entities.some((e) => e.routeKey === routeKey && (e.directionId === undefined || e.directionId === directionId) && (e.tripId === undefined || e.tripId === tripId)) &&
-      alertActiveAt(a, t, graceMs),
+      a.effect === EFFECT_DETOUR
+      && a.entities.some(
+        (e) =>
+          e.routeKey === routeKey
+          && (e.directionId === undefined || e.directionId === directionId)
+          && (e.tripId === undefined || e.tripId === tripId),
+      )
+      && alertActiveAt(a, t, graceMs),
   );
 }
 
 /** Merges alerts from several days' files (an alert running over midnight is in both). */
-export function mergeAlerts(days: (RtDayChanges | undefined)[]): RtRouteAlert[] {
+export function mergeAlerts(
+  days: (RtDayChanges | undefined)[],
+): RtRouteAlert[] {
   const byId = new Map<string, RtRouteAlert>();
   for (const d of days) {
     for (const a of d?.alerts ?? []) {
       const b = byId.get(a.id);
-      byId.set(a.id, b ? { ...a, seen: [Math.min(a.seen[0], b.seen[0]), Math.max(a.seen[1], b.seen[1])] } : a);
+      byId.set(
+        a.id,
+        b ?
+          {
+            ...a,
+            seen: [
+              Math.min(a.seen[0], b.seen[0]),
+              Math.max(a.seen[1], b.seen[1]),
+            ],
+          }
+        : a,
+      );
     }
   }
   return [...byId.values()];
@@ -87,11 +118,19 @@ export interface ChangesView {
   cancelledTrips(serviceDate: string): string[];
   skipped(serviceDate: string, tripId: string): ReadonlySet<string> | undefined;
   /** Detour alerts covering a bus on its trip at t. */
-  detours(routeKey: string, directionId: number | undefined, tripId: string | undefined, t: number): RtRouteAlert[];
+  detours(
+    routeKey: string,
+    directionId: number | undefined,
+    tripId: string | undefined,
+    t: number,
+  ): RtRouteAlert[];
 }
 
 /** @param graceMs how long an alert still counts after it was last seen (its poll interval), fixed or at a time. */
-export function changesView(days: RtDayChanges[], graceMs: number | ((t: number) => number)): ChangesView {
+export function changesView(
+  days: RtDayChanges[],
+  graceMs: number | ((t: number) => number),
+): ChangesView {
   const cancelled = new Set<string>();
   const skipped = new Map<string, Set<string>>();
   const skip = (key: string, stops: string[]) => {
@@ -100,8 +139,10 @@ export function changesView(days: RtDayChanges[], graceMs: number | ((t: number)
     for (const id of stops) s.add(id);
   };
   for (const d of days) {
-    for (const trip of Object.keys(d.cancelled)) cancelled.add(`${d.date}|${trip}`);
-    for (const [trip, stops] of Object.entries(d.skipped)) skip(`${d.date}|${trip}`, stops);
+    for (const trip of Object.keys(d.cancelled))
+      cancelled.add(`${d.date}|${trip}`);
+    for (const [trip, stops] of Object.entries(d.skipped))
+      skip(`${d.date}|${trip}`, stops);
     for (const a of d.alerts) {
       if (a.effect !== EFFECT_NO_SERVICE) continue;
       for (const e of a.entities) {
@@ -113,9 +154,22 @@ export function changesView(days: RtDayChanges[], graceMs: number | ((t: number)
   }
   const alerts = mergeAlerts(days).filter((a) => a.effect === EFFECT_DETOUR);
   return {
-    cancelledTrips: (date) => [...cancelled].filter((k) => k.startsWith(`${date}|`)).map((k) => k.slice(date.length + 1)),
+    cancelledTrips: (date) =>
+      [...cancelled]
+        .filter((k) => k.startsWith(`${date}|`))
+        .map((k) => k.slice(date.length + 1)),
     cancelled: (date, tripId) => cancelled.has(`${date}|${tripId}`),
     skipped: (date, tripId) => skipped.get(`${date}|${tripId}`),
-    detours: (routeKey, directionId, tripId, t) => (alerts.length ? detoursFor(alerts, routeKey, directionId, tripId, t, typeof graceMs === 'number' ? graceMs : graceMs(t)) : []),
+    detours: (routeKey, directionId, tripId, t) =>
+      alerts.length ?
+        detoursFor(
+          alerts,
+          routeKey,
+          directionId,
+          tripId,
+          t,
+          typeof graceMs === "number" ? graceMs : graceMs(t),
+        )
+      : [],
   };
 }

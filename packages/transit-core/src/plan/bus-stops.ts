@@ -4,8 +4,14 @@
 // - a label by cross street or exchange name, one per "+" (or per lone tick), except at stations
 //   (the station label covers them).
 
-import { cumulativeLengths, distM, localProjector, pointAlong, type LonLat } from '../geo.ts';
-import { isPassengerStop, type ServicePlan } from './types.ts';
+import {
+  cumulativeLengths,
+  distM,
+  localProjector,
+  pointAlong,
+  type LonLat,
+} from "../geo.ts";
+import { isPassengerStop, type ServicePlan } from "./types.ts";
 
 export interface BusStopMarker {
   name: string;
@@ -27,12 +33,14 @@ const STATION_M = 200;
 
 /** Marker label for a GTFS stop name, or undefined for a station bay or a layover. */
 export function busStopLabel(name: string): string | undefined {
-  const [before = '', after = ''] = name.split('@').map((s) => s.replace(/\s+/g, ' ').trim());
+  const [before = "", after = ""] = name
+    .split("@")
+    .map((s) => s.replace(/\s+/g, " ").trim());
   if (/\bStation$/i.test(before) || /^Layover$/i.test(after)) return undefined;
   // Exchanges and loops: "UBC Exchange @ Bay 7", "Haney Place @ Bay 1", "Phibbs Exchange @".
   if (/^(Bay\b|Unload)/i.test(after) || !after) return before;
   // Street stops: the cross street ("Eastbound W Broadway @ Alma St" → "Alma St").
-  return after.replace(/[-\s]+$/, '');
+  return after.replace(/[-\s]+$/, "");
 }
 
 export interface BusStopTick {
@@ -55,13 +63,21 @@ function stationPoints(plan: ServicePlan): LonLat[] {
   return plan.stations.map((s) => [s.lon, s.lat]);
 }
 
-function shownAt(name: string, at: LonLat, stations: LonLat[]): string | undefined {
+function shownAt(
+  name: string,
+  at: LonLat,
+  stations: LonLat[],
+): string | undefined {
   const label = busStopLabel(name);
-  return label && !stations.some((st) => distM(st, at) < STATION_M) ? label : undefined;
+  return label && !stations.some((st) => distM(st, at) < STATION_M) ?
+      label
+    : undefined;
 }
 
 export function busStopTicks(plan: ServicePlan): BusStopTick[] {
-  const busRoutes = new Set(plan.routes.filter((r) => r.kind === 'bus').map((r) => r.key));
+  const busRoutes = new Set(
+    plan.routes.filter((r) => r.kind === "bus").map((r) => r.key),
+  );
   const used = new Set(plan.trips.map((t) => t.pattern));
   const stations = stationPoints(plan);
   const cums = new Map<string, Float64Array>();
@@ -93,24 +109,43 @@ export function busStopTicks(plan: ServicePlan): BusStopTick[] {
       const cross = tx * (sy - qy) - ty * (sx - qx); // > 0: stop is left of travel
       const left = Math.hypot(sx - qx, sy - qy) >= ON_LINE_M && cross > 0;
       const exchange = /@\s*(Bay\b|Unload)|@\s*$/i.test(s.name);
-      out.push({ route: p.route, ...(name ? { name } : {}), ...(exchange ? { exchange } : {}), lon: q.lon, lat: q.lat, bearing: (q.bearing + (left ? 270 : 90)) % 360 });
+      out.push({
+        route: p.route,
+        ...(name ? { name } : {}),
+        ...(exchange ? { exchange } : {}),
+        lon: q.lon,
+        lat: q.lat,
+        bearing: (q.bearing + (left ? 270 : 90)) % 360,
+      });
     });
   }
   return out;
 }
 
 export function busStopMarkers(plan: ServicePlan): BusStopMarker[] {
-  const groups: { name: string; ticks: BusStopTick[]; routes: Set<string> }[] = [];
+  const groups: { name: string; ticks: BusStopTick[]; routes: Set<string> }[] =
+    [];
   for (const t of busStopTicks(plan)) {
     if (!t.name) continue;
     const at: LonLat = [t.lon, t.lat];
     const within = t.exchange ? MERGE_EXCHANGE_M : MERGE_M;
-    const g = groups.find((x) => x.name === t.name && x.ticks.some((q) => distM([q.lon, q.lat], at) < within));
+    const g = groups.find(
+      (x) =>
+        x.name === t.name
+        && x.ticks.some((q) => distM([q.lon, q.lat], at) < within),
+    );
     if (g) {
       g.ticks.push(t);
       g.routes.add(t.route);
-    } else groups.push({ name: t.name, ticks: [t], routes: new Set([t.route]) });
+    } else
+      groups.push({ name: t.name, ticks: [t], routes: new Set([t.route]) });
   }
   // Label at the first tick, on its side of the line.
-  return groups.map((g) => ({ name: g.name, lon: g.ticks[0]!.lon, lat: g.ticks[0]!.lat, bearing: g.ticks[0]!.bearing, routes: [...g.routes].sort() }));
+  return groups.map((g) => ({
+    name: g.name,
+    lon: g.ticks[0]!.lon,
+    lat: g.ticks[0]!.lat,
+    bearing: g.ticks[0]!.bearing,
+    routes: [...g.routes].sort(),
+  }));
 }

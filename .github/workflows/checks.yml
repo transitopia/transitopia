@@ -2,7 +2,7 @@ name: Web UI Checks
 
 on:
   pull_request:
-    paths: 'web-ui/**'
+    paths: "web-ui/**"
   push:
     branches:
       - main

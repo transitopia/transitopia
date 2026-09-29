@@ -7,8 +7,24 @@
 // only where configured: at dead ends, inside pocket/tail/siding tracks, or explicitly at the start
 // or target (e.g. a stub-ended terminus platform).
 
-import { bearingDeg as bearingOf, cumulativeLengths, distM, localProjector, pointAlong, projectOnto, type LonLat } from '../geo.ts';
-import type { InfraCollection, NodeProps, Segment, SegmentEnd, SegmentKind, StopPosition, TrackNode } from './types.ts';
+import {
+  bearingDeg as bearingOf,
+  cumulativeLengths,
+  distM,
+  localProjector,
+  pointAlong,
+  projectOnto,
+  type LonLat,
+} from "../geo.ts";
+import type {
+  InfraCollection,
+  NodeProps,
+  Segment,
+  SegmentEnd,
+  SegmentKind,
+  StopPosition,
+  TrackNode,
+} from "./types.ts";
 
 export type Dir = 1 | -1;
 
@@ -71,8 +87,15 @@ export interface RouteOptions {
   closed?: Set<string>;
 }
 
-const REVERSAL_KINDS = new Set<SegmentKind>(['pocket', 'tail', 'siding']);
-const DEFAULT_KINDS = new Set<SegmentKind>(['main', 'pocket', 'tail', 'siding', 'crossover', 'spur']);
+const REVERSAL_KINDS = new Set<SegmentKind>(["pocket", "tail", "siding"]);
+const DEFAULT_KINDS = new Set<SegmentKind>([
+  "main",
+  "pocket",
+  "tail",
+  "siding",
+  "crossover",
+  "spur",
+]);
 
 export interface Transition {
   seg: string;
@@ -90,11 +113,16 @@ export class TrackGraph {
     const g = new TrackGraph();
     for (const f of fc.features) {
       const p = f.properties;
-      if (p.type === 'segment') {
-        const coords = (f.geometry as GeoJSON.LineString).coordinates as LonLat[];
+      if (p.type === "segment") {
+        const coords = (f.geometry as GeoJSON.LineString)
+          .coordinates as LonLat[];
         const { type: _t, ...rest } = p;
-        g.segments.set(p.id, { ...rest, coords, cum: cumulativeLengths(coords) });
-      } else if (p.type === 'node') {
+        g.segments.set(p.id, {
+          ...rest,
+          coords,
+          cum: cumulativeLengths(coords),
+        });
+      } else if (p.type === "node") {
         const [lon, lat] = (f.geometry as GeoJSON.Point).coordinates as LonLat;
         const { type: _t, ...rest } = p as NodeProps;
         g.nodes.set(p.id, { ...rest, lon, lat });
@@ -102,7 +130,7 @@ export class TrackGraph {
           (g.turns.get(a) ?? g.turns.set(a, []).get(a)!).push(b);
           (g.turns.get(b) ?? g.turns.set(b, []).get(b)!).push(a);
         }
-      } else if (p.type === 'stop') {
+      } else if (p.type === "stop") {
         const [lon, lat] = (f.geometry as GeoJSON.Point).coordinates as LonLat;
         const { type: _t, ...rest } = p;
         g.stops.push({ ...rest, lon, lat });
@@ -138,7 +166,8 @@ export class TrackGraph {
           best = e.end;
         }
       }
-      if (!best) throw new Error(`Turn override: node ${nd.id} has no segments`);
+      if (!best)
+        throw new Error(`Turn override: node ${nd.id} has no segments`);
       return best;
     };
     const ea = nearestEnd(a);
@@ -152,7 +181,9 @@ export class TrackGraph {
     };
     link(ea, eb);
     link(eb, ea);
-    const turns = (nd.turns = nd.turns.filter(([x, y]) => !((x === ea && y === eb) || (x === eb && y === ea))));
+    const turns = (nd.turns = nd.turns.filter(
+      ([x, y]) => !((x === ea && y === eb) || (x === eb && y === ea)),
+    ));
     if (allow) turns.push([ea, eb]);
   }
 
@@ -166,8 +197,8 @@ export class TrackGraph {
   successors(seg: string, dir: Dir): Transition[] {
     const exit: SegmentEnd = `${seg}:${dir === 1 ? 1 : 0}`;
     return (this.turns.get(exit) ?? []).map((end) => {
-      const i = end.lastIndexOf(':');
-      return { seg: end.slice(0, i), dir: end.slice(i + 1) === '0' ? 1 : -1 };
+      const i = end.lastIndexOf(":");
+      return { seg: end.slice(0, i), dir: end.slice(i + 1) === "0" ? 1 : -1 };
     });
   }
 
@@ -176,10 +207,17 @@ export class TrackGraph {
     return this.successors(seg, dir).length === 0;
   }
 
-  pointAt(pos: TrackPos, dir: Dir = 1): { lon: number; lat: number; bearing: number } {
+  pointAt(
+    pos: TrackPos,
+    dir: Dir = 1,
+  ): { lon: number; lat: number; bearing: number } {
     const s = this.segment(pos.seg);
     const p = pointAlong(s.coords, s.cum, pos.offset);
-    return { lon: p.lon, lat: p.lat, bearing: dir === 1 ? p.bearing : (p.bearing + 180) % 360 };
+    return {
+      lon: p.lon,
+      lat: p.lat,
+      bearing: dir === 1 ? p.bearing : (p.bearing + 180) % 360,
+    };
   }
 
   /**
@@ -226,7 +264,11 @@ export class TrackGraph {
     let bestDiff = Infinity;
     for (const n of nexts) {
       const ns = this.segment(n.seg);
-      const p = pointAlong(ns.coords, ns.cum, n.dir === 1 ? Math.min(ns.length, 10) : Math.max(0, ns.length - 10));
+      const p = pointAlong(
+        ns.coords,
+        ns.cum,
+        n.dir === 1 ? Math.min(ns.length, 10) : Math.max(0, ns.length - 10),
+      );
       const b = bearingOf([here.lon, here.lat], [p.lon, p.lat]);
       const want = dir === 1 ? here.bearing : (here.bearing + 180) % 360;
       const diff = Math.abs(((b - want + 540) % 360) - 180);
@@ -239,7 +281,11 @@ export class TrackGraph {
   }
 
   /** Track positions near a point, nearest first. */
-  nearest(p: LonLat, maxDist: number, kinds = DEFAULT_KINDS): (TrackPos & { dist: number })[] {
+  nearest(
+    p: LonLat,
+    maxDist: number,
+    kinds = DEFAULT_KINDS,
+  ): (TrackPos & { dist: number })[] {
     const proj = localProjector(p[1]);
     const [px, py] = proj.toXY(p);
     const out: (TrackPos & { dist: number })[] = [];
@@ -249,14 +295,18 @@ export class TrackGraph {
       let near = false;
       for (const c of s.coords) {
         const [x, y] = proj.toXY(c);
-        if (Math.abs(x - px) < maxDist + s.length && Math.abs(y - py) < maxDist + s.length) {
+        if (
+          Math.abs(x - px) < maxDist + s.length
+          && Math.abs(y - py) < maxDist + s.length
+        ) {
           near = true;
           break;
         }
       }
       if (!near) continue;
       const pr = projectOnto(s.coords, s.cum, p, 0, 0);
-      if (pr.offset <= maxDist) out.push({ seg: s.id, offset: pr.along, dist: pr.offset });
+      if (pr.offset <= maxDist)
+        out.push({ seg: s.id, offset: pr.along, dist: pr.offset });
     }
     return out.sort((a, b) => a.dist - b.dist);
   }
@@ -265,13 +315,18 @@ export class TrackGraph {
    * Shortest legal path between two track positions, or null. With `to` = null and
    * `opts.goalKinds`, the path ends where it first enters a segment of one of those kinds.
    */
-  route(from: TrackPos, to: TrackPos | null, opts: RouteOptions = {}): Path | null {
+  route(
+    from: TrackPos,
+    to: TrackPos | null,
+    opts: RouteOptions = {},
+  ): Path | null {
     const penalty = opts.reversalPenalty ?? 400;
     const runIn = opts.reversalRunIn ?? 100;
     const kinds = opts.kinds ?? DEFAULT_KINDS;
     const maxLength = opts.maxLength ?? 60_000;
     const len = (id: string) => this.segment(id).length;
-    const dp = (seg: string, dir: Dir, dist: number) => (opts.dirPenalty ? opts.dirPenalty(seg, dir) * dist : 0);
+    const dp = (seg: string, dir: Dir, dist: number) =>
+      opts.dirPenalty ? opts.dirPenalty(seg, dir) * dist : 0;
 
     type Key = string; // `${seg}|${dir}`
     interface Rec {
@@ -279,14 +334,27 @@ export class TrackGraph {
       seg: string;
       dir: Dir;
       parent?: Key;
-      via: 'start' | 'turn' | 'deadend' | 'pocket';
+      via: "start" | "turn" | "deadend" | "pocket";
       startDir?: Dir;
     }
     const best = new Map<Key, Rec>();
     const heap = new MinHeap<Key>();
-    let goal: { cost: number; key?: Key; direct?: { dir: Dir }; endDir: Dir; reverseAtTarget: boolean } | undefined;
+    let goal:
+      | {
+          cost: number;
+          key?: Key;
+          direct?: { dir: Dir };
+          endDir: Dir;
+          reverseAtTarget: boolean;
+        }
+      | undefined;
 
-    const consider = (cost: number, dir: Dir, key: Key | undefined, direct?: { dir: Dir }) => {
+    const consider = (
+      cost: number,
+      dir: Dir,
+      key: Key | undefined,
+      direct?: { dir: Dir },
+    ) => {
       // Arriving on the target segment moving `dir`.
       let c = cost;
       let reverseAtTarget = false;
@@ -295,7 +363,14 @@ export class TrackGraph {
         c += penalty;
         reverseAtTarget = true;
       }
-      if (!goal || c < goal.cost) goal = { cost: c, key, direct, endDir: reverseAtTarget ? (-dir as Dir) : dir, reverseAtTarget };
+      if (!goal || c < goal.cost)
+        goal = {
+          cost: c,
+          key,
+          direct,
+          endDir: reverseAtTarget ? (-dir as Dir) : dir,
+          reverseAtTarget,
+        };
     };
 
     // A goal pseudo-state keeps its cheapest arrival: overwriting it with a costlier one (while the
@@ -308,17 +383,29 @@ export class TrackGraph {
       consider(rec.cost, rec.dir, k);
     };
 
-    const startDirs: Dir[] = opts.fromDir === undefined ? [1, -1] : opts.allowReverseAtStart ? [opts.fromDir, -opts.fromDir as Dir] : [opts.fromDir];
+    const startDirs: Dir[] =
+      opts.fromDir === undefined ? [1, -1]
+      : opts.allowReverseAtStart ? [opts.fromDir, -opts.fromDir as Dir]
+      : [opts.fromDir];
     for (const d of startDirs) {
-      const extra = opts.fromDir !== undefined && d !== opts.fromDir ? penalty : 0;
+      const extra =
+        opts.fromDir !== undefined && d !== opts.fromDir ? penalty : 0;
       // Direct: target ahead on the same segment.
       if (to && from.seg === to.seg && (to.offset - from.offset) * d >= 0) {
         const dist = Math.abs(to.offset - from.offset);
-        consider(dist + dp(from.seg, d, dist) + extra, d, undefined, { dir: d });
+        consider(dist + dp(from.seg, d, dist) + extra, d, undefined, {
+          dir: d,
+        });
       }
       const toExit = d === 1 ? len(from.seg) - from.offset : from.offset;
       const key = `${from.seg}|${d}`;
-      const rec: Rec = { cost: toExit + dp(from.seg, d, toExit) + extra, seg: from.seg, dir: d, via: 'start', startDir: d };
+      const rec: Rec = {
+        cost: toExit + dp(from.seg, d, toExit) + extra,
+        seg: from.seg,
+        dir: d,
+        via: "start",
+        startDir: d,
+      };
       if (!best.has(key) || best.get(key)!.cost > rec.cost) {
         best.set(key, rec);
         heap.push(rec.cost, key);
@@ -331,7 +418,7 @@ export class TrackGraph {
       if (cost > rec.cost) continue;
       if (goal && cost >= goal.cost) break;
       if (cost > maxLength) break;
-      const push = (seg: string, dir: Dir, c: number, via: Rec['via']) => {
+      const push = (seg: string, dir: Dir, c: number, via: Rec["via"]) => {
         const k = `${seg}|${dir}`;
         const prev = best.get(k);
         if (prev && prev.cost <= c) return;
@@ -345,7 +432,13 @@ export class TrackGraph {
         if (!to && opts.goalKinds?.has(ts.kind)) {
           // Reached a goal-kind segment: finish at its entry.
           const k = `${t.seg}|${t.dir}|goal`;
-          setGoal(k, { cost, seg: t.seg, dir: t.dir, parent: key, via: 'turn' });
+          setGoal(k, {
+            cost,
+            seg: t.seg,
+            dir: t.dir,
+            parent: key,
+            via: "turn",
+          });
           continue;
         }
         if (!kinds.has(ts.kind)) continue;
@@ -355,23 +448,56 @@ export class TrackGraph {
         if (to && t.seg === to.seg) {
           const partial = t.dir === 1 ? to.offset : ts.length - to.offset;
           // Record a pseudo-state for reconstruction.
-          setGoal(`${t.seg}|${t.dir}|goal`, { cost: cost + kp + partial + dp(t.seg, t.dir, partial), seg: t.seg, dir: t.dir, parent: key, via: 'turn' });
+          setGoal(`${t.seg}|${t.dir}|goal`, {
+            cost: cost + kp + partial + dp(t.seg, t.dir, partial),
+            seg: t.seg,
+            dir: t.dir,
+            parent: key,
+            via: "turn",
+          });
         }
-        push(t.seg, t.dir, cost + kp + ts.length + dp(t.seg, t.dir, ts.length), 'turn');
+        push(
+          t.seg,
+          t.dir,
+          cost + kp + ts.length + dp(t.seg, t.dir, ts.length),
+          "turn",
+        );
         // Run into a reversal track (or, if allowed, onto main track past a switch), reverse, come back out.
-        const mainRev = opts.allowMainReversals && ts.kind === 'main' && nexts.length > 1;
+        const mainRev =
+          opts.allowMainReversals && ts.kind === "main" && nexts.length > 1;
         if (opts.allowReversals && (REVERSAL_KINDS.has(ts.kind) || mainRev)) {
           const x = Math.min(ts.length, runIn);
-          push(t.seg, -t.dir as Dir, cost + 2 * x + (mainRev ? (opts.mainReversalPenalty ?? 1500) : penalty), 'pocket');
+          push(
+            t.seg,
+            -t.dir as Dir,
+            cost
+              + 2 * x
+              + (mainRev ? (opts.mainReversalPenalty ?? 1500) : penalty),
+            "pocket",
+          );
         }
       }
-      if (opts.allowReversals && nexts.length === 0) push(rec.seg, -rec.dir as Dir, cost + penalty + len(rec.seg), 'deadend');
+      if (opts.allowReversals && nexts.length === 0)
+        push(
+          rec.seg,
+          -rec.dir as Dir,
+          cost + penalty + len(rec.seg),
+          "deadend",
+        );
     }
 
     if (!goal) return null;
-    const g = goal as { cost: number; key?: Key; direct?: { dir: Dir }; endDir: Dir; reverseAtTarget: boolean };
+    const g = goal as {
+      cost: number;
+      key?: Key;
+      direct?: { dir: Dir };
+      endDir: Dir;
+      reverseAtTarget: boolean;
+    };
     if (g.direct && to) {
-      const reversals = (opts.fromDir !== undefined && g.direct.dir !== opts.fromDir ? 1 : 0) + (g.reverseAtTarget ? 1 : 0);
+      const reversals =
+        (opts.fromDir !== undefined && g.direct.dir !== opts.fromDir ? 1 : 0)
+        + (g.reverseAtTarget ? 1 : 0);
       return {
         pieces: [{ seg: from.seg, from: from.offset, to: to.offset }],
         length: Math.abs(to.offset - from.offset),
@@ -382,37 +508,57 @@ export class TrackGraph {
     }
     // Reconstruct.
     const chain: Rec[] = [];
-    for (let k: Key | undefined = g.key; k; k = best.get(k)!.parent) chain.push(best.get(k)!);
+    for (let k: Key | undefined = g.key; k; k = best.get(k)!.parent)
+      chain.push(best.get(k)!);
     chain.reverse();
     const pieces: PathPiece[] = [];
     let reversals = g.reverseAtTarget ? 1 : 0;
     const first = chain[0]!;
-    if (opts.fromDir !== undefined && first.startDir !== opts.fromDir) reversals++;
+    if (opts.fromDir !== undefined && first.startDir !== opts.fromDir)
+      reversals++;
     for (let i = 0; i < chain.length; i++) {
       const r = chain[i]!;
       const L = len(r.seg);
       const isLast = i === chain.length - 1;
-      if (r.via === 'start') {
+      if (r.via === "start") {
         pieces.push({ seg: r.seg, from: from.offset, to: r.dir === 1 ? L : 0 });
-      } else if (r.via === 'turn') {
+      } else if (r.via === "turn") {
         const entry = r.dir === 1 ? 0 : L;
         // A goal-kind finish ends at the segment's entry.
-        const end = isLast ? (to ? to.offset : entry) : r.dir === 1 ? L : 0;
+        const end =
+          isLast ?
+            to ? to.offset
+            : entry
+          : r.dir === 1 ? L
+          : 0;
         pieces.push({ seg: r.seg, from: entry, to: end });
-      } else if (r.via === 'deadend') {
+      } else if (r.via === "deadend") {
         reversals++;
-        pieces.push({ seg: r.seg, from: r.dir === 1 ? 0 : L, to: r.dir === 1 ? L : 0 });
+        pieces.push({
+          seg: r.seg,
+          from: r.dir === 1 ? 0 : L,
+          to: r.dir === 1 ? L : 0,
+        });
       } else {
         // Pocket: entered through the end that is the exit for r.dir, ran in x, reversed, back out.
         reversals++;
         const x = Math.min(L, runIn);
         const exitEnd = r.dir === 1 ? L : 0;
         const turnPoint = r.dir === 1 ? L - x : x;
-        pieces.push({ seg: r.seg, from: exitEnd, to: turnPoint }, { seg: r.seg, from: turnPoint, to: exitEnd });
+        pieces.push(
+          { seg: r.seg, from: exitEnd, to: turnPoint },
+          { seg: r.seg, from: turnPoint, to: exitEnd },
+        );
       }
     }
     const length = pieces.reduce((s, p) => s + Math.abs(p.to - p.from), 0);
-    return { pieces, length, reversals, endDir: g.endDir, startDir: first.startDir ?? first.dir };
+    return {
+      pieces,
+      length,
+      reversals,
+      endDir: g.endDir,
+      startDir: first.startDir ?? first.dir,
+    };
   }
 }
 

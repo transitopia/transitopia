@@ -1,8 +1,8 @@
 // Scenario definitions (PLAN.md §4.8): alternate infrastructure and/or service, as config files in
 // data/scenarios/<name>/scenario.json, built by `npm run scenario <name>`.
 
-import type { LonLat } from '../geo.ts';
-import type { LineKey, SegmentKind } from '../infra/types.ts';
+import type { LonLat } from "../geo.ts";
+import type { LineKey, SegmentKind } from "../infra/types.ts";
 
 export interface ScenarioSpec {
   name: string;
@@ -39,23 +39,23 @@ export type ServiceOperation =
    * Extend a line past a terminus through new stations: trips ending at `at` continue through
    * `stations` (in order); trips starting at `at` start from the last new station instead.
    */
-  {
-    op: 'extend';
-    route: string;
-    at: string;
-    stations: NewStation[];
-    /** Extra run time over the physical minimum (default 1.15). */
-    padding?: number;
-    /** Dwell at each new station, s (default 25). */
-    dwell?: number;
-  }
+  | {
+      op: "extend";
+      route: string;
+      at: string;
+      stations: NewStation[];
+      /** Extra run time over the physical minimum (default 1.15). */
+      padding?: number;
+      /** Dwell at each new station, s (default 25). */
+      dwell?: number;
+    }
   /**
    * Shorten a route: cut every trip at its stop nearest `at`, keeping the part on the side of
    * `keep` (e.g. cut the 99 at Arbutus, keep the UBC side). Trips entirely on the cut side are
    * removed. Kept stops keep their timetabled times.
    */
   | {
-      op: 'truncate';
+      op: "truncate";
       route: string;
       at: LonLat;
       keep: LonLat;
@@ -72,6 +72,13 @@ export interface ScenarioManifest {
   description: string;
   builtAt: string;
   /** Same shape as the main feed manifest, pointing at the scenario's plan. */
-  feeds: { version: string; start: string; end: string; path: string; builtAt: string; movements: string }[];
+  feeds: {
+    version: string;
+    start: string;
+    end: string;
+    path: string;
+    builtAt: string;
+    movements: string;
+  }[];
   tracks: string;
 }

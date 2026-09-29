@@ -13,7 +13,7 @@ export interface Disruption {
   /** Periods it applies (ISO 8601 with offset). Service after midnight belongs to the previous service day. */
   active: { from: string; until: string }[];
   /** Draft (from an alert) until a person confirms it: drafts aren't applied. */
-  status?: 'draft' | 'confirmed';
+  status?: "draft" | "confirmed";
   /** Where the alert came from, for drafts. */
   alertId?: string;
   /**
@@ -23,7 +23,12 @@ export interface Disruption {
    * are single-track too (everyone boards from the open track's platform there); otherwise trains
    * keep their usual platform at the ends and cross over beyond them.
    */
-  singleTrack?: { line: string; between: [string, string]; keep: string; pinEnds?: boolean }[];
+  singleTrack?: {
+    line: string;
+    between: [string, string];
+    keep: string;
+    pinEnds?: boolean;
+  }[];
   /**
    * Reduced service: trips of `line` (optionally only those serving a station in `between`) run at
    * most every `minS` seconds per direction while the disruption applies; the others are cancelled.

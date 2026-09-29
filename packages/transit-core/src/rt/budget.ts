@@ -4,10 +4,14 @@
 // may be to interpolate between them, how long to predict past the latest fix) follow the schedule
 // instead of assuming one fixed interval. Shared by the server, the browser and scripts.
 
-import { dayOfWeek, localDate, toWallTime } from '../time.ts';
+import { dayOfWeek, localDate, toWallTime } from "../time.ts";
 
-export type PollFeed = 'positions' | 'tripUpdates' | 'alerts';
-export const POLL_FEEDS: readonly PollFeed[] = ['positions', 'tripUpdates', 'alerts'];
+export type PollFeed = "positions" | "tripUpdates" | "alerts";
+export const POLL_FEEDS: readonly PollFeed[] = [
+  "positions",
+  "tripUpdates",
+  "alerts",
+];
 
 /** Poll intervals from `from` (local "HH:MM") until the next band's start. */
 export interface PollBand {
@@ -26,11 +30,15 @@ export interface PollSchedule {
   weekend: PollBand[];
 }
 
-const FIELD = { positions: 'positionsS', tripUpdates: 'tripUpdatesS', alerts: 'alertsS' } as const;
+const FIELD = {
+  positions: "positionsS",
+  tripUpdates: "tripUpdatesS",
+  alerts: "alertsS",
+} as const;
 const DAY_MS = 86_400_000;
 
 const minuteOfDay = (hhmm: string) => {
-  const [h, m] = hhmm.split(':').map(Number);
+  const [h, m] = hhmm.split(":").map(Number);
   return h! * 60 + m!;
 };
 
@@ -45,7 +53,11 @@ export function bandAt(s: PollSchedule, t: number): PollBand {
 }
 
 /** How often `feed` is polled at t (seconds). */
-export function pollIntervalS(s: PollSchedule, feed: PollFeed, t: number): number {
+export function pollIntervalS(
+  s: PollSchedule,
+  feed: PollFeed,
+  t: number,
+): number {
   return bandAt(s, t)[FIELD[feed]];
 }
 
@@ -61,7 +73,11 @@ const nearMemo = new Map<string, number>();
  * derived from it hold across band changes (e.g. the first poll after the peak ends comes 150 s after
  * one polled at a 60 s peak interval). Memoised per minute: it's called every frame.
  */
-export function pollIntervalNearS(s: PollSchedule, feed: PollFeed, t: number): number {
+export function pollIntervalNearS(
+  s: PollSchedule,
+  feed: PollFeed,
+  t: number,
+): number {
   const minute = Math.floor(t / 60_000);
   const key = `${scheduleId(s)}:${feed}:${minute}`;
   const hit = nearMemo.get(key);
@@ -69,8 +85,16 @@ export function pollIntervalNearS(s: PollSchedule, feed: PollFeed, t: number): n
   const reach = 2 * maxPollIntervalS(s, feed) * 1000;
   let worst = 0;
   // Bands are at least an hour long; sampling every 5 min (and both ends) sees every band in reach.
-  for (let x = minute * 60_000 - reach; x <= minute * 60_000 + reach + 60_000; x += 300_000) worst = Math.max(worst, pollIntervalS(s, feed, x));
-  worst = Math.max(worst, pollIntervalS(s, feed, minute * 60_000 + reach + 60_000));
+  for (
+    let x = minute * 60_000 - reach;
+    x <= minute * 60_000 + reach + 60_000;
+    x += 300_000
+  )
+    worst = Math.max(worst, pollIntervalS(s, feed, x));
+  worst = Math.max(
+    worst,
+    pollIntervalS(s, feed, minute * 60_000 + reach + 60_000),
+  );
   if (nearMemo.size > 2000) nearMemo.clear();
   nearMemo.set(key, worst);
   return worst;
@@ -85,16 +109,28 @@ function scheduleId(s: PollSchedule): number {
 }
 
 /** Poll times per feed from `from` to `to` following the schedule (each poll waits its interval). */
-export function simulatePolls(s: PollSchedule, from: number, to: number): Record<PollFeed, number[]> {
-  const out = { positions: [], tripUpdates: [], alerts: [] } as Record<PollFeed, number[]>;
+export function simulatePolls(
+  s: PollSchedule,
+  from: number,
+  to: number,
+): Record<PollFeed, number[]> {
+  const out = { positions: [], tripUpdates: [], alerts: [] } as Record<
+    PollFeed,
+    number[]
+  >;
   for (const feed of POLL_FEEDS) {
-    for (let t = from; t < to; t += pollIntervalS(s, feed, t) * 1000) out[feed].push(t);
+    for (let t = from; t < to; t += pollIntervalS(s, feed, t) * 1000)
+      out[feed].push(t);
   }
   return out;
 }
 
 /** The most requests the schedule makes in any 24 hours over [from, from + days). */
-export function maxRequestsPer24h(s: PollSchedule, from: number, days = 7): number {
+export function maxRequestsPer24h(
+  s: PollSchedule,
+  from: number,
+  days = 7,
+): number {
   const all = Object.values(simulatePolls(s, from, from + days * DAY_MS))
     .flat()
     .sort((a, b) => a - b);
@@ -116,12 +152,20 @@ export class RequestLedger {
     entries: [number, PollFeed][] = [],
     readonly windowMs = DAY_MS,
   ) {
-    this.entries = entries.filter((e) => Array.isArray(e) && typeof e[0] === 'number' && POLL_FEEDS.includes(e[1])).sort((a, b) => a[0] - b[0]);
+    this.entries = entries
+      .filter(
+        (e) =>
+          Array.isArray(e)
+          && typeof e[0] === "number"
+          && POLL_FEEDS.includes(e[1]),
+      )
+      .sort((a, b) => a[0] - b[0]);
   }
 
   private prune(t: number): void {
     let i = 0;
-    while (i < this.entries.length && this.entries[i]![0] <= t - this.windowMs) i++;
+    while (i < this.entries.length && this.entries[i]![0] <= t - this.windowMs)
+      i++;
     if (i) this.entries.splice(0, i);
   }
 
@@ -143,7 +187,8 @@ export class RequestLedger {
   }
 
   lastAt(feed: PollFeed): number | undefined {
-    for (let i = this.entries.length - 1; i >= 0; i--) if (this.entries[i]![1] === feed) return this.entries[i]![0];
+    for (let i = this.entries.length - 1; i >= 0; i--)
+      if (this.entries[i]![1] === feed) return this.entries[i]![0];
     return undefined;
   }
 
@@ -177,13 +222,16 @@ export interface Cadence {
 }
 
 export function cadence(cfg: CadenceConfig): Cadence {
-  const near = (feed: PollFeed, t: number) => pollIntervalNearS(cfg.poll, feed, t);
+  const near = (feed: PollFeed, t: number) =>
+    pollIntervalNearS(cfg.poll, feed, t);
   return {
-    staleAfterMs: (fetchedAt) => (near('positions', fetchedAt) + cfg.staleGraceS) * 1000,
-    coverageGapMs: (t) => (near('positions', t) + cfg.coverageSlackS) * 1000,
-    maxInterpolateS: (t) => near('positions', t) + cfg.interpolateSlackS,
-    maxExtrapolateS: (t) => near('positions', t) + cfg.extrapolateSlackS,
-    maxInterpolateLimitS: maxPollIntervalS(cfg.poll, 'positions') + cfg.interpolateSlackS,
-    alertGraceMs: (t) => near('alerts', t) * 1000,
+    staleAfterMs: (fetchedAt) =>
+      (near("positions", fetchedAt) + cfg.staleGraceS) * 1000,
+    coverageGapMs: (t) => (near("positions", t) + cfg.coverageSlackS) * 1000,
+    maxInterpolateS: (t) => near("positions", t) + cfg.interpolateSlackS,
+    maxExtrapolateS: (t) => near("positions", t) + cfg.extrapolateSlackS,
+    maxInterpolateLimitS:
+      maxPollIntervalS(cfg.poll, "positions") + cfg.interpolateSlackS,
+    alertGraceMs: (t) => near("alerts", t) * 1000,
   };
 }

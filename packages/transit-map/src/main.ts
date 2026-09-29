@@ -1,31 +1,58 @@
-import 'maplibre-gl/dist/maplibre-gl.css';
-import './style.css';
-import { Map as MlMap, NavigationControl, ScaleControl, addProtocol, setWorkerUrl } from 'maplibre-gl';
+import "maplibre-gl/dist/maplibre-gl.css";
+import "./style.css";
+import {
+  Map as MlMap,
+  NavigationControl,
+  ScaleControl,
+  addProtocol,
+  setWorkerUrl,
+} from "maplibre-gl";
 // maplibre locates its worker relative to its own module URL, which bundling breaks; hand it a
 // Vite-built worker (with its shared chunk inlined) instead.
-import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
-import { Protocol } from 'pmtiles';
-import { Clock } from './clock.ts';
-import { PlanStore, displayServiceDate, kinematics, mergeCorrections } from './plans.ts';
-import { basemapStyle, type Theme } from './basemap.ts';
-import { addStaticLayers, applyRouteFilter, setFerryPair } from './layers/static.ts';
-import { VehicleLayer } from './layers/vehicles.ts';
-import { addTrackLayers, applyTrackFilter, loadPlatforms, loadTracks, setDebugPlatforms } from './layers/tracks.ts';
-import { TrackGraph } from '@transitopia/transit-core/infra/graph.ts';
-import type { InfraCollection } from '@transitopia/transit-core/infra/types.ts';
-import { Timebar } from './ui/timebar.ts';
-import { Legend } from './ui/legend.ts';
-import { InspectCard } from './ui/inspect.ts';
-import { readUrl, writeUrl } from './url.ts';
-import { RtClient, type RtMode } from './rt.ts';
-import { AisClient } from './ais.ts';
-import { addDays, localDate } from '@transitopia/transit-core/time.ts';
-import { loadPref, savePref } from './prefs.ts';
-import { makeServiceDescriber, type ServiceDayInfo } from '@transitopia/transit-core/gtfs/describe.ts';
-import { feedForDate } from '@transitopia/transit-core/plan/types.ts';
-import type { PreparedPlan, VehicleState } from '@transitopia/transit-core/schedule/engine.ts';
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
+import { Protocol } from "pmtiles";
+import { Clock } from "./clock.ts";
+import {
+  PlanStore,
+  displayServiceDate,
+  kinematics,
+  mergeCorrections,
+} from "./plans.ts";
+import { basemapStyle, type Theme } from "./basemap.ts";
+import {
+  addStaticLayers,
+  applyRouteFilter,
+  setFerryPair,
+} from "./layers/static.ts";
+import { VehicleLayer } from "./layers/vehicles.ts";
+import {
+  addTrackLayers,
+  applyTrackFilter,
+  loadPlatforms,
+  loadTracks,
+  setDebugPlatforms,
+} from "./layers/tracks.ts";
+import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
+import type { InfraCollection } from "@transitopia/transit-core/infra/types.ts";
+import { Timebar } from "./ui/timebar.ts";
+import { Legend } from "./ui/legend.ts";
+import { InspectCard } from "./ui/inspect.ts";
+import { readUrl, writeUrl } from "./url.ts";
+import { RtClient, type RtMode } from "./rt.ts";
+import { AisClient } from "./ais.ts";
+import { addDays, localDate } from "@transitopia/transit-core/time.ts";
+import { loadPref, savePref } from "./prefs.ts";
+import {
+  makeServiceDescriber,
+  type ServiceDayInfo,
+} from "@transitopia/transit-core/gtfs/describe.ts";
+import { feedForDate } from "@transitopia/transit-core/plan/types.ts";
+import type {
+  PreparedPlan,
+  VehicleState,
+} from "@transitopia/transit-core/schedule/engine.ts";
 
-type ThemePref = 'auto' | Theme;
+type ThemePref = "auto" | Theme;
 
 /** First view (when the URL has no map position): the SkyTrain network, UBC to King George. */
 const INITIAL_BOUNDS: [[number, number], [number, number]] = [
@@ -38,12 +65,14 @@ const MAX_BOUNDS: [[number, number], [number, number]] = [
 ];
 
 function resolveTheme(pref: ThemePref): Theme {
-  if (pref !== 'auto') return pref;
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  if (pref !== "auto") return pref;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ?
+      "dark"
+    : "light";
 }
 
 function showError(message: string): void {
-  const box = document.getElementById('error')!;
+  const box = document.getElementById("error")!;
   box.textContent = message;
   box.hidden = false;
 }
@@ -51,52 +80,64 @@ function showError(message: string): void {
 async function main(): Promise<void> {
   setWorkerUrl(maplibreWorkerUrl);
   const protocol = new Protocol();
-  addProtocol('pmtiles', protocol.tile);
+  addProtocol("pmtiles", protocol.tile);
 
-  const scenarioName = new URLSearchParams(location.search).get('scenario') ?? undefined;
+  const scenarioName =
+    new URLSearchParams(location.search).get("scenario") ?? undefined;
   const store = await PlanStore.load(scenarioName);
   const range = store.range();
-  if (!range) throw new Error('The timetable manifest lists no feeds. Run "npm run data".');
+  if (!range)
+    throw new Error(
+      'The timetable manifest lists no feeds. Run "npm run data".',
+    );
 
   const url = readUrl();
   const clock = new Clock(url.t ?? Date.now());
   clock.setBounds(range[0], range[1]);
-  if (url.t === undefined && (Date.now() < range[0] || Date.now() > range[1])) clock.seek(range[0] + 8 * 3600_000);
+  if (url.t === undefined && (Date.now() < range[0] || Date.now() > range[1]))
+    clock.seek(range[0] + 8 * 3600_000);
   if (url.rate !== undefined) clock.setRate(url.rate);
   if (url.paused) clock.pause();
 
-  let themePref = loadPref<ThemePref>('theme', 'auto');
+  let themePref = loadPref<ThemePref>("theme", "auto");
   let theme = resolveTheme(themePref);
   document.documentElement.dataset.theme = theme;
 
   const map = new MlMap({
-    container: 'map',
+    container: "map",
     style: basemapStyle(theme),
-    bounds: location.hash.includes('map=') ? undefined : INITIAL_BOUNDS,
-    fitBoundsOptions: { padding: { top: 40, bottom: 130, left: 20, right: 50 } },
+    bounds: location.hash.includes("map=") ? undefined : INITIAL_BOUNDS,
+    fitBoundsOptions: {
+      padding: { top: 40, bottom: 130, left: 20, right: 50 },
+    },
     maxBounds: MAX_BOUNDS,
-    hash: 'map',
+    hash: "map",
     attributionControl: { compact: true },
     dragRotate: true,
     pitchWithRotate: false,
   });
-  map.addControl(new NavigationControl({ visualizePitch: false }), 'top-right');
-  map.addControl(new ScaleControl({ unit: 'metric' }), 'bottom-right');
+  map.addControl(new NavigationControl({ visualizePitch: false }), "top-right");
+  map.addControl(new ScaleControl({ unit: "metric" }), "bottom-right");
 
   const vehicles = new VehicleLayer(map, kinematics.sizing);
-  const legend = new Legend('legend');
+  const legend = new Legend("legend");
   if (store.scenario) {
-    const title = document.querySelector('.legend-title')!;
+    const title = document.querySelector(".legend-title")!;
     title.textContent = `Scenario: ${store.scenario.name}`;
-    title.setAttribute('title', store.scenario.description);
-    document.documentElement.classList.add('scenario');
+    title.setAttribute("title", store.scenario.description);
+    document.documentElement.classList.add("scenario");
   }
-  const inspect = new InspectCard('inspect');
+  const inspect = new InspectCard("inspect");
   let selected: string | undefined = url.vehicle;
   vehicles.selectedId = selected;
   inspect.onLocate = () => {
     const v = lastVehicles.find((x) => x.id === selected);
-    if (v) map.easeTo({ center: [v.lon, v.lat], zoom: Math.max(map.getZoom(), 15), duration: 600 });
+    if (v)
+      map.easeTo({
+        center: [v.lon, v.lat],
+        zoom: Math.max(map.getZoom(), 15),
+        duration: 600,
+      });
   };
   inspect.onClose = () => {
     selected = vehicles.selectedId = undefined;
@@ -108,10 +149,18 @@ async function main(): Promise<void> {
   const describeDate = (date: string): string => {
     const feed = feedForDate(store.manifest, date);
     const pp = store.planFor(date);
-    if (!feed) return 'No timetable for this date';
-    if (!pp) return '…';
+    if (!feed) return "No timetable for this date";
+    if (!pp) return "…";
     let fn = describers.get(feed.version);
-    if (!fn) describers.set(feed.version, (fn = makeServiceDescriber(pp.servicesOn, pp.plan.feedStart, pp.plan.feedEnd)));
+    if (!fn)
+      describers.set(
+        feed.version,
+        (fn = makeServiceDescriber(
+          pp.servicesOn,
+          pp.plan.feedStart,
+          pp.plan.feedEnd,
+        )),
+      );
     return fn(date).label;
   };
 
@@ -120,12 +169,20 @@ async function main(): Promise<void> {
     describeDate,
     dateRange: () => {
       const f = store.manifest.feeds;
-      return f.length ? [f.map((x) => x.start).sort()[0]!, f.map((x) => x.end).sort().at(-1)!] : undefined;
+      return f.length ?
+          [
+            f.map((x) => x.start).sort()[0]!,
+            f
+              .map((x) => x.end)
+              .sort()
+              .at(-1)!,
+          ]
+        : undefined;
     },
   });
 
   // Track infrastructure (optional: without it, SkyTrain falls back to GTFS shapes).
-  const debug = new URLSearchParams(location.search).has('debug');
+  const debug = new URLSearchParams(location.search).has("debug");
   let tracks: InfraCollection | undefined;
   void loadTracks(store.tracksPath).then((t) => {
     tracks = t;
@@ -151,17 +208,28 @@ async function main(): Promise<void> {
       addTrackLayers(map, tracks, pp.plan, theme, debug);
       applyTrackFilter(map, legend.hidden);
       // Tracks replace the GTFS SkyTrain shapes.
-      for (const id of ['routes-skytrain', 'routes-skytrain-casing']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
+      for (const id of ["routes-skytrain", "routes-skytrain-casing"])
+        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
       if (debug) {
         const plan = pp.plan;
-        void loadPlatforms(plan.feedVersion).then((p) => p && tracks && setDebugPlatforms(map, TrackGraph.fromCollection(tracks), plan, p));
+        void loadPlatforms(plan.feedVersion).then(
+          (p) =>
+            p
+            && tracks
+            && setDebugPlatforms(
+              map,
+              TrackGraph.fromCollection(tracks),
+              plan,
+              p,
+            ),
+        );
       }
     }
     vehicles.attach();
     vehicles.setRouteColors(pp.plan.routes);
     legend.render(pp.plan.routes);
   };
-  map.on('style.load', () => {
+  map.on("style.load", () => {
     styleReady = true;
     syncStatic(true);
   });
@@ -175,15 +243,18 @@ async function main(): Promise<void> {
   };
 
   // Theme toggle: auto → light → dark.
-  const themeBtn = document.getElementById('theme-toggle') as HTMLButtonElement;
+  const themeBtn = document.getElementById("theme-toggle") as HTMLButtonElement;
   const renderThemeBtn = () => {
-    themeBtn.textContent = { auto: '◐', light: '☀', dark: '☾' }[themePref];
+    themeBtn.textContent = { auto: "◐", light: "☀", dark: "☾" }[themePref];
     themeBtn.title = `Theme: ${themePref}`;
   };
   renderThemeBtn();
-  themeBtn.addEventListener('click', () => {
-    themePref = themePref === 'auto' ? 'light' : themePref === 'light' ? 'dark' : 'auto';
-    savePref('theme', themePref);
+  themeBtn.addEventListener("click", () => {
+    themePref =
+      themePref === "auto" ? "light"
+      : themePref === "light" ? "dark"
+      : "auto";
+    savePref("theme", themePref);
     renderThemeBtn();
     const next = resolveTheme(themePref);
     if (next !== theme) {
@@ -195,13 +266,14 @@ async function main(): Promise<void> {
   });
 
   // Selection and hover.
-  map.on('click', (e) => {
+  map.on("click", (e) => {
     const v = vehicles.pickAt(e.point.x, e.point.y);
     selected = vehicles.selectedId = v?.id;
     writeUrl(clock, selected);
   });
-  map.on('mousemove', (e) => {
-    map.getCanvas().style.cursor = vehicles.pickAt(e.point.x, e.point.y) ? 'pointer' : '';
+  map.on("mousemove", (e) => {
+    map.getCanvas().style.cursor =
+      vehicles.pickAt(e.point.x, e.point.y) ? "pointer" : "";
   });
 
   // URL sync: on discrete changes, and periodically while playing away from live.
@@ -215,10 +287,19 @@ async function main(): Promise<void> {
   // Schedule estimates for buses stop at stops, using the same travel-time profile as live prediction.
   store.pacerFor = (pp) => rt.predictorFor(pp)?.pacer;
   const RT_BADGE: Record<RtMode, [string, string]> = {
-    live: ['Buses: live', 'Bus positions from TransLink real-time data'],
-    recorded: ['Buses: recorded', 'Bus positions replayed from recorded real-time data'],
-    estimated: ['Buses: estimated', 'No real-time data recorded for this time: bus positions estimated from the schedule'],
-    unavailable: ['Buses: estimated', 'Real-time service unavailable: bus positions estimated from the schedule'],
+    live: ["Buses: live", "Bus positions from TransLink real-time data"],
+    recorded: [
+      "Buses: recorded",
+      "Bus positions replayed from recorded real-time data",
+    ],
+    estimated: [
+      "Buses: estimated",
+      "No real-time data recorded for this time: bus positions estimated from the schedule",
+    ],
+    unavailable: [
+      "Buses: estimated",
+      "Real-time service unavailable: bus positions estimated from the schedule",
+    ],
   };
   let lastCoverageUpdate = 0;
 
@@ -226,11 +307,17 @@ async function main(): Promise<void> {
   let lastVehicles: VehicleState[] = [];
   const frame = () => {
     const t = clock.now();
-    const visible = legend.hidden.size ? new Set(routeKeys(shownFeed).filter((k) => !legend.hidden.has(k))) : undefined;
+    const visible =
+      legend.hidden.size ?
+        new Set(routeKeys(shownFeed).filter((k) => !legend.hidden.has(k)))
+      : undefined;
     // Scenarios are hypothetical: never mix in real bus positions.
     if (!store.scenario) rt.update(t);
     const pp = store.planFor(displayServiceDate(t));
-    const live = store.scenario ? { mode: 'estimated' as const } : rt.vehiclesAt(t, pp, visible);
+    const live =
+      store.scenario ?
+        { mode: "estimated" as const }
+      : rt.vehiclesAt(t, pp, visible);
     // RT delays carried forward: schedule estimates continue from where buses really were.
     const carry = store.scenario ? undefined : rt.delayCorrections(t, pp);
     let byDate = carry?.byDate;
@@ -255,7 +342,10 @@ async function main(): Promise<void> {
     const shownDate = displayServiceDate(t);
     const shownPp = store.planFor(shownDate);
     const ferry = shownPp?.plan.ferry;
-    const pair = ferry ? ((!store.scenario && ais.pairFor(shownDate, shownPp)) || ferry.default) : null;
+    const pair =
+      ferry ?
+        (!store.scenario && ais.pairFor(shownDate, shownPp)) || ferry.default
+      : null;
     if (pair !== ferryPair && styleReady) {
       ferryPair = pair;
       setFerryPair(map, pair ?? undefined);
@@ -263,20 +353,35 @@ async function main(): Promise<void> {
     if (live.vehicles) {
       // RT buses, plus estimates for buses whose RT prediction has run out (unreported for a while)
       // but whose delay is known, unless the same bus (block) is already shown from RT.
-      const shownBlocks = new Set(live.vehicles.map((v) => pp?.tripIndex.get(v.tripId)?.vehicleId));
-      const carried = scheduled.filter((v) => v.mode === 'bus' && carry?.carried.has(v.tripId) && !shownBlocks.has(v.id));
-      lastVehicles = [...scheduled.filter((v) => v.mode !== 'bus'), ...live.vehicles, ...carried];
+      const shownBlocks = new Set(
+        live.vehicles.map((v) => pp?.tripIndex.get(v.tripId)?.vehicleId),
+      );
+      const carried = scheduled.filter(
+        (v) =>
+          v.mode === "bus"
+          && carry?.carried.has(v.tripId)
+          && !shownBlocks.has(v.id),
+      );
+      lastVehicles = [
+        ...scheduled.filter((v) => v.mode !== "bus"),
+        ...live.vehicles,
+        ...carried,
+      ];
     } else lastVehicles = scheduled;
     store.setLiveDispatch(rt.dispatchPointer());
     timebar.setNotices(store.scenario ? [] : store.noticesAt(t));
     const [badge, badgeTitle] = RT_BADGE[live.mode];
-    timebar.setRtBadge(badge, live.mode, rt.liveStatus() ? `${badgeTitle} (${rt.liveStatus()})` : badgeTitle);
+    timebar.setRtBadge(
+      badge,
+      live.mode,
+      rt.liveStatus() ? `${badgeTitle} (${rt.liveStatus()})` : badgeTitle,
+    );
     if (performance.now() - lastCoverageUpdate > 1000) {
       lastCoverageUpdate = performance.now();
       const [lo, hi] = timebar.sliderRange(t);
       timebar.setCoverage(t, rt.coverageFor(lo, hi));
     }
-    vehicles.update(lastVehicles, theme === 'dark');
+    vehicles.update(lastVehicles, theme === "dark");
     timebar.tick(t);
     syncStatic();
     if (selected) {
@@ -293,7 +398,9 @@ async function main(): Promise<void> {
   requestAnimationFrame(frame);
 
   // Debug handle for the console.
-  Object.assign(window, { skytrain: { map, clock, store, rt, vehicles: () => lastVehicles } });
+  Object.assign(window, {
+    skytrain: { map, clock, store, rt, vehicles: () => lastVehicles },
+  });
 }
 
 function routeKeys(pp: PreparedPlan | undefined): string[] {

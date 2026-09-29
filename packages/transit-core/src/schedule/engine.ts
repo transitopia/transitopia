@@ -2,10 +2,21 @@
 // "estimated" layer for every mode; SkyTrain will switch to track-level movements (PLAN.md §4.4),
 // and buses overlay real-time observations on top (§4.5).
 
-import { bearingDeg, cumulativeLengths, pointAlong, type LonLat } from '../geo.ts';
-import { indexCalendar } from '../gtfs/calendar.ts';
-import { serviceDayStart } from '../time.ts';
-import type { PlanPattern, PlanRoute, PlanStop, PlanTrip, ServicePlan } from '../plan/types.ts';
+import {
+  bearingDeg,
+  cumulativeLengths,
+  pointAlong,
+  type LonLat,
+} from "../geo.ts";
+import { indexCalendar } from "../gtfs/calendar.ts";
+import { serviceDayStart } from "../time.ts";
+import type {
+  PlanPattern,
+  PlanRoute,
+  PlanStop,
+  PlanTrip,
+  ServicePlan,
+} from "../plan/types.ts";
 import {
   distanceAt,
   kinematicsFor,
@@ -15,17 +26,18 @@ import {
   type Kinematics,
   type KinematicsConfig,
   type LegProfile,
-} from '../movement/kinematics.ts';
+} from "../movement/kinematics.ts";
 
-export type Provenance = 'observed' | 'interpolated' | 'estimated';
+export type Provenance = "observed" | "interpolated" | "estimated";
 /** `held`: stopped between stations by signalling (dispatched SkyTrain plans). */
-export type VehicleStatus = 'moving' | 'dwell' | 'layover' | 'turnback' | 'pullout' | 'pullin' | 'held';
+export type VehicleStatus =
+  "moving" | "dwell" | "layover" | "turnback" | "pullout" | "pullin" | "held";
 
 export interface VehicleState {
   /** Stable across consecutive trips of the same vehicle, where known. */
   id: string;
   routeKey: string;
-  mode: PlanRoute['mode'];
+  mode: PlanRoute["mode"];
   tripId: string;
   headsign: string;
   lon: number;
@@ -55,7 +67,12 @@ export interface VehicleState {
   /** Position on the track graph (track-level playback only). */
   track?: { seg: string; offset: number };
   /** Observed consist (corrections), e.g. { type: 'Mk III', cars: 4 } or { name: 'Burrard Pacific Breeze' }. */
-  consist?: { name?: string; type?: string; cars?: number; carNumbers?: string[] };
+  consist?: {
+    name?: string;
+    type?: string;
+    cars?: number;
+    carNumbers?: string[];
+  };
   length: number;
   width: number;
 }
@@ -92,10 +109,14 @@ export interface PreparedPlan {
   maxSpanByService: Map<string, number>;
 }
 
-export function preparePlan(plan: ServicePlan, kinCfg: KinematicsConfig): PreparedPlan {
+export function preparePlan(
+  plan: ServicePlan,
+  kinCfg: KinematicsConfig,
+): PreparedPlan {
   const routes = new Map(plan.routes.map((r) => [r.key, r]));
   const shapeCum = new Map<string, Float64Array>();
-  for (const [id, coords] of Object.entries(plan.shapes)) shapeCum.set(id, cumulativeLengths(coords));
+  for (const [id, coords] of Object.entries(plan.shapes))
+    shapeCum.set(id, cumulativeLengths(coords));
   const tripsByService = new Map<string, PreparedTrip[]>();
   const maxSpanByService = new Map<string, number>();
 
@@ -114,7 +135,8 @@ export function preparePlan(plan: ServicePlan, kinCfg: KinematicsConfig): Prepar
       arr[i] = i === 0 ? a : a - half;
       dep[i] = i === n - 1 ? d : d + half;
     }
-    if (kin.profile === 'trapezoid' && n > 2) retime(trip, pattern.dist, kin, arr, dep);
+    if (kin.profile === "trapezoid" && n > 2)
+      retime(trip, pattern.dist, kin, arr, dep);
     // Keep legs non-negative if dwell carving over-ran a very short scheduled hop.
     for (let i = 1; i < n; i++) {
       if (arr[i]! < dep[i - 1]!) {
@@ -129,7 +151,10 @@ export function preparePlan(plan: ServicePlan, kinCfg: KinematicsConfig): Prepar
       pattern,
       route,
       kin,
-      vehicleId: trip.block ? `${route.key}:${trip.service}:${trip.block}` : `${route.key}:trip:${trip.id}`,
+      vehicleId:
+        trip.block ?
+          `${route.key}:${trip.service}:${trip.block}`
+        : `${route.key}:trip:${trip.id}`,
       arr,
       dep,
       visibleUntil: arr[n - 1]!,
@@ -154,22 +179,29 @@ export function preparePlan(plan: ServicePlan, kinCfg: KinematicsConfig): Prepar
       for (let i = 0; i + 1 < b.length; i++) {
         const cur = b[i]!;
         const next = b[i + 1]!;
-        const lastStop = plan.stops[cur.pattern.stops[cur.pattern.stops.length - 1]!]!;
+        const lastStop =
+          plan.stops[cur.pattern.stops[cur.pattern.stops.length - 1]!]!;
         const firstStop = plan.stops[next.pattern.stops[0]!]!;
         const gap = next.dep[0]! - cur.visibleUntil;
-        if (gap >= 0 && gap <= MAX_LAYOVER_S && sameStation(lastStop, firstStop)) {
+        if (
+          gap >= 0
+          && gap <= MAX_LAYOVER_S
+          && sameStation(lastStop, firstStop)
+        ) {
           cur.visibleUntil = next.trip.start;
           cur.next = next;
         }
       }
     }
     let maxSpan = 0;
-    for (const t of list) maxSpan = Math.max(maxSpan, t.visibleUntil - t.trip.start);
+    for (const t of list)
+      maxSpan = Math.max(maxSpan, t.visibleUntil - t.trip.start);
     maxSpanByService.set(service, maxSpan);
   }
 
   const tripIndex = new Map<string, PreparedTrip>();
-  for (const list of tripsByService.values()) for (const t of list) tripIndex.set(t.trip.id, t);
+  for (const list of tripsByService.values())
+    for (const t of list) tripIndex.set(t.trip.id, t);
   const stopById = new Map(plan.stops.map((s) => [s.id, s]));
   return {
     plan,
@@ -192,18 +224,33 @@ const RETIME_TOLERANCE_S = 45;
  * Minute-rounded GTFS times otherwise make some hops impossibly short and others slack. Each stop
  * stays within RETIME_TOLERANCE_S of its timetabled time. Mutates arr/dep.
  */
-function retime(trip: PlanTrip, dist: number[], kin: Kinematics, arr: Float64Array, dep: Float64Array): void {
+function retime(
+  trip: PlanTrip,
+  dist: number[],
+  kin: Kinematics,
+  arr: Float64Array,
+  dep: Float64Array,
+): void {
   const n = arr.length;
-  const sched = (i: number) => trip.start + (trip.arr[i]! + (trip.dep ?? trip.arr)[i]!) / 2;
-  const dwell = (i: number) => (i === 0 || i === n - 1 ? 0 : Math.max(kin.dwell, (trip.dep ?? trip.arr)[i]! - trip.arr[i]!));
+  const sched = (i: number) =>
+    trip.start + (trip.arr[i]! + (trip.dep ?? trip.arr)[i]!) / 2;
+  const dwell = (i: number) =>
+    i === 0 || i === n - 1 ?
+      0
+    : Math.max(kin.dwell, (trip.dep ?? trip.arr)[i]! - trip.arr[i]!);
   const move: number[] = [];
-  for (let i = 0; i + 1 < n; i++) move.push(minLegTime(Math.max(0, dist[i + 1]! - dist[i]!), kin));
+  for (let i = 0; i + 1 < n; i++)
+    move.push(minLegTime(Math.max(0, dist[i + 1]! - dist[i]!), kin));
   const t0 = dep[0]!;
   let need = 0;
-  for (let i = 0; i + 1 < n; i++) need += move[i]! + (i + 1 < n - 1 ? dwell(i + 1) : 0);
+  for (let i = 0; i + 1 < n; i++)
+    need += move[i]! + (i + 1 < n - 1 ? dwell(i + 1) : 0);
   if (need <= 0) return;
   // The final arrival is minute-rounded too: let it slip a little rather than race the last hop.
-  arr[n - 1] = Math.max(arr[n - 1]!, Math.min(arr[n - 1]! + RETIME_TOLERANCE_S / 1.5, t0 + need));
+  arr[n - 1] = Math.max(
+    arr[n - 1]!,
+    Math.min(arr[n - 1]! + RETIME_TOLERANCE_S / 1.5, t0 + need),
+  );
   dep[n - 1] = Math.max(dep[n - 1]!, arr[n - 1]!);
   const total = arr[n - 1]! - t0;
   const k = total / need;
@@ -212,7 +259,10 @@ function retime(trip: PlanTrip, dist: number[], kin: Kinematics, arr: Float64Arr
     t += move[i - 1]! * k;
     const d = dwell(i) * k;
     // Keep the dwell's centre near the timetabled time.
-    const centre = Math.min(sched(i) + RETIME_TOLERANCE_S, Math.max(sched(i) - RETIME_TOLERANCE_S, t + d / 2));
+    const centre = Math.min(
+      sched(i) + RETIME_TOLERANCE_S,
+      Math.max(sched(i) - RETIME_TOLERANCE_S, t + d / 2),
+    );
     arr[i] = centre - d / 2;
     dep[i] = centre + d / 2;
     t = dep[i]!;
@@ -224,7 +274,10 @@ function retime(trip: PlanTrip, dist: number[], kin: Kinematics, arr: Float64Arr
     const latestDep = arr[i + 1]! - move[i]! * kk;
     if (dep[i]! <= latestDep) continue;
     const floor = sched(i) - RETIME_TOLERANCE_S - (dep[i]! - arr[i]!) / 2;
-    const shift = Math.min(dep[i]! - latestDep, Math.max(0, arr[i]! - Math.max(floor, dep[i - 1]!)));
+    const shift = Math.min(
+      dep[i]! - latestDep,
+      Math.max(0, arr[i]! - Math.max(floor, dep[i - 1]!)),
+    );
     arr[i] = arr[i]! - shift;
     dep[i] = dep[i]! - shift;
   }
@@ -237,7 +290,11 @@ function retime(trip: PlanTrip, dist: number[], kin: Kinematics, arr: Float64Arr
 }
 
 function sameStation(a: PlanStop, b: PlanStop): boolean {
-  return a.id === b.id || (a.parent !== undefined && a.parent === b.parent) || a.name === b.name;
+  return (
+    a.id === b.id
+    || (a.parent !== undefined && a.parent === b.parent)
+    || a.name === b.name
+  );
 }
 
 /** First index in a start-sorted list with start >= t. */
@@ -265,7 +322,11 @@ export interface ScheduleQuery {
  * Position along a trip's shape at a service-day time strictly between its first departure and last
  * arrival, or undefined to use the default timetable interpolation. speed 0 = standing at a stop.
  */
-export type TripPacer = (trip: PreparedTrip, sec: number, serviceDate: string) => { along: number; speed: number } | undefined;
+export type TripPacer = (
+  trip: PreparedTrip,
+  sec: number,
+  serviceDate: string,
+) => { along: number; speed: number } | undefined;
 
 /**
  * Adjustments for timetable vehicles: observations (see reconcileScheduled) and delays carried
@@ -278,9 +339,16 @@ export interface ScheduleCorrections {
    * crossing is late by less on arrival. `estimate` (a source label) marks a projected delay rather
    * than a sighting: positions stay provenance 'estimated'.
    */
-  trips: Map<string, { anchors: { sched: number; shift: number }[]; observed: { t: number; source: string }[]; estimate?: string }>;
+  trips: Map<
+    string,
+    {
+      anchors: { sched: number; shift: number }[];
+      observed: { t: number; source: string }[];
+      estimate?: string;
+    }
+  >;
   cancelled: Set<string>;
-  consists: Map<string, NonNullable<VehicleState['consist']>>;
+  consists: Map<string, NonNullable<VehicleState["consist"]>>;
   /**
    * Pattern id → shape to draw it along instead of its own (a ferry day using another berth pair,
    * ServicePlan.ferry). Timing is unchanged: distance along the pattern is scaled to the shape.
@@ -292,13 +360,17 @@ export interface ScheduleCorrections {
 const prevCache = new WeakMap<PreparedPlan, Map<string, PreparedTrip>>();
 const specialCache = new WeakMap<ScheduleCorrections, Set<PreparedTrip>>();
 /** Trips drawn by the corrected pass: corrected or cancelled, or laying over for a corrected trip. */
-function specialTrips(pp: PreparedPlan, corr: ScheduleCorrections): Set<PreparedTrip> {
+function specialTrips(
+  pp: PreparedPlan,
+  corr: ScheduleCorrections,
+): Set<PreparedTrip> {
   let s = specialCache.get(corr);
   if (!s) {
     let prev = prevCache.get(pp);
     if (!prev) {
       prev = new Map();
-      for (const t of pp.tripIndex.values()) if (t.next) prev.set(t.next.trip.id, t);
+      for (const t of pp.tripIndex.values())
+        if (t.next) prev.set(t.next.trip.id, t);
       prevCache.set(pp, prev);
     }
     s = new Set();
@@ -324,7 +396,10 @@ export function shiftAt(anchors: Anchors | undefined, s: number): number {
   for (let i = 1; i < anchors.length; i++) {
     const a = anchors[i - 1]!;
     const b = anchors[i]!;
-    if (s <= b.sched) return a.shift + ((b.shift - a.shift) * (s - a.sched)) / (b.sched - a.sched);
+    if (s <= b.sched)
+      return (
+        a.shift + ((b.shift - a.shift) * (s - a.sched)) / (b.sched - a.sched)
+      );
   }
   return anchors[anchors.length - 1]!.shift;
 }
@@ -339,7 +414,10 @@ export function schedAt(anchors: Anchors | undefined, real: number): number {
     const b = anchors[i]!;
     const ra = a.sched + a.shift;
     const rb = b.sched + b.shift;
-    if (real <= rb) return rb > ra ? a.sched + ((b.sched - a.sched) * (real - ra)) / (rb - ra) : b.sched;
+    if (real <= rb)
+      return rb > ra ?
+          a.sched + ((b.sched - a.sched) * (real - ra)) / (rb - ra)
+        : b.sched;
   }
   const last = anchors[anchors.length - 1]!;
   return real - last.shift;
@@ -348,7 +426,11 @@ export function schedAt(anchors: Anchors | undefined, real: number): number {
 /** Positions within this of an observation count as observed (s). */
 const OBSERVED_S = 90;
 
-export function scheduledVehicles(pp: PreparedPlan, q: ScheduleQuery, corr?: ScheduleCorrections): VehicleState[] {
+export function scheduledVehicles(
+  pp: PreparedPlan,
+  q: ScheduleQuery,
+  corr?: ScheduleCorrections,
+): VehicleState[] {
   const out: VehicleState[] = [];
   // A trip is handled separately when it, or the trip it lays over for, is corrected.
   const special = corr ? specialTrips(pp, corr) : new Set<PreparedTrip>();
@@ -360,42 +442,95 @@ export function scheduledVehicles(pp: PreparedPlan, q: ScheduleQuery, corr?: Sch
     for (let i = lowerBound(list, q.sec - span); i < hi; i++) {
       const t = list[i]!;
       // A chained trip hands over to its next trip at the departure instant; don't draw both.
-      if (q.sec > t.visibleUntil || (t.next && q.sec === t.visibleUntil)) continue;
+      if (q.sec > t.visibleUntil || (t.next && q.sec === t.visibleUntil))
+        continue;
       if (q.routes && !q.routes.has(t.route.key)) continue;
       if (special.has(t)) continue;
-      const v = positionOnTrip(pp, t, q.sec, q.serviceDate, q.pacer, corr?.shapes?.get(t.pattern.id));
+      const v = positionOnTrip(
+        pp,
+        t,
+        q.sec,
+        q.serviceDate,
+        q.pacer,
+        corr?.shapes?.get(t.pattern.id),
+      );
       const consist = corr?.consists.get(t.vehicleId);
       if (consist) v.consist = consist;
       out.push(v);
     }
     if (!corr) continue;
     for (const t of special) {
-      if (t.trip.service !== service || corr.cancelled.has(t.trip.id) || (q.routes && !q.routes.has(t.route.key))) continue;
+      if (
+        t.trip.service !== service
+        || corr.cancelled.has(t.trip.id)
+        || (q.routes && !q.routes.has(t.route.key))
+      )
+        continue;
       const c = corr.trips.get(t.trip.id);
       const lastArr = t.arr[t.arr.length - 1]!;
       const startShift = shiftAt(c?.anchors, t.trip.start);
       const endShift = shiftAt(c?.anchors, lastArr);
       // Real-time window: warped trip, then (if chained) layover until the next trip's corrected start.
-      const nextShift = t.next ? shiftAt(corr.trips.get(t.next.trip.id)?.anchors, t.next.trip.start) : 0;
-      const until = t.next ? Math.max(lastArr + endShift, t.next.trip.start + nextShift) : Math.max(lastArr + endShift, t.visibleUntil + endShift);
-      if (q.sec < t.trip.start + startShift || q.sec > until || (t.next && q.sec === until && until === t.next.trip.start + nextShift)) continue;
-      const sched = q.sec > lastArr + endShift ? lastArr : schedAt(c?.anchors, q.sec);
+      const nextShift =
+        t.next ?
+          shiftAt(corr.trips.get(t.next.trip.id)?.anchors, t.next.trip.start)
+        : 0;
+      const until =
+        t.next ?
+          Math.max(lastArr + endShift, t.next.trip.start + nextShift)
+        : Math.max(lastArr + endShift, t.visibleUntil + endShift);
+      if (
+        q.sec < t.trip.start + startShift
+        || q.sec > until
+        || (t.next
+          && q.sec === until
+          && until === t.next.trip.start + nextShift)
+      )
+        continue;
+      const sched =
+        q.sec > lastArr + endShift ? lastArr : schedAt(c?.anchors, q.sec);
       const shift = shiftAt(c?.anchors, sched);
-      const v = positionOnTrip(pp, t, sched, q.serviceDate, q.pacer, corr.shapes?.get(t.pattern.id));
+      const v = positionOnTrip(
+        pp,
+        t,
+        sched,
+        q.serviceDate,
+        q.pacer,
+        corr.shapes?.get(t.pattern.id),
+      );
       const obs = c?.observed.find((o) => Math.abs(o.t - q.sec) <= OBSERVED_S);
-      const nextObs = t.next ? corr.trips.get(t.next.trip.id)?.observed.find((o) => Math.abs(o.t - q.sec) <= OBSERVED_S) : undefined;
+      const nextObs =
+        t.next ?
+          corr.trips
+            .get(t.next.trip.id)
+            ?.observed.find((o) => Math.abs(o.t - q.sec) <= OBSERVED_S)
+        : undefined;
       const seen = obs ?? nextObs;
-      const estimate = c?.estimate ?? (t.next ? corr.trips.get(t.next.trip.id)?.estimate : undefined);
+      const estimate =
+        c?.estimate
+        ?? (t.next ? corr.trips.get(t.next.trip.id)?.estimate : undefined);
       if (estimate && !seen) {
         // A projected delay: still an estimate, just a better one.
-        if (shift !== 0 || nextShift !== 0) v.source = `${estimate} + ${v.source}`;
-        if (shift !== 0 && q.sec <= lastArr + endShift) v.delay = Math.round(shift);
+        if (shift !== 0 || nextShift !== 0)
+          v.source = `${estimate} + ${v.source}`;
+        if (shift !== 0 && q.sec <= lastArr + endShift)
+          v.delay = Math.round(shift);
       } else if (seen || shift !== 0 || nextShift !== 0) {
-        v.provenance = seen ? 'observed' : 'interpolated';
-        const sources = [...new Set([...(c?.observed ?? []), ...(t.next ? (corr.trips.get(t.next.trip.id)?.observed ?? []) : [])].map((o) => o.source))];
-        v.source = `${sources.join(', ') || 'observation'} + ${v.source}`;
+        v.provenance = seen ? "observed" : "interpolated";
+        const sources = [
+          ...new Set(
+            [
+              ...(c?.observed ?? []),
+              ...(t.next ?
+                (corr.trips.get(t.next.trip.id)?.observed ?? [])
+              : []),
+            ].map((o) => o.source),
+          ),
+        ];
+        v.source = `${sources.join(", ") || "observation"} + ${v.source}`;
         if (seen) v.observedAt = serviceDayStart(q.serviceDate) + seen.t * 1000;
-        if (shift !== 0 && q.sec <= lastArr + endShift) v.delay = Math.round(shift);
+        if (shift !== 0 && q.sec <= lastArr + endShift)
+          v.delay = Math.round(shift);
       }
       const consist = corr.consists.get(t.vehicleId);
       if (consist) v.consist = consist;
@@ -405,9 +540,19 @@ export function scheduledVehicles(pp: PreparedPlan, q: ScheduleQuery, corr?: Sch
   return out;
 }
 
-function positionOnTrip(pp: PreparedPlan, t: PreparedTrip, sec: number, serviceDate: string, pacer?: TripPacer, shapeOverride?: string): VehicleState {
+function positionOnTrip(
+  pp: PreparedPlan,
+  t: PreparedTrip,
+  sec: number,
+  serviceDate: string,
+  pacer?: TripPacer,
+  shapeOverride?: string,
+): VehicleState {
   const { pattern, arr, dep, kin } = t;
-  const shape = shapeOverride && pp.shapeCum.has(shapeOverride) ? shapeOverride : pattern.shape;
+  const shape =
+    shapeOverride && pp.shapeCum.has(shapeOverride) ?
+      shapeOverride
+    : pattern.shape;
   const coords = pp.plan.shapes[shape] as LonLat[];
   const cum = pp.shapeCum.get(shape)!;
   const n = arr.length;
@@ -416,10 +561,13 @@ function positionOnTrip(pp: PreparedPlan, t: PreparedTrip, sec: number, serviceD
   let stopIdx: number;
   let speed = 0;
 
-  const paced = pacer && sec > dep[0]! && sec < arr[n - 1]! ? pacer(t, sec, serviceDate) : undefined;
+  const paced =
+    pacer && sec > dep[0]! && sec < arr[n - 1]! ?
+      pacer(t, sec, serviceDate)
+    : undefined;
   if (sec >= arr[n - 1]!) {
     d = pattern.dist[n - 1]!;
-    status = 'layover';
+    status = "layover";
     stopIdx = n - 1;
   } else if (paced) {
     d = paced.along;
@@ -429,7 +577,7 @@ function positionOnTrip(pp: PreparedPlan, t: PreparedTrip, sec: number, serviceD
     if (i < 0) i = n - 1;
     if (speed === 0 && i > 0 && Math.abs(pattern.dist[i - 1]! - d) <= 1) i--;
     stopIdx = i;
-    status = speed === 0 ? 'dwell' : 'moving';
+    status = speed === 0 ? "dwell" : "moving";
   } else {
     // Last stop whose arrival is <= sec.
     let lo = 0;
@@ -442,27 +590,37 @@ function positionOnTrip(pp: PreparedPlan, t: PreparedTrip, sec: number, serviceD
     const i = lo;
     if (sec <= dep[i]!) {
       d = pattern.dist[i]!;
-      status = 'dwell';
+      status = "dwell";
       stopIdx = i;
     } else {
-      const leg = (t.legs[i] ??= solveLeg(pattern.dist[i + 1]! - pattern.dist[i]!, arr[i + 1]! - dep[i]!, kin));
+      const leg = (t.legs[i] ??= solveLeg(
+        pattern.dist[i + 1]! - pattern.dist[i]!,
+        arr[i + 1]! - dep[i]!,
+        kin,
+      ));
       const tt = sec - dep[i]!;
       d = pattern.dist[i]! + distanceAt(leg, tt);
       speed = speedAt(leg, tt);
       // Schedule slack is held at the origin, which reads as a longer dwell.
       const holding = tt < leg.hold;
-      status = holding ? 'dwell' : 'moving';
+      status = holding ? "dwell" : "moving";
       stopIdx = holding ? i : i + 1;
     }
   }
 
   // Along another shape, the same fraction of the way.
-  if (shape !== pattern.shape) d *= cum[cum.length - 1]! / Math.max(1, pattern.dist[pattern.dist.length - 1]!);
+  if (shape !== pattern.shape)
+    d *=
+      cum[cum.length - 1]!
+      / Math.max(1, pattern.dist[pattern.dist.length - 1]!);
   const p = pointAlong(coords, cum, d);
   // Bearing from a short look-ahead gives smoother headings than the raw segment bearing.
   const ahead = pointAlong(coords, cum, Math.min(cum[cum.length - 1]!, d + 10));
   const behind = pointAlong(coords, cum, Math.max(0, d - 10));
-  const bearing = ahead.lon === behind.lon && ahead.lat === behind.lat ? p.bearing : bearingDeg([behind.lon, behind.lat], [ahead.lon, ahead.lat]);
+  const bearing =
+    ahead.lon === behind.lon && ahead.lat === behind.lat ?
+      p.bearing
+    : bearingDeg([behind.lon, behind.lat], [ahead.lon, ahead.lat]);
   const stop = pp.plan.stops[pattern.stops[stopIdx]!];
   return {
     id: t.vehicleId,
@@ -476,7 +634,7 @@ function positionOnTrip(pp: PreparedPlan, t: PreparedTrip, sec: number, serviceD
     speed,
     status,
     stopName: stop?.name,
-    provenance: 'estimated',
+    provenance: "estimated",
     source: `schedule ${pp.plan.feedVersion}`,
     serviceDate,
     length: kin.length,
