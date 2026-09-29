@@ -13,6 +13,8 @@
   "clientPollS": 10,
   "$alertsIntervalS": "TransLink service alerts are polled this often (by the leader only). SkyTrain alerts with a recognised operating change become draft disruptions (PLAN.md §4.10).",
   "alertsIntervalS": 300,
+  "$detourNearM": "A bus off its route while a TransLink detour alert covers it counts as on detour only within this distance of a stop the alert lists (guess; long-running detours would otherwise switch off shifted-GPS handling route-wide). See docs/OPEN-QUESTIONS.md #28.",
+  "detourNearM": 3000,
   "$dispatchCheckS": "Live dispatch (PLAN.md §4.11): how often the RT service checks data/observations and data/disruptions for changes. Only changed inputs re-dispatch a date; client requests never do.",
   "dispatchCheckS": 30,
   "$dispatchWindowDays": "Live dispatch covers service dates this many days either side of today; older and later dates come from build:dispatch.",

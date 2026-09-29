@@ -51,6 +51,7 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 - Timetable vehicles (SeaBus, WCE, buses without RT): `reconcileScheduled()` in the app, as before.
 - Disruptions (`data/disruptions/*.json`, format in its README): single-track sections and reduced headways for a period. `build:dispatch` re-plans each affected date (`src/core/disruption/apply.ts` → re-inferred runs with closures → dispatch). Only `"status": "confirmed"` entries apply. The RT service drafts them from TransLink alerts into `data/disruptions/drafts/` (gitignored); never confirm a draft without knowing which track stays open.
 - A future rail real-time adapter should emit `Observation`s rather than touch playback.
+- Bus service changes from GTFS-RT (cancelled trips, skipped stops, detour alerts) are recorded per service date in `data/rt-history/changes/` and served at `/rt/changes`. `src/core/rt/changes.ts` explains them; see PLAN.md §4.5. TransLink sends detours only as alert text, so they aren't drawn.
 - SeaBus AIS (PLAN.md §4.12): the RT leader streams aisstream.io and records to `data/ais-history/`; the browser turns fixes into `ScheduleCorrections` with `aisCorrections()` (`src/core/ais/match.ts`). Fixes anchor the timetable rather than being drawn raw, because they arrive in bursts.
 
 ## Scenarios
@@ -68,7 +69,7 @@ Guidance for working in this repo. The design lives in [PLAN.md](PLAN.md). Read 
 - `block_id` is **not** a physical train (Expo has ~133 weekday blocks). It's a hint only.
 - `shape_dist_traveled` is in km.
 - The undated `https://gtfs-static.translink.ca/gtfs/google_transit.zip` is the latest feed. Read `feed_info.txt` for the version and validity range.
-- GTFS-RT (`https://gtfsapi.translink.ca/v3/{gtfsrealtime,gtfsposition,gtfsalerts}?apikey=…`) covers buses only (no SkyTrain, SeaBus, or WCE) and sends no CORS headers.
+- GTFS-RT (`https://gtfsapi.translink.ca/v3/{gtfsrealtime,gtfsposition,gtfsalerts}?apikey=…`) covers buses only (no SkyTrain, SeaBus, or WCE) and sends no CORS headers. Trip updates drop a trip once it has run, cancelled or not (seen 2026-09-29).
 
 ## Commands
 

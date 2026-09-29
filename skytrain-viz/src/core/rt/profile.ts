@@ -14,11 +14,12 @@
 //
 // Prediction: from a fix, walk bin by bin, stopping at each upcoming stop for its expected dwell,
 // scaled by how this bus has been running relative to the profile. Gaps fall back to the all-day
-// profile, then to the timetable, then to a default speed.
+// profile, then to the timetable, then to a default speed. Stops TransLink reports as skipped by a
+// trip (GTFS-RT, e.g. on a detour) get no dwell.
 
 import { cumulativeLengths, projectOnto, type LonLat } from '../geo.ts';
 import type { PreparedPlan, PreparedTrip, TripPacer } from '../schedule/engine.ts';
-import { serviceDayStart } from '../time.ts';
+import { addDays, localDate, serviceDayStart } from '../time.ts';
 import type { RtSnapshot, RtVehicle } from './types.ts';
 
 export interface PredictionConfig {
@@ -276,6 +277,15 @@ export interface WalkResult {
   speed: number;
 }
 
+/** Service date (YYYYMMDD) of a trip running at an instant: after-midnight trips belong to the day before. */
+export function tripServiceDate(trip: PreparedTrip, ms: number): string {
+  const date = localDate(ms);
+  return (ms - serviceDayStart(date)) / 1000 < trip.trip.start - 6 * 3600 ? addDays(date, -1) : date;
+}
+
+/** Stop ids a trip skips on a service date (GTFS-RT), if any. */
+export type SkippedStops = (serviceDate: string, tripId: string) => ReadonlySet<string> | undefined;
+
 /** Walks buses forward along their trips with profile (or fallback) timings. */
 export class Predictor {
   private courses = new Map<string, Course>();
@@ -284,18 +294,20 @@ export class Predictor {
     private pp: PreparedPlan,
     private cfg: PredictionConfig,
     private profile?: RtProfileFile,
+    private skipped?: SkippedStops,
   ) {}
 
-  /** The course for a trip at a local hour (cached per trip and band). */
+  /** The course for a trip at a local hour (cached per trip, band, and stops skipped that day). */
   course(trip: PreparedTrip, atMs: number): Course {
     const band = bandOf(this.cfg.bandStartHours, localHour(atMs, this.pp.plan.timezone));
-    const key = `${trip.trip.id}|${band}`;
+    const skip = this.skipped?.(tripServiceDate(trip, atMs), trip.trip.id);
+    const key = skip?.size ? `${trip.trip.id}|${band}|${[...skip].sort().join(',')}` : `${trip.trip.id}|${band}`;
     let c = this.courses.get(key);
-    if (!c) this.courses.set(key, (c = this.buildCourse(trip, band)));
+    if (!c) this.courses.set(key, (c = this.buildCourse(trip, band, skip)));
     return c;
   }
 
-  private buildCourse(trip: PreparedTrip, band: number): Course {
+  private buildCourse(trip: PreparedTrip, band: number, skip?: ReadonlySet<string>): Course {
     const { cfg, pp } = this;
     const cum = pp.shapeCum.get(trip.pattern.shape);
     const length = cum ? cum[cum.length - 1]! : trip.pattern.dist[trip.pattern.dist.length - 1]!;
@@ -315,7 +327,7 @@ export class Predictor {
     };
     const pace = new Float64Array(bins);
     for (let b = 0; b < bins; b++) pace[b] = bp?.pace[b] ?? sp?.all.pace[b] ?? ttPace((b + 0.5) * binM);
-    const stops = ids.map((id, i) => ({ along: dist[i]!, dwell: bp?.dwell[id] ?? sp?.all.dwell[id] ?? cfg.defaultDwellS }));
+    const stops = ids.map((id, i) => ({ along: dist[i]!, dwell: skip?.has(id) ? 0 : (bp?.dwell[id] ?? sp?.all.dwell[id] ?? cfg.defaultDwellS) }));
     return { binM, length, pace, stops };
   }
 

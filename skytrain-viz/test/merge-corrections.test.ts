@@ -13,4 +13,10 @@ describe('mergeCorrections', () => {
     // Cached: the engine's per-object caches depend on getting the same object back.
     expect(mergeCorrections(seabus, buses)).toBe(m);
   });
+
+  it('keeps trips cancelled by either source', () => {
+    const obs: ScheduleCorrections = { trips: new Map(), cancelled: new Set(['r1']), consists: new Map() };
+    const rt: ScheduleCorrections = { trips: new Map(), cancelled: new Set(['b1']), consists: new Map() };
+    expect([...mergeCorrections(obs, rt)!.cancelled].sort()).toEqual(['b1', 'r1']);
+  });
 });

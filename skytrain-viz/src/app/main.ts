@@ -242,6 +242,13 @@ async function main(): Promise<void> {
         byDate = new Map(byDate);
         byDate.set(date, mergeCorrections(seabus, byDate.get(date))!);
       }
+      // Bus trips TransLink cancelled: no schedule estimates for them.
+      for (const date of [addDays(localDate(t), -1), localDate(t)]) {
+        const cancelled = rt.cancellationsFor(date);
+        if (!cancelled) continue;
+        byDate = new Map(byDate);
+        byDate.set(date, mergeCorrections(byDate.get(date), cancelled)!);
+      }
     }
     const scheduled = store.vehiclesAt(t, visible, byDate);
     // SeaBus route lines: the berth pair in use on the day shown solid, the other dotted.

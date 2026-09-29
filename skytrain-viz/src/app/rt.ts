@@ -1,6 +1,7 @@
 // Browser side of real-time buses (PLAN.md §4.5–4.6). Near "now" it polls /rt/live; at other times
 // it loads recorded hours from /rt/history. It also tracks recorder coverage, which decides per
-// instant whether buses are shown from RT data (observed/interpolated) or schedule (estimated).
+// instant whether buses are shown from RT data (observed/interpolated) or schedule (estimated), and
+// loads TransLink's service changes (cancelled trips, skipped stops, detours) for the days shown.
 
 import rtConfig from '../../data/config/rt.json';
 import { coverageContains, decodeSnapshot, type RtCoverageResponse, type RtLiveResponse, type RtSnapshot } from '../core/rt/types.ts';
@@ -8,7 +9,8 @@ import { RtTimeline } from '../core/rt/timeline.ts';
 import { Predictor, type PredictionConfig, type RtProfileFile } from '../core/rt/profile.ts';
 import type { PreparedPlan, ScheduleCorrections, VehicleState } from '../core/schedule/engine.ts';
 import { delayCorrections, type TripDelay } from '../core/rt/carry.ts';
-import { toWallTime } from '../core/time.ts';
+import { changesView, type ChangesView, type RtDayChanges } from '../core/rt/changes.ts';
+import { addDays, localDate, toWallTime } from '../core/time.ts';
 import { kinematics } from './plans.ts';
 
 const BASE = import.meta.env.BASE_URL;
@@ -18,8 +20,17 @@ const LIVE_WINDOW_MS = 10 * 60_000;
 const LIVE_BUFFER_MS = 20 * 60_000;
 const MAX_HOURS_CACHED = 8;
 const PREDICTION = rtConfig.prediction as unknown as PredictionConfig;
+/** Service changes for today and yesterday are refetched this often (the server polls trip updates every minute). */
+const CHANGES_REFRESH_MS = 60_000;
+const MAX_CHANGE_DAYS_CACHED = 6;
 
 export type RtMode = 'live' | 'recorded' | 'estimated' | 'unavailable';
+
+interface DayChanges {
+  data?: RtDayChanges;
+  fetchedAt: number;
+  loading: boolean;
+}
 
 interface HourChunk {
   status: 'loading' | 'ready' | 'missing';
@@ -37,7 +48,12 @@ export class RtClient {
   private coverageFetchedAt = 0;
   private timeline: RtTimeline | undefined;
   private timelineKey = '';
-  private carryMemo: { delays: TripDelay[]; pp: PreparedPlan; result: ReturnType<typeof delayCorrections> } | undefined;
+  private carryMemo: { delays: TripDelay[]; pp: PreparedPlan; version: number; result: ReturnType<typeof delayCorrections> } | undefined;
+  private changes = new Map<string, DayChanges>();
+  /** Bumped whenever loaded service changes differ. */
+  private changesVersion = 0;
+  private view: { version: number; view: ChangesView } | undefined;
+  private cancelledMemo = new Map<string, { version: number; corr: ScheduleCorrections | undefined }>();
   /** Per feed version: the predictor, once its travel-time profile has loaded (or turned out missing). */
   private predictors = new Map<string, Predictor | 'loading'>();
   private listeners = new Set<() => void>();
@@ -58,6 +74,7 @@ export class RtClient {
     if (nearNow) this.ensureLivePolling();
     else this.stopLivePolling();
     if (!nearNow || t < Date.now() - rtConfig.maxInterpolateS * 1000) this.ensureHours(t);
+    if (this.available) this.ensureChanges(t);
   }
 
   /** Coverage intervals within [from, to], fetching if the cached range doesn't cover it. */
@@ -90,13 +107,15 @@ export class RtClient {
 
   private timelineFor(snapshots: RtSnapshot[], live: boolean, pp: PreparedPlan | undefined): RtTimeline {
     const predictor = pp ? this.predictorFor(pp) : undefined;
-    const key = `${live ? 'live' : 'rec'}:${snapshots.length}:${snapshots[0]?.fetchedAt}:${snapshots.at(-1)?.fetchedAt}:${pp?.plan.feedVersion}:${predictor ? 'p' : ''}`;
+    const key = `${live ? 'live' : 'rec'}:${snapshots.length}:${snapshots[0]?.fetchedAt}:${snapshots.at(-1)?.fetchedAt}:${pp?.plan.feedVersion}:${predictor ? 'p' : ''}:${this.changesVersion}`;
     if (key !== this.timelineKey || !this.timeline) {
       this.timelineKey = key;
       this.timeline = new RtTimeline(snapshots, pp, kinematics, {
         maxInterpolateS: rtConfig.maxInterpolateS,
         maxExtrapolateS: rtConfig.maxExtrapolateS,
         source: live ? 'GTFS-RT live' : 'GTFS-RT recorded',
+        changes: this.changesView(),
+        detourNearM: rtConfig.detourNearM,
         ...(predictor ? { prediction: { cfg: PREDICTION, predictor } } : {}),
       });
     }
@@ -115,8 +134,62 @@ export class RtClient {
     const snapshots = fromLive ? this.live : recorded;
     if (!snapshots) return undefined;
     const delays = this.timelineFor(snapshots, fromLive, pp).tripDelays(t);
-    if (this.carryMemo?.delays !== delays || this.carryMemo.pp !== pp) this.carryMemo = { delays, pp, result: delayCorrections(pp, delays, rtConfig.carry) };
+    if (this.carryMemo?.delays !== delays || this.carryMemo.pp !== pp || this.carryMemo.version !== this.changesVersion) {
+      this.carryMemo = { delays, pp, version: this.changesVersion, result: delayCorrections(pp, delays, rtConfig.carry, this.changesView().cancelled) };
+    }
     return this.carryMemo.result;
+  }
+
+  /** Trips TransLink cancelled on a service date, as corrections that hide their schedule estimates. */
+  cancellationsFor(date: string): ScheduleCorrections | undefined {
+    let m = this.cancelledMemo.get(date);
+    if (m?.version !== this.changesVersion) {
+      const ids = this.changesView().cancelledTrips(date);
+      m = { version: this.changesVersion, corr: ids.length ? { trips: new Map(), cancelled: new Set(ids), consists: new Map() } : undefined };
+      this.cancelledMemo.set(date, m);
+      if (this.cancelledMemo.size > MAX_CHANGE_DAYS_CACHED) this.cancelledMemo.delete(this.cancelledMemo.keys().next().value!);
+    }
+    return m.corr;
+  }
+
+  /** Lookups over every loaded day's service changes. */
+  private changesView(): ChangesView {
+    if (this.view?.version !== this.changesVersion) {
+      const days = [...this.changes.values()].flatMap((d) => (d.data ? [d.data] : []));
+      this.view = { version: this.changesVersion, view: changesView(days, rtConfig.alertsIntervalS * 1000) };
+    }
+    return this.view.view;
+  }
+
+  /** Loads the service changes for the dates around t, refreshing recent ones. */
+  private ensureChanges(t: number): void {
+    const now = Date.now();
+    const today = localDate(t);
+    const recentFrom = addDays(localDate(now), -1);
+    for (const date of [addDays(today, -1), today]) {
+      let e = this.changes.get(date);
+      if (e && (e.loading || date < recentFrom || now - e.fetchedAt < CHANGES_REFRESH_MS)) continue;
+      if (!e) this.changes.set(date, (e = { fetchedAt: 0, loading: false }));
+      const entry = e;
+      entry.loading = true;
+      entry.fetchedAt = now;
+      fetch(`${BASE}rt/changes?date=${date}`)
+        .then((r) => (r.ok ? (r.json() as Promise<RtDayChanges>) : undefined))
+        .catch(() => undefined)
+        .then((data) => {
+          entry.loading = false;
+          if (!data || JSON.stringify(data) === JSON.stringify(entry.data)) return;
+          entry.data = data;
+          this.changesVersion++;
+          this.emit();
+        });
+    }
+    for (const date of this.changes.keys()) {
+      if (this.changes.size <= MAX_CHANGE_DAYS_CACHED) break;
+      if (date === today || date === addDays(today, -1)) continue;
+      this.changes.delete(date);
+      this.changesVersion++;
+    }
   }
 
   /** Profile-based predictor for a feed; undefined while its profile loads. */
@@ -133,7 +206,7 @@ export class RtClient {
       .catch(() => undefined)
       .then((profile) => {
         // Without a profile, the timetable still gives better predictions than a fixed speed.
-        this.predictors.set(version, new Predictor(pp, PREDICTION, profile));
+        this.predictors.set(version, new Predictor(pp, PREDICTION, profile, (date, tripId) => this.changesView().skipped(date, tripId)));
         this.emit();
       });
     return undefined;

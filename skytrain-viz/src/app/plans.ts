@@ -298,14 +298,17 @@ export class PlanStore {
 }
 
 const merged = new WeakMap<ScheduleCorrections, WeakMap<ScheduleCorrections, ScheduleCorrections>>();
-/** Corrections from two sources, the first taking precedence per trip (cached, so the engine's per-object caches hold). */
+/**
+ * Corrections from two sources, the first taking precedence per trip, cancelled by either (cached, so
+ * the engine's per-object caches hold).
+ */
 export function mergeCorrections(obs: ScheduleCorrections | undefined, rt: ScheduleCorrections | undefined): ScheduleCorrections | undefined {
   if (!obs || !rt) return obs ?? rt;
   let inner = merged.get(obs);
   if (!inner) merged.set(obs, (inner = new WeakMap()));
   let m = inner.get(rt);
   if (!m) {
-    m = { trips: new Map([...rt.trips, ...obs.trips]), cancelled: obs.cancelled, consists: new Map([...rt.consists, ...obs.consists]) };
+    m = { trips: new Map([...rt.trips, ...obs.trips]), cancelled: rt.cancelled.size ? new Set([...obs.cancelled, ...rt.cancelled]) : obs.cancelled, consists: new Map([...rt.consists, ...obs.consists]) };
     const shapes = obs.shapes ?? rt.shapes;
     if (shapes) m.shapes = shapes;
     inner.set(rt, m);

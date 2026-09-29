@@ -5,6 +5,7 @@ import { Predictor, ProfileBuilder, type PredictionConfig } from '../src/core/rt
 import { cumulativeLengths, pointAlong, projectOnto, type LonLat } from '../src/core/geo.ts';
 import rtConfig from '../data/config/rt.json';
 import { delayCorrections } from '../src/core/rt/carry.ts';
+import { changesView, EFFECT_DETOUR, emptyDayChanges, type RtDayChanges } from '../src/core/rt/changes.ts';
 import { preparePlan, scheduledVehicles } from '../src/core/schedule/engine.ts';
 import type { ServicePlan } from '../src/core/plan/types.ts';
 import type { KinematicsConfig } from '../src/core/movement/kinematics.ts';
@@ -115,6 +116,20 @@ describe('prediction', () => {
     expect(p.walk(c, 900, 45).along).toBeCloseTo(1050, 5); // left at 40 s
     // Already past the stop: no dwell.
     expect(p.walk(c, 1000, 5).along).toBeCloseTo(1050, 5);
+  });
+
+  it('does not dwell at a stop TransLink reports the trip skipping', () => {
+    const withStop = { ...plan, stops: [...plan.stops, { id: 'mid', name: 'Mid', lon: at(1000)[0], lat: at(1000)[1] }] };
+    withStop.patterns = [{ ...plan.patterns[0]!, stops: [0, 2, 1], dist: [0, 1000, 2000] }];
+    withStop.trips = [{ ...plan.trips[0]!, arr: [0, 200, 400] }];
+    const pp2 = preparePlan(withStop, kin);
+    const profile = new ProfileBuilder(pp2, cfg).build();
+    profile.shapes.L = { bands: [], all: { pace: Array(40).fill(0.1), dwell: { mid: 30 } } };
+    // Skipped on the fix's service date only.
+    const p = new Predictor(pp2, cfg, profile, (date, trip) => (date === '20260928' && trip === 'trip1' ? new Set(['mid']) : undefined));
+    const trip = pp2.tripIndex.get('trip1')!;
+    expect(p.walk(p.course(trip, T0), 900, 20).along).toBeCloseTo(1100, 5);
+    expect(p.walk(p.course(trip, T0 + 86_400_000), 900, 20)).toEqual({ along: 1000, speed: 0 });
   });
 
   it('paces schedule estimates between timetable times, stopping at stops', () => {
@@ -239,6 +254,13 @@ describe('carrying RT delays into schedule estimates', () => {
     // Early running doesn't carry.
     const early = delayCorrections(pp2, [{ ...delays[0]!, delay: -120 }], rtConfig.carry);
     expect([...early.carried]).toEqual(['trip1']);
+  });
+
+  it('carries nothing into or through a cancelled trip', () => {
+    const next = delayCorrections(pp2, delays, rtConfig.carry, (d, trip) => d === date && trip === 'trip2');
+    expect([...next.carried]).toEqual(['trip1']);
+    const own = delayCorrections(pp2, delays, rtConfig.carry, (d, trip) => d === date && trip === 'trip1');
+    expect(own.carried.size).toBe(0);
   });
 });
 
@@ -406,5 +428,85 @@ describe('coverage', () => {
     const iv: [number, number][] = [[100_000, 200_000]];
     extendCoverage(iv, 50_000, 75_000);
     expect(iv).toEqual([[50_000, 200_000]]);
+  });
+});
+
+describe('service changes (GTFS-RT)', () => {
+  const cfg = rtConfig.prediction as unknown as PredictionConfig;
+  const L = plan.shapes.L as LonLat[];
+  const cum = cumulativeLengths(L);
+  const pt = (along: number, north = 0): [number, number] => {
+    const p = pointAlong(L, cum, along);
+    return [p.lon, p.lat + north / 111_320];
+  };
+  const fix = (s: number, [lon, lat]: [number, number], stopId = 's1'): RtSnapshot => ({
+    fetchedAt: T0 + s * 1000 + 3000,
+    headerTs: T0 + s * 1000,
+    vehicles: [{ id: 'bus1', routeKey: '99', tripId: 'trip1', lon, lat, ts: T0 + s * 1000, stopId, delay: 1800 }],
+  });
+  const day = (patch: Partial<RtDayChanges>): RtDayChanges => ({ ...emptyDayChanges('20260928'), ...patch });
+  const detour = (directionId?: number) =>
+    day({
+      alerts: [
+        {
+          id: 'a1',
+          entities: [{ routeKey: '99', ...(directionId !== undefined ? { directionId } : {}) }],
+          stopIds: ['s1'],
+          effect: EFFECT_DETOUR,
+          periods: [{ start: T0 - 600_000, end: T0 + 3600_000 }],
+          header: '8:10am, 99 detour via 1st Ave due to traffic. ',
+          description: '',
+          seen: [T0 - 600_000, T0 + 120_000],
+        },
+      ],
+    });
+  const run = (changes: RtDayChanges, detourNearM = 3000) =>
+    new RtTimeline([fix(0, pt(100)), fix(30, pt(250, 500)), fix(60, pt(400, 500))], pp, kin, {
+      ...opts,
+      prediction: { cfg, predictor: new Predictor(pp, cfg) },
+      changes: changesView([changes], 300_000),
+      detourNearM,
+    });
+
+  it('labels a bus off its route during a detour on its route, and keeps it where it is', () => {
+    const v = run(detour()).vehiclesAt(T0 + 30_000)[0]!;
+    // Not taken for shifted GPS: drawn where reported.
+    expect(v.lat).toBeCloseTo(49.25 + 500 / 111_320, 5);
+    expect(v.note).toBe('On detour. TransLink: 8:10am, 99 detour via 1st Ave due to traffic');
+    expect(v.note).not.toMatch(/not in service/);
+    expect(v.delay).toBe(1800);
+  });
+
+  it('ignores a detour for the other direction, or once it is over', () => {
+    expect(run(detour(1)).vehiclesAt(T0 + 30_000)[0]!.note).toMatch(/offset ≈ 500 m north/);
+    const over = detour();
+    over.alerts[0]!.seen = [T0 - 3600_000, T0 - 1200_000];
+    expect(run(over).vehiclesAt(T0 + 30_000)[0]!.note).toMatch(/offset ≈ 500 m north/);
+  });
+
+  it('applies a detour only near the stops its alert lists', () => {
+    // The bus is ~560 m from Start, the one stop the alert lists.
+    expect(run(detour(), 300).vehiclesAt(T0 + 30_000)[0]!.note).toMatch(/offset ≈ 500 m north/);
+  });
+
+  it("skips a skipped stop when showing a bus's next stop", () => {
+    const three = { ...plan, stops: [...plan.stops, { id: 'mid', name: 'Mid', lon: pt(1000)[0], lat: pt(1000)[1] }] };
+    three.patterns = [{ ...plan.patterns[0]!, stops: [0, 2, 1], dist: [0, 1000, 2000] }];
+    three.trips = [{ ...plan.trips[0]!, arr: [0, 200, 400] }];
+    const pp3 = preparePlan(three, kin);
+    const tl = new RtTimeline([fix(0, pt(500), 'mid')], pp3, kin, { ...opts, changes: changesView([day({ skipped: { trip1: ['mid'] } })], 300_000) });
+    const v = tl.vehiclesAt(T0)[0]!;
+    expect(v.stopName).toBe('End');
+    expect(v.note).toBe('Skips Mid (TransLink)');
+    // Once past it, not mentioned.
+    const past = new RtTimeline([fix(0, pt(1500), 's2')], pp3, kin, { ...opts, changes: changesView([day({ skipped: { trip1: ['mid'] } })], 300_000) });
+    expect(past.vehiclesAt(T0)[0]!.note).toBeUndefined();
+  });
+
+  it('labels a bus still reporting a cancelled trip', () => {
+    const tl = new RtTimeline([fix(0, pt(500), 's2')], pp, kin, { ...opts, changes: changesView([day({ cancelled: { trip1: [T0, T0] } })], 300_000) });
+    const v = tl.vehiclesAt(T0)[0]!;
+    expect(v.note).toBe('TransLink lists this trip as cancelled');
+    expect(v.delay).toBeUndefined();
   });
 });

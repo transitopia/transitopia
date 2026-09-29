@@ -5,7 +5,7 @@
 // beyond a minimum turnaround. Early running doesn't carry past the terminus: buses wait for their
 // departure time. Used where RT prediction stops (a bus unreported for a while, or fast-forwarding
 // past the live edge), so estimates continue from where the bus really was instead of jumping to the
-// timetable.
+// timetable. A cancelled trip (GTFS-RT) isn't run, so nothing carries into or past it.
 
 import type { PreparedPlan, PreparedTrip, ScheduleCorrections } from '../schedule/engine.ts';
 import { toWallTime } from '../time.ts';
@@ -34,13 +34,18 @@ const hhmm = (ms: number) => {
 };
 
 /** Schedule corrections per service date from RT delays; `carried` = every trip they affect. */
-export function delayCorrections(pp: PreparedPlan, delays: TripDelay[], cfg: CarryConfig): { byDate: Map<string, ScheduleCorrections>; carried: Set<string> } {
+export function delayCorrections(
+  pp: PreparedPlan,
+  delays: TripDelay[],
+  cfg: CarryConfig,
+  cancelled?: (serviceDate: string, tripId: string) => boolean,
+): { byDate: Map<string, ScheduleCorrections>; carried: Set<string> } {
   const byDate = new Map<string, ScheduleCorrections>();
   const carried = new Set<string>();
   const observed = new Set(delays.map((d) => d.tripId));
   for (const d of delays) {
     const first = pp.tripIndex.get(d.tripId);
-    if (!first) continue;
+    if (!first || cancelled?.(d.serviceDate, d.tripId)) continue;
     let trip: PreparedTrip = first;
     let corr = byDate.get(d.serviceDate);
     if (!corr) byDate.set(d.serviceDate, (corr = { trips: new Map(), cancelled: new Set(), consists: new Map() }));
@@ -51,6 +56,7 @@ export function delayCorrections(pp: PreparedPlan, delays: TripDelay[], cfg: Car
     let late = d.delay;
     for (let k = 0; k < cfg.maxTrips && late > 0 && trip.next; k++) {
       const next: PreparedTrip = trip.next;
+      if (cancelled?.(d.serviceDate, next.trip.id)) break;
       const slack = next.trip.start - trip.arr[trip.arr.length - 1]! - cfg.minLayoverS;
       late -= Math.max(0, slack);
       if (late <= 0) break;

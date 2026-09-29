@@ -15,6 +15,10 @@
 //    it's drawn there, as a layover; elsewhere it isn't drawn until it starts the trip. Buses lay over and reposition off their route, or their GPS says so (seen: a 99 whose
 //    next trip was westbound reported driving east along Broadway, sitting 15 min, looping via
 //    Victoria and starting at Commercial–Broadway Bay 5);
+//  - TransLink's service changes (GTFS-RT, src/core/rt/changes.ts): a bus off its route while a
+//    detour alert covers it is labelled as on detour (and never taken for shifted GPS); stops its trip
+//    skips aren't its next stop and get no dwell (see Predictor); a bus still reporting a cancelled
+//    trip is labelled so;
 //  - otherwise the vehicle is not shown (the caller falls back to schedule estimates when the
 //    instant isn't covered by RT data at all).
 // Pure given its inputs: the same snapshots and t always give the same answer. A fix counts as
@@ -24,9 +28,10 @@
 import { cumulativeLengths, distM, pointAlong, projectOnto, type LonLat } from '../geo.ts';
 import type { PreparedPlan, PreparedTrip, VehicleState } from '../schedule/engine.ts';
 import { kinematicsFor, type KinematicsConfig } from '../movement/kinematics.ts';
-import { Predictor, type PredictionConfig } from './profile.ts';
+import { Predictor, tripServiceDate, type PredictionConfig } from './profile.ts';
+import type { ChangesView, RtRouteAlert } from './changes.ts';
 import type { RtSnapshot, RtVehicle } from './types.ts';
-import { addDays, localDate, serviceDayStart } from '../time.ts';
+import { localDate, serviceDayStart } from '../time.ts';
 import type { TripDelay } from './carry.ts';
 
 export interface TimelineOptions {
@@ -36,6 +41,10 @@ export interface TimelineOptions {
   source: string;
   /** Profile-based prediction and correction settings; without it, fixed-speed dead reckoning. */
   prediction?: { cfg: PredictionConfig; predictor: Predictor };
+  /** TransLink's cancellations, skipped stops and detour alerts for the days covered. */
+  changes?: ChangesView;
+  /** A detour applies to a bus within this of a stop its alert lists (m); alerts listing none apply route-wide. */
+  detourNearM?: number;
 }
 
 interface Obs {
@@ -299,7 +308,10 @@ export class RtTimeline {
           const q = pointAlong(s.coords, s.cum, p.along);
           const v = { n: (o.v.lat - q.lat) * 111_320, e: (o.v.lon - q.lon) * 111_320 * Math.cos((q.lat * Math.PI) / 180) };
           let fits = false;
-          if (prevOk) {
+          // On a detour, a bus off its route really is somewhere else.
+          if (this.detourOf(o.v, o.v.ts)) {
+            // Not placed on the route.
+          } else if (prevOk) {
             const dt = (o.v.ts - tr.obs[j]!.v.ts) / 1000;
             const moved = p.along - prev;
             const last = dt <= SHIFT_DRIFT_WITHIN_S ? tr.shift[j] : undefined;
@@ -429,9 +441,18 @@ export class RtTimeline {
 
   /** Service date and service-day second of a fix on a trip (after-midnight trips: previous day). */
   private serviceTime(trip: PreparedTrip, ts: number): { date: string; sec: number } {
-    let date = localDate(ts);
-    if ((ts - serviceDayStart(date)) / 1000 < trip.trip.start - 6 * 3600) date = addDays(date, -1);
+    const date = tripServiceDate(trip, ts);
     return { date, sec: (ts - serviceDayStart(date)) / 1000 };
+  }
+
+  /** The detour alert covering a fix's bus at t, where it is, if any. */
+  private detourOf(v: RtVehicle, t: number): RtRouteAlert | undefined {
+    const alerts = this.opts.changes?.detours(v.routeKey, this.trip(v.tripId)?.pattern.direction, v.tripId, t);
+    const near = this.opts.detourNearM;
+    return alerts?.find((a) => {
+      const stops = a.stopIds.flatMap((id) => this.pp?.stopById.get(id) ?? []);
+      return near === undefined || !stops.length || stops.some((st) => distM([st.lon, st.lat], [v.lon, v.lat]) <= near);
+    });
   }
 
   private trip(tripId: string | undefined): PreparedTrip | undefined {
@@ -611,9 +632,13 @@ export class RtTimeline {
       delay = undefined;
     }
     if (offRouteM !== undefined && offRouteM >= MAX_SNAP_OFFSET) {
-      // Not following its trip (e.g. heading to or from the depot): TransLink's delay means little.
-      notes.push(`Not on its route (≈ ${offRouteM >= 1000 ? `${(offRouteM / 1000).toFixed(1)} km` : `${Math.round(offRouteM / 50) * 50} m`} away), possibly not in service`);
-      delay = undefined;
+      const detour = this.detourOf(v, t);
+      if (detour) notes.push(`On detour. TransLink: ${detour.header.replace(/[\s.]+$/, '')}`);
+      else {
+        notes.push(`Not on its route (≈ ${offRouteM >= 1000 ? `${(offRouteM / 1000).toFixed(1)} km` : `${Math.round(offRouteM / 50) * 50} m`} away), possibly not in service`);
+        // Not following its trip (e.g. heading to or from the depot): TransLink's delay means little.
+        delay = undefined;
+      }
     }
     if (onRoute?.shifted) {
       const { n, e } = onRoute.shifted;
@@ -635,6 +660,27 @@ export class RtTimeline {
           delay = Math.round(pr.predictor.delayAt(trip, fixAlong, sec, date));
         } else delay = undefined;
         notes.push(`TransLink's next stop is stuck at ${this.pp.stopById.get(v.stopId!)?.name ?? v.stopId}; next stop and delay worked out from the position`);
+      }
+    }
+    const changes = this.opts.changes;
+    if (trip && changes && this.pp) {
+      const date = tripServiceDate(trip, basis.v.ts);
+      if (changes.cancelled(date, trip.trip.id)) {
+        notes.push('TransLink lists this trip as cancelled');
+        delay = undefined;
+      }
+      const skip = changes.skipped(date, trip.trip.id);
+      if (skip?.size) {
+        const ids = trip.pattern.stops.map((si) => this.pp!.plan.stops[si]!.id);
+        const k = stop ? ids.indexOf(stop.id) : -1;
+        // The next stop it actually serves.
+        if (stop && skip.has(stop.id) && k >= 0) {
+          const j = ids.findIndex((id, x) => x > k && !skip.has(id));
+          stop = j >= 0 ? this.pp.plan.stops[trip.pattern.stops[j]!] : undefined;
+        }
+        // Skipped stops still ahead (all of them when where it is on the trip isn't known).
+        const names = ids.filter((id, x) => x >= Math.max(0, k) && skip.has(id)).map((id) => this.pp!.stopById.get(id)?.name ?? id);
+        if (names.length) notes.push(`Skips ${[...new Set(names)].join(', ')} (TransLink)`);
       }
     }
     const s: VehicleState = {
