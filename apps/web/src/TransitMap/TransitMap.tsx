@@ -6,7 +6,7 @@ import {
 import region from "@transitopia/region-metro-vancouver/region.json";
 
 import { transitApi, transitData } from "../config.ts";
-import { openedWithPosition } from "../startup.ts";
+import { openedPath, openedWithPosition } from "../startup.ts";
 import { useMap, type MapType } from "../Map/MapUtils.ts";
 import { MapOverlayWindow } from "../Map/MapOverlayWindow.tsx";
 import { useTheme } from "../Theme/Theme.tsx";
@@ -21,6 +21,22 @@ const INITIAL_BOUNDS: [[number, number], [number, number]] = [
   [e!, n!],
 ];
 const PADDING = { top: 90, bottom: 150, left: 20, right: 50 };
+
+/**
+ * Show the whole network when the site was opened on /transit (or /) without a map position. Only
+ * once: switching modes later keeps wherever the map is.
+ */
+let initialViewDone = false;
+function useInitialView(map: MapType | undefined): void {
+  React.useEffect(() => {
+    if (!map || initialViewDone) return;
+    initialViewDone = true;
+    const openedOnTransit =
+      openedPath === "/" || openedPath.startsWith("/transit");
+    if (openedOnTransit && !openedWithPosition)
+      map.fitBounds(INITIAL_BOUNDS, { padding: PADDING, animate: false });
+  }, [map]);
+}
 
 /** Does the map view overlap the region's transit data? */
 function viewInRegion(map: MapType): boolean {
@@ -45,14 +61,13 @@ export default function TransitMap() {
   const [engine, setEngine] = React.useState<TransitEngine>();
   const [error, setError] = React.useState<string>();
   const [inRegion, setInRegion] = React.useState(true);
+  useInitialView(map);
 
   React.useEffect(() => {
     if (!map) return;
     let cancelled = false;
     let created: TransitEngine | undefined;
     const params = new URLSearchParams(location.search);
-    if (!openedWithPosition && !location.hash.includes("map="))
-      map.fitBounds(INITIAL_BOUNDS, { padding: PADDING, animate: false });
     TransitEngine.create(map, {
       dataBase: transitData,
       apiBase: transitApi,

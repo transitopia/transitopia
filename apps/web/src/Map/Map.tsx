@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import * as pmtiles from "pmtiles";
 // Since v6, MapLibre GL loads its web worker from a separate file, whose URL it guesses relative to
 // its own module URL. That guess is wrong once a bundler is involved, so we have Vite build the
@@ -13,7 +14,7 @@ import {
   cyclingTiles,
   needPmTiles,
 } from "../config.ts";
-import { useTheme } from "../Theme/Theme.tsx";
+import { ThemeToggle, useTheme } from "../Theme/Theme.tsx";
 import {
   MapContext,
   MapLibreGLContext,
@@ -77,6 +78,8 @@ export const Map: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [map, setMap] = React.useState<MapType>();
   const [styleGeneration, setStyleGeneration] = React.useState(0);
   const themeRef = React.useRef(theme);
+  /** The zoom/rotate button group, which the theme toggle joins. */
+  const [controlGroup, setControlGroup] = React.useState<HTMLElement>();
 
   React.useEffect(() => {
     if (needPmTiles && !pmTilesInitialized) {
@@ -97,10 +100,15 @@ export const Map: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       attributionControl: false,
       pitchWithRotate: false,
     });
-    map.addControl(
-      new maplibregl.NavigationControl({ visualizePitch: false }),
-      "top-right",
-    );
+    // Capture the zoom/rotate group's element so the theme toggle can be rendered into it.
+    class MapControls extends maplibregl.NavigationControl {
+      override onAdd(m: MapType): HTMLElement {
+        const el = super.onAdd(m);
+        setControlGroup(el);
+        return el;
+      }
+    }
+    map.addControl(new MapControls({ visualizePitch: false }), "top-right");
     map.addControl(
       new maplibregl.ScaleControl({ unit: "metric" }),
       "bottom-left",
@@ -145,6 +153,12 @@ export const Map: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
     <MapContext.Provider value={value}>
       <div id="map" className="w-screen h-dvh"></div>
+      {controlGroup ?
+        createPortal(
+          <ThemeToggle className="text-base leading-none dark:text-gray-100" />,
+          controlGroup,
+        )
+      : null}
       {children}
     </MapContext.Provider>
   );

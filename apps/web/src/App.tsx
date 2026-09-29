@@ -8,7 +8,7 @@ import { CyclingMap } from "./CyclingMap/CyclingMap.tsx";
 import { ModeLink } from "./components/ModeLink.tsx";
 import { Icon } from "./components/Icon.tsx";
 import { MapOverlayWindow } from "./Map/MapOverlayWindow.tsx";
-import { ThemeProvider, ThemeToggle } from "./Theme/Theme.tsx";
+import { ThemeProvider } from "./Theme/Theme.tsx";
 import {
   AttributionControl,
   AttributionProvider,
@@ -50,7 +50,6 @@ function App() {
                 classNameActive="bg-cyclist-green! dark:text-gray-900">
                 <Icon icon="bicycle" altText="Cycling" />
               </ModeLink>
-              <ThemeToggle className={`${modeButton} text-lg`} />
             </MapOverlayWindow>
             <Switch>
               <Route path="/transit">
@@ -66,9 +65,9 @@ function App() {
                 <Redirect to={`/cycling${location.hash}`} replace />
               </Route>
               <Route path="/">
-                {/* Keeps pre-V2 links' ?z=&lat=&lng=, which <Map> converts to #map=. */}
+                {/* Keeps the map position, including pre-V2 ?z=&lat=&lng= (converted by <Map>). */}
                 <Redirect
-                  to={`/cycling${location.search}${location.hash}`}
+                  to={`/transit${location.search}${location.hash}`}
                   replace
                 />
               </Route>
