@@ -35,7 +35,7 @@ export const InfoboxBikeParking: React.FC<Props> = (props) => {
         <div className="flex-none">
           <button
             type="button"
-            className="hover:bg-gray-200 px-2 rounded-lg"
+            className="hover:bg-gray-200 dark:hover:bg-gray-700 px-2 rounded-lg"
             onClick={props.closeInfobox}>
             x
           </button>

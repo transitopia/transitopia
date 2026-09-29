@@ -1,61 +1,87 @@
 import "./App.css";
 import "maplibre-gl/dist/maplibre-gl.css";
+import React from "react";
 import { Redirect, Route, Switch } from "wouter";
 
 import { AsyncMapLibreGLLoader, Map } from "./Map/Map.tsx";
 import { CyclingMap } from "./CyclingMap/CyclingMap.tsx";
-import { LinkWithQuery } from "./components/LinkWithQuery.tsx";
+import { ModeLink } from "./components/ModeLink.tsx";
 import { Icon } from "./components/Icon.tsx";
-import { WalkingMap } from "./WalkingMap/WalkingMap.tsx";
 import { MapOverlayWindow } from "./Map/MapOverlayWindow.tsx";
+import { ThemeProvider, ThemeToggle } from "./Theme/Theme.tsx";
+import {
+  AttributionControl,
+  AttributionProvider,
+} from "./Attribution/Attribution.tsx";
+
+// The transit engine (and transit-core) is a separate chunk, loaded on /transit (V2-PLAN.md §4.2).
+const TransitMap = React.lazy(() => import("./TransitMap/TransitMap.tsx"));
+
+const modeButton =
+  "mx-1 flex h-9 w-9 items-center justify-center rounded-full bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700";
 
 function App() {
   return (
-    <AsyncMapLibreGLLoader
-      loadingContent={
-        <div className="w-screen h-screen text-center bg-gray-200 leading-[100vh] text-gray-400 text-2xl">
-          Loading Transitopia...
-        </div>
-      }>
-      <Map>
-        <MapOverlayWindow className="top-5 flex items-center">
-          <img
-            src="/transitopia-logo-h.svg"
-            alt="Transitopia"
-            className="block h-7 lg:h-10 mr-2 lg:mr-4"
-          />
-          <div className="flex-auto"></div>
-          {/*<LinkWithQuery href="/transit" className="mx-1 p-1  w-8 h-8 text-center rounded-full bg-gray-50 hover:bg-gray-100" classNameActive="bg-transit-blue!"><Icon icon="bus-front-fill" altText="Transit" /></LinkWithQuery>*/}
-          <LinkWithQuery
-            href="/walking"
-            className="mx-1 p-1 w-8 h-8 text-center rounded-full bg-gray-50 hover:bg-gray-100"
-            classNameActive="bg-pedestrian-orange!">
-            <Icon icon="person-walking" altText="Walking" />
-          </LinkWithQuery>
-          <LinkWithQuery
-            href="/cycling"
-            className="mx-1 p-1  w-8 h-8 text-center rounded-full bg-gray-50 hover:bg-gray-100"
-            classNameActive="bg-cyclist-green!">
-            <Icon icon="bicycle" altText="Cycling" />
-          </LinkWithQuery>
-        </MapOverlayWindow>
-        <Switch>
-          <Route path="/cycling">
-            <CyclingMap />
-          </Route>
-          <Route path="/walking">
-            <WalkingMap />
-          </Route>
-          <Route path="/">
-            <Redirect to="/cycling" />
-          </Route>
-          <Route>
-            {/* Not found */}
-            <Redirect to="/" />
-          </Route>
-        </Switch>
-      </Map>
-    </AsyncMapLibreGLLoader>
+    <ThemeProvider>
+      <AttributionProvider>
+        <AsyncMapLibreGLLoader
+          loadingContent={
+            <div className="w-screen h-dvh text-center bg-gray-200 leading-[100dvh] text-gray-400 text-2xl dark:bg-gray-900">
+              Loading Transitopia...
+            </div>
+          }>
+          <Map>
+            <MapOverlayWindow className="top-5 flex items-center max-lg:right-14">
+              <img
+                src="/transitopia-logo-h.svg"
+                alt="Transitopia"
+                className="block h-7 lg:h-10 mr-2 lg:mr-4 dark:rounded-sm dark:bg-white dark:px-1"
+              />
+              <div className="flex-auto"></div>
+              <ModeLink
+                href="/transit"
+                className={modeButton}
+                classNameActive="bg-transit-blue! dark:text-gray-900">
+                <Icon icon="bus-front-fill" altText="Transit" />
+              </ModeLink>
+              <ModeLink
+                href="/cycling"
+                className={modeButton}
+                classNameActive="bg-cyclist-green! dark:text-gray-900">
+                <Icon icon="bicycle" altText="Cycling" />
+              </ModeLink>
+              <ThemeToggle className={`${modeButton} text-lg`} />
+            </MapOverlayWindow>
+            <Switch>
+              <Route path="/transit">
+                <React.Suspense fallback={null}>
+                  <TransitMap />
+                </React.Suspense>
+              </Route>
+              <Route path="/cycling">
+                <CyclingMap />
+              </Route>
+              {/* Walking returns when it has real content (V2-PLAN.md §2). */}
+              <Route path="/walking">
+                <Redirect to={`/cycling${location.hash}`} replace />
+              </Route>
+              <Route path="/">
+                {/* Keeps pre-V2 links' ?z=&lat=&lng=, which <Map> converts to #map=. */}
+                <Redirect
+                  to={`/cycling${location.search}${location.hash}`}
+                  replace
+                />
+              </Route>
+              <Route>
+                {/* Not found */}
+                <Redirect to="/" replace />
+              </Route>
+            </Switch>
+            <AttributionControl />
+          </Map>
+        </AsyncMapLibreGLLoader>
+      </AttributionProvider>
+    </ThemeProvider>
   );
 }
 

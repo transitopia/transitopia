@@ -17,7 +17,6 @@
   ],
   "scripts": {
     "dev": "npm run dev -w @transitopia/web",
-    "dev:transit": "npm run dev -w @transitopia/transit-map",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",

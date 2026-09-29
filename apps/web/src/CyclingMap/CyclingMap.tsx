@@ -2,12 +2,18 @@ import React from "react";
 import type * as MapLibreGL from "maplibre-gl";
 
 import {
-  layers,
+  cyclingLayers,
   mapSource,
   otherLayerIds,
   pathLayerIds,
 } from "./cycling-map-layers.ts";
-import { useMap, useMapLayerEvent } from "../Map/MapUtils.ts";
+import {
+  useMap,
+  useMapLayerEvent,
+  useStyleGeneration,
+} from "../Map/MapUtils.ts";
+import { useTheme } from "../Theme/Theme.tsx";
+import { useDatasets } from "../Attribution/Attribution.tsx";
 import {
   type MapCyclingElement,
   type MapParkingElement,
@@ -17,12 +23,17 @@ import { InfoboxBikeParking } from "./InfoboxBikeParking.tsx";
 
 export const CyclingMap: React.FC = () => {
   const map = useMap();
+  const { theme } = useTheme();
+  const styleGeneration = useStyleGeneration();
+  // The cycling layer is derived from OpenStreetMap by our Planetiler profile (map-layers/).
+  useDatasets(["osm", "transitopia"]);
 
-  // Add the cycling data source and layers to the map:
+  // Add the cycling layers to the map, again after a theme switch replaces the style:
   React.useEffect(() => {
     if (!map) return;
+    const layers = cyclingLayers(theme);
     for (const layer of layers) {
-      map.addLayer(layer);
+      if (!map.getLayer(layer.id)) map.addLayer(layer);
     }
     return () => {
       try {
@@ -37,7 +48,7 @@ export const CyclingMap: React.FC = () => {
         );
       }
     };
-  });
+  }, [map, theme, styleGeneration]);
 
   const [selectedFeature, setSelectedFeature] = React.useState<
     MapCyclingElement | MapParkingElement
@@ -202,7 +213,7 @@ export const CyclingMap: React.FC = () => {
             <div className="flex-none">
               <button
                 type="button"
-                className="hover:bg-gray-200 px-2 rounded-lg"
+                className="hover:bg-gray-200 dark:hover:bg-gray-700 px-2 rounded-lg"
                 onClick={closeInfobox}>
                 x
               </button>

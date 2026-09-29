@@ -4,8 +4,16 @@ import * as pmtiles from "pmtiles";
 // its own module URL. That guess is wrong once a bundler is involved, so we have Vite build the
 // worker (and its dependencies) as a chunk of our app, and tell MapLibre GL where to find it.
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
+import type { StyleSpecification } from "maplibre-gl";
+import { basemapStyle, type Theme } from "@transitopia/map-style/basemap.ts";
 
-import { layers, mapSource } from "./basemap-layers.ts";
+import {
+  basemapAssets,
+  basemapTiles,
+  cyclingTiles,
+  needPmTiles,
+} from "../config.ts";
+import { useTheme } from "../Theme/Theme.tsx";
 import {
   MapContext,
   MapLibreGLContext,
@@ -13,26 +21,50 @@ import {
   type MapType,
 } from "./MapUtils.ts";
 
-/** Constrain a numeric value to a certain range */
-const constrain = (value: number, min: number, max: number, def: number) =>
-  isNaN(value) ? def
-  : value > max ? max
-  : value < min ? min
-  : value;
-/** Where we load our map tiles from */
-const sourceUrlBase =
-  import.meta.env.VITE_BASE_MAP_TILES_CDN
-  ?? "pmtiles://transitopia-base-bc.pmtiles";
-const sourceUrlCycling =
-  import.meta.env.VITE_CYCLING_MAP_TILES_CDN
-  ?? "pmtiles://transitopia-cycling-british-columbia.pmtiles";
-/** Do we need to load the PMTiles library? */
-const needPmTiles = [sourceUrlBase, sourceUrlCycling].some(
-  // prettier-ignore https://github.com/prettier/prettier/issues/2856
-  (url) => url.startsWith("pmtiles://"),
-);
+/** Where the basemap has tiles (BC, V2-PLAN.md §5.12), with some margin. */
+const MAX_BOUNDS: [[number, number], [number, number]] = [
+  [-142, 46],
+  [-112, 62],
+];
+const DEFAULT_VIEW = {
+  center: [-123.135, 49.272] as [number, number],
+  zoom: 13,
+};
+
 // A global to track loading of pmtiles
 let pmTilesInitialized = false;
+
+/** The site's style for a theme: the basemap plus the (always available) overlay sources. */
+function siteStyle(theme: Theme): StyleSpecification {
+  const style = basemapStyle({
+    theme,
+    tiles: basemapTiles,
+    assets: basemapAssets,
+    sprites: [
+      { id: "transitopia", url: `${location.origin}/transitopia-sprites` },
+    ],
+  });
+  style.sources["transitopia-cycling"] = { type: "vector", url: cyclingTiles };
+  return style as StyleSpecification;
+}
+
+/**
+ * Before V2 the map position was in the query string (?z=&lat=&lng=). It's now in the hash
+ * (#map=z/lat/lng, shared by every mode), so convert old links.
+ */
+function migrateLegacyPosition(): void {
+  const url = new URL(location.href);
+  const z = url.searchParams.get("z");
+  const lat = url.searchParams.get("lat");
+  const lng = url.searchParams.get("lng");
+  if (z === null || lat === null || lng === null) return;
+  for (const k of ["z", "lat", "lng"]) url.searchParams.delete(k);
+  if (!url.hash.includes("map=")) {
+    const n = (s: string) => Number(Number(s).toFixed(5));
+    url.hash = `map=${n(z)}/${n(lat)}/${n(lng)}`;
+  }
+  history.replaceState(history.state, "", url);
+}
 
 export const Map: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const maplibregl = React.useContext(MapLibreGLContext).maplibregl;
@@ -41,92 +73,79 @@ export const Map: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       "<Map> cannot render without MapLibreGLContext. Add <AsyncMapLibreGLLoader> around <Map>.",
     );
   }
-
+  const { theme } = useTheme();
   const [map, setMap] = React.useState<MapType>();
+  const [styleGeneration, setStyleGeneration] = React.useState(0);
+  const themeRef = React.useRef(theme);
 
   React.useEffect(() => {
-    // Load the map dependencies asynchronously via a separate bundle:
     if (needPmTiles && !pmTilesInitialized) {
       // Load the "pmtiles" protocol that allows us to serve all the vector tiles for the map from a single large static .pmtiles file.
       const protocol = new pmtiles.Protocol();
       maplibregl.addProtocol("pmtiles", protocol.tile);
       pmTilesInitialized = true;
     }
-    const initialUrl = new URL(location.href);
-    const initialZoom = constrain(
-      parseFloat(initialUrl.searchParams.get("z") ?? ""),
-      5,
-      20,
-      13,
-    );
-    const initialLng = constrain(
-      parseFloat(initialUrl.searchParams.get("lng") ?? ""),
-      -140,
-      -115,
-      -123.135,
-    );
-    const initialLat = constrain(
-      parseFloat(initialUrl.searchParams.get("lat") ?? ""),
-      47,
-      60,
-      49.272,
-    );
+    migrateLegacyPosition();
 
     const map = new maplibregl.Map({
       container: "map",
-      zoom: initialZoom,
-      center: [initialLng, initialLat], // starting position [lng, lat]
-      style: {
-        version: 8,
-        name: "Transitopia",
-        glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
-        sprite: `${location.protocol}${location.host}/transitopia-sprites`,
-        sources: {
-          [mapSource]: {
-            type: "vector",
-            url: sourceUrlBase,
-            attribution:
-              'Map: <a href="https://openstreetmap.org">OpenStreetMap</a> + <a href="https://openmaptiles.org/">OpenMapTiles </a> + <a href="https://maplibre.org/">MapLibre</a>',
-          },
-          "transitopia-cycling": {
-            type: "vector",
-            url: sourceUrlCycling,
-            attribution: "",
-          },
-        },
-        layers,
-      },
+      ...DEFAULT_VIEW,
+      hash: "map",
+      maxBounds: MAX_BOUNDS,
+      style: siteStyle(themeRef.current),
+      // Credits come from our own control, for exactly the data on screen (V2-PLAN.md §4.6).
+      attributionControl: false,
+      pitchWithRotate: false,
     });
+    map.addControl(
+      new maplibregl.NavigationControl({ visualizePitch: false }),
+      "top-right",
+    );
+    map.addControl(
+      new maplibregl.ScaleControl({ unit: "metric" }),
+      "bottom-left",
+    );
     map.getCanvas().style.cursor = "default";
 
-    const handleMapViewChanged = () => {
-      const zoom = map.getZoom();
-      const { lng, lat } = map.getCenter();
-      const url = new URL(location.href);
-      url.searchParams.set("z", zoom.toFixed(4));
-      url.searchParams.set("lat", lat.toFixed(10));
-      url.searchParams.set("lng", lng.toFixed(10));
-      history.replaceState({ zoom, lng, lat }, "", url.pathname + url.search);
-    };
-
-    map.on("zoomend", handleMapViewChanged);
-    map.on("moveend", handleMapViewChanged);
+    let loaded = false;
     map.on("load", () => {
+      loaded = true;
       setMap(map);
     });
+    map.on("style.load", () => {
+      if (loaded) setStyleGeneration((g) => g + 1);
+    });
 
-    // Cleanup:
     return () => {
-      console.log("Destroying map");
+      // map.remove() deletes #map=… from the URL; keep it (React StrictMode remounts in development,
+      // and the position should survive the map being recreated).
+      const hash = location.hash;
       map.remove();
+      if (hash && location.hash !== hash)
+        history.replaceState(
+          history.state,
+          "",
+          `${location.pathname}${location.search}${hash}`,
+        );
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Theme switch: swap the style. Overlays re-add their layers when it loads (styleGeneration).
+  React.useEffect(() => {
+    if (theme === themeRef.current) return;
+    themeRef.current = theme;
+    map?.setStyle(siteStyle(theme));
+  }, [map, theme]);
+
+  const value = React.useMemo(
+    () => ({ map, styleGeneration }),
+    [map, styleGeneration],
+  );
   return (
-    <MapContext.Provider value={{ map }}>
-      <div id="map" className="w-screen h-screen"></div>
-      {children};
+    <MapContext.Provider value={value}>
+      <div id="map" className="w-screen h-dvh"></div>
+      {children}
     </MapContext.Provider>
   );
 };

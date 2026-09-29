@@ -5,12 +5,19 @@ export type MapType = MapLibreGL.Map;
 
 export const MapContext = React.createContext<{
   map: MapLibreGL.Map | undefined;
-}>({ map: undefined });
+  /**
+   * Bumped each time a new style finishes loading (a theme switch). Overlays add their layers in
+   * an effect that depends on it, since a new style drops them.
+   */
+  styleGeneration: number;
+}>({ map: undefined, styleGeneration: 0 });
 
 export const MapLibreGLContext: React.Context<{ maplibregl?: MapLibreGLType }> =
   React.createContext({});
 
 export const useMap = () => React.useContext(MapContext)?.map;
+export const useStyleGeneration = () =>
+  React.useContext(MapContext).styleGeneration;
 
 /**
  * Register an event handler for a map event, but limited to a specific layer of the map
