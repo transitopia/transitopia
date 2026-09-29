@@ -90,7 +90,8 @@ export interface ChangesView {
   detours(routeKey: string, directionId: number | undefined, tripId: string | undefined, t: number): RtRouteAlert[];
 }
 
-export function changesView(days: RtDayChanges[], graceMs: number): ChangesView {
+/** @param graceMs how long an alert still counts after it was last seen (its poll interval), fixed or at a time. */
+export function changesView(days: RtDayChanges[], graceMs: number | ((t: number) => number)): ChangesView {
   const cancelled = new Set<string>();
   const skipped = new Map<string, Set<string>>();
   const skip = (key: string, stops: string[]) => {
@@ -115,6 +116,6 @@ export function changesView(days: RtDayChanges[], graceMs: number): ChangesView 
     cancelledTrips: (date) => [...cancelled].filter((k) => k.startsWith(`${date}|`)).map((k) => k.slice(date.length + 1)),
     cancelled: (date, tripId) => cancelled.has(`${date}|${tripId}`),
     skipped: (date, tripId) => skipped.get(`${date}|${tripId}`),
-    detours: (routeKey, directionId, tripId, t) => (alerts.length ? detoursFor(alerts, routeKey, directionId, tripId, t, graceMs) : []),
+    detours: (routeKey, directionId, tripId, t) => (alerts.length ? detoursFor(alerts, routeKey, directionId, tripId, t, typeof graceMs === 'number' ? graceMs : graceMs(t)) : []),
   };
 }

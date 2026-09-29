@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import GtfsRealtimeBindings from 'gtfs-realtime-bindings';
@@ -48,6 +48,40 @@ describe('RtService', () => {
       // The key must never appear in responses.
       expect(String(r.body)).not.toContain('test-key');
     }
+  });
+
+  it('records each request in a ledger and resumes the schedule after a restart', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'rt-test-'));
+    const upstream = vi.fn(async () => new Response(new Blob([emptyFeed() as Uint8Array<ArrayBuffer>]), { status: 200 }));
+    vi.stubGlobal('fetch', upstream);
+    const opts = { historyDir: dir, record: false, log: () => {}, apiKey: 'test-key', dispatch: false as const, disruptionsDir: dir };
+    service = new RtService(opts);
+    await service.start(0);
+    await vi.waitFor(() => expect(upstream.mock.calls.length).toBe(3));
+    await vi.waitFor(async () => expect(JSON.parse(await readFile(join(dir!, 'requests.json'), 'utf8')).requests).toHaveLength(3));
+    service.stop();
+
+    // A restart right away polls nothing until each feed's interval has passed.
+    service = new RtService(opts);
+    await service.start(0);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(upstream.mock.calls.length).toBe(3);
+    const status = JSON.parse(String((await service.handle('/rt/status', new URLSearchParams())).body));
+    expect(status.budget.used24h).toBe(3);
+    expect(status.budget.nextPollInS.positions).toBeGreaterThan(30);
+  });
+
+  it('stops polling at the daily cap', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'rt-test-'));
+    const hourAgo = Date.now() - 3_600_000;
+    const requests = Array.from({ length: 1000 }, (_, i) => [hourAgo + i, 'positions']);
+    await writeFile(join(dir, 'requests.json'), JSON.stringify({ requests }));
+    const upstream = vi.fn();
+    vi.stubGlobal('fetch', upstream);
+    service = new RtService({ historyDir: dir, record: false, log: () => {}, apiKey: 'test-key', dispatch: false, disruptionsDir: dir });
+    await service.start(0);
+    await vi.waitFor(async () => expect(JSON.parse(String((await service!.handle('/rt/status', new URLSearchParams())).body)).budget.capped).toBe(true));
+    expect(upstream).not.toHaveBeenCalled();
   });
 
   it('reports no key without calling upstream', async () => {

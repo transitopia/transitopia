@@ -8,7 +8,10 @@
 //   profile — learned profile (falling back to timetable), adapted to the bus's pace
 //
 //   npx tsx scripts/eval-rt.ts [--test 2026-09-26T16,2026-09-26T17] [--test-last 3] [--set paceWeight=0.3] [--no-live]
-// Default: test on the last 3 complete hours, train on all other complete hours.
+//                              [--subsample <seconds>|schedule]
+// Default: test on the last 3 complete hours, train on all other complete hours. --subsample replays
+// the live view as if positions had been polled only this often (or on the poll schedule in
+// data/config/rt.json, src/core/rt/budget.ts), still scoring it against every recorded fix.
 //
 // Then replays the test hours as the live view sees them (each fix known only from the snapshot that
 // first carried it) and measures what's displayed: jumps when a snapshot arrives, error against each
@@ -24,6 +27,10 @@ import type { PreparedPlan } from '../src/core/schedule/engine.ts';
 import type { KinematicsConfig } from '../src/core/movement/kinematics.ts';
 import { loadRecordedHours, planLoader, type RecordedHour } from './lib/rt-history.ts';
 import { log } from './lib/paths.ts';
+import { cadence, pollIntervalS, type CadenceConfig } from '../src/core/rt/budget.ts';
+import type { RtSnapshot } from '../src/core/rt/types.ts';
+
+const CADENCE = cadence(rtConfig as unknown as CadenceConfig);
 
 const args = process.argv.slice(2);
 const opt = (name: string) => {
@@ -102,6 +109,8 @@ async function main() {
     ['~30 s', 15, 45],
     ['~60 s', 45, 75],
     ['~90 s', 75, 110],
+    ['~150 s', 110, 190],
+    ['~300 s', 190, 360],
   ];
   const err: Record<string, Record<string, number[]>> = { constant: {}, timetable: {}, profile: {} };
   for (const run of tracks(test, pp)) {
@@ -112,7 +121,7 @@ async function main() {
       // Recent fixes within the pace window, for the pace factor.
       const recent = run.slice(0, k + 1).filter((x) => (f.v.ts - x.v.ts) / 1000 <= cfg.paceWindowS);
       let speed = 0;
-      if (prev && (f.v.ts - prev.v.ts) / 1000 <= rtConfig.maxInterpolateS && f.along >= prev.along)
+      if (prev && (f.v.ts - prev.v.ts) / 1000 <= CADENCE.maxInterpolateS(f.v.ts) && f.along >= prev.along)
         speed = Math.min(25, (f.along - prev.along) / ((f.v.ts - prev.v.ts) / 1000));
       const cP = withProfile.course(trip, f.v.ts);
       const cT = timetable.course(trip, f.v.ts);
@@ -122,7 +131,7 @@ async function main() {
         const g = run[j]!;
         const h = (g.v.ts - f.v.ts) / 1000;
         const b = buckets.find(([, lo, hi]) => h >= lo && h < hi);
-        if (h >= 110) break;
+        if (h >= 360) break;
         if (!b) continue;
         const add = (m: string, pred: number) => (err[m]![b[0]] ??= []).push(Math.abs(pred - g.along));
         add('constant', Math.min(cP.length, f.along + speed * h));
@@ -150,27 +159,46 @@ function movedBackward(u: { lon: number; lat: number; bearing: number }, v: { lo
   return dx * Math.sin((u.bearing * Math.PI) / 180) + dy * Math.cos((u.bearing * Math.PI) / 180) < -5;
 }
 
+/** Keeps snapshots at least the poll interval apart: a fixed number of seconds, or the schedule's. */
+function subsample(snaps: RtSnapshot[], every: string | undefined): RtSnapshot[] {
+  if (!every) return snaps;
+  const schedule = (rtConfig as unknown as CadenceConfig).poll;
+  const intervalMs = (t: number) => (every === 'schedule' ? pollIntervalS(schedule, 'positions', t) : Number(every)) * 1000;
+  const out: RtSnapshot[] = [];
+  for (const s of snaps) if (!out.length || s.fetchedAt - out.at(-1)!.fetchedAt >= intervalMs(out.at(-1)!.fetchedAt) - 1000) out.push(s);
+  return out;
+}
+
 /** Replays the test hours as the live view would show them, for the old and new methods. */
 function liveReplay(test: RecordedHour[], pp: PreparedPlan, kin: KinematicsConfig, predictor: Predictor) {
-  const snaps = test.flatMap((h) => h.snapshots).sort((a, b) => a.fetchedAt - b.fetchedAt);
-  const WINDOW = 30; // snapshots of history per timeline (10 min), as the live client keeps
-  const base = { maxInterpolateS: rtConfig.maxInterpolateS, maxExtrapolateS: rtConfig.maxExtrapolateS, source: 'eval' };
+  const all = test.flatMap((h) => h.snapshots).sort((a, b) => a.fetchedAt - b.fetchedAt);
+  const snaps = subsample(all, opt('--subsample'));
+  if (snaps !== all) log(`Live replay subsampled to ${snaps.length} of ${all.length} snapshots (--subsample ${opt('--subsample')})`);
+  const HISTORY_MS = 10 * 60_000; // history per timeline, as the live client keeps (at least)
+  const firstFull = snaps.findIndex((s) => s.fetchedAt - snaps[0]!.fetchedAt >= HISTORY_MS);
+  const windowStart = (k: number) => {
+    let j = k;
+    while (j > 0 && snaps[k]!.fetchedAt - snaps[j - 1]!.fetchedAt < HISTORY_MS) j--;
+    return j;
+  };
+  const base = { maxInterpolateS: CADENCE.maxInterpolateS, maxExtrapolateS: CADENCE.maxExtrapolateS, source: 'eval' };
   const variants = {
     old: base,
     new: { ...base, prediction: { cfg, predictor } },
   };
-  // Every fix, by the fetch index after which it was taken (so only earlier snapshots are known).
+  // Every recorded fix (including ones a subsampled replay never fetched), by the replayed fetch
+  // index after which it was taken (so only earlier snapshots are known).
   const fetchTimes = snaps.map((s) => s.fetchedAt);
   const fixesAfter = new Map<number, RtVehicle[]>();
   const seen = new Set<string>();
-  for (const s of snaps)
+  for (const s of all)
     for (const v of s.vehicles) {
       const key = `${v.id}@${v.ts}`;
       if (seen.has(key)) continue;
       seen.add(key);
       let k = -1;
       while (k + 1 < fetchTimes.length && fetchTimes[k + 1]! <= v.ts) k++;
-      if (k >= WINDOW) (fixesAfter.get(k) ?? fixesAfter.set(k, []).get(k)!).push(v);
+      if (firstFull >= 0 && k >= firstFull) (fixesAfter.get(k) ?? fixesAfter.set(k, []).get(k)!).push(v);
     }
   console.log('\nLive view replay (each fix known only once fetched):');
   for (const [name, opts] of Object.entries(variants)) {
@@ -180,9 +208,9 @@ function liveReplay(test: RecordedHour[], pp: PreparedPlan, kin: KinematicsConfi
     let backward = 0;
     let backJumps = 0;
     let steps = 0;
-    for (let k = WINDOW; k < snaps.length - 1; k++) {
-      const before = new RtTimeline(snaps.slice(k - WINDOW, k), pp, kin, opts);
-      const now = new RtTimeline(snaps.slice(k - WINDOW + 1, k + 1), pp, kin, opts);
+    for (let k = Math.max(1, firstFull); firstFull >= 0 && k < snaps.length - 1; k++) {
+      const before = new RtTimeline(snaps.slice(windowStart(k - 1), k), pp, kin, opts);
+      const now = new RtTimeline(snaps.slice(windowStart(k), k + 1), pp, kin, opts);
       const F = snaps[k]!.fetchedAt;
       const b = new Map(before.vehiclesAt(F).map((v) => [v.id, v]));
       for (const v of now.vehiclesAt(F)) {

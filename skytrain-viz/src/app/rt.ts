@@ -12,6 +12,7 @@ import { delayCorrections, type TripDelay } from '../core/rt/carry.ts';
 import { changesView, type ChangesView, type RtDayChanges } from '../core/rt/changes.ts';
 import { addDays, localDate, toWallTime } from '../core/time.ts';
 import { kinematics } from './plans.ts';
+import { cadence, type CadenceConfig } from '../core/rt/budget.ts';
 
 const BASE = import.meta.env.BASE_URL;
 /** Live mode applies when the clock is within this of wall-clock time. */
@@ -20,7 +21,9 @@ const LIVE_WINDOW_MS = 10 * 60_000;
 const LIVE_BUFFER_MS = 20 * 60_000;
 const MAX_HOURS_CACHED = 8;
 const PREDICTION = rtConfig.prediction as unknown as PredictionConfig;
-/** Service changes for today and yesterday are refetched this often (the server polls trip updates every minute). */
+/** Thresholds that follow how often the server polls (src/core/rt/budget.ts). */
+const CADENCE = cadence(rtConfig as unknown as CadenceConfig);
+/** Service changes for today and yesterday are refetched this often (cheap: they come from our server, which polls TransLink on its own schedule). */
 const CHANGES_REFRESH_MS = 60_000;
 const MAX_CHANGE_DAYS_CACHED = 6;
 
@@ -73,7 +76,7 @@ export class RtClient {
     const nearNow = Math.abs(t - Date.now()) < LIVE_WINDOW_MS;
     if (nearNow) this.ensureLivePolling();
     else this.stopLivePolling();
-    if (!nearNow || t < Date.now() - rtConfig.maxInterpolateS * 1000) this.ensureHours(t);
+    if (!nearNow || t < Date.now() - CADENCE.maxInterpolateLimitS * 1000) this.ensureHours(t);
     if (this.available) this.ensureChanges(t);
   }
 
@@ -96,8 +99,8 @@ export class RtClient {
   vehiclesAt(t: number, pp: PreparedPlan | undefined, routes?: Set<string>): { mode: RtMode; vehicles?: VehicleState[] } {
     if (!this.available) return { mode: 'unavailable' };
     const liveSpan = this.liveSpan();
-    const inLive = liveSpan !== undefined && t >= liveSpan[0] && t <= liveSpan[1] + rtConfig.staleAfterS * 1000;
-    const covered = inLive || coverageContains(this.coverage, t, rtConfig.coverageGapS * 1000);
+    const inLive = liveSpan !== undefined && t >= liveSpan[0] && t <= liveSpan[1] + CADENCE.staleAfterMs(liveSpan[1]);
+    const covered = inLive || coverageContains(this.coverage, t, CADENCE.coverageGapMs(t));
     if (!covered) return { mode: 'estimated' };
 
     const snapshots = inLive ? this.live : this.snapshotsAround(t);
@@ -111,8 +114,8 @@ export class RtClient {
     if (key !== this.timelineKey || !this.timeline) {
       this.timelineKey = key;
       this.timeline = new RtTimeline(snapshots, pp, kinematics, {
-        maxInterpolateS: rtConfig.maxInterpolateS,
-        maxExtrapolateS: rtConfig.maxExtrapolateS,
+        maxInterpolateS: CADENCE.maxInterpolateS,
+        maxExtrapolateS: CADENCE.maxExtrapolateS,
         source: live ? 'GTFS-RT live' : 'GTFS-RT recorded',
         changes: this.changesView(),
         detourNearM: rtConfig.detourNearM,
@@ -130,7 +133,7 @@ export class RtClient {
   delayCorrections(t: number, pp: PreparedPlan | undefined): { byDate: Map<string, ScheduleCorrections>; carried: Set<string> } | undefined {
     if (!this.available || !pp || !this.predictorFor(pp)) return undefined;
     const fromLive = this.live.length > 0 && t >= this.live[0]!.fetchedAt;
-    const recorded = !fromLive && coverageContains(this.coverage, t, rtConfig.coverageGapS * 1000) ? this.snapshotsAround(t) : undefined;
+    const recorded = !fromLive && coverageContains(this.coverage, t, CADENCE.coverageGapMs(t)) ? this.snapshotsAround(t) : undefined;
     const snapshots = fromLive ? this.live : recorded;
     if (!snapshots) return undefined;
     const delays = this.timelineFor(snapshots, fromLive, pp).tripDelays(t);
@@ -156,7 +159,7 @@ export class RtClient {
   private changesView(): ChangesView {
     if (this.view?.version !== this.changesVersion) {
       const days = [...this.changes.values()].flatMap((d) => (d.data ? [d.data] : []));
-      this.view = { version: this.changesVersion, view: changesView(days, rtConfig.alertsIntervalS * 1000) };
+      this.view = { version: this.changesVersion, view: changesView(days, CADENCE.alertGraceMs) };
     }
     return this.view.view;
   }
@@ -225,7 +228,7 @@ export class RtClient {
 
   private liveSpan(): [number, number] | undefined {
     const last = this.live.at(-1);
-    if (!last || Date.now() - last.fetchedAt > rtConfig.staleAfterS * 1000) return undefined;
+    if (!last || Date.now() - last.fetchedAt > CADENCE.staleAfterMs(last.fetchedAt)) return undefined;
     return [this.live[0]!.fetchedAt, last.fetchedAt];
   }
 
@@ -282,7 +285,7 @@ export class RtClient {
   /** Load the hour containing t, plus the neighbouring hour when t is near a boundary. */
   private ensureHours(t: number): void {
     if (!coverageContains(this.coverage, t, 15 * 60_000)) return;
-    const margin = rtConfig.maxInterpolateS * 1000;
+    const margin = CADENCE.maxInterpolateLimitS * 1000;
     const ids = new Map<string, { date: string; hour: string }>();
     for (const x of [t - margin, t, t + margin]) {
       const h = this.hourId(x);
@@ -319,7 +322,7 @@ export class RtClient {
 
   /** Snapshots from loaded hours around t, or undefined while they load. */
   private snapshotsAround(t: number): RtSnapshot[] | undefined {
-    const margin = rtConfig.maxInterpolateS * 1000;
+    const margin = CADENCE.maxInterpolateLimitS * 1000;
     const out: RtSnapshot[] = [];
     const seen = new Set<string>();
     for (const x of [t - margin, t, t + margin]) {

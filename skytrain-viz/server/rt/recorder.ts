@@ -8,8 +8,8 @@ import { createReadStream, createWriteStream } from 'node:fs';
 import { appendFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import { createGzip } from 'node:zlib';
-import { encodeSnapshot, extendCoverage, type RtSnapshot } from '../../src/core/rt/types.ts';
+import { createGzip, gunzipSync } from 'node:zlib';
+import { decodeSnapshot, encodeSnapshot, extendCoverage, type RtSnapshot } from '../../src/core/rt/types.ts';
 import { toWallTime } from '../../src/core/time.ts';
 
 export function hourKey(t: number): { date: string; hour: string } {
@@ -28,7 +28,8 @@ export class Recorder {
 
   constructor(
     readonly dir: string,
-    private gapMs: number,
+    /** Coverage continues across gaps up to this (ms), fixed or depending on the time. */
+    private gapMs: number | ((t: number) => number),
   ) {}
 
   private get coveragePath(): string {
@@ -70,7 +71,7 @@ export class Recorder {
       if (previous) await this.compress(previous);
     }
     await appendFile(file, `${encodeSnapshot(s)}\n`);
-    extendCoverage(this.intervals, s.fetchedAt, this.gapMs);
+    extendCoverage(this.intervals, s.fetchedAt, typeof this.gapMs === 'number' ? this.gapMs : this.gapMs(s.fetchedAt));
     const tmp = `${this.coveragePath}.tmp`;
     await writeFile(tmp, JSON.stringify({ intervals: this.intervals }));
     await rename(tmp, this.coveragePath);
@@ -118,6 +119,30 @@ export class Recorder {
         return { path, gzip };
       } catch {
         // Try the next form.
+      }
+    }
+    return undefined;
+  }
+
+  /** The latest recorded snapshot from this hour or the previous one, e.g. to serve after a restart. */
+  async lastSnapshot(now = Date.now()): Promise<RtSnapshot | undefined> {
+    for (const t of [now, now - 3_600_000]) {
+      const { date, hour } = hourKey(t);
+      const f = await this.hourFile(date, hour);
+      if (!f) continue;
+      let lines: string[];
+      try {
+        const buf = await readFile(f.path);
+        lines = (f.gzip ? gunzipSync(buf) : buf).toString('utf8').split('\n').filter(Boolean);
+      } catch {
+        continue;
+      }
+      for (let i = lines.length - 1; i >= 0; i--) {
+        try {
+          return decodeSnapshot(lines[i]!);
+        } catch {
+          // A partly written line (the process stopped mid-write): use the one before.
+        }
       }
     }
     return undefined;

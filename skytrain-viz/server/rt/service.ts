@@ -11,11 +11,14 @@
 //   GET /rt/dispatch/<date>/<v>.json    a patch version (immutable)
 //   GET /rt/ais/fixes?date=YYYYMMDD[&after=cursor]   SeaBus AIS fixes for a service date (PLAN.md §4.12)
 //
-// Client requests never trigger upstream calls: the upstream rate is fixed by the poll intervals.
+// Client requests never trigger upstream calls: the upstream rate is fixed by the poll schedule,
+// which keeps TransLink requests under a daily cap (src/core/rt/budget.ts, OPEN-QUESTIONS #29). A
+// ledger of the last 24 hours' requests (data/rt-history/requests.json) enforces the cap and lets a
+// restarted leader resume the schedule instead of polling everything at once.
 // Only one process per machine polls and records (the "leader", holding data/rt-history/.lock);
 // any other instance (e.g. `npm run dev` while `npm run server` runs) forwards /rt/* to the leader.
 
-import { readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import rtConfig from '../../data/config/rt.json' with { type: 'json' };
 import seabusConfig from '../../data/config/seabus.json' with { type: 'json' };
@@ -33,6 +36,10 @@ import type { RtRouteAlert } from '../../src/core/rt/changes.ts';
 import { localDate } from '../../src/core/time.ts';
 import { AlertDrafts } from './alerts.ts';
 import { draftFromAlert, type ServiceAlert } from '../../src/core/disruption/alerts.ts';
+import { cadence, pollIntervalS, POLL_FEEDS, RequestLedger, type CadenceConfig, type PollFeed } from '../../src/core/rt/budget.ts';
+
+const CADENCE = cadence(rtConfig as unknown as CadenceConfig);
+const SCHEDULE = (rtConfig as unknown as CadenceConfig).poll;
 
 export interface HttpResult {
   status: number;
@@ -80,8 +87,12 @@ export class RtService {
   private timers: ReturnType<typeof setTimeout>[] = [];
   private running = false;
   private lastError: string | undefined;
-  private consecutiveErrors = 0;
+  private consecutiveErrors: Record<PollFeed, number> = { positions: 0, tripUpdates: 0, alerts: 0 };
   private upstreamCalls = 0;
+  private ledger = new RequestLedger(SCHEDULE.dailyCap);
+  private ledgerWrite: Promise<void> = Promise.resolve();
+  private nextPollAt: Partial<Record<PollFeed, number>> = {};
+  private capped = false;
   private startedAt = Date.now();
   readonly recorder: Recorder;
   readonly dispatcher: LiveDispatcher | undefined;
@@ -92,7 +103,7 @@ export class RtService {
   private ownsLock = false;
 
   constructor(opts: RtServiceOptions = {}) {
-    this.recorder = new Recorder(opts.historyDir ?? join(ROOT, 'data', 'rt-history'), rtConfig.coverageGapS * 1000);
+    this.recorder = new Recorder(opts.historyDir ?? join(ROOT, 'data', 'rt-history'), CADENCE.coverageGapMs);
     this.log = opts.log ?? ((m) => console.log(`[rt] ${m}`));
     this.record = opts.record ?? true;
     this.apiKey = opts.apiKey === null ? undefined : (opts.apiKey ?? translinkApiKey());
@@ -103,7 +114,7 @@ export class RtService {
         apiKey: aisKey,
         cfg: seabusConfig.ais as unknown as AisConfig,
         route: 'seabus',
-        recorder: new Recorder(opts.aisHistoryDir ?? join(ROOT, 'data', 'ais-history'), rtConfig.coverageGapS * 1000),
+        recorder: new Recorder(opts.aisHistoryDir ?? join(ROOT, 'data', 'ais-history'), seabusConfig.ais.coverageGapS * 1000),
         record: this.record,
         log: (m) => this.log(`AIS: ${m}`),
       });
@@ -157,17 +168,47 @@ export class RtService {
       return;
     }
     await this.recorder.init();
+    await this.loadLedger();
+    // Serve the last recorded snapshot until the first poll (marked stale once it's too old).
+    if (this.record) this.latest = (await this.recorder.lastSnapshot()) ?? null;
+    const now = Date.now();
     this.log(
-      `Polling TransLink every ${rtConfig.positionsIntervalS}s (positions) / ${rtConfig.tripUpdatesIntervalS}s (trip updates); ` +
-        `recording to ${this.recorder.dir}`,
+      `Polling TransLink on a schedule (now every ${pollIntervalS(SCHEDULE, 'positions', now)}s positions, ` +
+        `${pollIntervalS(SCHEDULE, 'tripUpdates', now)}s trip updates, ${pollIntervalS(SCHEDULE, 'alerts', now)}s alerts; ` +
+        `${this.ledger.count(now)}/${SCHEDULE.dailyCap} requests used in the last 24 h); recording to ${this.recorder.dir}`,
     );
-    this.loop('trip updates', rtConfig.tripUpdatesIntervalS, () => this.pollTripUpdates());
-    this.loop('positions', rtConfig.positionsIntervalS, () => this.pollPositions());
-    this.loop('alerts', rtConfig.alertsIntervalS, () => this.pollAlerts());
+    this.loop('tripUpdates', () => this.pollTripUpdates());
+    this.loop('positions', () => this.pollPositions());
+    this.loop('alerts', () => this.pollAlerts());
+  }
+
+  private get ledgerPath(): string {
+    return join(this.recorder.dir, 'requests.json');
+  }
+
+  private async loadLedger(): Promise<void> {
+    try {
+      const raw = JSON.parse(await readFile(this.ledgerPath, 'utf8')) as { requests?: [number, PollFeed][] };
+      this.ledger = new RequestLedger(SCHEDULE.dailyCap, raw.requests ?? []);
+    } catch {
+      // No ledger yet (first run, or a history dir without one).
+    }
+  }
+
+  /** Persist the ledger (serialised, atomic), so restarts keep counting. */
+  private saveLedger(): Promise<void> {
+    const text = JSON.stringify(this.ledger);
+    this.ledgerWrite = this.ledgerWrite
+      .then(async () => {
+        const tmp = `${this.ledgerPath}.tmp`;
+        await writeFile(tmp, text);
+        await rename(tmp, this.ledgerPath);
+      })
+      .catch((e) => this.log(`could not save request ledger (${e instanceof Error ? e.message : e})`));
+    return this.ledgerWrite;
   }
 
   private async pollAlerts(): Promise<void> {
-    this.upstreamCalls++;
     const decoded = await fetchAlerts(this.apiKey!);
     this.alerts = decoded
       .map((a) => ({ id: a.id, lines: [...new Set(a.routeIds.map((r) => this.railKeyById.get(r)).filter((k): k is string => Boolean(k)))], stopIds: a.stopIds, periods: a.periods, ...(a.cause !== undefined ? { cause: a.cause } : {}), ...(a.effect !== undefined ? { effect: a.effect } : {}), header: a.header, description: a.description }))
@@ -215,23 +256,44 @@ export class RtService {
     }
   }
 
-  /** Run `fn` now and then every `intervalS`, backing off on consecutive errors. */
-  private loop(name: string, intervalS: number, fn: () => Promise<void>): void {
+  /**
+   * Poll `feed` on the schedule: at its current interval, backing off on consecutive errors, and
+   * never beyond the daily cap (every attempt counts, failed or not). The first poll continues the
+   * schedule from the last recorded request, so a restart doesn't poll everything at once.
+   */
+  private loop(feed: PollFeed, fn: () => Promise<void>): void {
+    const schedule = (at: number) => {
+      this.nextPollAt[feed] = at;
+      if (this.running) this.timers.push(setTimeout(tick, Math.max(0, at - Date.now())));
+    };
     const tick = async () => {
       if (!this.running) return;
-      let delay = intervalS * 1000;
+      const now = Date.now();
+      const allowedAt = this.ledger.nextAllowedAt(now);
+      if (allowedAt > now) {
+        if (!this.capped) this.log(`daily cap of ${SCHEDULE.dailyCap} TransLink requests reached; pausing until ${new Date(allowedAt).toISOString()}`);
+        this.capped = true;
+        schedule(allowedAt);
+        return;
+      }
+      this.capped = false;
+      this.ledger.record(feed, now);
+      this.upstreamCalls++;
+      void this.saveLedger();
+      let delay = pollIntervalS(SCHEDULE, feed, now) * 1000;
       try {
         await fn();
-        this.consecutiveErrors = 0;
+        this.consecutiveErrors[feed] = 0;
       } catch (e) {
-        this.consecutiveErrors++;
+        const n = ++this.consecutiveErrors[feed];
         this.lastError = e instanceof Error ? e.message : String(e);
-        delay = Math.min(300_000, delay * 2 ** Math.min(4, this.consecutiveErrors));
-        this.log(`${name} poll failed (${this.lastError}); retrying in ${Math.round(delay / 1000)}s`);
+        delay = Math.min(Math.max(300_000, delay), delay * 2 ** Math.min(4, n));
+        this.log(`${feed} poll failed (${this.lastError}); retrying in ${Math.round(delay / 1000)}s`);
       }
-      if (this.running) this.timers.push(setTimeout(tick, delay));
+      schedule(now + delay);
     };
-    void tick();
+    const last = this.ledger.lastAt(feed);
+    schedule(last === undefined ? Date.now() : last + pollIntervalS(SCHEDULE, feed, last) * 1000);
   }
 
   /**
@@ -260,7 +322,6 @@ export class RtService {
   }
 
   private async pollTripUpdates(): Promise<void> {
-    this.upstreamCalls++;
     const { delays, changes } = await fetchTripUpdates(this.apiKey!, AbortSignal.timeout(15_000));
     this.delays = delays;
     const today = localDate(Date.now());
@@ -273,7 +334,6 @@ export class RtService {
 
   private async pollPositions(): Promise<void> {
     await this.loadRoutes();
-    this.upstreamCalls++;
     const fetchedAt = Date.now();
     const decoded = await fetchPositions(this.apiKey!, AbortSignal.timeout(15_000));
     const vehicles: RtVehicle[] = [];
@@ -301,7 +361,7 @@ export class RtService {
     const r: RtLiveResponse = {
       snapshot: this.latest,
       ageS,
-      stale: ageS === null || ageS > rtConfig.staleAfterS,
+      stale: ageS === null || !this.latest || ageS * 1000 > CADENCE.staleAfterMs(this.latest.fetchedAt),
     };
     if (!this.apiKey) r.error = 'No TransLink API key configured';
     else if (this.lastError && r.stale) r.error = this.lastError;
@@ -362,6 +422,7 @@ export class RtService {
           hasKey: this.hasKey,
           uptimeS: Math.round((Date.now() - this.startedAt) / 1000),
           upstreamCalls: this.upstreamCalls,
+          budget: this.budgetStatus(),
           lastSnapshotAgeS: this.latest ? (Date.now() - this.latest.fetchedAt) / 1000 : null,
           vehicles: this.latest?.vehicles.length ?? 0,
           lastError: this.lastError ?? null,
@@ -370,6 +431,13 @@ export class RtService {
       default:
         return json(404, { error: 'Not found' });
     }
+  }
+
+  /** TransLink requests used against the daily cap, and when each feed polls next. */
+  budgetStatus(now = Date.now()): { cap: number; used24h: number; capped: boolean; intervalsS: Record<PollFeed, number>; nextPollInS: Partial<Record<PollFeed, number>> } {
+    const intervalsS = Object.fromEntries(POLL_FEEDS.map((f) => [f, pollIntervalS(SCHEDULE, f, now)])) as Record<PollFeed, number>;
+    const nextPollInS = Object.fromEntries(Object.entries(this.nextPollAt).map(([f, at]) => [f, Math.max(0, Math.round((at - now) / 1000))]));
+    return { cap: SCHEDULE.dailyCap, used24h: this.ledger.count(now), capped: this.capped, intervalsS, nextPollInS };
   }
 
   /** Live dispatch: the index of current versions, or one immutable patch version. */

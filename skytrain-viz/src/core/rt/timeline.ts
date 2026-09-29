@@ -1,5 +1,6 @@
 // Turns a series of RT snapshots into bus positions at any instant, with provenance (PLAN.md §4.5):
-//  - between two fixes of the same vehicle ≤ maxInterpolateS apart: moved along the trip's shape,
+//  - between two fixes of the same vehicle ≤ maxInterpolateS apart (which, like maxExtrapolateS, can
+//    depend on the time, following how often positions are polled: src/core/rt/budget.ts): moved along the trip's shape,
 //    paced by the travel-time profile (stops and slow sections) and fitted to both fixes;
 //  - after the latest fix: predicted along the shape with the profile for ≤ maxExtrapolateS. Each new
 //    fix corrects the prediction: a bus found to be further ahead glides forward to it; one found to
@@ -35,8 +36,9 @@ import { localDate, serviceDayStart } from '../time.ts';
 import type { TripDelay } from './carry.ts';
 
 export interface TimelineOptions {
-  maxInterpolateS: number;
-  maxExtrapolateS: number;
+  /** Seconds, or seconds at a fix time (poll intervals vary through the day). */
+  maxInterpolateS: number | ((t: number) => number);
+  maxExtrapolateS: number | ((t: number) => number);
   /** Label for VehicleState.source, e.g. "GTFS-RT live". */
   source: string;
   /** Profile-based prediction and correction settings; without it, fixed-speed dead reckoning. */
@@ -190,6 +192,16 @@ export class RtTimeline {
     tr.between = [];
   }
 
+  private interpolateS(t: number): number {
+    const m = this.opts.maxInterpolateS;
+    return typeof m === 'number' ? m : m(t);
+  }
+
+  private extrapolateS(t: number): number {
+    const m = this.opts.maxExtrapolateS;
+    return typeof m === 'number' ? m : m(t);
+  }
+
   /**
    * Each bus's delay, from its latest fix at or before t, against its paced schedule (needs the
    * predictor). Measured where this timeline shows the bus when its prediction runs out (the fix +
@@ -212,7 +224,7 @@ export class RtTimeline {
         if (!trip || trip.route.kind !== 'bus' || Number.isNaN(along)) continue;
         const { date } = this.serviceTime(trip, o.v.ts);
         const secOf = (ms: number) => (ms - serviceDayStart(date)) / 1000;
-        const handover = o.v.ts + this.opts.maxExtrapolateS * 1000;
+        const handover = o.v.ts + this.extrapolateS(o.v.ts) * 1000;
         const shown = this.shownAlong(tr, i, handover)?.along;
         const end = trip.pattern.dist[trip.pattern.dist.length - 1]!;
         const [ms, a] = shown !== undefined && shown < end - 1 ? [handover, shown] : [o.v.ts, along];
@@ -247,19 +259,19 @@ export class RtTimeline {
       if (next && this.hidden(tr, i + 1)) {
         // Known to be off its route next (between trips): stand where it was, rather than head there
         // or predict on past it.
-        if ((next.v.ts - o0.v.ts) / 1000 <= this.opts.maxInterpolateS) {
+        if ((next.v.ts - o0.v.ts) / 1000 <= this.interpolateS(next.v.ts)) {
           const st = this.standing(id, tr, i, t);
           if (st) out.push(st);
         }
         continue;
       }
       const o1 = next;
-      if (o1 && (o1.v.ts - o0.v.ts) / 1000 <= this.opts.maxInterpolateS) {
+      if (o1 && (o1.v.ts - o0.v.ts) / 1000 <= this.interpolateS(o1.v.ts)) {
         out.push(this.interpolate(id, tr, i, t));
         continue;
       }
       // No usable later fix: predict, but only while the vehicle is still being reported.
-      if ((t - o0.v.ts) / 1000 > this.opts.maxExtrapolateS) continue;
+      if ((t - o0.v.ts) / 1000 > this.extrapolateS(o0.v.ts)) continue;
       const lastSeen = floorValue(tr.seenAt, t);
       if (latestFetch !== undefined && lastSeen !== undefined && latestFetch > lastSeen) continue;
       out.push(this.extrapolate(id, tr, i, t));
@@ -538,7 +550,7 @@ export class RtTimeline {
     // Fixed speed from the previous fix.
     let speed = 0;
     const prev = i > 0 ? tr.obs[i - 1] : undefined;
-    if (prev && prev.v.tripId === o0.v.tripId && (o0.v.ts - prev.v.ts) / 1000 <= this.opts.maxInterpolateS) {
+    if (prev && prev.v.tripId === o0.v.tripId && (o0.v.ts - prev.v.ts) / 1000 <= this.interpolateS(o0.v.ts)) {
       const dp = this.alongOf(tr, i - 1);
       if (!Number.isNaN(dp) && d0 >= dp) speed = Math.min(MAX_SPEED, (d0 - dp) / ((o0.v.ts - prev.v.ts) / 1000));
     }
@@ -558,7 +570,7 @@ export class RtTimeline {
     const F = o.knownAt;
     if (t < F || p.v.tripId !== o.v.tripId || p.knownAt >= F) return raw;
     // Was the vehicle shown at F (from fix i-1, not too old)?
-    if ((F - p.v.ts) / 1000 > this.opts.maxExtrapolateS) return raw;
+    if ((F - p.v.ts) / 1000 > this.extrapolateS(p.v.ts)) return raw;
     const key = `${o.v.id}#${i}`;
     let before = this.shownAtFetch.get(key);
     if (before === undefined) {
