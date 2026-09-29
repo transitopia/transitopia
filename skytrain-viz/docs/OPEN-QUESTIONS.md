@@ -60,8 +60,10 @@ Evidence cited below comes from feed `26SEP_20260925`, OSM (2026-09-25), and the
 
 ## SeaBus and West Coast Express
 
-14. **SeaBus vessels.** How many operate at once, and are spare vessels shown at the Lonsdale maintenance berth?
-    - *Assumption:* only vessels in service are shown.
+14. ✅ **SeaBus vessels.** Two vessels normally, three at weekday peaks (Braden, 2026-09-28), confirmed against GTFS feed 26SEP_20260925. Every crossing is 12 min, with 2–4 min layovers. GTFS blocks follow one vessel each: every trip in a block starts where the last one ended.
+    - **Weekdays** (4 blocks, at most 3 at once): 15-min service with 2 vessels from 06:02, 10-min service with 3 vessels 07:10–09:47 and 15:10–18:47 (Lonsdale Quay departures every 10 min 07:00–09:30 and 15:00–18:30, Waterfront 07:15–09:35 and 15:15–18:45), 15-min service with 2 vessels in between and until 21:13, then 30-min service with 1 vessel until 01:34. One vessel runs 05:47–06:02. The AM (05:47–09:47) and PM (15:10–21:13) peak extras are separate blocks; whether they're the same vessel isn't in the data.
+    - **Saturday:** 1 vessel 06:02–07:17 (30 min), 2 until 21:13 (15 min), then 1 until 01:34. **Sunday/holidays:** 1 vessel 08:02–08:17, 2 until 21:14, then 1 until 23:34.
+    - Only vessels in service are shown. A vessel is drawn from its block's first departure to its last arrival and waits at the dock between crossings; vessels out of service (spares, the Lonsdale maintenance berth) are hidden. *Future:* live positions from AIS.
 15. **West Coast Express storage.** Show trainsets parked mid-day near Waterfront and overnight at Mission?
     - *Assumption:* shown only while in service.
 

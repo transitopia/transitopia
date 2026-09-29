@@ -83,6 +83,11 @@ describe('scheduledVehicles', () => {
     expect(back[0]?.id).toBe(lay[0]?.id);
     expect(back[0]?.bearing).toBeCloseTo(270, 0);
   });
+  it('draws a chained vehicle once at the instant it departs from layover', () => {
+    const dep = at(86280);
+    expect(dep).toHaveLength(1);
+    expect(dep[0]?.tripId).toBe('t2');
+  });
   it('runs trips past midnight on the service day that scheduled them', () => {
     const [v] = at(86400 + 60);
     expect(v?.tripId).toBe('t2');

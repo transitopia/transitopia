@@ -190,7 +190,7 @@ Script: `scripts/build-movements.ts`. The same code builds scenarios, and it wil
 
 ### 4.5 SeaBus, West Coast Express, and buses
 
-- **SeaBus and WCE** are schedule-based, interpolated along GTFS shapes with ease-in/out between stops. Vessels and trainsets are chained by block_id. No infrastructure model. WCE mid-day and overnight storage is an open question: whether to show parked trainsets at all.
+- **SeaBus and WCE** are schedule-based, interpolated along GTFS shapes with ease-in/out between stops. Vessels and trainsets are chained by block_id (for SeaBus, a block is one vessel: 2 in service, 3 at weekday peaks, 1 late evening; see OPEN-QUESTIONS #14). Out-of-service vessels are hidden. No infrastructure model. WCE mid-day and overnight storage is an open question: whether to show parked trainsets at all.
 - **Bus route lines** are split by coverage (`src/core/plan/coverage.ts`): sections served by under 25 % of the route's busiest section (e.g. the 99 east of Commercial–Broadway) and sections where no passengers can be aboard are drawn dotted. The latter comes from GTFS `pickup_type`/`drop_off_type` (kept per pattern stop as `access`): e.g. the 99 drops off at Commercial Dr @ N Grandview Hwy (58491), lays over at N Grandview Hwy @ Commercial Dr (58620: no pickup or drop-off) and picks up at Commercial–Broadway Bay 5 (50913). Stops where nobody can board or alight get no marker.
 - **Buses (99, R1–R6)** are resolved per vehicle, in priority order:
   1. **Observed**: a live or recorded snapshot position at (or within one poll interval of) *t*.

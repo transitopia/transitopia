@@ -354,7 +354,8 @@ export function scheduledVehicles(pp: PreparedPlan, q: ScheduleQuery, corr?: Sch
     const hi = lowerBound(list, q.sec + 1e-9);
     for (let i = lowerBound(list, q.sec - span); i < hi; i++) {
       const t = list[i]!;
-      if (q.sec > t.visibleUntil) continue;
+      // A chained trip hands over to its next trip at the departure instant; don't draw both.
+      if (q.sec > t.visibleUntil || (t.next && q.sec === t.visibleUntil)) continue;
       if (q.routes && !q.routes.has(t.route.key)) continue;
       if (special.has(t)) continue;
       const v = positionOnTrip(pp, t, q.sec, q.serviceDate, q.pacer);
@@ -372,7 +373,7 @@ export function scheduledVehicles(pp: PreparedPlan, q: ScheduleQuery, corr?: Sch
       // Real-time window: warped trip, then (if chained) layover until the next trip's corrected start.
       const nextShift = t.next ? shiftAt(corr.trips.get(t.next.trip.id)?.anchors, t.next.trip.start) : 0;
       const until = t.next ? Math.max(lastArr + endShift, t.next.trip.start + nextShift) : Math.max(lastArr + endShift, t.visibleUntil + endShift);
-      if (q.sec < t.trip.start + startShift || q.sec > until) continue;
+      if (q.sec < t.trip.start + startShift || q.sec > until || (t.next && q.sec === until && until === t.next.trip.start + nextShift)) continue;
       const sched = q.sec > lastArr + endShift ? lastArr : schedAt(c?.anchors, q.sec);
       const shift = shiftAt(c?.anchors, sched);
       const v = positionOnTrip(pp, t, sched, q.serviceDate, q.pacer);
