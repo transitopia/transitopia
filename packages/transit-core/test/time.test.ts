@@ -41,20 +41,46 @@ describe("service dates", () => {
 describe("serviceDayStart (noon minus 12h)", () => {
   it("equals local midnight on ordinary days", () => {
     const t = serviceDayStart("20260925");
-    expect(new Date(t).toISOString()).toBe("2026-09-25T07:00:00.000Z"); // PDT = UTC-7
+    expect(new Date(t).toISOString()).toBe("2026-09-25T07:00:00.000Z"); // UTC−7
     expect(toWallTime(t)).toMatchObject({ hour: 0, minute: 0 });
   });
-  it("is 01:00 PDT on the fall-back day, so 05:00 service time is 05:00 PST", () => {
-    // DST ends 2026-11-01 at 02:00 PDT.
+  // British Columbia moved to permanent UTC−7 in 2026 (tzdata 2026b; its last clock change was the
+  // 2026-03-08 spring-forward). Older runtimes (tzdata ≤ 2026a, e.g. Node 26.7) still fall back on
+  // 2026-11-01 and fail here: update Node. TZDB models the change as 2026-11-01 02:00 until CLDR
+  // catches up, which gives the same results as the legal date for everything after that.
+  it("stays on UTC−7 on 2026-11-01: BC no longer falls back", () => {
     const t = serviceDayStart("20261101");
-    expect(new Date(t).toISOString()).toBe("2026-11-01T08:00:00.000Z");
+    expect(new Date(t).toISOString()).toBe("2026-11-01T07:00:00.000Z");
+    expect(toWallTime(t)).toMatchObject({ hour: 0, minute: 0 });
     expect(toWallTime(t + 5 * 3600_000)).toMatchObject({ hour: 5, minute: 0 });
   });
-  it("is 23:00 PST the previous evening on the spring-forward day", () => {
-    // DST starts 2027-03-14 at 02:00 PST.
+  it("has no spring-forward in 2027", () => {
     const t = serviceDayStart("20270314");
     expect(new Date(t).toISOString()).toBe("2027-03-14T07:00:00.000Z");
-    expect(toWallTime(t + 12 * 3600_000)).toMatchObject({ hour: 12 });
+    expect(toWallTime(t)).toMatchObject({ hour: 0 });
+    expect(toWallTime(Date.parse("2027-01-15T20:00:00Z"))).toMatchObject({
+      hour: 13,
+    });
+  });
+  // The noon-minus-12h rule still matters wherever clocks change (and for other regions later).
+  describe("in a zone that still observes DST (America/Los_Angeles)", () => {
+    const LA = "America/Los_Angeles";
+    it("is 01:00 PDT on the fall-back day, so 05:00 service time is 05:00 PST", () => {
+      // DST ends 2026-11-01 at 02:00 PDT.
+      const t = serviceDayStart("20261101", LA);
+      expect(new Date(t).toISOString()).toBe("2026-11-01T08:00:00.000Z");
+      expect(toWallTime(t + 5 * 3600_000, LA)).toMatchObject({
+        hour: 5,
+        minute: 0,
+      });
+    });
+    it("is 23:00 PST the previous evening on the spring-forward day", () => {
+      // DST starts 2027-03-14 at 02:00 PST.
+      const t = serviceDayStart("20270314", LA);
+      expect(new Date(t).toISOString()).toBe("2027-03-14T07:00:00.000Z");
+      expect(toWallTime(t, LA)).toMatchObject({ hour: 23 });
+      expect(toWallTime(t + 12 * 3600_000, LA)).toMatchObject({ hour: 12 });
+    });
   });
   it("maps instants back to local dates", () => {
     expect(localDate(Date.parse("2026-09-26T06:59:00Z"))).toBe("20260925");
