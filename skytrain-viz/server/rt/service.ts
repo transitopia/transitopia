@@ -6,6 +6,7 @@
 //   GET /rt/coverage?from=ms&to=ms      recorder coverage intervals
 //   GET /rt/status                      poller health (no secrets)
 //   GET /rt/alerts                      current TransLink alerts for our rail lines (and whether drafted)
+//   GET /rt/changes?date=YYYYMMDD       bus trips cancelled or skipping stops, and bus route alerts, for a service date
 //   GET /rt/dispatch                    live dispatch: current patch per service date (index)
 //   GET /rt/dispatch/<date>/<v>.json    a patch version (immutable)
 //   GET /rt/ais/fixes?date=YYYYMMDD[&after=cursor]   SeaBus AIS fixes for a service date (PLAN.md §4.12)
@@ -26,7 +27,10 @@ import { AisFeed, type AisConfig } from './ais.ts';
 import { encodeFixes, type AisFixesResponse } from '../../src/core/ais/fixes.ts';
 import { Recorder } from './recorder.ts';
 import { LiveDispatcher, type LiveDispatchOptions } from './dispatch.ts';
-import { delayFor, fetchAlerts, fetchPositions, fetchTripDelays, type TripDelays } from './upstream.ts';
+import { delayFor, fetchAlerts, fetchPositions, fetchTripUpdates, type TripDelays } from './upstream.ts';
+import { ServiceChanges } from './changes.ts';
+import type { RtRouteAlert } from '../../src/core/rt/changes.ts';
+import { localDate } from '../../src/core/time.ts';
 import { AlertDrafts } from './alerts.ts';
 import { draftFromAlert, type ServiceAlert } from '../../src/core/disruption/alerts.ts';
 
@@ -71,6 +75,7 @@ export class RtService {
   private railKeyById = new Map<string, string>();
   private alerts: ServiceAlert[] = [];
   private alertDrafts: AlertDrafts;
+  readonly changes: ServiceChanges;
   private routesLoadedFrom: number | undefined;
   private timers: ReturnType<typeof setTimeout>[] = [];
   private running = false;
@@ -103,6 +108,7 @@ export class RtService {
         log: (m) => this.log(`AIS: ${m}`),
       });
     }
+    this.changes = new ServiceChanges(join(this.recorder.dir, 'changes'), this.record);
     this.alertDrafts = new AlertDrafts({ disruptionsDir: opts.disruptionsDir ?? join(ROOT, 'data', 'disruptions'), historyDir: this.recorder.dir, log: this.log });
   }
 
@@ -155,7 +161,7 @@ export class RtService {
       `Polling TransLink every ${rtConfig.positionsIntervalS}s (positions) / ${rtConfig.tripUpdatesIntervalS}s (trip updates); ` +
         `recording to ${this.recorder.dir}`,
     );
-    this.loop('delays', rtConfig.tripUpdatesIntervalS, () => this.pollDelays());
+    this.loop('trip updates', rtConfig.tripUpdatesIntervalS, () => this.pollTripUpdates());
     this.loop('positions', rtConfig.positionsIntervalS, () => this.pollPositions());
     this.loop('alerts', rtConfig.alertsIntervalS, () => this.pollAlerts());
   }
@@ -167,6 +173,17 @@ export class RtService {
       .map((a) => ({ id: a.id, lines: [...new Set(a.routeIds.map((r) => this.railKeyById.get(r)).filter((k): k is string => Boolean(k)))], stopIds: a.stopIds, periods: a.periods, ...(a.cause !== undefined ? { cause: a.cause } : {}), ...(a.effect !== undefined ? { effect: a.effect } : {}), header: a.header, description: a.description }))
       .filter((a) => a.lines.length > 0);
     await this.alertDrafts.update(this.alerts);
+    // Bus route alerts (e.g. detours), kept per day for playback.
+    const bus: Omit<RtRouteAlert, 'seen'>[] = [];
+    for (const a of decoded) {
+      const entities = a.entities.flatMap(({ routeId, ...rest }) => {
+        const routeKey = this.routeKeyById.get(routeId);
+        return routeKey ? [{ routeKey, ...rest }] : [];
+      });
+      if (!entities.length) continue;
+      bus.push({ id: a.id, entities, stopIds: a.stopIds, periods: a.periods, ...(a.effect !== undefined ? { effect: a.effect } : {}), header: a.header, description: a.description });
+    }
+    await this.changes.updateAlerts(bus);
   }
 
   stop(): void {
@@ -242,9 +259,16 @@ export class RtService {
     }
   }
 
-  private async pollDelays(): Promise<void> {
+  private async pollTripUpdates(): Promise<void> {
     this.upstreamCalls++;
-    this.delays = await fetchTripDelays(this.apiKey!, AbortSignal.timeout(15_000));
+    const { delays, changes } = await fetchTripUpdates(this.apiKey!, AbortSignal.timeout(15_000));
+    this.delays = delays;
+    const today = localDate(Date.now());
+    await this.changes.updateTrips(
+      changes
+        .filter((c) => c.routeId && this.routeKeyById.has(c.routeId))
+        .map((c) => ({ tripId: c.tripId, date: c.startDate && /^\d{8}$/.test(c.startDate) ? c.startDate : today, cancelled: c.cancelled, skippedStopIds: c.skippedStopIds })),
+    );
   }
 
   private async pollPositions(): Promise<void> {
@@ -324,6 +348,11 @@ export class RtService {
         if (!this.ais) body.error = 'No aisstream.io API key configured';
         else if (st?.lastError && !st.connected) body.error = st.lastError;
         return json(200, body, { 'Cache-Control': 'no-cache' });
+      }
+      case '/rt/changes': {
+        const date = params.get('date') ?? '';
+        if (!/^\d{8}$/.test(date)) return json(400, { error: 'date=YYYYMMDD required' });
+        return json(200, await this.changes.get(date), { 'Cache-Control': 'public, max-age=30' });
       }
       case '/rt/alerts':
         return json(200, { alerts: this.alerts.map((a) => ({ ...a, drafted: Boolean(draftFromAlert(a).draft) })) }, { 'Cache-Control': 'public, max-age=60' });

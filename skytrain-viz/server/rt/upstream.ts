@@ -26,6 +26,20 @@ export interface DecodedPositions {
 /** tripId → per-stop-sequence delays (seconds), plus a trip-level fallback. */
 export type TripDelays = Map<string, { bySeq: [number, number][]; trip?: number }>;
 
+/** A trip TransLink reports as cancelled, or running with stops skipped. */
+export interface TripChange {
+  tripId: string;
+  routeId?: string;
+  /** Service date, YYYYMMDD. */
+  startDate?: string;
+  cancelled: boolean;
+  skippedStopIds: string[];
+}
+
+// GTFS-RT enums (decoded as numbers).
+const TRIP_CANCELED = 3;
+const STOP_SKIPPED = 1;
+
 type FeedObject = {
   header?: { timestamp?: number };
   entity?: {
@@ -39,14 +53,14 @@ type FeedObject = {
       currentStatus?: number;
     };
     tripUpdate?: {
-      trip?: { tripId?: string };
+      trip?: { tripId?: string; routeId?: string; startDate?: string; scheduleRelationship?: number };
       delay?: number;
-      stopTimeUpdate?: { stopSequence?: number; arrival?: { delay?: number }; departure?: { delay?: number } }[];
+      stopTimeUpdate?: { stopSequence?: number; stopId?: string; scheduleRelationship?: number; arrival?: { delay?: number }; departure?: { delay?: number } }[];
     };
     id?: string;
     alert?: {
       activePeriod?: { start?: number; end?: number }[];
-      informedEntity?: { routeId?: string; stopId?: string }[];
+      informedEntity?: { routeId?: string; stopId?: string; directionId?: number; trip?: { tripId?: string } }[];
       cause?: number;
       effect?: number;
       headerText?: { translation?: { text?: string; language?: string }[] };
@@ -59,6 +73,8 @@ export interface DecodedAlert {
   id: string;
   routeIds: string[];
   stopIds: string[];
+  /** Informed routes, with the direction or trip when the alert narrows to one. */
+  entities: { routeId: string; directionId?: number; tripId?: string }[];
   /** Epoch ms. */
   periods: { start?: number; end?: number }[];
   cause?: number;
@@ -81,6 +97,18 @@ export async function fetchAlerts(apiKey: string, signal?: AbortSignal): Promise
       id: e.id,
       routeIds: [...new Set((a.informedEntity ?? []).map((x) => x.routeId).filter((x): x is string => Boolean(x)))],
       stopIds: [...new Set((a.informedEntity ?? []).map((x) => x.stopId).filter((x): x is string => Boolean(x)))],
+      entities: [
+        ...new Map(
+          (a.informedEntity ?? [])
+            .filter((x) => x.routeId)
+            .map((x) => {
+              const ent: DecodedAlert['entities'][number] = { routeId: x.routeId! };
+              if (x.directionId !== undefined && x.directionId !== null) ent.directionId = x.directionId;
+              if (x.trip?.tripId) ent.tripId = x.trip.tripId;
+              return [JSON.stringify(ent), ent] as const;
+            }),
+        ).values(),
+      ],
       periods: (a.activePeriod ?? []).map((p) => ({ ...(p.start ? { start: p.start * 1000 } : {}), ...(p.end ? { end: p.end * 1000 } : {}) })),
       ...(a.cause !== undefined ? { cause: a.cause } : {}),
       ...(a.effect !== undefined ? { effect: a.effect } : {}),
@@ -128,22 +156,37 @@ export async function fetchPositions(apiKey: string, signal?: AbortSignal): Prom
   return { headerTs, positions };
 }
 
-export async function fetchTripDelays(apiKey: string, signal?: AbortSignal): Promise<TripDelays> {
+/** Trip updates: delays per trip, and trips cancelled or skipping stops. */
+export async function fetchTripUpdates(apiKey: string, signal?: AbortSignal): Promise<{ delays: TripDelays; changes: TripChange[] }> {
   const feed = await fetchFeed('gtfsrealtime', apiKey, signal);
-  const out: TripDelays = new Map();
+  const delays: TripDelays = new Map();
+  const changes: TripChange[] = [];
   for (const e of feed.entity ?? []) {
     const tu = e.tripUpdate;
     const tripId = tu?.trip?.tripId;
     if (!tu || !tripId) continue;
+    const cancelled = tu.trip?.scheduleRelationship === TRIP_CANCELED;
     const bySeq: [number, number][] = [];
+    const skippedStopIds: string[] = [];
     for (const u of tu.stopTimeUpdate ?? []) {
+      if (u.scheduleRelationship === STOP_SKIPPED) {
+        if (u.stopId) skippedStopIds.push(u.stopId);
+        continue;
+      }
       const d = u.arrival?.delay ?? u.departure?.delay;
       if (u.stopSequence !== undefined && d !== undefined) bySeq.push([u.stopSequence, d]);
     }
+    if (cancelled || skippedStopIds.length) {
+      const c: TripChange = { tripId, cancelled, skippedStopIds };
+      if (tu.trip?.routeId) c.routeId = tu.trip.routeId;
+      if (tu.trip?.startDate) c.startDate = tu.trip.startDate;
+      changes.push(c);
+    }
+    if (cancelled) continue;
     bySeq.sort((a, b) => a[0] - b[0]);
-    out.set(tripId, { bySeq, trip: tu.delay });
+    delays.set(tripId, { bySeq, trip: tu.delay });
   }
-  return out;
+  return { delays, changes };
 }
 
 /** Delay at the vehicle's current/next stop. */
