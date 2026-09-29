@@ -6,9 +6,9 @@ import { Map as MlMap, NavigationControl, ScaleControl, addProtocol, setWorkerUr
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { Protocol } from 'pmtiles';
 import { Clock } from './clock.ts';
-import { PlanStore, displayServiceDate, kinematics } from './plans.ts';
+import { PlanStore, displayServiceDate, kinematics, mergeCorrections } from './plans.ts';
 import { basemapStyle, type Theme } from './basemap.ts';
-import { addStaticLayers, applyRouteFilter } from './layers/static.ts';
+import { addStaticLayers, applyRouteFilter, setFerryPair } from './layers/static.ts';
 import { VehicleLayer } from './layers/vehicles.ts';
 import { addTrackLayers, applyTrackFilter, loadPlatforms, loadTracks, setDebugPlatforms } from './layers/tracks.ts';
 import { TrackGraph } from '../core/infra/graph.ts';
@@ -18,6 +18,8 @@ import { Legend } from './ui/legend.ts';
 import { InspectCard } from './ui/inspect.ts';
 import { readUrl, writeUrl } from './url.ts';
 import { RtClient, type RtMode } from './rt.ts';
+import { AisClient } from './ais.ts';
+import { addDays, localDate } from '../core/time.ts';
 import { loadPref, savePref } from './prefs.ts';
 import { makeServiceDescriber, type ServiceDayInfo } from '../core/gtfs/describe.ts';
 import { feedForDate } from '../core/plan/types.ts';
@@ -136,12 +138,15 @@ async function main(): Promise<void> {
   // Set on 'style.load'. Not map.isStyleLoaded(): that stays false until the basemap's tiles load
   // too, so after a theme switch (setStyle) our layers were never re-added.
   let styleReady = false;
+  /** The SeaBus berth pair last applied to the map (re-applied after the style reloads). */
+  let ferryPair: string | null | undefined;
   const syncStatic = (force = false) => {
     const pp = store.planFor(displayServiceDate(clock.now()));
     if (!pp || !styleReady) return;
     if (pp === shownFeed && !force) return;
     shownFeed = pp;
     addStaticLayers(map, pp.plan, theme, legend.hidden);
+    ferryPair = undefined;
     if (tracks) {
       addTrackLayers(map, tracks, pp.plan, theme, debug);
       applyTrackFilter(map, legend.hidden);
@@ -205,6 +210,8 @@ async function main(): Promise<void> {
 
   // Real-time buses: replace schedule estimates wherever RT data covers the instant.
   const rt = new RtClient();
+  // SeaBus: AIS fixes anchor the timetable (PLAN.md §4.12).
+  const ais = new AisClient();
   // Schedule estimates for buses stop at stops, using the same travel-time profile as live prediction.
   store.pacerFor = (pp) => rt.predictorFor(pp)?.pacer;
   const RT_BADGE: Record<RtMode, [string, string]> = {
@@ -226,7 +233,26 @@ async function main(): Promise<void> {
     const live = store.scenario ? { mode: 'estimated' as const } : rt.vehiclesAt(t, pp, visible);
     // RT delays carried forward: schedule estimates continue from where buses really were.
     const carry = store.scenario ? undefined : rt.delayCorrections(t, pp);
-    const scheduled = store.vehiclesAt(t, visible, carry?.byDate);
+    let byDate = carry?.byDate;
+    if (!store.scenario) {
+      for (const date of [addDays(localDate(t), -1), localDate(t)]) {
+        const dpp = store.planFor(date);
+        const seabus = dpp && ais.correctionsFor(date, dpp, t);
+        if (!seabus) continue;
+        byDate = new Map(byDate);
+        byDate.set(date, mergeCorrections(seabus, byDate.get(date))!);
+      }
+    }
+    const scheduled = store.vehiclesAt(t, visible, byDate);
+    // SeaBus route lines: the berth pair in use on the day shown solid, the other dotted.
+    const shownDate = displayServiceDate(t);
+    const shownPp = store.planFor(shownDate);
+    const ferry = shownPp?.plan.ferry;
+    const pair = ferry ? ((!store.scenario && ais.pairFor(shownDate, shownPp)) || ferry.default) : null;
+    if (pair !== ferryPair && styleReady) {
+      ferryPair = pair;
+      setFerryPair(map, pair ?? undefined);
+    }
     if (live.vehicles) {
       // RT buses, plus estimates for buses whose RT prediction has run out (unreported for a while)
       // but whose delay is known, unless the same bus (block) is already shown from RT.

@@ -22,6 +22,11 @@ export const VEHICLES_BEFORE_LAYER = 'bus-stops-label';
 const KIND_ORDER: Record<string, number> = { bus: 0, shape: 1, skytrain: 2 };
 const BUS_FREQUENT: ExpressionSpecification = ['all', ['==', ['get', 'kind'], 'bus'], ['!', ['get', 'limited']]];
 const BUS_LIMITED: ExpressionSpecification = ['all', ['==', ['get', 'kind'], 'bus'], ['get', 'limited']];
+/** Map global state: the ferry berth pair in use on the day shown (see setFerryPair). */
+const FERRY_PAIR = 'ferryPair';
+/** Shape routes, except a ferry's berth pair that isn't in use that day (drawn dotted instead). */
+const SHAPE_ACTIVE: ExpressionSpecification = ['all', ['==', ['get', 'kind'], 'shape'], ['any', ['!', ['has', 'berthPair']], ['==', ['get', 'berthPair'], ['global-state', FERRY_PAIR]]]];
+const SHAPE_INACTIVE: ExpressionSpecification = ['all', ['==', ['get', 'kind'], 'shape'], ['has', 'berthPair'], ['!=', ['get', 'berthPair'], ['global-state', FERRY_PAIR]]];
 
 function routesGeoJson(plan: ServicePlan): FeatureCollection {
   const features: Feature[] = [];
@@ -38,17 +43,22 @@ function routesGeoJson(plan: ServicePlan): FeatureCollection {
   }
   const used = new Set(plan.trips.map((t) => t.pattern));
   for (const p of plan.patterns) {
-    const key = `${p.route}|${p.shape}`;
-    if (seen.has(key) || busRoutes.has(p.route) || !used.has(p.id)) continue;
-    seen.add(key);
+    if (busRoutes.has(p.route) || !used.has(p.id)) continue;
     const route = plan.routes.find((r) => r.key === p.route)!;
-    const coords = plan.shapes[p.shape];
-    if (!coords) continue;
-    features.push({
-      type: 'Feature',
-      properties: { route: route.key, kind: route.kind, mode: route.mode, color: route.color, order: KIND_ORDER[route.kind] ?? 0 },
-      geometry: { type: 'LineString', coordinates: coords },
-    });
+    // A ferry may use any of its berth pairs on a given day (AIS decides): draw them all, tagged
+    // with their pair, so the ones not in use can be drawn dotted.
+    const pairs: [string | undefined, string][] = plan.ferry?.route === p.route ? Object.entries(plan.ferry.pairs).map(([pair, v]) => [pair, v.shapes[p.id] ?? p.shape]) : [[undefined, p.shape]];
+    for (const [pair, shape] of pairs) {
+      const key = `${p.route}|${shape}`;
+      const coords = plan.shapes[shape];
+      if (seen.has(key) || !coords) continue;
+      seen.add(key);
+      features.push({
+        type: 'Feature',
+        properties: { route: route.key, kind: route.kind, mode: route.mode, color: route.color, order: KIND_ORDER[route.kind] ?? 0, ...(pair ? { berthPair: pair } : {}) },
+        geometry: { type: 'LineString', coordinates: coords },
+      });
+    }
   }
   return { type: 'FeatureCollection', features };
 }
@@ -177,10 +187,23 @@ export function addStaticLayers(map: MlMap, plan: ServicePlan, theme: Theme, hid
     },
   });
   map.addLayer({
+    id: 'routes-shape-inactive',
+    type: 'line',
+    source: ROUTES_SOURCE,
+    filter: SHAPE_INACTIVE,
+    layout: { 'line-join': 'round' },
+    paint: {
+      'line-color': ['get', 'color'],
+      'line-opacity': 0.6,
+      'line-width': ['interpolate', ['linear'], ['zoom'], 9, 1, 13, 2, 16, 3],
+      'line-dasharray': [1, 2],
+    },
+  });
+  map.addLayer({
     id: 'routes-shape',
     type: 'line',
     source: ROUTES_SOURCE,
-    filter: ['==', ['get', 'kind'], 'shape'],
+    filter: SHAPE_ACTIVE,
     layout: { 'line-join': 'round', 'line-cap': 'round' },
     paint: {
       'line-color': ['get', 'color'],
@@ -285,12 +308,18 @@ export function addStaticLayers(map: MlMap, plan: ServicePlan, theme: Theme, hid
   applyRouteFilter(map, hiddenRoutes);
 }
 
+/** The ferry berth pair in use on the day shown; the other pairs' routes are drawn dotted. */
+export function setFerryPair(map: MlMap, pair: string | undefined): void {
+  map.setGlobalStateProperty(FERRY_PAIR, pair ?? null);
+}
+
 export function applyRouteFilter(map: MlMap, hidden: Set<string>): void {
   const visible: ExpressionSpecification = ['!', ['in', ['get', 'route'], ['literal', [...hidden]]]];
   for (const [id, base] of [
     ['routes-bus', BUS_FREQUENT],
     ['routes-bus-limited', BUS_LIMITED],
-    ['routes-shape', ['==', ['get', 'kind'], 'shape']],
+    ['routes-shape', SHAPE_ACTIVE],
+    ['routes-shape-inactive', SHAPE_INACTIVE],
     ['routes-skytrain-casing', ['==', ['get', 'kind'], 'skytrain']],
     ['routes-skytrain', ['==', ['get', 'kind'], 'skytrain']],
   ] as [string, ExpressionSpecification][]) {

@@ -8,6 +8,7 @@
 //   GET /rt/alerts                      current TransLink alerts for our rail lines (and whether drafted)
 //   GET /rt/dispatch                    live dispatch: current patch per service date (index)
 //   GET /rt/dispatch/<date>/<v>.json    a patch version (immutable)
+//   GET /rt/ais/fixes?date=YYYYMMDD[&after=cursor]   SeaBus AIS fixes for a service date (PLAN.md §4.12)
 //
 // Client requests never trigger upstream calls: the upstream rate is fixed by the poll intervals.
 // Only one process per machine polls and records (the "leader", holding data/rt-history/.lock);
@@ -16,10 +17,13 @@
 import { readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import rtConfig from '../../data/config/rt.json' with { type: 'json' };
+import seabusConfig from '../../data/config/seabus.json' with { type: 'json' };
 import type { FeedManifest, ServicePlan } from '../../src/core/plan/types.ts';
 import type { RtCoverageResponse, RtLiveResponse, RtSnapshot, RtVehicle } from '../../src/core/rt/types.ts';
 import { PUBLIC_DATA_DIR, ROOT } from '../../scripts/lib/paths.ts';
-import { translinkApiKey } from '../secrets.ts';
+import { aisstreamApiKey, translinkApiKey } from '../secrets.ts';
+import { AisFeed, type AisConfig } from './ais.ts';
+import { encodeFixes, type AisFixesResponse } from '../../src/core/ais/fixes.ts';
 import { Recorder } from './recorder.ts';
 import { LiveDispatcher, type LiveDispatchOptions } from './dispatch.ts';
 import { delayFor, fetchAlerts, fetchPositions, fetchTripDelays, type TripDelays } from './upstream.ts';
@@ -48,6 +52,9 @@ export interface RtServiceOptions {
   record?: boolean;
   /** Override the key lookup (env / .secrets); null means no key. */
   apiKey?: string | null;
+  /** Override the aisstream.io key lookup; null means no key (no AIS feed). */
+  aisApiKey?: string | null;
+  aisHistoryDir?: string;
   /** Where confirmed disruptions live and alert drafts are written (default data/disruptions). */
   disruptionsDir?: string;
   /** Live dispatch (PLAN.md §4.11): on by default; false disables it, an object configures it. */
@@ -73,6 +80,7 @@ export class RtService {
   private startedAt = Date.now();
   readonly recorder: Recorder;
   readonly dispatcher: LiveDispatcher | undefined;
+  readonly ais: AisFeed | undefined;
   private log: (msg: string) => void;
   private record: boolean;
   private leaderUrl: string | undefined;
@@ -84,6 +92,17 @@ export class RtService {
     this.record = opts.record ?? true;
     this.apiKey = opts.apiKey === null ? undefined : (opts.apiKey ?? translinkApiKey());
     this.dispatcher = opts.dispatch === false ? undefined : new LiveDispatcher({ log: this.log, ...(typeof opts.dispatch === 'object' ? opts.dispatch : {}) });
+    const aisKey = opts.aisApiKey === null ? undefined : (opts.aisApiKey ?? aisstreamApiKey());
+    if (aisKey) {
+      this.ais = new AisFeed({
+        apiKey: aisKey,
+        cfg: seabusConfig.ais as unknown as AisConfig,
+        route: 'seabus',
+        recorder: new Recorder(opts.aisHistoryDir ?? join(ROOT, 'data', 'ais-history'), rtConfig.coverageGapS * 1000),
+        record: this.record,
+        log: (m) => this.log(`AIS: ${m}`),
+      });
+    }
     this.alertDrafts = new AlertDrafts({ disruptionsDir: opts.disruptionsDir ?? join(ROOT, 'data', 'disruptions'), historyDir: this.recorder.dir, log: this.log });
   }
 
@@ -116,13 +135,17 @@ export class RtService {
   async start(port?: number): Promise<void> {
     if (this.running) return;
     this.running = true;
-    if (this.apiKey && !(await this.acquireLock(port))) {
+    if ((this.apiKey || this.ais) && !(await this.acquireLock(port))) {
       this.log(`Another RT service (pid in ${this.lockPath}) is polling; forwarding /rt/* to ${this.leaderUrl}`);
       return;
     }
     // The leader (or a standalone process without a key) dispatches; followers forward to it.
     this.dispatcher?.start();
     await this.loadRoutes();
+    if (this.ais) {
+      this.log('Streaming SeaBus positions from aisstream.io');
+      await this.ais.start();
+    } else this.log('No AISSTREAM_API_KEY (env or .secrets): SeaBus positions estimated from the schedule.');
     if (!this.apiKey) {
       this.log('No TRANSLINK_API_KEY (env or .secrets): real-time buses disabled, schedule estimates only.');
       return;
@@ -149,6 +172,7 @@ export class RtService {
   stop(): void {
     this.running = false;
     this.dispatcher?.stop();
+    this.ais?.stop();
     for (const t of this.timers) clearTimeout(t);
     this.timers = [];
     if (this.ownsLock) {
@@ -285,6 +309,22 @@ export class RtService {
         if (f.gzip) headers['Content-Encoding'] = 'gzip';
         return { status: 200, headers, body: await readFile(f.path) };
       }
+      case '/rt/ais/fixes': {
+        const date = params.get('date') ?? '';
+        if (!/^\d{8}$/.test(date)) return json(400, { error: 'date=YYYYMMDD required' });
+        const st = this.ais?.status();
+        const r = this.ais ? await this.ais.fixesFor(date, Number(params.get('after') ?? 0) || 0) : { fixes: [], cursor: 0 };
+        const body: AisFixesResponse = {
+          connected: st?.connected ?? false,
+          lastMessageAgeS: st?.lastMessageAgeS ?? null,
+          cursor: r.cursor,
+          epoch: this.ais?.epoch ?? 0,
+          fixes: encodeFixes(r.fixes),
+        };
+        if (!this.ais) body.error = 'No aisstream.io API key configured';
+        else if (st?.lastError && !st.connected) body.error = st.lastError;
+        return json(200, body, { 'Cache-Control': 'no-cache' });
+      }
       case '/rt/alerts':
         return json(200, { alerts: this.alerts.map((a) => ({ ...a, drafted: Boolean(draftFromAlert(a).draft) })) }, { 'Cache-Control': 'public, max-age=60' });
       case '/rt/status':
@@ -296,6 +336,7 @@ export class RtService {
           lastSnapshotAgeS: this.latest ? (Date.now() - this.latest.fetchedAt) / 1000 : null,
           vehicles: this.latest?.vehicles.length ?? 0,
           lastError: this.lastError ?? null,
+          ais: this.ais?.status() ?? null,
         });
       default:
         return json(404, { error: 'Not found' });

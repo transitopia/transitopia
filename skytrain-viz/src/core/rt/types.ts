@@ -19,6 +19,8 @@ export interface RtVehicle {
   status?: number;
   /** Seconds late (+) / early (−) at the next stop, from TripUpdates when available. */
   delay?: number;
+  /** m/s, when the source reports it (AIS speed over ground). */
+  speed?: number;
 }
 
 export interface RtSnapshot {
@@ -64,6 +66,8 @@ type Tuple = [
   string | null,
   number | null,
   number | null,
+  // Optional trailing fields (absent in older recordings).
+  number?,
 ];
 
 /** Compact line format: {t, h, v: tuples}. Positions rounded to ~1 m. */
@@ -71,8 +75,8 @@ export function encodeSnapshot(s: RtSnapshot): string {
   return JSON.stringify({
     t: s.fetchedAt,
     h: s.headerTs,
-    v: s.vehicles.map(
-      (v): Tuple => [
+    v: s.vehicles.map((v): Tuple => {
+      const row: Tuple = [
         v.id,
         v.label ?? null,
         v.tripId ?? null,
@@ -85,8 +89,10 @@ export function encodeSnapshot(s: RtSnapshot): string {
         v.stopId ?? null,
         v.status ?? null,
         v.delay ?? null,
-      ],
-    ),
+      ];
+      if (v.speed !== undefined) row.push(v.speed);
+      return row;
+    }),
   });
 }
 
@@ -95,7 +101,7 @@ export function decodeSnapshot(line: string): RtSnapshot {
   return {
     fetchedAt: o.t,
     headerTs: o.h,
-    vehicles: o.v.map(([id, label, tripId, routeKey, lat, lon, bearing, ts, stopSeq, stopId, status, delay]) => {
+    vehicles: o.v.map(([id, label, tripId, routeKey, lat, lon, bearing, ts, stopSeq, stopId, status, delay, speed]) => {
       const v: RtVehicle = { id, routeKey, lat, lon, ts };
       if (label !== null) v.label = label;
       if (tripId !== null) v.tripId = tripId;
@@ -104,6 +110,7 @@ export function decodeSnapshot(line: string): RtSnapshot {
       if (stopId !== null) v.stopId = stopId;
       if (status !== null) v.status = status;
       if (delay !== null) v.delay = delay;
+      if (speed !== undefined && speed !== null) v.speed = speed;
       return v;
     }),
   };

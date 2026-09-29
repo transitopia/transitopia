@@ -1,5 +1,6 @@
 // Build the compact service plan for each archived GTFS feed version, and the feed manifest.
-// Input:  data/raw/gtfs/<version>/google_transit.zip, data/config/routes.json
+// Input:  data/raw/gtfs/<version>/google_transit.zip, data/config/routes.json,
+//         data/infrastructure/seabus.json + data/config/seabus.json (SeaBus berths and lanes)
 // Output: public/data/feeds/<version>/plan.json, public/data/manifest.json
 // See PLAN.md §4.2.
 //
@@ -9,9 +10,10 @@
 import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { readCsv, readCsvAll, type Row } from './lib/gtfs-zip.ts';
-import { CONFIG_DIR, FEEDS_OUT_DIR, GTFS_RAW_DIR, PUBLIC_DATA_DIR, log, readJson, writeJson } from './lib/paths.ts';
+import { CONFIG_DIR, FEEDS_OUT_DIR, GTFS_RAW_DIR, PUBLIC_DATA_DIR, ROOT, log, readJson, writeJson } from './lib/paths.ts';
 import { cumulativeLengths, distM, projectOnto, round, simplify, type LonLat } from '../src/core/geo.ts';
 import { parseGtfsTime, TIMEZONE } from '../src/core/time.ts';
+import { applyFerryBerths, type FerryConfig, type FerryInfra } from '../src/core/plan/ferry-berths.ts';
 import type { CalendarEntry, CalendarException } from '../src/core/gtfs/calendar.ts';
 import type {
   FeedManifest,
@@ -291,7 +293,7 @@ export async function buildPlan(zipPath: string): Promise<ServicePlan> {
     .filter((r) => usedServices.has(r.service_id!))
     .map((r) => ({ serviceId: r.service_id!, date: r.date!, type: r.exception_type === '1' ? 1 : 2 }));
 
-  return {
+  const plan: ServicePlan = {
     schema: 1,
     feedVersion: info.feed_version!,
     feedStart: info.feed_start_date!,
@@ -306,6 +308,16 @@ export async function buildPlan(zipPath: string): Promise<ServicePlan> {
     trips,
     calendar: { calendar, exceptions },
   };
+
+  // SeaBus: berth-to-berth paths along the keep-right lanes instead of the GTFS shapes.
+  const ferry = applyFerryBerths(
+    plan,
+    await readJson<FerryInfra>(join(ROOT, 'data', 'infrastructure', 'seabus.json')),
+    await readJson<FerryConfig>(join(CONFIG_DIR, 'seabus.json')),
+  );
+  if (ferry.sharedBerthS > 0) log(`  warn: SeaBus vessels are docked at the same berth for ${ferry.sharedBerthS} s`);
+  else log(`  SeaBus: one berth pair for all vessels; berths free for ≥ ${Math.round(ferry.minBerthGapS / 60)} min between vessels`);
+  return plan;
 }
 
 /** Fill NaN times by linear interpolation on distance between known neighbours. */

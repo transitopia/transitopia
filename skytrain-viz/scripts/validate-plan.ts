@@ -33,7 +33,7 @@ async function main() {
   for (const plan of await loadAllPlans()) {
     const pp = preparePlan(plan, kin);
     const dir = join(FEEDS_OUT_DIR, plan.feedVersion, 'movements');
-    const keys = (await readdir(dir)).filter((f) => f !== 'index.json').map((f) => f.replace(/\.json$/, ''));
+    const keys = (await readdir(dir)).filter((f) => f.endsWith('.json') && f !== 'index.json').map((f) => f.replace(/\.json$/, ''));
     for (const key of keys.filter((k) => !arg('--key') || k === arg('--key'))) {
       const file = await readJson<MovementsFile>(join(dir, `${key}.json`));
       const pb = new TrainPlayback(file, pp, graph, kin, { deadheadSpeedFactor: ops.yard.deadheadSpeedFactor, turnbackSpeedFactor: ops.turnback.speedFactor });
