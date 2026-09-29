@@ -1,9 +1,11 @@
 // Ferry berths and lanes (SeaBus): replaces a route's GTFS shapes with berth-to-berth paths along
-// per-direction lanes. Every vessel uses the same berth pair all day. Runs at plan build time, so
-// playback is unchanged. Patterns keep their ids (movement files reference pattern ids).
+// per-direction lanes. Every vessel uses the same berth pair all day: the berth of the same name at
+// every terminal (west–west or east–east). Patterns use the default pair; the plan's `ferry` entry
+// lists every pair's shapes, so a day known (from AIS) to use another pair can be drawn along them.
+// Runs at plan build time. Patterns keep their ids (movement files reference pattern ids).
 
 import { distM, localProjector, round, cumulativeLengths, type LonLat } from '../geo.ts';
-import type { PlanTrip, ServicePlan } from './types.ts';
+import type { FerryBerthPlan, PlanTrip, ServicePlan } from './types.ts';
 
 export interface FerryBerth {
   /** Vessel centre when berthed. */
@@ -21,8 +23,8 @@ export interface FerryInfra {
 }
 
 export interface FerryConfig {
-  /** Terminal → the berth every vessel uses. */
-  pair: Record<string, string>;
+  /** The berth name every vessel uses at every terminal, unless AIS shows otherwise. */
+  defaultPair: string;
 }
 
 /** A stop further than this from every berth of its nearest terminal isn't a terminal stop. */
@@ -56,18 +58,29 @@ export function applyFerryBerths(plan: ServicePlan, infra: FerryInfra, cfg: Ferr
     return best;
   };
 
+  // Pairs: berth names every terminal has.
+  const terminals = Object.values(infra.terminals);
+  const pairNames = Object.keys(terminals[0]?.berths ?? {}).filter((b) => terminals.every((t) => t.berths[b]));
+  if (!pairNames.includes(cfg.defaultPair)) throw new Error(`${infra.route}: default berth pair "${cfg.defaultPair}" isn't at every terminal`);
+  const ferry: FerryBerthPlan = { route: infra.route, default: cfg.defaultPair, pairs: {} };
+  for (const pair of pairNames) ferry.pairs[pair] = { docks: terminals.map((t) => t.berths[pair]!.dock), shapes: {} };
+
   const ends = new Map<number, { from: string; to: string }>();
   for (const p of patterns) {
     if (p.stops.length !== 2) throw new Error(`${infra.route}: pattern ${p.id} has intermediate stops`);
     const from = terminalOf(p.stops[0]!);
     const to = terminalOf(p.stops[1]!);
     ends.set(p.id, { from, to });
-    const coords = berthPath(infra, from, cfg.pair[from]!, to, cfg.pair[to]!);
-    const cum = cumulativeLengths(coords);
-    p.shape = `${infra.route}:${from}-${cfg.pair[from]}>${to}-${cfg.pair[to]}`;
+    for (const pair of pairNames) {
+      const shape = `${infra.route}:${from}-${pair}>${to}-${pair}`;
+      plan.shapes[shape] = berthPath(infra, from, pair, to, pair);
+      ferry.pairs[pair]!.shapes[p.id] = shape;
+    }
+    p.shape = ferry.pairs[cfg.defaultPair]!.shapes[p.id]!;
+    const cum = cumulativeLengths(plan.shapes[p.shape]!);
     p.dist = [0, Math.round(cum[cum.length - 1]!)];
-    plan.shapes[p.shape] = coords;
   }
+  if (patterns.length) plan.ferry = ferry;
   for (const id of oldShapes) if (!plan.patterns.some((p) => p.shape === id)) delete plan.shapes[id];
 
   // Check the shared berths: per service, when each vessel (block) lies docked at each terminal.

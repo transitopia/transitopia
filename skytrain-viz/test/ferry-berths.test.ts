@@ -16,7 +16,7 @@ const infra: FerryInfra = {
     'north>south': [[-123.102, 49.295], [-123.103, 49.29], [-123.102, 49.285]],
   },
 };
-const cfg: FerryConfig = { pair: { south: 'west', north: 'west' } };
+const cfg: FerryConfig = { defaultPair: 'west' };
 
 function makePlan(trips: PlanTrip[]): ServicePlan {
   return {
@@ -87,6 +87,12 @@ describe('applyFerryBerths', () => {
       expect(coords[coords.length - 1]).toEqual(infra.terminals[to]!.berths.west!.dock);
       expect(p.dist[1]).toBeGreaterThan(2200);
     }
+    // Both pairs' shapes are listed; trips use the default pair's.
+    expect(Object.keys(plan.ferry!.pairs).sort()).toEqual(['east', 'west']);
+    expect(plan.ferry!.pairs.west!.shapes[1]).toBe(plan.patterns[1]!.shape);
+    const east = plan.shapes[plan.ferry!.pairs.east!.shapes[1]!]!;
+    expect(east[0]).toEqual(infra.terminals.south!.berths.east!.dock);
+    expect(plan.ferry!.pairs.east!.docks).toEqual([infra.terminals.south!.berths.east!.dock, infra.terminals.north!.berths.east!.dock]);
     // a docks at :12–:15 and b at :27–:30 of each half hour: the shared berth is free 12 min between them.
     expect(report.sharedBerthS).toBe(0);
     expect(report.minBerthGapS).toBe(720);

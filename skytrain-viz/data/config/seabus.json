@@ -1,7 +1,7 @@
 {
   "$comment": "SeaBus operating assumptions. Geometry (berths, lanes) is in data/infrastructure/seabus.json. OPEN-QUESTIONS #24.",
-  "$pair": "The berth every vessel uses at each terminal. On a given day all vessels use west–west or east–east, with rare exceptions: the wheelhouse sees the passenger ramps better from one side, so a vessel always loads facing the same way (Braden, 2026-09-28). The timetable allows it: one vessel leaves at least 7 min before the next arrives, even at the weekday peak. Which pair is used varies by day and isn't known in advance; west is from the one sighting (Burrard Pacific Breeze at the West berths, 2026-09-26 14:15/14:29, Braden). guess",
-  "pair": { "waterfront": "west", "lonsdale": "west" },
+  "$defaultPair": "The berth every vessel uses at both terminals, unless AIS shows otherwise: when a day's docked fixes are mostly at the other pair's berths, that day is drawn along its paths (src/core/ais/match.ts). On a given day all vessels use west–west or east–east, with rare exceptions: the wheelhouse sees the passenger ramps better from one side, so a vessel always loads facing the same way (Braden, 2026-09-28). The timetable allows it: one vessel leaves at least 7 min before the next arrives, even at the weekday peak. Which pair is used varies by day and isn't known in advance; west is from the one sighting (Burrard Pacific Breeze at the West berths, 2026-09-26 14:15/14:29, Braden). guess",
+  "defaultPair": "west",
   "$ais": "Live vessel positions from aisstream.io (PLAN.md §4.12; key AISSTREAM_API_KEY in .secrets). The RT service's leader keeps one WebSocket open, records fixes to data/ais-history/ and serves them at /rt/ais/fixes; the browser turns them into timetable anchors (src/core/ais/match.ts).",
   "ais": {
     "$vessels": "MMSIs from MarineTraffic / VesselFinder / MyShipTracking, cross-checked (2026-09-28). Burrard Beaver is the spare.",
@@ -17,7 +17,7 @@
     "batchS": 10,
     "$maxBackoffS": "Reconnect backoff doubles from 5 s up to this.",
     "maxBackoffS": 300,
-    "$match": "Matching fixes to trips. Probe 2026-09-29: fixes arrive in bursts (receivers upload intermittently), minutes apart; docked positions agree with the berth dock points to ~5 m. Guesses unless noted; OPEN-QUESTIONS #27.",
+    "$match": "Matching fixes to trips. 30-minute probe 2026-09-28 evening: per vessel in service, fixes a median ~60 s apart, gaps up to ~4 min; docked positions agree with the berth dock points to ~5 m. Guesses unless noted; OPEN-QUESTIONS #27.",
     "match": {
       "$maxOffsetM": "Lanes are traced to ±30 m and vessels wander ~100 m around them (AIS tracks).",
       "maxOffsetM": 200,
@@ -27,7 +27,9 @@
       "courseToleranceDeg": 60,
       "$minTurnaroundS": "Timetabled layovers are 2–4 min; a late vessel catches up by shortening them to this.",
       "minTurnaroundS": 90,
-      "maxCarryTrips": 3
+      "maxCarryTrips": 3,
+      "$pairMinFixes": "The day's berth pair is the one with at least this many docked fixes, more than at every other pair together; until then, defaultPair.",
+      "pairMinFixes": 2
     }
   }
 }

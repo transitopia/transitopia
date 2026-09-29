@@ -306,6 +306,8 @@ export function mergeCorrections(obs: ScheduleCorrections | undefined, rt: Sched
   let m = inner.get(rt);
   if (!m) {
     m = { trips: new Map([...rt.trips, ...obs.trips]), cancelled: obs.cancelled, consists: new Map([...rt.consists, ...obs.consists]) };
+    const shapes = obs.shapes ?? rt.shapes;
+    if (shapes) m.shapes = shapes;
     inner.set(rt, m);
   }
   return m;

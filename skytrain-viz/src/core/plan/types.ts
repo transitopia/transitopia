@@ -108,6 +108,20 @@ export interface ServicePlan {
   patterns: PlanPattern[];
   trips: PlanTrip[];
   calendar: ServiceCalendar;
+  /** Ferry berth pairs (SeaBus, PLAN.md §4.12); absent for plans built before them. */
+  ferry?: FerryBerthPlan;
+}
+
+/**
+ * A ferry route's berth pairs: every vessel uses one pair all day (e.g. west berth at both
+ * terminals). Trips point at the default pair's patterns; a day found (from AIS) to use another
+ * pair draws them along that pair's shapes instead.
+ */
+export interface FerryBerthPlan {
+  route: string;
+  default: string;
+  /** Pair (berth name) → its dock points (one per terminal) and pattern id → shape id. */
+  pairs: Record<string, { docks: LonLat[]; shapes: Record<number, string> }>;
 }
 
 export interface FeedManifestEntry {

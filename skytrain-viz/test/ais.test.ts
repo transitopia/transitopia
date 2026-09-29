@@ -46,7 +46,7 @@ const plan: ServicePlan = {
 const pp = preparePlan(plan, kin);
 const DATE = '20260928';
 const day = serviceDayStart(DATE);
-const cfg: AisMatchConfig = { maxOffsetM: 200, maxShiftS: 600, stationaryKn: 0.5, dockRadiusM: 40, courseToleranceDeg: 60, minTurnaroundS: 90, maxCarryTrips: 3 };
+const cfg: AisMatchConfig = { maxOffsetM: 200, maxShiftS: 600, stationaryKn: 0.5, dockRadiusM: 40, courseToleranceDeg: 60, minTurnaroundS: 90, maxCarryTrips: 3, pairMinFixes: 2 };
 const at = (sec: number) => day + sec * 1000;
 const lerp = (f: number): [number, number] => [S[0], S[1] + (N[1] - S[1]) * f];
 const fix = (sec: number, f: number, extra: Partial<AisFix> = {}): AisFix => {
@@ -129,6 +129,37 @@ describe('aisCorrections', () => {
     expect(r.matched).toBe(0);
     expect(r.unmatched).toBe(2);
     expect(r.corrections.trips.size).toBe(0);
+  });
+});
+
+describe('berth pair of the day', () => {
+  // The same plan with a second pair of berths 30 m east (default: west).
+  const E = 30 / 72_700;
+  const Se: [number, number] = [S[0] + E, S[1]];
+  const Ne: [number, number] = [N[0] + E, N[1]];
+  const ferryPlan: ServicePlan = {
+    ...plan,
+    shapes: { ...plan.shapes, 'north-e': [Se, Ne], 'south-e': [Ne, Se] },
+    ferry: { route: 'seabus', default: 'west', pairs: { west: { docks: [S, N], shapes: { 0: 'north', 1: 'south' } }, east: { docks: [Se, Ne], shapes: { 0: 'north-e', 1: 'south-e' } } } },
+  };
+  const fpp = preparePlan(ferryPlan, kin);
+  const docked = (sec: number, p: [number, number]): AisFix => ({ mmsi: '316042365', ts: at(sec), lon: p[0], lat: p[1], sog: 0 });
+
+  it('stays on the default pair without enough docked fixes there', () => {
+    const r = aisCorrections(fpp, DATE, [docked(28800 + 840, Ne)], 'seabus', cfg);
+    expect(r.pair).toBe('west');
+    expect(r.corrections.shapes).toBeUndefined();
+  });
+
+  it('switches the day to the pair vessels dock at, and the engine draws along it', () => {
+    const r = aisCorrections(fpp, DATE, [docked(28800 + 840, Ne), docked(28800 + 1740, Se), docked(28800 + 1750, Se)], 'seabus', cfg);
+    expect(r.pair).toBe('east');
+    expect(r.corrections.shapes).toEqual(new Map([[0, 'north-e'], [1, 'south-e']]));
+    // Every trip that day, observed or not, runs along the east pair's paths.
+    const [v] = scheduledVehicles(fpp, { serviceDate: DATE, sec: 28800 + 3 * 900 + 300 }, r.corrections);
+    expect(v!.lon).toBeCloseTo(Se[0], 6);
+    // Docked fixes still match their trips against the east berths.
+    expect(r.corrections.trips.get('t1')!.observed).toHaveLength(1);
   });
 });
 

@@ -38,17 +38,22 @@ function routesGeoJson(plan: ServicePlan): FeatureCollection {
   }
   const used = new Set(plan.trips.map((t) => t.pattern));
   for (const p of plan.patterns) {
-    const key = `${p.route}|${p.shape}`;
-    if (seen.has(key) || busRoutes.has(p.route) || !used.has(p.id)) continue;
-    seen.add(key);
+    if (busRoutes.has(p.route) || !used.has(p.id)) continue;
     const route = plan.routes.find((r) => r.key === p.route)!;
-    const coords = plan.shapes[p.shape];
-    if (!coords) continue;
-    features.push({
-      type: 'Feature',
-      properties: { route: route.key, kind: route.kind, mode: route.mode, color: route.color, order: KIND_ORDER[route.kind] ?? 0 },
-      geometry: { type: 'LineString', coordinates: coords },
-    });
+    // A ferry may use any of its berth pairs on a given day (AIS decides): draw them all.
+    const pairs = plan.ferry?.route === p.route ? Object.values(plan.ferry.pairs) : [];
+    const shapes = pairs.length ? pairs.map((pair) => pair.shapes[p.id] ?? p.shape) : [p.shape];
+    for (const shape of shapes) {
+      const key = `${p.route}|${shape}`;
+      const coords = plan.shapes[shape];
+      if (seen.has(key) || !coords) continue;
+      seen.add(key);
+      features.push({
+        type: 'Feature',
+        properties: { route: route.key, kind: route.kind, mode: route.mode, color: route.color, order: KIND_ORDER[route.kind] ?? 0 },
+        geometry: { type: 'LineString', coordinates: coords },
+      });
+    }
   }
   return { type: 'FeatureCollection', features };
 }

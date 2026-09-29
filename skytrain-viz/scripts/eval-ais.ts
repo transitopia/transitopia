@@ -30,6 +30,7 @@ const r = aisCorrections(pp, date, fixes, 'seabus', cfg);
 const dayStart = serviceDayStart(date);
 const hm = (ms: number) => formatServiceTime((ms - dayStart) / 1000, true);
 console.log(`${date}: ${fixes.length} fixes ${hm(fixes[0]!.ts)}–${hm(fixes.at(-1)!.ts)}; matched ${r.matched}, unmatched ${r.unmatched}`);
+console.log(`Berth pair: ${r.pair ?? '(plan has none)'}${r.pair && r.pair !== pp.plan.ferry?.default ? ` (overrides the default, ${pp.plan.ferry?.default})` : ''}`);
 
 console.log('\nVessels per block:');
 for (const [block, v] of r.vessels) console.log(`  ${block}: ${v.name ?? v.mmsi} (${v.fixes} fixes)`);

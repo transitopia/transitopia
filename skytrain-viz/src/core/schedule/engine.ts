@@ -281,6 +281,11 @@ export interface ScheduleCorrections {
   trips: Map<string, { anchors: { sched: number; shift: number }[]; observed: { t: number; source: string }[]; estimate?: string }>;
   cancelled: Set<string>;
   consists: Map<string, NonNullable<VehicleState['consist']>>;
+  /**
+   * Pattern id → shape to draw it along instead of its own (a ferry day using another berth pair,
+   * ServicePlan.ferry). Timing is unchanged: distance along the pattern is scaled to the shape.
+   */
+  shapes?: Map<number, string>;
 }
 
 /** Trip → the trip laying over for it (the inverse of PreparedTrip.next), per plan. */
@@ -358,7 +363,7 @@ export function scheduledVehicles(pp: PreparedPlan, q: ScheduleQuery, corr?: Sch
       if (q.sec > t.visibleUntil || (t.next && q.sec === t.visibleUntil)) continue;
       if (q.routes && !q.routes.has(t.route.key)) continue;
       if (special.has(t)) continue;
-      const v = positionOnTrip(pp, t, q.sec, q.serviceDate, q.pacer);
+      const v = positionOnTrip(pp, t, q.sec, q.serviceDate, q.pacer, corr?.shapes?.get(t.pattern.id));
       const consist = corr?.consists.get(t.vehicleId);
       if (consist) v.consist = consist;
       out.push(v);
@@ -376,7 +381,7 @@ export function scheduledVehicles(pp: PreparedPlan, q: ScheduleQuery, corr?: Sch
       if (q.sec < t.trip.start + startShift || q.sec > until || (t.next && q.sec === until && until === t.next.trip.start + nextShift)) continue;
       const sched = q.sec > lastArr + endShift ? lastArr : schedAt(c?.anchors, q.sec);
       const shift = shiftAt(c?.anchors, sched);
-      const v = positionOnTrip(pp, t, sched, q.serviceDate, q.pacer);
+      const v = positionOnTrip(pp, t, sched, q.serviceDate, q.pacer, corr.shapes?.get(t.pattern.id));
       const obs = c?.observed.find((o) => Math.abs(o.t - q.sec) <= OBSERVED_S);
       const nextObs = t.next ? corr.trips.get(t.next.trip.id)?.observed.find((o) => Math.abs(o.t - q.sec) <= OBSERVED_S) : undefined;
       const seen = obs ?? nextObs;
@@ -400,10 +405,11 @@ export function scheduledVehicles(pp: PreparedPlan, q: ScheduleQuery, corr?: Sch
   return out;
 }
 
-function positionOnTrip(pp: PreparedPlan, t: PreparedTrip, sec: number, serviceDate: string, pacer?: TripPacer): VehicleState {
+function positionOnTrip(pp: PreparedPlan, t: PreparedTrip, sec: number, serviceDate: string, pacer?: TripPacer, shapeOverride?: string): VehicleState {
   const { pattern, arr, dep, kin } = t;
-  const coords = pp.plan.shapes[pattern.shape] as LonLat[];
-  const cum = pp.shapeCum.get(pattern.shape)!;
+  const shape = shapeOverride && pp.shapeCum.has(shapeOverride) ? shapeOverride : pattern.shape;
+  const coords = pp.plan.shapes[shape] as LonLat[];
+  const cum = pp.shapeCum.get(shape)!;
   const n = arr.length;
   let d: number;
   let status: VehicleStatus;
@@ -450,6 +456,8 @@ function positionOnTrip(pp: PreparedPlan, t: PreparedTrip, sec: number, serviceD
     }
   }
 
+  // Along another shape, the same fraction of the way.
+  if (shape !== pattern.shape) d *= cum[cum.length - 1]! / Math.max(1, pattern.dist[pattern.dist.length - 1]!);
   const p = pointAlong(coords, cum, d);
   // Bearing from a short look-ahead gives smoother headings than the raw segment bearing.
   const ahead = pointAlong(coords, cum, Math.min(cum[cum.length - 1]!, d + 10));
