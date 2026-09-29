@@ -1,0 +1,23 @@
+# Local development database (PostgreSQL 18 + PostGIS 3.6, as in production).
+#
+#   docker compose -f infra/compose.dev.yml up -d
+#   DATABASE_URL=postgres://transitopia:transitopia@localhost:5433/transitopia npm run server
+#
+# Tests use it too: TEST_DATABASE_URL=postgres://transitopia:transitopia@localhost:5433/postgres
+# (each test file creates and drops its own database).
+name: transitopia-dev
+services:
+  db:
+    # postgis/postgis has no arm64 build; this multi-arch build of the same Dockerfiles (by one of
+    # its maintainers) also runs on Apple Silicon. Production (amd64) uses postgis/postgis.
+    image: imresamu/postgis:18-3.6
+    environment:
+      POSTGRES_USER: transitopia
+      POSTGRES_PASSWORD: transitopia
+      POSTGRES_DB: transitopia
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - db:/var/lib/postgresql
+volumes:
+  db:
