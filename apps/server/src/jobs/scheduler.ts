@@ -172,32 +172,42 @@ export class Jobs {
     }
   }
 
-  /** For /healthz: daily jobs that failed or haven't succeeded lately. */
+  /** For /healthz: daily jobs that failed lately, or haven't succeeded for a while. */
   async health(): Promise<Record<string, { ok: boolean; detail?: string }>> {
     if (!this.db) return {};
     const out: Record<string, { ok: boolean; detail?: string }> = {};
-    const rows = await this.db
+    const failures = await this.db
       .selectFrom("job_runs")
-      .select(["job", "key", "status", "finished_at", "error"])
-      .where("started_at", ">", new Date(Date.now() - 3 * 86_400_000))
-      .orderBy("started_at", "desc")
+      .select(["job", "key", "error"])
+      .where("status", "=", "failed")
+      .where("finished_at", ">", new Date(Date.now() - 3 * 86_400_000))
+      .orderBy("finished_at", "desc")
       .execute();
-    for (const job of ["daily", ...(this.env.buildData ? ["data"] : [])]) {
-      const mine = rows.filter((r) => r.job === job);
-      const failed = mine.find((r) => r.status === "failed");
-      const lastOk = mine.find((r) => r.status === "done")?.finished_at;
-      // Nothing ran yet (a new server) isn't a failure; nothing succeeding for a while is.
+    const latest = await this.db
+      .selectFrom("job_runs")
+      .select(({ fn }) => ["job", fn.max("finished_at").as("last")])
+      .where("status", "=", "done")
+      .groupBy("job")
+      .execute();
+    // Backups run in their own container (infra/backup) and record themselves here.
+    for (const job of [
+      "daily",
+      ...(this.env.buildData ? ["data"] : []),
+      ...(this.env.archiveRemote ? ["backup"] : []),
+    ]) {
+      const failed = failures.find((r) => r.job === job);
+      const last = latest.find((r) => r.job === job)?.last;
+      const lastOk = last ? new Date(last) : undefined;
+      // Never having run (a new server) isn't a failure; not succeeding for a while is.
       const stale =
-        mine.length > 0
-        && (!lastOk
-          || Date.now() - lastOk.getTime() > STALE_DAILY_H * 3_600_000);
+        lastOk !== undefined
+        && Date.now() - lastOk.getTime() > STALE_DAILY_H * 3_600_000;
       out[`job:${job}`] = {
         ok: !failed && !stale,
         detail:
           failed ?
             `${job}:${failed.key} failed: ${(failed.error ?? "").split("\n")[0]}`
           : lastOk ? `last success ${lastOk.toISOString()}`
-          : mine.length ? "no success in the last 3 days"
           : "no runs yet",
       };
     }

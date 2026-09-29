@@ -9,6 +9,8 @@ export async function run(
     env?: NodeJS.ProcessEnv;
     cwd?: string;
     log?: (line: string) => void;
+    /** Exit codes that aren't failures (default: 0). */
+    okCodes?: number[];
   } = {},
 ): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -27,7 +29,7 @@ export async function run(
     child.stderr.on("data", onData);
     child.on("error", reject);
     child.on("close", (code) =>
-      code === 0 ?
+      (opts.okCodes ?? [0]).includes(code ?? -1) ?
         resolve(tail)
       : reject(
           new Error(

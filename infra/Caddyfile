@@ -1,0 +1,18 @@
+# api.transitopia.org, behind Cloudflare's proxy (V2-PLAN.md §7.2). TLS between Cloudflare and
+# this VM uses a Cloudflare Origin CA certificate (SSL/TLS mode "Full (strict)"), saved as
+# infra/certs/origin.pem and origin.key; see deployment/README.md.
+{
+	# Only Cloudflare connects; no ACME certificates needed.
+	auto_https disable_certs
+}
+
+api.transitopia.org {
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
+	# /rt/history is gzipped already; Caddy leaves encoded responses alone.
+	encode zstd gzip
+	reverse_proxy server:8787
+	log {
+		output stdout
+		format console
+	}
+}

@@ -1,0 +1,73 @@
+# Production on the FullHost VM (V2-PLAN.md §7.1): the server, PostgreSQL + PostGIS, Caddy (TLS)
+# and nightly backups. Settings and secrets are in infra/.env (from .env.example, never committed);
+# rclone remotes in infra/rclone.conf. See deployment/README.md.
+#
+#   docker compose -f infra/compose.yml up -d
+#   docker compose -f infra/compose.yml logs -f server
+name: transitopia
+services:
+  db:
+    image: postgis/postgis:18-3.6
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: transitopia
+      POSTGRES_DB: transitopia
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/.env}
+    volumes:
+      - db:/var/lib/postgresql
+    shm_size: 256mb
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "transitopia"]
+      interval: 10s
+      retries: 10
+
+  server:
+    image: ${SERVER_IMAGE:-ghcr.io/transitopia/transitopia-server:prod}
+    build:
+      context: ..
+      dockerfile: infra/server.Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://transitopia:${POSTGRES_PASSWORD}@db:5432/transitopia
+      ADVERTISE_URL: http://server:8787
+      RT_POLL: "1"
+      BUILD_DATA: "1"
+    volumes:
+      - var:/app/var
+      - ./rclone.conf:/home/node/.config/rclone/rclone.conf:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    # The daily data build (build:movements, the dispatcher) needs a few GB at peak.
+    mem_limit: 6g
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/etc/caddy/certs:ro
+      - caddy:/data
+    depends_on:
+      - server
+
+  backup:
+    build: ./backup
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://transitopia:${POSTGRES_PASSWORD}@db:5432/transitopia
+      BACKUP_REMOTE: ${ARCHIVE_REMOTE:?set ARCHIVE_REMOTE in infra/.env}/backups
+    volumes:
+      - ./rclone.conf:/var/lib/postgresql/.config/rclone/rclone.conf:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db:
+  var:
+  caddy:

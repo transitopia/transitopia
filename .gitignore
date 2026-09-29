@@ -34,3 +34,7 @@ var/
 .secrets
 .wrangler/
 regions/*/disruptions/drafts/
+# Server deployment secrets (infra/.env.example, infra/rclone.conf.example)
+infra/.env
+infra/rclone.conf
+infra/certs/

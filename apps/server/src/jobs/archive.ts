@@ -2,6 +2,7 @@
 // snapshots and replay) and expires raw data after the retention period, locally, in the database
 // and in the archive. Service changes, alerts and dispatch versions are kept.
 
+import { existsSync } from "node:fs";
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -16,37 +17,30 @@ import { run } from "./exec.ts";
 
 /** Upload closed hour files (and the kept records) to `remote`. The open hour is left for later. */
 export async function archiveRecordings(remote: string): Promise<void> {
-  const flags = ["--s3-no-check-bucket"];
-  await run("rclone", [
-    "copy",
+  const copy = async (dir: string, dest: string, filters: string[]) => {
+    // Nothing recorded there (yet), e.g. no AIS key.
+    if (!existsSync(dir)) return;
+    await run("rclone", [
+      "copy",
+      dir,
+      `${remote}/${dest}`,
+      ...filters,
+      "--s3-no-check-bucket",
+    ]);
+  };
+  const include = (...globs: string[]) =>
+    globs.flatMap((g) => ["--include", g]);
+  await copy(
     RT_HISTORY_DIR,
-    `${remote}/rt-history`,
-    "--include",
-    "*.ndjson.gz",
-    "--include",
-    "changes/*.json",
-    "--include",
-    "alerts.ndjson",
-    "--include",
-    "coverage.json",
-    ...flags,
-  ]);
-  await run("rclone", [
-    "copy",
+    "rt-history",
+    include("*.ndjson.gz", "changes/*.json", "alerts.ndjson", "coverage.json"),
+  );
+  await copy(
     AIS_HISTORY_DIR,
-    `${remote}/ais-history`,
-    "--include",
-    "*.ndjson.gz",
-    "--include",
-    "coverage.json",
-    ...flags,
-  ]);
-  await run("rclone", [
-    "copy",
-    DISPATCH_HISTORY_DIR,
-    `${remote}/dispatch-history`,
-    ...flags,
-  ]);
+    "ais-history",
+    include("*.ndjson.gz", "coverage.json"),
+  );
+  await copy(DISPATCH_HISTORY_DIR, "dispatch-history", []);
 }
 
 const localDay = (t: number) => {
@@ -86,13 +80,18 @@ export async function expireRawData(opts: {
   }
   if (opts.archiveRemote)
     for (const sub of ["rt-history", "ais-history"])
-      await run("rclone", [
-        "delete",
-        `${opts.archiveRemote}/${sub}`,
-        "--min-age",
-        `${opts.retentionDays}d`,
-        "--include",
-        "????-??-??/*.ndjson.gz",
-      ]);
+      await run(
+        "rclone",
+        [
+          "delete",
+          `${opts.archiveRemote}/${sub}`,
+          "--min-age",
+          `${opts.retentionDays}d`,
+          "--include",
+          "????-??-??/*.ndjson.gz",
+        ],
+        // 3: directory not found, i.e. nothing archived there yet.
+        { okCodes: [0, 3] },
+      );
   return { partitions, dirs };
 }

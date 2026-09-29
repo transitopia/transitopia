@@ -29,6 +29,7 @@
     "db:import-history": "tsx apps/server/src/cli/import-history.ts",
     "corrections": "tsx apps/server/src/cli/corrections.ts",
     "stats": "tsx apps/server/src/cli/stats.ts",
+    "snapshot:pull": "tsx pipelines/snapshot-pull.ts",
     "data": "tsx pipelines/data.ts",
     "data:gtfs": "tsx pipelines/fetch-gtfs.ts && tsx pipelines/build-schedule.ts",
     "data:osm": "tsx pipelines/fetch-osm.ts && tsx pipelines/import-osm.ts",

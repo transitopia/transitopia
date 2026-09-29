@@ -1,0 +1,11 @@
+# The server image (infra/server.Dockerfile) needs the workspaces' code and the region's inputs,
+# not downloads, recordings, build output or the site.
+.git
+**/node_modules
+var
+.secrets
+**/*.pmtiles
+map-layers
+apps/web/*
+!apps/web/package.json
+**/dist

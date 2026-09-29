@@ -12,6 +12,19 @@ jobs:
   checks:
     name: Lint, types, tests and build
     runs-on: ubuntu-latest
+    # The server's database tests (packages/db/src/testing.ts) create a scratch database each.
+    services:
+      postgres:
+        image: postgis/postgis:18-3.6
+        env:
+          POSTGRES_USER: transitopia
+          POSTGRES_PASSWORD: transitopia
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U transitopia" --health-interval 5s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgres://transitopia:transitopia@localhost:5432/postgres
     steps:
       - name: Check out code
         uses: actions/checkout@v6

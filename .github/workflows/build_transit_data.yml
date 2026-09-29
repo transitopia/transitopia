@@ -1,15 +1,16 @@
 name: Build Transit Data
 
-# Published transit data for /transit (V2-PLAN.md Phase 1, schedules only): the service plans,
-# track network and platform mapping, dispatched movements, observations and dispatch patches, served
-# from https://data.transitopia.org/ (the site's VITE_TRANSIT_DATA). Until the V2 server exists
-# (Phase 2), this runs daily in CI. It downloads GTFS static from gtfs-static.translink.ca, not the
+# Published transit data for /transit: the service plans, track network and platform mapping,
+# dispatched movements, observations and dispatch patches, served from https://data.transitopia.org/
+# (the site's VITE_TRANSIT_DATA). It downloads GTFS static from gtfs-static.translink.ca, not the
 # rate-limited Open API.
+#
+# Since Phase 2 the server builds and publishes this daily itself (apps/server/src/jobs/data-build.ts),
+# with the corrections from its database, so its live dispatch patches fit the published plans. This
+# workflow is a manual fallback only: running it while the server publishes would replace the
+# server's build (and its dispatch patches would no longer fit until the server's next build).
 
 on:
-  schedule:
-    # Every day at 10:30 UTC (03:30 in Vancouver).
-    - cron: "30 10 * * *"
   workflow_dispatch:
 
 jobs:
