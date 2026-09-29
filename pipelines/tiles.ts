@@ -1,9 +1,11 @@
-// Build the local vector basemap: a PMTiles extract of the Protomaps daily planet build clipped to
-// Metro Vancouver, plus the fonts and sprites the Protomaps style needs, so the app makes no
-// third-party map requests at runtime. See docs/skytrain-viz-PLAN.md §4.9.
+// Build a local vector basemap: a PMTiles extract of the Protomaps daily planet build clipped to a
+// region, plus the fonts and sprites the Protomaps style needs, so the app makes no third-party map
+// requests at runtime. See docs/skytrain-viz-PLAN.md §4.9 and V2-PLAN.md §5.12.
 //
-//   tsx pipelines/tiles.ts            # skip steps whose output already exists
-//   tsx pipelines/tiles.ts --force    # rebuild everything
+//   tsx pipelines/tiles.ts                  # Metro Vancouver (the standalone transit viewer)
+//   tsx pipelines/tiles.ts --region bc      # British Columbia (the site); large: ~1–2 GB
+//   tsx pipelines/tiles.ts --assets-only    # fonts and sprites only
+//   tsx pipelines/tiles.ts --force          # rebuild even if the output exists
 
 import { execFile } from "node:child_process";
 import { createWriteStream } from "node:fs";
@@ -15,6 +17,7 @@ import {
   rename,
   rm,
   stat,
+  writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -26,15 +29,32 @@ import { RAW_DIR, PUBLIC_DIR, log } from "./lib/paths.ts";
 const run = promisify(execFile);
 
 const PMTILES_VERSION = "1.31.2";
-/** Covers UBC to Mission (WCE) and Lonsdale to Newton (R1). [west, south, east, north] */
-const BBOX = [-123.32, 49.08, -122.2, 49.42] as const;
 const MAXZOOM = 15;
+
+interface Region {
+  out: string;
+  /** [west, south, east, north] */
+  bbox?: readonly [number, number, number, number];
+  /** An Osmosis .poly boundary, converted to GeoJSON for `pmtiles extract --region`. */
+  poly?: string;
+}
+const REGIONS: Record<string, Region> = {
+  /** Covers UBC to Mission (WCE) and Lonsdale to Newton (R1). */
+  vancouver: {
+    out: "vancouver.pmtiles",
+    bbox: [-123.32, 49.08, -122.2, 49.42],
+  },
+  /** The same boundary as the Geofabrik extract the cycling layer is built from (map-layers/). */
+  bc: {
+    out: "protomaps-bc.pmtiles",
+    poly: "https://download.geofabrik.de/north-america/canada/british-columbia.poly",
+  },
+};
 const FONTS = ["Noto Sans Regular", "Noto Sans Medium", "Noto Sans Italic"];
 
 const BIN_DIR = join(RAW_DIR, "bin");
 const TILES_DIR = join(PUBLIC_DIR, "tiles");
 const ASSETS_DIR = join(PUBLIC_DIR, "basemap-assets");
-const OUT = join(TILES_DIR, "vancouver.pmtiles");
 
 async function exists(p: string): Promise<boolean> {
   try {
@@ -104,26 +124,63 @@ async function latestBuildUrl(): Promise<string> {
   throw new Error("No Protomaps build found in the last 10 days");
 }
 
-async function buildTiles(force: boolean): Promise<void> {
-  if (!force && (await exists(OUT))) {
-    log(`Tiles exist: ${OUT} (use --force to rebuild)`);
+/** Osmosis .poly (one or more rings, `!`-prefixed holes) → GeoJSON MultiPolygon. */
+export function polyToGeoJson(text: string): GeoJSON.MultiPolygon {
+  const lines = text.split(/\r?\n/).map((l) => l.trim());
+  const polygons: GeoJSON.Position[][][] = [];
+  let ring: GeoJSON.Position[] | undefined;
+  let hole = false;
+  for (const line of lines.slice(1)) {
+    if (!line) continue;
+    if (line === "END") {
+      if (!ring) break; // end of file
+      if (hole) polygons.at(-1)?.push(ring);
+      else polygons.push([ring]);
+      ring = undefined;
+    } else if (!ring) {
+      hole = line.startsWith("!");
+      ring = [];
+    } else {
+      const [x, y] = line.split(/\s+/).map(Number);
+      ring.push([x!, y!]);
+    }
+  }
+  return { type: "MultiPolygon", coordinates: polygons };
+}
+
+async function buildTiles(name: string, force: boolean): Promise<void> {
+  const region = REGIONS[name];
+  if (!region)
+    throw new Error(
+      `Unknown region "${name}" (known: ${Object.keys(REGIONS).join(", ")})`,
+    );
+  const out = join(TILES_DIR, region.out);
+  if (!force && (await exists(out))) {
+    log(`Tiles exist: ${out} (use --force to rebuild)`);
     return;
   }
   const bin = await pmtilesBinary();
   const src = await latestBuildUrl();
   await mkdir(TILES_DIR, { recursive: true });
-  log(`Extracting Metro Vancouver from ${src} (maxzoom ${MAXZOOM})…`);
-  const tmp = `${OUT}.part`;
+  const area: string[] = [];
+  if (region.bbox) area.push(`--bbox=${region.bbox.join(",")}`);
+  if (region.poly) {
+    const res = await fetch(region.poly);
+    if (!res.ok)
+      throw new Error(`Download failed (${res.status}): ${region.poly}`);
+    const geojson = join(RAW_DIR, `${name}-boundary.geojson`);
+    await mkdir(RAW_DIR, { recursive: true });
+    await writeFile(geojson, JSON.stringify(polyToGeoJson(await res.text())));
+    area.push(`--region=${geojson}`);
+  }
+  log(`Extracting ${name} from ${src} (maxzoom ${MAXZOOM})…`);
+  const tmp = `${out}.part`;
   await rm(tmp, { force: true });
-  await run(
-    bin,
-    ["extract", src, tmp, `--bbox=${BBOX.join(",")}`, `--maxzoom=${MAXZOOM}`],
-    {
-      maxBuffer: 64 * 1024 * 1024,
-    },
-  );
-  await rename(tmp, OUT);
-  log(`Wrote ${OUT} (${((await stat(OUT)).size / 1e6).toFixed(1)} MB)`);
+  await run(bin, ["extract", src, tmp, ...area, `--maxzoom=${MAXZOOM}`], {
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  await rename(tmp, out);
+  log(`Wrote ${out} (${((await stat(out)).size / 1e6).toFixed(1)} MB)`);
 }
 
 async function buildAssets(force: boolean): Promise<void> {
@@ -161,12 +218,17 @@ async function buildAssets(force: boolean): Promise<void> {
 }
 
 async function main() {
-  const force = process.argv.includes("--force");
+  const args = process.argv.slice(2);
+  const force = args.includes("--force");
+  const i = args.indexOf("--region");
   await buildAssets(force);
-  await buildTiles(force);
+  if (!args.includes("--assets-only"))
+    await buildTiles(i >= 0 ? args[i + 1]! : "vancouver", force);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}
