@@ -5,7 +5,7 @@
 import rtConfig from '../../data/config/rt.json';
 import seabusConfig from '../../data/config/seabus.json';
 import { decodeFixes, serviceDateWindow, type AisFixesResponse } from '../core/ais/fixes.ts';
-import { aisCorrections, type AisFix, type AisMatchConfig } from '../core/ais/match.ts';
+import { aisCorrections, type AisDay, type AisFix, type AisMatchConfig } from '../core/ais/match.ts';
 import type { PreparedPlan, ScheduleCorrections } from '../core/schedule/engine.ts';
 
 const BASE = import.meta.env.BASE_URL;
@@ -22,7 +22,7 @@ interface DateFixes {
   complete: boolean;
   loading: boolean;
   nextPollAt: number;
-  memo?: { pp: PreparedPlan; n: number; corrections: ScheduleCorrections };
+  memo?: { pp: PreparedPlan; n: number; day: AisDay };
 }
 
 export class AisClient {
@@ -39,6 +39,15 @@ export class AisClient {
 
   /** SeaBus corrections for a service date from its AIS fixes (fetching them as needed). */
   correctionsFor(date: string, pp: PreparedPlan): ScheduleCorrections | undefined {
+    return this.dayFor(date, pp)?.corrections;
+  }
+
+  /** The berth pair in use on a service date, per its AIS fixes; undefined without any. */
+  pairFor(date: string, pp: PreparedPlan): string | undefined {
+    return this.dayFor(date, pp)?.pair;
+  }
+
+  private dayFor(date: string, pp: PreparedPlan): AisDay | undefined {
     if (!this.available) return undefined;
     let d = this.dates.get(date);
     if (!d) {
@@ -47,10 +56,8 @@ export class AisClient {
     }
     if (!d.complete && !d.loading && Date.now() >= d.nextPollAt) void this.fetch(date, d);
     if (!d.fixes.length) return undefined;
-    if (d.memo?.pp !== pp || d.memo.n !== d.fixes.length) {
-      d.memo = { pp, n: d.fixes.length, corrections: aisCorrections(pp, date, d.fixes, ROUTE, MATCH).corrections };
-    }
-    return d.memo.corrections;
+    if (d.memo?.pp !== pp || d.memo.n !== d.fixes.length) d.memo = { pp, n: d.fixes.length, day: aisCorrections(pp, date, d.fixes, ROUTE, MATCH) };
+    return d.memo.day;
   }
 
   private async fetch(date: string, d: DateFixes): Promise<void> {
