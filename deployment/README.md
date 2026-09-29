@@ -11,14 +11,13 @@ https://docs.protomaps.com/deploy/cloudflare. A file `<name>.pmtiles` in the buc
 |---|---|
 | `protomaps-bc.pmtiles` (the basemap) | `.github/workflows/build_basemap.yml`, weekly (`npm run tiles -- --region bc`) |
 | `transitopia-cycling-british-columbia.pmtiles` | `.github/workflows/build_cycling.yml`, daily (`map-layers/`) |
-| `transitopia-base-bc.pmtiles` | Retired in V2 (the OpenMapTiles basemap); delete once V2 is live. |
 
 The worker's `ALLOWED_ORIGINS` variable lists the sites allowed to use the tiles (CORS), comma
 separated. It keeps other websites from building maps on our tiles and using up our Cloudflare
 allowance. It doesn't stop non-browser clients. Entries may use `*` for one subdomain label, which
 is a Transitopia change to the upstream worker:
 
-    https://www.transitopia.org,https://transitopia.org,https://*.transitopia-web.pages.dev,https://transitopia-web.pages.dev,http://localhost:5173
+    https://www.transitopia.org,https://transitopia.org,https://*.transitopia-web.pages.dev,http://localhost:5173
 
 `worker.js` isn't deployed by CI: after changing it, paste it into the worker in the Cloudflare
 dashboard (or deploy it with wrangler).
@@ -40,11 +39,11 @@ format is stabilized). https://github.com/transitopia/transitopia/issues/8
 patches) from `https://data.transitopia.org/`. `.github/workflows/build_transit_data.yml` rebuilds
 it daily and uploads it to the R2 bucket `transitopia-data`.
 
-One-time setup (not done yet):
+One-time setup (done):
 
 1. Create the R2 bucket `transitopia-data` and connect the custom domain `data.transitopia.org`.
 2. Add a CORS policy allowing `GET` and `HEAD` from `https://www.transitopia.org` (and
-   `https://transitopia.org`).
+   `https://transitopia.org`, `https://*.transitopia-web.pages.dev`, `http://localhost:5173`).
 3. Cache: `data/manifest.json` should be short-lived (e.g. 5 minutes); everything else can be cached
    for longer. (Content-hashed paths are planned, V2-PLAN.md §5.2.)
 4. Add GitHub secrets `RCLONE_CONFIG_TRANSITOPIA_DATA_R2_ACCESS_KEY_ID` and
@@ -53,7 +52,7 @@ One-time setup (not done yet):
 
 ### The website (www.transitopia.org)
 
-A static build of `apps/web` on Cloudflare. Since V2 the app lives in `apps/web` (it was `web-ui/`)
+A static build of `apps/web` on Cloudflare. Since V2 the app lives in `apps/web`
 and the repo is an npm workspace, so the Cloudflare build settings need:
 
 - Root directory: the repository root
