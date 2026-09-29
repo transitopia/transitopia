@@ -30,6 +30,8 @@
       "maxCarryTrips": 3,
       "$pairMinFixes": "The day's berth pair is the one with at least this many docked fixes, more than at every other pair together; until then, defaultPair.",
       "pairMinFixes": 2
-    }
+    },
+    "$glide": "When new fixes arrive, vessels glide to their corrected position instead of jumping (src/core/ais/glide.ts, like buses): drawn behind, they catch up at up to catchUpMps extra over minGlideS–maxGlideS; drawn ahead, they hold (≤ maxHoldS). Under minM nothing changes; over snapM they jump. Guesses: the SeaBus cruises at ~6 m/s (AIS: 11–12.7 kn), so +4 m/s is a visible but plausible hurry.",
+    "glide": { "minM": 5, "snapM": 400, "catchUpMps": 4, "minGlideS": 3, "maxGlideS": 30, "maxHoldS": 90 }
   }
 }

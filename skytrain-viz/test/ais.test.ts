@@ -10,6 +10,7 @@ import { serviceDayStart } from '../src/core/time.ts';
 import type { ServicePlan } from '../src/core/plan/types.ts';
 import type { KinematicsConfig } from '../src/core/movement/kinematics.ts';
 import { AisFeed } from '../server/rt/ais.ts';
+import { glideCorrections, type GlideConfig } from '../src/core/ais/glide.ts';
 import { Recorder } from '../server/rt/recorder.ts';
 
 const kin: KinematicsConfig = {
@@ -160,6 +161,55 @@ describe('berth pair of the day', () => {
     expect(v!.lon).toBeCloseTo(Se[0], 6);
     // Docked fixes still match their trips against the east berths.
     expect(r.corrections.trips.get('t1')!.observed).toHaveLength(1);
+  });
+});
+
+describe('glideCorrections', () => {
+  const gcfg: GlideConfig = { minM: 5, snapM: 400, catchUpMps: 4, minGlideS: 3, maxGlideS: 30, maxHoldS: 90 };
+  const pos = (corr: ReturnType<typeof aisCorrections>['corrections'] | undefined, sec: number) => {
+    const [v] = scheduledVehicles(pp, { serviceDate: DATE, sec }, corr);
+    return v!;
+  };
+  const d = (a: { lon: number; lat: number }, b: { lon: number; lat: number }) => distM([a.lon, a.lat], [b.lon, b.lat]);
+  const t1 = () => pp.tripIndex.get('t1')!;
+  // A fix on t1 at 1100 m along, `late` seconds off the timetable, known 20 s after it was taken.
+  const setup = (late: number) => {
+    const fixSec = schedTimeAt(t1(), 1100) + late;
+    const next = aisCorrections(pp, DATE, [fix(fixSec, 0.5, { cog: 180 })], 'seabus', cfg).corrections;
+    return { next, k: fixSec + 20 };
+  };
+
+  it('holds a vessel drawn ahead until the corrected timetable catches up', () => {
+    const { next, k } = setup(40);
+    const g = glideCorrections(pp, DATE, 'seabus', undefined, next, k, gcfg);
+    expect(d(pos(g.corrections, k), pos(undefined, k))).toBeLessThan(1);
+    expect(d(pos(g.corrections, k + 20), pos(undefined, k))).toBeLessThan(1);
+    expect(g.until).toBeGreaterThan(k + 30);
+    expect(g.until).toBeLessThan(k + 50);
+    expect(d(pos(g.corrections, g.until + 5), pos(next, g.until + 5))).toBeLessThan(1);
+  });
+
+  it('speeds up a vessel drawn behind until it reaches the corrected position', () => {
+    const { next, k } = setup(-40);
+    const g = glideCorrections(pp, DATE, 'seabus', undefined, next, k, gcfg);
+    const start = pos(g.corrections, k);
+    expect(d(start, pos(undefined, k))).toBeLessThan(1);
+    expect(g.until).toBeGreaterThan(k + 3);
+    expect(g.until).toBeLessThanOrEqual(k + 30);
+    // Faster than the timetable in between, and on the corrected position from the end.
+    const mid = (k + g.until) / 2;
+    expect(d(pos(g.corrections, mid), start)).toBeGreaterThan(d(pos(undefined, mid), pos(undefined, k)));
+    expect(d(pos(g.corrections, g.until), pos(next, g.until))).toBeLessThan(1);
+    expect(d(pos(g.corrections, g.until + 10), pos(next, g.until + 10))).toBeLessThan(1);
+  });
+
+  it('jumps when the difference is too big, and leaves tiny ones alone', () => {
+    for (const late of [-400, 1]) {
+      const { next, k } = setup(late);
+      const g = glideCorrections(pp, DATE, 'seabus', undefined, next, k, gcfg);
+      expect(g.until).toBe(k);
+      expect(g.corrections.trips.get('t1')).toBe(next.trips.get('t1'));
+    }
   });
 });
 

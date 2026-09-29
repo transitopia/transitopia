@@ -1,16 +1,21 @@
 // Browser side of SeaBus AIS (PLAN.md §4.12): fetches a service date's fixes from /rt/ais/fixes
 // (polling for new ones while the date is in progress) and turns them into schedule corrections
-// with the core matcher. The RT service holds the only upstream connection.
+// with the core matcher. The RT service holds the only upstream connection. When new fixes arrive,
+// vessels glide from where they were drawn to their corrected positions (core/ais/glide.ts) instead
+// of jumping; times the fixes already cover use every fix (hindsight), so replays never jump.
 
 import rtConfig from '../../data/config/rt.json';
 import seabusConfig from '../../data/config/seabus.json';
 import { decodeFixes, serviceDateWindow, type AisFixesResponse } from '../core/ais/fixes.ts';
 import { aisCorrections, type AisDay, type AisFix, type AisMatchConfig } from '../core/ais/match.ts';
+import { glideCorrections, type Glide, type GlideConfig } from '../core/ais/glide.ts';
 import type { PreparedPlan, ScheduleCorrections } from '../core/schedule/engine.ts';
+import { serviceDayStart } from '../core/time.ts';
 
 const BASE = import.meta.env.BASE_URL;
 const ROUTE = 'seabus';
 const MATCH = Object.fromEntries(Object.entries(seabusConfig.ais.match).filter(([k]) => !k.startsWith('$'))) as unknown as AisMatchConfig;
+const GLIDE = Object.fromEntries(Object.entries(seabusConfig.ais.glide).filter(([k]) => !k.startsWith('$'))) as unknown as GlideConfig;
 const NAMES = new Map(seabusConfig.ais.vessels.map((v) => [v.mmsi, v.name]));
 const MAX_DATES = 4;
 
@@ -22,7 +27,10 @@ interface DateFixes {
   complete: boolean;
   loading: boolean;
   nextPollAt: number;
-  memo?: { pp: PreparedPlan; n: number; day: AisDay };
+  /** Epoch ms when the latest new fixes arrived, until folded into a glide. */
+  arrivedAt?: number;
+  /** Corrections from all fixes, and a glide from what was shown to them (service-day seconds). */
+  memo?: { pp: PreparedPlan; n: number; day: AisDay; glide?: Glide & { from: number } };
 }
 
 export class AisClient {
@@ -37,9 +45,13 @@ export class AisClient {
     return () => this.listeners.delete(fn);
   }
 
-  /** SeaBus corrections for a service date from its AIS fixes (fetching them as needed). */
-  correctionsFor(date: string, pp: PreparedPlan): ScheduleCorrections | undefined {
-    return this.dayFor(date, pp)?.corrections;
+  /** SeaBus corrections for a service date at display time t (epoch ms), fetching fixes as needed. */
+  correctionsFor(date: string, pp: PreparedPlan, t: number): ScheduleCorrections | undefined {
+    const day = this.dayFor(date, pp);
+    if (!day) return undefined;
+    const glide = this.dates.get(date)?.memo?.glide;
+    const sec = (t - serviceDayStart(date)) / 1000;
+    return glide && sec >= glide.from && sec <= glide.until ? glide.corrections : day.corrections;
   }
 
   /** The berth pair in use on a service date, per its AIS fixes; undefined without any. */
@@ -56,7 +68,20 @@ export class AisClient {
     }
     if (!d.complete && !d.loading && Date.now() >= d.nextPollAt) void this.fetch(date, d);
     if (!d.fixes.length) return undefined;
-    if (d.memo?.pp !== pp || d.memo.n !== d.fixes.length) d.memo = { pp, n: d.fixes.length, day: aisCorrections(pp, date, d.fixes, ROUTE, MATCH) };
+    if (d.memo?.pp !== pp || d.memo.n !== d.fixes.length) {
+      const prev = d.memo?.pp === pp ? d.memo : undefined;
+      const day = aisCorrections(pp, date, d.fixes, ROUTE, MATCH);
+      let glide: (Glide & { from: number }) | undefined;
+      if (prev && d.arrivedAt !== undefined) {
+        // Glide from what was on screen when the fixes arrived (mid-glide, if one was running).
+        const k = (d.arrivedAt - serviceDayStart(date)) / 1000;
+        const shown = prev.glide && k >= prev.glide.from && k <= prev.glide.until ? prev.glide.corrections : prev.day.corrections;
+        const g = glideCorrections(pp, date, ROUTE, shown, day.corrections, k, GLIDE);
+        if (g.until > k) glide = { ...g, from: k };
+      }
+      d.arrivedAt = undefined;
+      d.memo = { pp, n: d.fixes.length, day, ...(glide ? { glide } : {}) };
+    }
     return d.memo.day;
   }
 
@@ -82,6 +107,7 @@ export class AisClient {
         }
       }
       if (fresh.length) {
+        if (d.fixes.length) d.arrivedAt = Date.now();
         d.fixes = [...d.fixes, ...fresh].sort((a, b) => a.ts - b.ts);
         for (const fn of this.listeners) fn();
       }

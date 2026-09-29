@@ -237,7 +237,7 @@ async function main(): Promise<void> {
     if (!store.scenario) {
       for (const date of [addDays(localDate(t), -1), localDate(t)]) {
         const dpp = store.planFor(date);
-        const seabus = dpp && ais.correctionsFor(date, dpp);
+        const seabus = dpp && ais.correctionsFor(date, dpp, t);
         if (!seabus) continue;
         byDate = new Map(byDate);
         byDate.set(date, mergeCorrections(seabus, byDate.get(date))!);
