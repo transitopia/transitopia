@@ -73,7 +73,9 @@
     "maxGlideS": 25,
     "snapM": 600,
     "$scheduleAnchorS": "Schedule estimates for buses: TransLink gives every stop a time, interpolated between timepoints; pin to the timetable at most every this many seconds and let the profile place stops and slow sections in between. Guess.",
-    "scheduleAnchorS": 180
+    "scheduleAnchorS": 180,
+    "$profileHistoryDays": "build:rt-profile learns from this many days of recorded history (guess: long enough for weekday and weekend patterns, short enough to follow road changes, and to build in minutes on the server).",
+    "profileHistoryDays": 28
   },
   "$carry": "Carrying RT bus delays into schedule estimates (packages/transit-core/src/rt/carry.ts). Guesses; see docs/OPEN-QUESTIONS.md #25.",
   "carry": {

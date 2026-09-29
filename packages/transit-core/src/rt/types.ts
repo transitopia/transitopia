@@ -1,5 +1,7 @@
 // Real-time snapshot format shared by the RT service (apps/server/src/) and the browser. One snapshot is one
-// upstream poll, filtered to our routes. History files store one compact snapshot per line (NDJSON).
+// upstream poll. History files store one compact snapshot per line (NDJSON) with every route's
+// vehicles (V2-PLAN.md §4.5: recording all routes costs no extra requests); vehicles on routes we
+// don't draw have an untracked route key, and readers keep only tracked ones (trackedOnly).
 
 export interface RtVehicle {
   /** GTFS-RT vehicle.id (stable fleet identifier). */
@@ -34,6 +36,22 @@ export interface RtSnapshot {
   /** Epoch ms of the upstream feed header timestamp. */
   headerTs: number;
   vehicles: RtVehicle[];
+}
+
+const UNTRACKED = "gtfs:";
+
+/** Route key for a vehicle on a GTFS route we record but don't draw. */
+export const untrackedRouteKey = (gtfsRouteId: string | undefined): string =>
+  `${UNTRACKED}${gtfsRouteId ?? ""}`;
+
+export const isTracked = (v: Pick<RtVehicle, "routeKey">): boolean =>
+  !v.routeKey.startsWith(UNTRACKED);
+
+/** The snapshot with only the vehicles on routes we draw. */
+export function trackedOnly(s: RtSnapshot): RtSnapshot {
+  return s.vehicles.every(isTracked) ?
+      s
+    : { ...s, vehicles: s.vehicles.filter(isTracked) };
 }
 
 /** Response of GET /rt/live. */

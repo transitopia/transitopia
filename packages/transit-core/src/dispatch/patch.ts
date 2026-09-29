@@ -88,7 +88,18 @@ export function applyPatch(
 
 /** Stable short hash of JSON-able inputs (FNV-1a), for patch versions. */
 export function inputsVersion(value: unknown): string {
-  const s = JSON.stringify(value);
+  // Keys sorted: the same inputs from files or from the database (jsonb reorders keys) hash the same.
+  const s = JSON.stringify(value, (_, x: unknown) =>
+    x && typeof x === "object" && !Array.isArray(x) ?
+      Object.fromEntries(
+        Object.entries(x).sort(([a], [b]) =>
+          a < b ? -1
+          : a > b ? 1
+          : 0,
+        ),
+      )
+    : x,
+  );
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);

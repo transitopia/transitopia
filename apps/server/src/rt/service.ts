@@ -13,12 +13,15 @@
 //
 // Client requests never trigger upstream calls: the upstream rate is fixed by the poll schedule,
 // which keeps TransLink requests under a daily cap (packages/transit-core/src/rt/budget.ts, OPEN-QUESTIONS #29). A
-// ledger of the last 24 hours' requests (var/rt-history/requests.json) enforces the cap and lets a
-// restarted leader resume the schedule instead of polling everything at once.
-// Only one process per machine polls and records (the "leader", holding var/rt-history/.lock);
-// any other instance (e.g. `npm run dev` while `npm run server` runs) forwards /rt/* to the leader.
+// ledger of the last 24 hours' requests (the upstream_requests table, or var/rt-history/requests.json
+// without a database) enforces the cap and lets a restarted leader resume the schedule instead of
+// polling everything at once.
+// Only one process polls and records (the "leader", leader.ts); the others forward /rt/* to it and
+// take over when it goes away. Every route's vehicles are recorded (files and database); clients
+// only ever see the routes we draw.
 
-import { readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { readFile, rename, stat, writeFile } from "node:fs/promises";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { join } from "node:path";
 import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
 import seabusConfig from "@transitopia/region-metro-vancouver/config/seabus.json" with { type: "json" };
@@ -26,11 +29,16 @@ import type {
   FeedManifest,
   ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
-import type {
-  RtCoverageResponse,
-  RtLiveResponse,
-  RtSnapshot,
-  RtVehicle,
+import {
+  decodeSnapshot,
+  encodeSnapshot,
+  isTracked,
+  trackedOnly,
+  untrackedRouteKey,
+  type RtCoverageResponse,
+  type RtLiveResponse,
+  type RtSnapshot,
+  type RtVehicle,
 } from "@transitopia/transit-core/rt/types.ts";
 import {
   DISRUPTIONS_DIR,
@@ -45,8 +53,12 @@ import {
   encodeFixes,
   type AisFixesResponse,
 } from "@transitopia/transit-core/ais/fixes.ts";
+import type { AisFix } from "@transitopia/transit-core/ais/match.ts";
 import { Recorder } from "./recorder.ts";
 import { LiveDispatcher, type LiveDispatchOptions } from "./dispatch.ts";
+import type { Store } from "../store.ts";
+import { FileLeaderLock, type LeaderLock } from "../leader.ts";
+import type { CorrectionsRepo } from "../corrections.ts";
 import {
   delayFor,
   fetchAlerts,
@@ -114,8 +126,24 @@ export interface RtServiceOptions {
   disruptionsDir?: string;
   /** Live dispatch (docs/skytrain-viz-PLAN.md §4.11): on by default; false disables it, an object configures it. */
   dispatch?: boolean | LiveDispatchOptions;
+  /** Record to PostgreSQL as well as files (and keep the request ledger there). */
+  store?: Store | undefined;
+  /** Corrections in the database: alert drafts go there, and the dispatcher reads it. */
+  corrections?: CorrectionsRepo | undefined;
+  /** Leader election; default: the lock file in the history directory. */
+  leaderLock?: LeaderLock | undefined;
+  /** Only forward /rt/* to this RT service (e.g. production's, for local development). */
+  forwardTo?: string | undefined;
+  /** Called when this process becomes the leader (e.g. to start the scheduled jobs). */
+  onLead?: (() => void) | undefined;
   log?: (msg: string) => void;
 }
+
+/** How often a follower tries to become the leader (ms). */
+const LEADER_RETRY_MS = 30_000;
+/** Closed history hours kept filtered in memory for /rt/history. */
+const HISTORY_CACHE_HOURS = 48;
+const TRANSLINK = "translink";
 
 export class RtService {
   private apiKey: string | undefined;
@@ -125,7 +153,7 @@ export class RtService {
   /** GTFS route_id → our key for SkyTrain lines (alerts). */
   private railKeyById = new Map<string, string>();
   private alerts: ServiceAlert[] = [];
-  private alertDrafts: AlertDrafts;
+  readonly alertDrafts: AlertDrafts;
   readonly changes: ServiceChanges;
   private routesLoadedFrom: number | undefined;
   private timers: ReturnType<typeof setTimeout>[] = [];
@@ -148,7 +176,14 @@ export class RtService {
   private log: (msg: string) => void;
   private record: boolean;
   private leaderUrl: string | undefined;
-  private ownsLock = false;
+  private isLeader = false;
+  private leaderLock: LeaderLock | undefined;
+  private leaderRetry: ReturnType<typeof setTimeout> | undefined;
+  private forwardOnly: boolean;
+  private port: number | undefined;
+  readonly store: Store | undefined;
+  private historyCache = new Map<string, Buffer>();
+  private onLead: (() => void) | undefined;
 
   constructor(opts: RtServiceOptions = {}) {
     this.recorder = new Recorder(
@@ -157,17 +192,26 @@ export class RtService {
     );
     this.log = opts.log ?? ((m) => console.log(`[rt] ${m}`));
     this.record = opts.record ?? true;
+    this.store = opts.store;
+    this.leaderLock = opts.leaderLock;
+    this.forwardOnly = Boolean(opts.forwardTo);
+    this.onLead = opts.onLead;
+    if (opts.forwardTo) this.leaderUrl = opts.forwardTo.replace(/\/$/, "");
     this.apiKey =
-      opts.apiKey === null ? undefined : (opts.apiKey ?? translinkApiKey());
+      opts.apiKey === null || opts.forwardTo ?
+        undefined
+      : (opts.apiKey ?? translinkApiKey());
     this.dispatcher =
-      opts.dispatch === false ?
+      opts.dispatch === false || opts.forwardTo ?
         undefined
       : new LiveDispatcher({
           log: this.log,
+          ...(opts.store ? { store: opts.store } : {}),
+          ...(opts.corrections ? { corrections: opts.corrections } : {}),
           ...(typeof opts.dispatch === "object" ? opts.dispatch : {}),
         });
     const aisKey =
-      opts.aisApiKey === null ?
+      opts.aisApiKey === null || opts.forwardTo ?
         undefined
       : (opts.aisApiKey ?? aisstreamApiKey());
     if (aisKey) {
@@ -181,6 +225,12 @@ export class RtService {
         ),
         record: this.record,
         log: (m) => this.log(`AIS: ${m}`),
+        ...(opts.store ?
+          {
+            onBatch: (at: number, fixes: AisFix[]) =>
+              opts.store!.recordAis(at, fixes),
+          }
+        : {}),
       });
     }
     this.changes = new ServiceChanges(
@@ -188,6 +238,7 @@ export class RtService {
       this.record,
     );
     this.alertDrafts = new AlertDrafts({
+      repo: opts.corrections,
       disruptionsDir: opts.disruptionsDir ?? DISRUPTIONS_DIR,
       historyDir: this.recorder.dir,
       log: this.log,
@@ -198,40 +249,65 @@ export class RtService {
     return Boolean(this.apiKey);
   }
 
-  private get lockPath(): string {
-    return join(this.recorder.dir, ".lock");
+  /** Whether this process polls, records and dispatches (false while following another). */
+  get leading(): boolean {
+    return this.isLeader;
   }
 
-  /** Become the leader, or find the live leader to forward to. */
-  private async acquireLock(port: number | undefined): Promise<boolean> {
-    try {
-      const lock = JSON.parse(await readFile(this.lockPath, "utf8")) as {
-        pid: number;
-        port?: number;
-      };
-      if (lock.pid !== process.pid && isAlive(lock.pid) && lock.port) {
-        this.leaderUrl = `http://localhost:${lock.port}`;
-        return false;
-      }
-    } catch {
-      // No lock (or unreadable): take it.
-    }
+  /**
+   * Become the leader, or find the leader to forward to (and keep trying to take over, so a
+   * follower replaces a leader that stops).
+   */
+  private async acquireLeadership(): Promise<boolean> {
+    if (!this.running) return false;
     await this.recorder.init();
-    await writeFile(this.lockPath, JSON.stringify({ pid: process.pid, port }));
-    this.ownsLock = true;
-    return true;
+    this.leaderLock ??= new FileLeaderLock(
+      join(this.recorder.dir, ".lock"),
+      this.port,
+    );
+    const state = await this.leaderLock.tryAcquire().catch((e: Error) => {
+      this.log(`leader election failed (${e.message})`);
+      return { leader: false as const, url: undefined };
+    });
+    if (state.leader) {
+      this.leaderUrl = undefined;
+      return true;
+    }
+    if (state.url !== this.leaderUrl)
+      this.log(
+        state.url ?
+          `Another RT service is the leader; forwarding /rt/* to ${state.url}`
+        : "Another RT service is the leader, at no advertised address; /rt/* unavailable here",
+      );
+    this.leaderUrl = state.url;
+    this.leaderRetry = setTimeout(() => {
+      void this.acquireLeadership().then((ok) => {
+        if (ok) void this.lead();
+      });
+    }, LEADER_RETRY_MS);
+    return false;
   }
 
   /** @param port the port this process serves /rt/* on, advertised to followers. */
   async start(port?: number): Promise<void> {
     if (this.running) return;
     this.running = true;
-    if ((this.apiKey || this.ais) && !(await this.acquireLock(port))) {
-      this.log(
-        `Another RT service (pid in ${this.lockPath}) is polling; forwarding /rt/* to ${this.leaderUrl}`,
-      );
+    this.port = port;
+    if (this.forwardOnly) {
+      this.log(`Forwarding /rt/* to ${this.leaderUrl} (no polling here)`);
       return;
     }
+    if (this.apiKey || this.ais || this.store) {
+      if (!(await this.acquireLeadership())) return;
+    }
+    await this.lead();
+  }
+
+  /** Start everything the leader does. */
+  private async lead(): Promise<void> {
+    if (!this.running || this.isLeader) return;
+    this.isLeader = true;
+    this.onLead?.();
     // The leader (or a standalone process without a key) dispatches; followers forward to it.
     this.dispatcher?.start();
     await this.loadRoutes();
@@ -251,7 +327,10 @@ export class RtService {
     await this.recorder.init();
     await this.loadLedger();
     // Serve the last recorded snapshot until the first poll (marked stale once it's too old).
-    if (this.record) this.latest = (await this.recorder.lastSnapshot()) ?? null;
+    if (this.record) {
+      const last = await this.recorder.lastSnapshot();
+      this.latest = last ? trackedOnly(last) : null;
+    }
     const now = Date.now();
     this.log(
       `Polling TransLink on a schedule (now every ${pollIntervalS(SCHEDULE, "positions", now)}s positions, `
@@ -268,6 +347,13 @@ export class RtService {
   }
 
   private async loadLedger(): Promise<void> {
+    if (this.store) {
+      this.ledger = new RequestLedger(
+        SCHEDULE.dailyCap,
+        await this.store.recentRequests(TRANSLINK),
+      );
+      return;
+    }
     try {
       const raw = JSON.parse(await readFile(this.ledgerPath, "utf8")) as {
         requests?: [number, PollFeed][];
@@ -278,8 +364,9 @@ export class RtService {
     }
   }
 
-  /** Persist the ledger (serialised, atomic), so restarts keep counting. */
+  /** Persist the ledger (serialised, atomic), so restarts keep counting. With a database, requests are rows instead. */
   private saveLedger(): Promise<void> {
+    if (this.store) return Promise.resolve();
     const text = JSON.stringify(this.ledger);
     this.ledgerWrite = this.ledgerWrite
       .then(async () => {
@@ -297,6 +384,7 @@ export class RtService {
 
   private async pollAlerts(): Promise<void> {
     const decoded = await fetchAlerts(this.apiKey!);
+    await this.store?.recordAlerts(decoded);
     this.alerts = decoded
       .map((a) => ({
         id: a.id,
@@ -339,14 +427,13 @@ export class RtService {
 
   stop(): void {
     this.running = false;
+    this.isLeader = false;
     this.dispatcher?.stop();
     this.ais?.stop();
     for (const t of this.timers) clearTimeout(t);
     this.timers = [];
-    if (this.ownsLock) {
-      this.ownsLock = false;
-      void rm(this.lockPath, { force: true });
-    }
+    if (this.leaderRetry) clearTimeout(this.leaderRetry);
+    void this.leaderLock?.release();
   }
 
   /** Relay a request to the leader process. */
@@ -413,9 +500,24 @@ export class RtService {
       try {
         await fn();
         this.consecutiveErrors[feed] = 0;
+        void this.store
+          ?.recordRequest({ provider: TRANSLINK, feed, ts: now, status: 200 })
+          .catch((e: Error) =>
+            this.log(`could not record request (${e.message})`),
+          );
       } catch (e) {
         const n = ++this.consecutiveErrors[feed];
         this.lastError = e instanceof Error ? e.message : String(e);
+        void this.store
+          ?.recordRequest({
+            provider: TRANSLINK,
+            feed,
+            ts: now,
+            error: this.lastError,
+          })
+          .catch((e: Error) =>
+            this.log(`could not record request (${e.message})`),
+          );
         delay = Math.min(Math.max(300_000, delay), delay * 2 ** Math.min(4, n));
         this.log(
           `${feed} poll failed (${this.lastError}); retrying in ${Math.round(delay / 1000)}s`,
@@ -474,16 +576,16 @@ export class RtService {
     );
     this.delays = delays;
     const today = localDate(Date.now());
+    const rows = changes.map((c) => ({
+      tripId: c.tripId,
+      routeId: c.routeId,
+      date: c.startDate && /^\d{8}$/.test(c.startDate) ? c.startDate : today,
+      cancelled: c.cancelled,
+      skippedStopIds: c.skippedStopIds,
+    }));
+    await this.store?.recordTripChanges(rows);
     await this.changes.updateTrips(
-      changes
-        .filter((c) => c.routeId && this.routeKeyById.has(c.routeId))
-        .map((c) => ({
-          tripId: c.tripId,
-          date:
-            c.startDate && /^\d{8}$/.test(c.startDate) ? c.startDate : today,
-          cancelled: c.cancelled,
-          skippedStopIds: c.skippedStopIds,
-        })),
+      rows.filter((c) => c.routeId && this.routeKeyById.has(c.routeId)),
     );
   }
 
@@ -496,8 +598,9 @@ export class RtService {
     );
     const vehicles: RtVehicle[] = [];
     for (const p of decoded.positions) {
-      const routeKey = p.routeId ? this.routeKeyById.get(p.routeId) : undefined;
-      if (!routeKey) continue;
+      const routeKey =
+        (p.routeId ? this.routeKeyById.get(p.routeId) : undefined)
+        ?? untrackedRouteKey(p.routeId);
       const v: RtVehicle = {
         id: p.vehicleId,
         routeKey,
@@ -515,9 +618,21 @@ export class RtService {
       if (delay !== undefined) v.delay = delay;
       vehicles.push(v);
     }
-    this.latest = { fetchedAt, headerTs: decoded.headerTs, vehicles };
+    const all: RtSnapshot = { fetchedAt, headerTs: decoded.headerTs, vehicles };
+    this.latest = trackedOnly(all);
     this.lastError = undefined;
-    if (this.record) await this.recorder.record(this.latest);
+    if (this.record) await this.recorder.record(all);
+    await this.store?.recordPositions(
+      fetchedAt,
+      decoded.headerTs,
+      decoded.positions.map((p, i) => ({
+        ...p,
+        id: p.vehicleId,
+        routeKey: isTracked(vehicles[i]!) ? vehicles[i]!.routeKey : undefined,
+        ts: vehicles[i]!.ts,
+        delay: vehicles[i]!.delay,
+      })),
+    );
   }
 
   liveResponse(now = Date.now()): RtLiveResponse {
@@ -559,14 +674,17 @@ export class RtService {
           params.get("hour") ?? "",
         );
         if (!f) return json(404, { error: "No recording for that hour" });
-        const headers: Record<string, string> = {
-          "Content-Type": "application/x-ndjson; charset=utf-8",
-          ...CORS,
-          // Closed hours never change; the open hour does.
-          "Cache-Control": f.gzip ? "public, max-age=86400" : "no-cache",
+        return {
+          status: 200,
+          headers: {
+            "Content-Type": "application/x-ndjson; charset=utf-8",
+            ...CORS,
+            // Closed hours never change; the open hour does.
+            "Cache-Control": f.gzip ? "public, max-age=86400" : "no-cache",
+            "Content-Encoding": "gzip",
+          },
+          body: await this.trackedHour(f),
         };
-        if (f.gzip) headers["Content-Encoding"] = "gzip";
-        return { status: 200, headers, body: await readFile(f.path) };
       }
       case "/rt/ais/fixes": {
         const date = params.get("date") ?? "";
@@ -610,6 +728,8 @@ export class RtService {
       case "/rt/status":
         return json(200, {
           running: this.running,
+          leader: this.isLeader,
+          database: Boolean(this.store),
           hasKey: this.hasKey,
           uptimeS: Math.round((Date.now() - this.startedAt) / 1000),
           upstreamCalls: this.upstreamCalls,
@@ -623,6 +743,37 @@ export class RtService {
       default:
         return json(404, { error: "Not found" });
     }
+  }
+
+  /**
+   * A recorded hour with only the routes we draw, gzipped. The files hold every route; closed
+   * hours are filtered once and kept for a while.
+   */
+  private async trackedHour(f: {
+    path: string;
+    gzip: boolean;
+  }): Promise<Buffer> {
+    const hit = this.historyCache.get(f.path);
+    if (hit) return hit;
+    const buf = await readFile(f.path);
+    const lines: string[] = [];
+    for (const line of (f.gzip ? gunzipSync(buf) : buf)
+      .toString("utf8")
+      .split("\n")) {
+      if (!line) continue;
+      try {
+        lines.push(encodeSnapshot(trackedOnly(decodeSnapshot(line))));
+      } catch {
+        // The open hour's last line may be half written.
+      }
+    }
+    const out = gzipSync(lines.length ? `${lines.join("\n")}\n` : "");
+    if (f.gzip) {
+      this.historyCache.set(f.path, out);
+      while (this.historyCache.size > HISTORY_CACHE_HOURS)
+        this.historyCache.delete(this.historyCache.keys().next().value!);
+    }
+    return out;
   }
 
   /** TransLink requests used against the daily cap, and when each feed polls next. */
@@ -664,14 +815,5 @@ export class RtService {
     return json(200, patch, {
       "Cache-Control": "public, max-age=31536000, immutable",
     });
-  }
-}
-
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === "EPERM";
   }
 }

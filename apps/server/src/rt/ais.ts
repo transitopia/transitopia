@@ -37,6 +37,8 @@ export interface AisFeedOptions {
   recorder: Recorder;
   record?: boolean;
   log?: (msg: string) => void;
+  /** Also called with each batch (e.g. to record it in the database). */
+  onBatch?: (receivedAt: number, fixes: AisFix[]) => Promise<void>;
   /** For tests. */
   connect?: (url: string) => Socket;
 }
@@ -216,6 +218,9 @@ export class AisFeed {
         headerTs: now,
         vehicles: batch.map((f) => fixToVehicle(f, this.opts.route)),
       });
+      await this.opts
+        .onBatch?.(now, batch)
+        .catch((e: Error) => this.log(`could not record batch (${e.message})`));
     }
     const cutoff = now - MEMORY_MS;
     if (this.fixes.length && this.fixes[0]!.ts < cutoff)

@@ -13,18 +13,22 @@ import {
 } from "@transitopia/transit-core/rt/profile.ts";
 import type { PreparedPlan } from "@transitopia/transit-core/schedule/engine.ts";
 import { FEEDS_OUT_DIR, log, writeJson } from "./lib/paths.ts";
-import { loadRecordedHours, planLoader } from "./lib/rt-history.ts";
+import { eachRecordedHour, planLoader } from "./lib/rt-history.ts";
+import { addDays, localDate } from "@transitopia/transit-core/time.ts";
 
 async function main() {
   const cfg = rtConfig.prediction as unknown as PredictionConfig;
-  const hours = await loadRecordedHours();
-  if (!hours.length) {
-    log("No recorded RT history (var/rt-history/); skipping");
-    return;
-  }
+  const since = addDays(
+    localDate(Date.now()),
+    -rtConfig.prediction.profileHistoryDays,
+  );
   const plans = await planLoader();
   const builders = new Map<PreparedPlan, ProfileBuilder>();
-  for (const h of hours) {
+  let hours = 0;
+  for await (const h of eachRecordedHour(
+    `${since.slice(0, 4)}-${since.slice(4, 6)}-${since.slice(6, 8)}`,
+  )) {
+    hours++;
     // Group each hour's snapshots by the feed in effect.
     const byPlan = new Map<PreparedPlan, typeof h.snapshots>();
     for (const s of h.snapshots) {
@@ -36,6 +40,10 @@ async function main() {
       if (!b) builders.set(pp, (b = new ProfileBuilder(pp, cfg)));
       b.add(snaps, h.label);
     }
+  }
+  if (!hours) {
+    log("No recorded RT history (var/rt-history/); skipping");
+    return;
   }
   for (const [pp, b] of builders) {
     const profile = b.build();

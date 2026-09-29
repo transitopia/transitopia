@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import {
   decodeSnapshot,
+  trackedOnly,
   type RtSnapshot,
 } from "@transitopia/transit-core/rt/types.ts";
 import {
@@ -40,9 +41,20 @@ export interface RecordedHour {
 
 export async function loadRecordedHours(): Promise<RecordedHour[]> {
   const out: RecordedHour[] = [];
-  if (!existsSync(RT_HISTORY_DIR)) return out;
+  for await (const h of eachRecordedHour()) out.push(h);
+  return out;
+}
+
+/**
+ * Recorded hours one at a time, oldest first, optionally only local dates from `sinceDate`
+ * (YYYY-MM-DD) on: the history holds every route for weeks, too much to hold at once.
+ */
+export async function* eachRecordedHour(
+  sinceDate = "",
+): AsyncGenerator<RecordedHour> {
+  if (!existsSync(RT_HISTORY_DIR)) return;
   for (const day of (await readdir(RT_HISTORY_DIR))
-    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= sinceDate)
     .sort()) {
     for (const f of (await readdir(join(RT_HISTORY_DIR, day))).sort()) {
       const m = /^(\d{2})\.ndjson(\.gz)?$/.exec(f);
@@ -53,15 +65,14 @@ export async function loadRecordedHours(): Promise<RecordedHour[]> {
       for (const line of text.split("\n")) {
         if (!line.trim()) continue;
         try {
-          snapshots.push(decodeSnapshot(line));
+          snapshots.push(trackedOnly(decodeSnapshot(line)));
         } catch {
           // Partial last line of an open file.
         }
       }
-      out.push({ label: `${day}T${m[1]}`, open: !m[2], snapshots });
+      yield { label: `${day}T${m[1]}`, open: !m[2], snapshots };
     }
   }
-  return out;
 }
 
 /** Prepared plans by feed version, loaded on demand; `forTime` picks the feed for an instant. */

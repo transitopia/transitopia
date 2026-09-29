@@ -1,27 +1,25 @@
 // Live dispatch (docs/skytrain-viz-PLAN.md §4.11, M8.4): one dispatcher per deployment, shared by every client.
 //
-// Every `dispatchCheckS` it reads the inputs (regions/metro-vancouver/observations/*.json, regions/metro-vancouver/disruptions/*.json) and,
-// for each service date near today whose inputs changed, re-dispatches that date and publishes a new
-// patch version. Clients learn the current versions from /rt/live (or /rt/dispatch) and fetch
+// Every `dispatchCheckS` it reads the confirmed corrections (the database, or without one
+// regions/metro-vancouver/observations/*.json and disruptions/*.json) and, for each service date near
+// today whose inputs changed, re-dispatches that date and publishes a new patch version. Clients
+// learn the current versions from /rt/live (or /rt/dispatch) and fetch
 // /rt/dispatch/<date>/<version>.json, which never changes. Client requests never start a dispatch.
-// Versions are kept in var/dispatch-history/<date>/<version>.json, so any version can be served
-// again (and, later, an "as known then" view).
+// Versions are kept in var/dispatch-history/<date>/<version>.json (and listed in dispatch_versions),
+// so any version can be served again (and, later, an "as known then" view).
+//
+// Previews (V2-PLAN.md §5.6): an admin can dispatch a date with a correction that isn't confirmed
+// yet. That's a version like any other, reachable by its link, but never current.
 
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
 import {
-  OBSERVATIONS_DIR,
-  DISRUPTIONS_DIR,
   DISPATCH_HISTORY_DIR,
   PUBLIC_DATA_DIR,
-  readJson,
 } from "@transitopia/pipelines/lib/paths.ts";
 import { DispatchContexts } from "@transitopia/pipelines/lib/dispatch-context.ts";
-import {
-  datesOf,
-  loadDisruptions,
-} from "@transitopia/pipelines/lib/disruptions.ts";
+import { datesOf } from "@transitopia/pipelines/lib/disruptions.ts";
 import {
   activeDisruptions,
   dateVersion,
@@ -32,25 +30,28 @@ import type {
   DispatchIndex,
   DispatchPatch,
 } from "@transitopia/transit-core/dispatch/patch.ts";
-import type {
-  Observation,
-  ObservationFile,
-} from "@transitopia/transit-core/corrections/types.ts";
-import { observationProblems } from "@transitopia/transit-core/corrections/validate.ts";
+import type { Observation } from "@transitopia/transit-core/corrections/types.ts";
+import type { Disruption } from "@transitopia/transit-core/disruption/types.ts";
 import { addDays, localDate } from "@transitopia/transit-core/time.ts";
+import { FileCorrections, type Corrections } from "../corrections.ts";
+import type { Store } from "../store.ts";
 
 export interface LiveDispatchOptions {
+  /** Where confirmed corrections come from (default: the files under regions/metro-vancouver). */
+  corrections?: Corrections;
   observationsDir?: string;
   disruptionsDir?: string;
   historyDir?: string;
+  /** Lists published versions in the database. */
+  store?: Store;
   log?: (msg: string) => void;
   /** Override "now" (tests). */
   now?: () => number;
 }
 
 export class LiveDispatcher {
-  private readonly observationsDir: string;
-  private readonly disruptionsDir: string;
+  private readonly corrections: Corrections;
+  private readonly store: Store | undefined;
   readonly historyDir: string;
   private readonly log: (msg: string) => void;
   private readonly now: () => number;
@@ -64,10 +65,16 @@ export class LiveDispatcher {
   private builtAt = 0;
 
   constructor(opts: LiveDispatchOptions = {}) {
-    this.observationsDir = opts.observationsDir ?? OBSERVATIONS_DIR;
-    this.disruptionsDir = opts.disruptionsDir ?? DISRUPTIONS_DIR;
-    this.historyDir = opts.historyDir ?? DISPATCH_HISTORY_DIR;
     this.log = opts.log ?? ((m) => console.log(`[dispatch] ${m}`));
+    this.corrections =
+      opts.corrections
+      ?? new FileCorrections({
+        observationsDir: opts.observationsDir,
+        disruptionsDir: opts.disruptionsDir,
+        log: this.log,
+      });
+    this.store = opts.store;
+    this.historyDir = opts.historyDir ?? DISPATCH_HISTORY_DIR;
     this.now = opts.now ?? Date.now;
   }
 
@@ -133,8 +140,8 @@ export class LiveDispatcher {
     return this.checking;
   }
 
-  private async runCheck(): Promise<void> {
-    // A rebuild (npm run data / build:movements) replaces the base plans: start from the new ones.
+  /** A rebuild (npm run data / build:movements) replaces the base plans: start from the new ones. */
+  private async refreshBase(): Promise<void> {
     const built = await stat(join(PUBLIC_DATA_DIR, "manifest.json")).then(
       (s) => s.mtimeMs,
       () => 0,
@@ -143,10 +150,11 @@ export class LiveDispatcher {
       this.builtAt = built;
       this.contexts.reset();
     }
-    const [observations, disruptions] = await Promise.all([
-      this.loadObservations(),
-      loadDisruptions(this.disruptionsDir),
-    ]);
+  }
+
+  private async runCheck(): Promise<void> {
+    await this.refreshBase();
+    const { observations, disruptions } = await this.corrections.load();
     const today = localDate(this.now());
     const lo = addDays(today, -rtConfig.dispatchWindowDays);
     const hi = addDays(today, rtConfig.dispatchWindowDays);
@@ -182,16 +190,7 @@ export class LiveDispatcher {
         continue;
       }
       const t0 = performance.now();
-      const patch = await dispatchDate(
-        ctx,
-        inputs,
-        new Date(this.now()).toISOString(),
-      );
-      await mkdir(join(this.historyDir, date), { recursive: true });
-      await writeFile(
-        join(this.historyDir, date, `${version}.json`),
-        JSON.stringify(patch),
-      );
+      const patch = await this.publish(ctx, inputs, version, "live");
       this.patches.set(`${date}/${version}`, patch);
       this.current.set(date, version);
       this.log(
@@ -205,26 +204,82 @@ export class LiveDispatcher {
     }
   }
 
-  private async loadObservations(): Promise<Observation[]> {
-    let files: string[] = [];
-    try {
-      files = (await readdir(this.observationsDir)).filter((f) =>
-        f.endsWith(".json"),
-      );
-    } catch {
-      return [];
-    }
-    const out: Observation[] = [];
-    for (const f of files.sort()) {
-      try {
-        const file = await readJson<ObservationFile>(
-          join(this.observationsDir, f),
-        );
-        for (const o of file.observations)
-          if (!observationProblems(o).length) out.push(o);
-      } catch (e) {
-        this.log(`skipping ${f}: ${(e as Error).message}`);
-      }
+  /** Dispatch a date and write the version (immutable) to the history. */
+  private async publish(
+    ctx: NonNullable<Awaited<ReturnType<DispatchContexts["forDate"]>>>,
+    inputs: DateInputs,
+    version: string,
+    kind: "live" | "preview",
+    previewOf?: string,
+  ): Promise<DispatchPatch> {
+    const patch = await dispatchDate(
+      ctx,
+      inputs,
+      new Date(this.now()).toISOString(),
+    );
+    await mkdir(join(this.historyDir, inputs.date), { recursive: true });
+    await writeFile(
+      join(this.historyDir, inputs.date, `${version}.json`),
+      JSON.stringify(patch),
+    );
+    await this.store
+      ?.recordDispatchVersion({
+        date: inputs.date,
+        version,
+        kind,
+        previewOf,
+        inputs: patch.summary.inputs,
+      })
+      .catch((e: Error) => this.log(`could not list version (${e.message})`));
+    return patch;
+  }
+
+  /**
+   * Dispatch each date a candidate correction touches (within the live window) with the confirmed
+   * corrections plus the candidate, as preview versions: date (YYYYMMDD) → version. Dates the
+   * candidate doesn't change, or outside the window, are left out.
+   */
+  async preview(
+    candidate: { observations?: Observation[]; disruptions?: Disruption[] },
+    previewOf: string,
+  ): Promise<
+    Record<string, { version: string; summary: DispatchPatch["summary"] }>
+  > {
+    await this.refreshBase();
+    const confirmed = await this.corrections.load();
+    const dates = new Set<string>();
+    for (const o of candidate.observations ?? [])
+      dates.add(o.date.replaceAll("-", ""));
+    for (const d of candidate.disruptions ?? [])
+      for (const x of datesOf(d)) dates.add(x);
+    const out: Record<
+      string,
+      { version: string; summary: DispatchPatch["summary"] }
+    > = {};
+    const ids = new Set((candidate.disruptions ?? []).map((d) => d.id));
+    for (const date of [...dates].sort()) {
+      const ctx = await this.contexts.forDate(date);
+      if (!ctx) continue;
+      const inputs: DateInputs = {
+        date,
+        observations: [
+          ...confirmed.observations,
+          ...(candidate.observations ?? []),
+        ].filter((o) => o.date.replaceAll("-", "") === date),
+        disruptions: [
+          // The candidate replaces a confirmed disruption with the same id (an edit).
+          ...confirmed.disruptions.filter((d) => !ids.has(d.id)),
+          ...(candidate.disruptions ?? []).map((d) => ({
+            ...d,
+            status: "confirmed" as const,
+          })),
+        ],
+      };
+      const version = dateVersion(ctx, inputs);
+      const patch =
+        (await this.patch(date, version))
+        ?? (await this.publish(ctx, inputs, version, "preview", previewOf));
+      out[date] = { version, summary: patch.summary };
     }
     return out;
   }

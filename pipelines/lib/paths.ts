@@ -9,8 +9,17 @@ export const REGION_DIR = join(ROOT, "regions", "metro-vancouver");
 export const CONFIG_DIR = join(REGION_DIR, "config");
 export const INFRA_DIR = join(REGION_DIR, "infrastructure");
 export const SCENARIOS_DIR = join(REGION_DIR, "scenarios");
-export const OBSERVATIONS_DIR = join(REGION_DIR, "observations");
-export const DISRUPTIONS_DIR = join(REGION_DIR, "disruptions");
+// Corrections: the committed files, or on the server an export of the confirmed ones from its
+// database (TRANSITOPIA_CORRECTIONS_DIR, with observations/ and disruptions/ inside).
+const CORRECTIONS_DIR = process.env.TRANSITOPIA_CORRECTIONS_DIR;
+export const OBSERVATIONS_DIR =
+  CORRECTIONS_DIR ?
+    join(CORRECTIONS_DIR, "observations")
+  : join(REGION_DIR, "observations");
+export const DISRUPTIONS_DIR =
+  CORRECTIONS_DIR ?
+    join(CORRECTIONS_DIR, "disruptions")
+  : join(REGION_DIR, "disruptions");
 
 // Gitignored downloads, recordings and build output.
 export const VAR_DIR = join(ROOT, "var");
@@ -19,6 +28,8 @@ export const GTFS_RAW_DIR = join(RAW_DIR, "gtfs");
 export const RT_HISTORY_DIR = join(VAR_DIR, "rt-history");
 export const AIS_HISTORY_DIR = join(VAR_DIR, "ais-history");
 export const DISPATCH_HISTORY_DIR = join(VAR_DIR, "dispatch-history");
+/** The server's export of confirmed corrections from its database (TRANSITOPIA_CORRECTIONS_DIR). */
+export const CORRECTIONS_EXPORT_DIR = join(VAR_DIR, "corrections");
 /** Served at the web root by the transit viewer (/data/…, /tiles/…, /basemap-assets/…). */
 export const PUBLIC_DIR = join(VAR_DIR, "public");
 export const PUBLIC_DATA_DIR = join(PUBLIC_DIR, "data");

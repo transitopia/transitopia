@@ -1,6 +1,7 @@
-// Alert drafts (docs/skytrain-viz-PLAN.md §4.10, M8.5): TransLink alerts for our rail lines → draft disruptions in
-// regions/metro-vancouver/disruptions/drafts/, which a person confirms with `npm run disruptions -- confirm <id>`. Every
-// change to the alert set is appended to var/rt-history/alerts.ndjson.
+// Alert drafts (docs/skytrain-viz-PLAN.md §4.10, M8.5): TransLink alerts for our rail lines → draft
+// disruptions, which a person confirms: in the database's review queue (/admin) when there is one,
+// else in regions/metro-vancouver/disruptions/drafts/ for `npm run disruptions -- confirm <id>`.
+// Every change to the alert set is appended to var/rt-history/alerts.ndjson.
 
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -10,15 +11,27 @@ import {
   type ServiceAlert,
 } from "@transitopia/transit-core/disruption/alerts.ts";
 import type { DisruptionFile } from "@transitopia/transit-core/disruption/types.ts";
+import type { CorrectionsRepo } from "../corrections.ts";
 
 export interface AlertDraftsOptions {
   disruptionsDir: string;
   historyDir: string;
+  /** Draft into the database instead of files. */
+  repo?: CorrectionsRepo | undefined;
   log: (msg: string) => void;
+}
+
+export interface UnparsedAlert {
+  id: string;
+  lines: string[];
+  header: string;
+  reason: string;
 }
 
 export class AlertDrafts {
   private lastSet = "";
+  /** Current alerts we couldn't draft a disruption from (someone may write one by hand). */
+  unparsed: UnparsedAlert[] = [];
 
   private opts: AlertDraftsOptions;
 
@@ -40,13 +53,9 @@ export class AlertDrafts {
       join(this.opts.historyDir, "alerts.ndjson"),
       JSON.stringify({ ts: now, alerts }) + "\n",
     );
-    await mkdir(this.draftsDir, { recursive: true });
-    const unparsed: {
-      id: string;
-      lines: string[];
-      header: string;
-      reason: string;
-    }[] = [];
+    const { repo } = this.opts;
+    if (!repo) await mkdir(this.draftsDir, { recursive: true });
+    const unparsed: UnparsedAlert[] = [];
     for (const a of alerts) {
       const d = draftFromAlert(a);
       if (!d.draft) {
@@ -56,6 +65,11 @@ export class AlertDrafts {
           header: a.header,
           reason: d.unparsed ?? "",
         });
+        continue;
+      }
+      if (repo) {
+        if (await repo.saveAlertDraft(d.draft))
+          this.opts.log(`draft disruption ${d.draft.id}: ${a.header}`);
         continue;
       }
       // Confirmed already: the person's version wins.
@@ -73,6 +87,8 @@ export class AlertDrafts {
         this.opts.log(`draft disruption ${d.draft.id}: ${a.header}`);
       }
     }
+    this.unparsed = unparsed;
+    if (repo) return;
     await writeFile(
       join(this.draftsDir, "unparsed.json"),
       JSON.stringify(unparsed, null, 2) + "\n",
