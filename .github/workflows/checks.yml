@@ -1,45 +1,67 @@
-name: Web UI Checks
+name: Checks
 
 on:
   pull_request:
-    paths: "web-ui/**"
+    paths-ignore:
+      - "map-layers/**"
   push:
     branches:
       - main
 
 jobs:
-  test-web-ui:
-    name: Test and validate code
+  checks:
+    name: Lint, types, tests and build
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./web-ui
     steps:
       - name: Check out code
         uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: 24
+          cache: npm
       - name: Install dependencies
         run: npm ci
       - name: Lint with Oxlint
         run: npm run lint
-      - name: Check Types
-        run: npm run types
-      - name: Check Formatting
+      - name: Check formatting
         run: npm run format-check
-  build-web-ui:
-    name: Build
+      - name: Check types
+        run: npm run typecheck
+      - name: Run tests
+        run: npm test
+      - name: Build
+        run: npm run build
+
+  validators:
+    name: Validate infrastructure and plan (fixture feed)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./web-ui
+    env:
+      # A pinned TransLink GTFS static snapshot (gtfs-static.translink.ca, not the rate-limited
+      # Open API), so a new upstream feed can't change the result of a PR. Bump it deliberately.
+      FIXTURE_FEED_DATE: "2026-09-25"
     steps:
       - name: Check out code
         uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: 24
+          cache: npm
       - name: Install dependencies
         run: npm ci
-      - run: npm run build
+      - name: Cache the fixture feed
+        uses: actions/cache@v6
+        with:
+          path: var/raw/gtfs
+          key: gtfs-fixture-${{ env.FIXTURE_FEED_DATE }}
+      - name: Fetch the fixture feed
+        run: npx tsx pipelines/fetch-gtfs.ts --history "$FIXTURE_FEED_DATE"
+      - name: Build the timetable and track data
+        run: |
+          npx tsx pipelines/build-schedule.ts
+          npm run build:infra
+      - name: Validate infrastructure
+        run: npm run validate:infra
+      - name: Build movements (runs through the dispatcher)
+        run: npm run build:movements
+      - name: Validate the plan
+        run: npm run validate:plan

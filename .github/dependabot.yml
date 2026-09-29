@@ -22,7 +22,7 @@ updates:
           - "minor"
           - "patch"
   - package-ecosystem: npm
-    directory: "/web-ui/"
+    directory: "/"
     schedule:
       interval: weekly
       time: "04:30"
