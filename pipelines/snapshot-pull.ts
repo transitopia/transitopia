@@ -89,7 +89,7 @@ for (const d of dates) {
 }
 // The recorder's coverage index (what a local server reports at /rt/coverage), from the hours now here.
 for (const [dir, gapMs] of [
-  [RT_HISTORY_DIR, CADENCE.coverageGapMs],
+  [RT_HISTORY_DIR, (t: number) => CADENCE.coverageGapMs(t)],
   [AIS_HISTORY_DIR, () => seabus.ais.coverageGapS * 1000],
 ] as const) {
   const intervals: [number, number][] = [];

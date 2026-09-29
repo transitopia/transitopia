@@ -188,7 +188,7 @@ transitopia/
 
 - **Node 22+, TypeScript**, reusing `transit-core` directly. *(Proposed)* **Hono** for HTTP, and `zod` from `packages/shared` to validate requests.
 - **Leader election** via a Postgres advisory lock (it replaces the lock file). Exactly one process polls, records and dispatches.
-- **Jobs** in Postgres (`graphile-worker` or `pg-boss`): aggregates, archiving, frequency builds, GTFS builds, GitHub issue sync, snapshot exports.
+- **Jobs** in Postgres: aggregates, archiving, frequency builds, GTFS builds, GitHub issue sync, snapshot exports. *As built (Phase 2):* a `job_runs` table keyed by job and date, run by the leader every 5 minutes, so each runs once, failures retry after an hour and missed days are caught up. Revisit `graphile-worker`/`pg-boss` when jobs need concurrency or fan-out.
 - **Live data**: `/rt/live` stays a small snapshot polled every 10–30 s and cached at the edge for 10 s, so server load doesn't grow with visitors.
 - **Immutable outputs** (movements, dispatch patches, archives, frequency data) go to object storage under content-hashed paths. The API returns pointers to them.
 - **Admin UI**: `/admin` in the SPA, gated to admins signed in with GitHub. It holds the review queue for reports, disruption drafts (replacing `npm run disruptions`), observation previews (§5.6), and the fleet and photo curation tools.
@@ -518,6 +518,15 @@ Each phase ends deployed.
 - Move observations and disruptions into the DB with states, previews and export. Build the `/admin` disruption and preview UI.
 - Import the local history (`rt-history`, `ais-history`, `dispatch-history`). Add snapshot pull.
 - **Parity** is reached when everything skytrain-viz does locally works on transitopia.org.
+- *Status (2026-09-29, branch `v2`):* built and tested locally, **not deployed yet** (deployment steps in `deployment/README.md`). Done:
+  - `packages/db`: PostgreSQL 18 + PostGIS, plain SQL migrations applied at server start, Kysely types, daily partitions for raw positions and AIS fixes, monthly for observed stop times. Tests run against a scratch database (CI has a PostGIS service).
+  - The server: Hono; leader by advisory lock (followers forward and take over); the request ledger in `upstream_requests`; **every route recorded** in hour files and `rt_positions`, with clients still seeing only drawn routes; trip changes, alerts, AIS fixes and dispatch versions in the database; `/healthz` for freshness (polls, AIS, database, jobs, backups).
+  - Jobs on the leader: partitions, 60-day retention (database, files, archive), observed stop times and route statistics for each finished service date (with catch-up), the daily data build and publish, hourly archiving.
+  - Corrections in the database with review states; `/admin` (GitHub sign-in for admins) edits, previews (`/transit?preview=<date>:<version>`), confirms and discards them. `npm run corrections` exports and imports the file format.
+  - `npm run db:import-history` (checked on the local history: 75 hours, 2,483 AIS batches, 35 dispatch versions) and `npm run snapshot:pull`.
+  - `infra/`: server image, Compose stack (server, PostGIS, Caddy, backups), deploy workflow. The whole stack ran locally: data build in the container (72 s), backup and a test restore.
+  - Changes from the plan above: (a) jobs use a `job_runs` table instead of graphile-worker or pg-boss: Phase 2's few daily jobs don't need a queue (§4.3); (b) **the server builds and publishes the transit data** now rather than later (§7.4), because a dispatch patch only fits the build it was made from; `build_transit_data.yml` is a manual fallback. (It had never run on its schedule anyway: GitHub only runs scheduled workflows from the default branch, and `main` doesn't have it.) (c) Local runs don't poll unless `RT_POLL=1` (§7.5). (d) Admin sessions are bearer tokens, not cookies (§8). (e) Backups are nightly `pg_dump`s; WAL archiving can come later (§7.3). (f) Hour files hold every route; `/rt/history` filters to the drawn ones.
+  - Not done: alerts from local history aren't imported into the `alerts` table (they're kept as files); public snapshots wait for the per-source checks (§10.3); monthly export of observed stop times to object storage (they stay in Postgres for now, a few GB a year).
 
 **Phase 3: Details panels**
 - Vehicles, with our own fleet records and the admin tool that checks them against CPTDB (§5.3).

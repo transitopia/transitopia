@@ -9,7 +9,8 @@ npm workspaces (V2-PLAN.md §4.1). Cross-workspace imports use package specifier
 | Path | What |
 |---|---|
 | `apps/web/` | The transitopia.org SPA: React 19, Vite, Tailwind, wouter, MapLibre. `/transit` and `/cycling` share one map; the position is in `#map=z/lat/lng`, mode state in the query. |
-| `apps/server/` | RT service: budgeted TransLink poller, AIS stream, recorder, live dispatch. Becomes the V2 server (Phase 2). |
+| `apps/server/` | The server (api.transitopia.org): budgeted TransLink poller, AIS stream, recorder, live dispatch, scheduled jobs (statistics, retention, the daily data build), admin API. Hono; settings from the environment (`src/env.ts`). |
+| `packages/db/` | PostgreSQL: SQL migrations, Kysely types (`schema.ts`), partitions, `job_runs`. Tests use a scratch database when `TEST_DATABASE_URL` is set. |
 | `packages/transit-core/` | DOM-free engine: GTFS, track graph, run inference, dispatcher, playback, corrections, RT prediction. |
 | `packages/transit-map/` | The transit engine on a host map: `TransitEngine.create(map, { dataBase, apiBase, theme })` (`engine.ts`); clock, playback, WebGL layers, and a snapshot store React reads with `useSyncExternalStore`. No UI framework. |
 | `packages/map-style/` | The site's Protomaps basemap (light and dark), fonts list and zoom helpers. |
@@ -17,6 +18,7 @@ npm workspaces (V2-PLAN.md §4.1). Cross-workspace imports use package specifier
 | `pipelines/` | Build-time pipelines and validators. `pipelines/lib/paths.ts` is the one place that knows where data lives. |
 | `regions/metro-vancouver/` | Committed, curated inputs: `config/`, `infrastructure/`, `scenarios/`, `observations/`, `disruptions/`. |
 | `map-layers/` | Java/Planetiler profile for the cycling layer (built daily in CI). |
+| `infra/` | Deployment: `compose.yml` (server, PostGIS, Caddy, backups), `server.Dockerfile`, `compose.dev.yml` (the local database). See `deployment/README.md`. |
 | `var/` | Gitignored downloads, recordings and build output. The web dev server serves `var/public/` at `/dev-data/`. |
 
 ## Scope
@@ -28,8 +30,8 @@ npm workspaces (V2-PLAN.md §4.1). Cross-workspace imports use package specifier
 ## Ground rules
 
 - **Never print, log, commit, or bundle the API keys.** They live in `.secrets` (`TRANSLINK_API_KEY=...`, `AISSTREAM_API_KEY=...`, gitignored). Only `apps/server/` and `pipelines/` read them. Browser code must never see them.
-- **Never let client requests trigger TransLink API calls.** A single poller fetches upstream on a time-of-day schedule that stays under TransLink's 1,000 requests a day (`regions/metro-vancouver/config/rt.json` → `poll`, enforced by a ledger in `var/rt-history/requests.json`). Clients only read the cached snapshot. Don't add requests outside that budget, and don't assume fixes arrive every ~20 s: use the thresholds in `packages/transit-core/src/rt/budget.ts`. Only one process per machine polls and records: the leader holds `var/rt-history/.lock` ({pid, port}), and any other RT service instance forwards `/rt/*` to it. The lock is per checkout, so two checkouts with keys would both poll and double the spend: development machines don't poll (V2-PLAN.md §7.5), and without `.secrets` the RT service runs schedule-only.
-- **Dispatching is central.** The signalling-aware dispatcher (docs/skytrain-viz-PLAN.md §4.11) runs only at build time and in the RT service, and every visitor gets the same versioned result. Browsers never run it, and client requests never trigger a dispatch.
+- **Never let client requests trigger TransLink API calls.** A single poller fetches upstream on a time-of-day schedule that stays under TransLink's 1,000 requests a day (`regions/metro-vancouver/config/rt.json` → `poll`, enforced by a ledger: the `upstream_requests` table, or `var/rt-history/requests.json` without a database). Clients only read the cached snapshot. Don't add requests outside that budget, and don't assume fixes arrive every ~20 s: use the thresholds in `packages/transit-core/src/rt/budget.ts`. Only the leader polls, records, dispatches and runs jobs: a Postgres advisory lock (`apps/server/src/leader.ts`; the `var/rt-history/.lock` file without a database), and other instances forward `/rt/*` to it. **Only production polls** (the key's budget is shared): the server polls only with `RT_POLL=1`; locally use `RT_FORWARD_TO=https://api.transitopia.org` or point the site at production (`VITE_TRANSIT_API=https://api.transitopia.org/ npm run dev`).
+- **Dispatching is central.** The signalling-aware dispatcher (docs/skytrain-viz-PLAN.md §4.11) runs only at build time and in the server, and every visitor gets the same versioned result. A patch only fits the build it was dispatched against (`baseBuiltAt`), which is why the server builds and publishes the transit data itself. Browsers never run it, and client requests never trigger a dispatch.
 - **Positions are a pure function of (plan, overlays, t).** Don't introduce frame-stepped simulation state. Seek, rewind, and fast-forward depend on this.
 - **Every vehicle state carries provenance** (`observed | interpolated | estimated`) and a source. Never render an estimate as if it were observed.
 - **`packages/transit-core/src/` stays DOM-free.** It's shared by pipelines, tests, the server and the browser; its tsconfig has no DOM lib.
@@ -64,10 +66,12 @@ npm workspaces (V2-PLAN.md §4.1). Cross-workspace imports use package specifier
 ## Corrections
 
 - Observations (`packages/transit-core/src/corrections/`) reference **service date + GTFS trip_id** or **stop + time**, never inferred run ids.
+- **Where corrections live:** in production, the database (`observation_sets`, `disruptions`) with review states `draft → previewing → confirmed | discarded`, reviewed at `/admin` (V2-PLAN.md §5.6): a preview is a dispatch version only its link shows (`/transit?preview=<YYYYMMDD>:<version>`). The files under `regions/metro-vancouver/{observations,disruptions}` are imported on a new database and are what local runs without a database use; `npm run corrections -- export|import|pull` moves them between the two.
 - SkyTrain: `railInputs()` turns them into dispatcher anchors (a stop at a time), cancellations, consists and parked trains. The dispatcher re-dispatches the date centrally (`build:dispatch` → `var/public/data/dispatch/<date>.json`, a patch of the runs that changed); playback marks positions observed within 90 s of a sighting and interpolated where times moved. Browsers never reconcile rail observations.
 - Timetable vehicles (SeaBus, WCE, buses without RT): `reconcileScheduled()` in the app, as before.
-- Disruptions (`regions/metro-vancouver/disruptions/*.json`, format in its README): single-track sections and reduced headways for a period. `build:dispatch` re-plans each affected date (`packages/transit-core/src/disruption/apply.ts` → re-inferred runs with closures → dispatch). Only `"status": "confirmed"` entries apply. The RT service drafts them from TransLink alerts into `regions/metro-vancouver/disruptions/drafts/` (gitignored); never confirm a draft without knowing which track stays open.
+- Disruptions (format in `regions/metro-vancouver/disruptions/README.md`): single-track sections and reduced headways for a period. `build:dispatch` re-plans each affected date (`packages/transit-core/src/disruption/apply.ts` → re-inferred runs with closures → dispatch). Only confirmed entries apply. The server drafts them from TransLink alerts (into the database, or `regions/metro-vancouver/disruptions/drafts/` without one); never confirm a draft without knowing which track stays open (`/admin` refuses to).
 - A future rail real-time adapter should emit `Observation`s rather than touch playback.
+- **Every route is recorded** (hour files and `rt_positions`), not just the ones drawn: vehicles on other routes get an untracked route key (`gtfs:<route_id>`), and every reader keeps only tracked ones (`trackedOnly` in `packages/transit-core/src/rt/types.ts`; `/rt/history` filters). Raw data expires after 60 days (`config/recording.json`); before that, the nightly job derives observed stop times and per-route statistics (`packages/transit-core/src/rt/observed.ts`, `stats.ts`), kept indefinitely. Recompute a date with `npm run stats -- <YYYYMMDD>`.
 - Bus service changes from GTFS-RT (cancelled trips, skipped stops, detour alerts) are recorded per service date in `var/rt-history/changes/` and served at `/rt/changes`. `packages/transit-core/src/rt/changes.ts` explains them; see docs/skytrain-viz-PLAN.md §4.5. TransLink sends detours only as alert text, so they aren't drawn.
 - SeaBus AIS (docs/skytrain-viz-PLAN.md §4.12): the RT leader streams aisstream.io and records to `var/ais-history/`; the browser turns fixes into `ScheduleCorrections` with `aisCorrections()` (`packages/transit-core/src/ais/match.ts`). Fixes anchor the timetable rather than being drawn raw, because they arrive in bursts.
 
@@ -94,8 +98,13 @@ Run from the repo root.
 
 ```sh
 npm run dev              # the site (apps/web) at http://localhost:5173: /transit, /cycling
-npm run server           # RT service on :8787; run the site with VITE_TRANSIT_API=http://localhost:8787/ to use it
-npm test                 # vitest, every workspace
+npm run server           # the server on :8787 (schedule-only; RT_FORWARD_TO=https://api.transitopia.org for live data); run the site with VITE_TRANSIT_API=http://localhost:8787/ to use it
+npm run db:up            # the local PostgreSQL (infra/compose.dev.yml); then DATABASE_URL=postgres://transitopia:transitopia@localhost:5433/transitopia npm run server
+npm run db:import-history # var/{rt,ais,dispatch}-history → the database (idempotent)
+npm run stats -- 20260928 # observed stop times + route statistics for a service date (needs DATABASE_URL)
+npm run corrections -- export <dir> | import [<dir>] | pull   # corrections between the database and files
+npm run snapshot:pull -- --from 2026-09-20 --to 2026-09-27 [--db]   # production recordings (+ DB snapshot) into var/ (needs rclone access to the archive)
+npm test                 # vitest, every workspace (database tests need TEST_DATABASE_URL=postgres://transitopia:transitopia@localhost:5433/postgres)
 npm run typecheck        # tsc in every workspace
 npm run lint             # oxlint --type-aware, repo-wide
 npm run format           # prettier (format-check in CI)
@@ -110,7 +119,7 @@ npm run build:movements  # infer + dispatch train runs → var/public/data/feeds
 npm run validate:plan    # teleports (fail), conflicts, dispatch delays and broken deadlocks (report), fleet peaks
 npm run build:observations # validate + publish regions/metro-vancouver/observations/*.json (format in its README)
 npm run build:dispatch   # re-dispatch dates with observations or disruptions → var/public/data/dispatch/<date>.json + index.json
-npm run disruptions      # list/confirm/discard disruptions drafted from TransLink alerts [-- pull | confirm <id> [--keep "<stop>"] | discard <id>]
+npm run disruptions      # without a database: list/confirm/discard drafted disruptions [-- pull | confirm <id> [--keep "<stop>"] | discard <id>] (production: /admin)
 npm run build:rt-profile # learn bus travel-time profiles from var/rt-history → var/public/data/feeds/<v>/rt-profile.json
 npm run scenario -- <name> # build regions/metro-vancouver/scenarios/<name>/ → view at /?scenario=<name> (see its README)
 npx tsx pipelines/eval-rt.ts [--test-last 3] [--set key=value] # replay recorded RT: prediction error and live-view jumps, old vs new
@@ -126,6 +135,7 @@ npx tsx pipelines/screenshot.ts out.png "/transit?date=2026-09-28&t=08:00:00&pau
 - Time zones come from the runtime's tzdata (via ICU), never hard-coded. BC moved to permanent UTC−7 in 2026 (tzdata 2026b), so older data gets every time after 2026-11-01 wrong by an hour: the time tests fail and the server refuses to start (`timezoneChecks` in `regions/metro-vancouver/region.json`). Homebrew's `node` uses Homebrew's icu4c, whose tzdata can lag Node's own builds: use an official Node build, or set `ICU_TIMEZONE_FILES_DIR` to a folder with current `.res` files from https://github.com/unicode-org/icu-data/tree/main/tzdata/icunew/<version>/44/le.
 - Everything under `var/` is gitignored: `var/raw/`, `var/rt-history/`, `var/ais-history/`, `var/dispatch-history/`, `var/public/{data,tiles,basemap-assets}/`.
 - Browser-facing URLs (`/data/…`, `/tiles/…`) are paths under `var/public/`, not repo paths: published indexes store them as `data/…`.
+- Database changes: add `packages/db/migrations/NNN_<name>.sql` (never edit one that's deployed) and the matching types in `packages/db/src/schema.ts`. The server applies migrations when it starts. Raw per-poll tables are partitioned by day; `Store` creates a missing partition on demand.
 - Where the site reads its data: `apps/web/src/config.ts` (local defaults: `var/public` via `/dev-data/`) and `apps/web/.env.production`. Without `VITE_TRANSIT_API` the engine makes no RT requests at all (schedules only).
 - Every map overlay re-adds its layers after a theme switch: depend on `useStyleGeneration()` (cycling) or call `engine.setTheme()` before the style swaps (transit). Declare what a mode draws with `useDatasets([...])` so the attribution control credits it.
 - TypeScript is strict repo-wide (`tsconfig.base.json`: `exactOptionalPropertyTypes`, `erasableSyntaxOnly`, no unused locals): write optional properties as `x?: T | undefined` when `undefined` is passed explicitly, and no constructor parameter properties (Node's type stripping rejects them).
