@@ -2,7 +2,7 @@
 // and, optionally, the nightly database snapshot (everything but users, sessions and raw rows; see
 // infra/backup/backup.sh), restored into the dev database (infra/compose.dev.yml).
 //
-//   npm run snapshot:pull -- --from 2026-09-20 --to 2026-09-27 [--db] [--remote fullhost:transitopia-archive]
+//   npm run snapshot:pull -- --from 2026-09-20 --to 2026-09-27 [--db] [--remote r2:transitopia-archive]
 //
 // Needs rclone with read access to the archive (TRANSITOPIA_ARCHIVE or --remote). Raw recordings
 // exist for the last 60 days only. Everything is private for now: whether TransLink's and

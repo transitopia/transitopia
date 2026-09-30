@@ -1,0 +1,20 @@
+#!/bin/sh
+# Only Cloudflare may open connections to Docker-published ports (Caddy's 80 and 443). Docker's
+# port publishing bypasses ufw; DOCKER-USER is the chain Docker leaves for rules like this.
+# Containers' own outgoing connections are unaffected. If Cloudflare's lists can't be fetched, the
+# ports stay closed to everyone. Installed as /usr/local/sbin/transitopia-firewall and run by
+# transitopia-firewall.service; see deployment/api-server-setup.md, step 5.
+set -u
+EXT=$(ip -4 route show default | awk '{print $5; exit}')
+for v in 4 6; do
+  if [ $v = 4 ]; then ipt=iptables; else ipt=ip6tables; fi
+  $ipt -N DOCKER-USER 2>/dev/null
+  $ipt -F DOCKER-USER
+  $ipt -A DOCKER-USER -i "$EXT" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+  for net in $(curl -fsS --max-time 20 "https://www.cloudflare.com/ips-v$v"); do
+    $ipt -A DOCKER-USER -i "$EXT" -s "$net" -j RETURN
+  done
+  $ipt -A DOCKER-USER -i "$EXT" -j DROP
+  $ipt -A DOCKER-USER -j RETURN
+done
+echo "DOCKER-USER: $(iptables -S DOCKER-USER | grep -c -- '-s ') Cloudflare IPv4 ranges allowed on $EXT"

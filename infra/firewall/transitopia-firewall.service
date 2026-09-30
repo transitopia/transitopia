@@ -1,0 +1,15 @@
+# Applies infra/firewall/transitopia-firewall whenever Docker starts (including after a reboot).
+# Installed in /etc/systemd/system/; see deployment/api-server-setup.md, step 5.
+[Unit]
+Description=Only Cloudflare reaches Docker-published ports
+After=docker.service network-online.target
+Wants=network-online.target
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/transitopia-firewall
+
+[Install]
+WantedBy=docker.service

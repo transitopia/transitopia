@@ -16,7 +16,7 @@ V2 is one site with transit and cycling modes (walking returns later), backed by
 | Topic | Decision |
 |---|---|
 | Basemap | **Protomaps** for the whole site. Transitopia's OpenMapTiles basemap is retired, and the cycling overlay stays a separate source. |
-| Hosting | **FullHost** (Canadian provider with data centres in Vancouver, Calgary, Toronto and Montreal) for the VM, and possibly its S3-compatible object storage, to keep data in Canada. Details in §7. |
+| Hosting | **FullHost** (Canadian provider with data centres in Vancouver, Calgary, Toronto and Montreal) for the VM, in Toronto. Object storage, including archives and backups, is on **Cloudflare R2** with the maps and data (decided 2026-10-01). Details in §7. |
 | Frequency metric | The **90th-percentile gap over the upcoming hour** from the time being viewed, per service and per shared corridor, computed at least every 30 min. How to summarise across the day or week is decided later (§5.5). |
 | Priorities | 1. Parity with today's Transitopia (cycling) and skytrain-viz (all of it). Walking mode is dropped for now. 2. Details panels. 3. Frequency map. 4. Submissions and annotations. 5. Micromobility. 6. All buses. 7. Mobile app. 8. Trip planning. Improving **data quality and performance** runs continuously alongside all of these (§9.1). |
 | Accounts and submissions | **GitHub login**, with a **dedicated public GitHub repo** for data issues and submissions. Anonymous reports are allowed, but an admin reviews them before they're posted anywhere. We contribute fixes upstream to OSM where we can. |
@@ -30,7 +30,7 @@ V2 is one site with transit and cycling modes (walking returns later), backed by
 | Data snapshots | The server records all the time. Developers can pull snapshots of production data into their environment. Whether each dataset can be published depends on its source's license, checked source by source (§10.3). Data we may not publish stays private to the team. |
 | TransLink API | Unless TransLink approves a more useful request limit, stay within **1,000 requests a day** across all TransLink endpoints, polling more often at peak and less off-peak (§4.5). |
 | Attribution | Shown **dynamically**: the map credits exactly the datasets visible at the time (§4.6). |
-| Data residency | Nothing here is sensitive. Cloudflare's CDN is fine where it helps performance or security, and files on R2 stay there for now. The database and server are on FullHost. |
+| Data residency | Nothing here is sensitive. Cloudflare's CDN is fine where it helps performance or security, and files go on R2, including archives and backups (outside Canada: R2 has no Canadian location). The database and server are on FullHost, in Canada. |
 | Retention | Raw real-time data (GTFS-RT, AIS, GBFS) is kept **60 days**. While it's in that window, we compute per-route statistics (on-time, delays, cancellations, …) and keep those **indefinitely** for year-over-year analysis. GTFS static feeds are kept **indefinitely** (§4.4). |
 | Basemap extent | **BC** for now, then Canada, then Canada + US, then the planet. |
 | Environments | Production and local dev for now, with a staging environment planned for later (§7.4). |
@@ -143,8 +143,8 @@ These are skytrain-viz's ground rules, extended site-wide:
                          │ PostgreSQL + PostGIS · Caddy (TLS) · backups                     │
                          └──────────────────────────┬───────────────────────────────────────┘
                                                     ▼
-                         Object storage: FullHost S3 (Canada) for archives, backups, private
-                         data; public immutable files there or on R2 (§7.2)
+                         Object storage: Cloudflare R2 for public immutable files, and a
+                         private bucket for archives, backups and snapshots (§7.2)
                          GitHub: transitopia/<data-issues repo> ◀── issues synced both ways
 ```
 
@@ -209,7 +209,7 @@ transitopia/
 | Scenarios, infrastructure overrides, operations config | **Git** (build-time inputs checked by the validators) |
 | GTFS static feeds | **Kept indefinitely**: the original zips in object storage, plus a `feeds` table and the built plans. A few feeds a year at tens of MB each costs next to nothing. |
 
-**Volume check (all buses).** Assume ~1,000–1,500 buses at peak (to verify). At the budgeted polling rate (§4.5: fixes every 1–3 min), that's roughly 0.5–1 M position rows a day, or about 30–60 M rows in the 60-day window. That's small for one VM. If TransLink raises the limit, polling every 30 s would be about 2–4 M rows a day, which is still comfortable.
+**Volume check (all buses).** Assume ~1,000–1,500 buses at peak (to verify). At the budgeted polling rate (§4.5: fixes every 1–3 min), that's roughly 0.5–1 M position rows a day, or about 30–60 M rows in the 60-day window. That's small for one VM. If TransLink raises the limit, polling every 30 s would be about 2–4 M rows a day, which is still comfortable. *Measured (2026-09-30, a synthesized weekday from the timetable at the budgeted rate; deployment/README.md "Sizing"):* 1,275 buses at peak, 630,000 position rows a day, 128 MB a day in Postgres (~7.7 GB for 60 days). Observed stop times are ~665,000 rows and 215 MB a day, **~78 GB a year** if they all stay in Postgres, so the monthly export below (only recent months in Postgres) is needed within a year or two of recording.
 
 **Retention and derived statistics.** Raw data is deleted after 60 days. Any statistic we haven't computed by then can never be computed for that period. So:
 
@@ -421,20 +421,20 @@ The skytrain-viz rule applies everywhere: every assumption lives in config with 
 
 ### 7.1 FullHost
 
-- A **VM in FullHost's Vancouver data centre** (close to TransLink's API and most users). Size TBD from their plans, with roughly 4 vCPU, 8–16 GB RAM and 160+ GB SSD as a starting point. I couldn't read their VM pricing page, so the size and price need checking.
+- A **VM in FullHost's Toronto data centre** (decided 2026-09-30): Ubuntu 26.04 LTS, 4 vCPU, 8 GB RAM, 100 GB SSD, $36/month. Vancouver only offered a 2 vCPU plan at $48; the ~60–70 ms from Vancouver doesn't matter behind Cloudflare's edge cache, and local times come from the region's time zone, never the host's. *Measured for Phase 2 (deployment/README.md "Sizing"):* the stack peaks around 2.5 GB; disk is driven by observed stop times (§4.4), so 100 GB lasts about a year before their monthly export is needed.
 - Docker Compose runs `server` (×1–2), `postgres` (PostGIS image), `caddy`, and backup and monitoring sidecars.
-- **FullHost Object Storage** (S3-compatible, data kept in Canada, generally available since June 2026) for archives, backups, private datasets and snapshot exports. Egress pricing needs checking before public files are served from it.
+- ~~FullHost Object Storage~~ for archives and backups was replaced by R2 (§7.2), decided 2026-10-01: one provider and toolchain for all buckets, no egress fees for developers' snapshot pulls, and backups kept with a different provider from the VM.
 
 ### 7.2 What stays on Cloudflare (decided)
 
 Nothing in this data is sensitive, so we use Cloudflare wherever it helps performance or security:
 
-- **Cloudflare**: DNS, the static site, the CDN and edge cache (including `/rt/live` and immutable build output), WAF and rate limiting in front of `api.transitopia.org`, the tile worker, and **R2** for the tiles and files already there (free tier, working well).
-- **FullHost**: the server, PostgreSQL, the 60-day raw data, backups, and the long-term statistics and GTFS archive. New public files can go on either store. Put them where serving is cheapest, and keep the choice a config value so files can move later.
+- **Cloudflare**: DNS, the static site, the CDN and edge cache (including `/rt/live` and immutable build output), WAF and rate limiting in front of `api.transitopia.org`, the tile worker, and **R2**: `transitopia-maps` (tiles), `transitopia-data` (published transit data) and the private `transitopia-archive` (backups, raw recordings, GTFS feeds, developer snapshots).
+- **FullHost**: the server and PostgreSQL, with the 60-day raw data and the long-term statistics. Bucket locations are config values (`DATA_PUBLISH_REMOTE`, `ARCHIVE_REMOTE`), so files can move later.
 
 ### 7.3 Backups and resilience
 
-- Continuous WAL archiving (WAL-G) or nightly `pg_dump` to FullHost S3, with restores tested quarterly.
+- Continuous WAL archiving (WAL-G) or nightly `pg_dump` to object storage (R2, a different provider from the VM), with restores tested quarterly. *As built:* nightly `pg_dump`, 30 days kept. Each dump grows with the observed stop times (§4.4), so revisit how many to keep once they're large.
 - The database backups are what protect the long-lived data (statistics, observed stop times, curated data, reports). Test restores to a scratch VM. Git and the GitHub issues cover the rest.
 - With no server, the site shows schedule estimates marked *estimated*, plus a banner.
 - Monitoring alerts on **data freshness** (poller age, AIS silence, dispatch lag), not just uptime.
@@ -518,7 +518,7 @@ Each phase ends deployed.
 - Move observations and disruptions into the DB with states, previews and export. Build the `/admin` disruption and preview UI.
 - Import the local history (`rt-history`, `ais-history`, `dispatch-history`). Add snapshot pull.
 - **Parity** is reached when everything skytrain-viz does locally works on transitopia.org.
-- *Status (2026-09-29, branch `v2`):* built and tested locally, **not deployed yet** (deployment steps in `deployment/README.md`). Done:
+- *Status (2026-09-29, branch `v2`):* built and tested locally, **not deployed yet** (setup steps in `deployment/api-server-setup.md`). Done:
   - `packages/db`: PostgreSQL 18 + PostGIS, plain SQL migrations applied at server start, Kysely types, daily partitions for raw positions and AIS fixes, monthly for observed stop times. Tests run against a scratch database (CI has a PostGIS service).
   - The server: Hono; leader by advisory lock (followers forward and take over); the request ledger in `upstream_requests`; **every route recorded** in hour files and `rt_positions`, with clients still seeing only drawn routes; trip changes, alerts, AIS fixes and dispatch versions in the database; `/healthz` for freshness (polls, AIS, database, jobs, backups).
   - Jobs on the leader: partitions, 60-day retention (database, files, archive), observed stop times and route statistics for each finished service date (with catch-up), the daily data build and publish, hourly archiving.
@@ -639,7 +639,7 @@ Ground facts people report ("this stop has no shelter") can be verified and adde
 | Privacy of recorded tracks and accounts | Trimmed endpoints, no raw tracks tied to a person, deletion, minimal PII. GitHub login means no passwords. |
 | Scope: a long feature list for a small team | Strict ordering (§0), each phase ships, continuous quality work instead of big rewrites. |
 | Retuning the cycling style on the new basemap | Before/after screenshot comparison in Phase 1. |
-| FullHost is less widely used than the big clouds (tooling, egress pricing, S3 compatibility quirks) | Test WAL-G, rclone and PMTiles range requests against their S3 early in Phase 2. Keep everything in portable Docker/S3 terms. |
+| FullHost is less widely used than the big clouds | Only the VM is there; storage is on R2. Keep everything in portable Docker/S3 terms, with backups off the VM's provider. |
 
 ---
 

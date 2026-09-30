@@ -40,9 +40,9 @@ export interface ServerEnv {
   jobs: boolean;
   /** Build the transit data on the server (daily), rather than only reading var/public/data. */
   buildData: boolean;
-  /** rclone destination for the published transit data (e.g. transitopia-data-r2:transitopia-data). */
+  /** rclone destination for the published transit data (e.g. r2:transitopia-data). */
   dataPublishRemote: string | undefined;
-  /** rclone destination for archives: raw recordings, GTFS feeds (e.g. fullhost:transitopia-archive). */
+  /** rclone destination for archives: raw recordings, GTFS feeds, backups (e.g. r2:transitopia-archive). */
   archiveRemote: string | undefined;
 }
 

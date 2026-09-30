@@ -1,18 +1,13 @@
-# rclone remotes for the server and backups. Copy to infra/rclone.conf (gitignored) and fill in.
+# rclone remote for the server and backups. Copy to infra/rclone.conf (gitignored) and fill in.
 
-# Cloudflare R2: the transitopia-data bucket behind data.transitopia.org (an R2 API token that can
-# write it). The endpoint is https://<account id>.r2.cloudflarestorage.com.
-[transitopia-data-r2]
+# Cloudflare R2, with an API token that can read and write two buckets only: transitopia-data
+# (published transit data, behind data.transitopia.org) and transitopia-archive (private: backups,
+# raw recordings, GTFS feeds, the developer snapshot). The endpoint is
+# https://<account id>.r2.cloudflarestorage.com. The tokens can't create or list buckets, so the
+# server passes --s3-no-check-bucket.
+[r2]
 type = s3
 provider = Cloudflare
-endpoint =
-access_key_id =
-secret_access_key =
-
-# FullHost object storage (S3-compatible, in Canada): the private archive bucket.
-[fullhost]
-type = s3
-provider = Other
 endpoint =
 access_key_id =
 secret_access_key =

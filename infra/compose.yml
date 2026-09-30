@@ -1,6 +1,7 @@
 # Production on the FullHost VM (V2-PLAN.md §7.1): the server, PostgreSQL + PostGIS, Caddy (TLS)
 # and nightly backups. Settings and secrets are in infra/.env (from .env.example, never committed);
-# rclone remotes in infra/rclone.conf. See deployment/README.md.
+# rclone remotes in infra/rclone.conf. Setup: deployment/api-server-setup.md; operations:
+# deployment/README.md.
 #
 #   docker compose -f infra/compose.yml up -d
 #   docker compose -f infra/compose.yml logs -f server
@@ -39,8 +40,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    # The daily data build (build:movements, the dispatcher) needs a few GB at peak.
-    mem_limit: 6g
+    # Measured 2026-09-30 (deployment/README.md, "Sizing"): ~0.7 GB as leader with live dispatch;
+    # jobs run one at a time and add at most ~0.8 GB (statistics for a day of every route) or
+    # ~0.5 GB (data build step, a child process). The limit leaves room for more history and dates.
+    mem_limit: 3g
 
   caddy:
     image: caddy:2

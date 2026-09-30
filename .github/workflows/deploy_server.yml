@@ -2,7 +2,7 @@ name: Deploy Server
 
 # The server (apps/server) on the FullHost VM (V2-PLAN.md §7.4): build the image, push it to GHCR,
 # then on the VM check out the same commit (for infra/ files) and restart with the new image.
-# Migrations run when the server starts. Deploys from `prod`, like the site. The VM step is skipped until the DEPLOY_* secrets exist (deployment/README.md).
+# Migrations run when the server starts. Deploys from `prod`, like the site. The VM step is skipped until the DEPLOY_* secrets exist (deployment/api-server-setup.md, step 12).
 
 on:
   push:

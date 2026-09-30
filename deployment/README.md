@@ -24,7 +24,7 @@ dashboard (or deploy it with wrangler).
 
 To upload by hand:
 
-    rclone copy var/public/tiles/protomaps-bc.pmtiles transitopia-maps-r2:transitopia-maps --s3-no-check-bucket
+    rclone copy var/public/tiles/protomaps-bc.pmtiles transitopia-r2:transitopia-maps --s3-no-check-bucket
 
 The changes will not be visible for a while (4 hours?) unless you purge the cache at
 https://dash.cloudflare.com AND view the site in an incognito window.
@@ -68,7 +68,7 @@ Production data locations are in `apps/web/.env.production`.
 
 ### The server (api.transitopia.org)
 
-The server (`apps/server`, V2-PLAN.md §4.3, §7) runs on a FullHost VM in Vancouver with Docker
+The server (`apps/server`, V2-PLAN.md §4.3, §7) runs on a FullHost VM in Toronto with Docker
 Compose (`infra/compose.yml`): the server, PostgreSQL + PostGIS, Caddy for TLS, and a backup
 container. Cloudflare proxies `api.transitopia.org` to it. The leader server:
 
@@ -83,112 +83,55 @@ container. Cloudflare proxies `api.transitopia.org` to it. The leader server:
 Backups: `pg_dump` nightly at 11:30 UTC to `<ARCHIVE_REMOTE>/backups/db/` (30 days), plus a
 developer snapshot without users, sessions or raw rows (`npm run snapshot:pull -- --db`).
 
-#### One-time setup
+Setting it up (the VM, Docker, SSH, firewall, accounts, Cloudflare, configuration and the first
+start) is in [api-server-setup.md](api-server-setup.md).
 
-1. **VM** (FullHost, Vancouver): Ubuntu 24.04 LTS or Debian 13, about 4 vCPU, 8 GB RAM, 160 GB
-   SSD. Install Docker Engine with the Compose plugin. Create a `deploy` user in the `docker` group
-   with SSH key login. Open ports 22, 80 and 443 (443 can be limited to Cloudflare's IP ranges).
-2. **Object storage** (FullHost, S3-compatible): a private bucket, e.g. `transitopia-archive`, and
-   an access key for it. Check it works with rclone before relying on it (V2-PLAN.md §11):
-   `rclone mkdir fullhost:transitopia-archive/test && rclone copy README.md fullhost:transitopia-archive/test && rclone ls fullhost:transitopia-archive`.
-3. **R2 token** that can write the `transitopia-data` bucket (the one in the GitHub secrets will
-   do, or a new one), for publishing the transit data.
-4. **GitHub OAuth app** (github.com → Settings → Developer settings → OAuth Apps, under the
-   `transitopia` organisation): homepage `https://www.transitopia.org`, callback
-   `https://api.transitopia.org/auth/github/callback`. Note the client ID and a client secret.
-5. **Cloudflare** (transitopia.org zone):
-   - DNS: `api` → the VM's IP, proxied (orange cloud).
-   - SSL/TLS: mode **Full (strict)**. SSL/TLS → Origin Server → Create certificate for
-     `api.transitopia.org` (15 years). Save the certificate and key on the VM as
-     `/opt/transitopia/infra/certs/origin.pem` and `origin.key` (`chmod 600`).
-   - Caching → Cache Rules: when hostname is `api.transitopia.org` and URI path starts with `/rt/`:
-     eligible for cache, edge TTL "use cache-control header if present, bypass cache if not".
-     (`/rt/live` says 10 s, closed history hours a day, dispatch versions a year; Cloudflare doesn't
-     cache JSON without a rule.) Nothing else on `api.` is cached (`/healthz`, `/admin`, `/auth`).
-   - Optional: a rate-limiting rule for `api.transitopia.org`.
-6. **On the VM**, as `deploy`:
+#### Sizing
 
-       sudo mkdir -p /opt/transitopia && sudo chown deploy: /opt/transitopia
-       git clone https://github.com/transitopia/transitopia.git /opt/transitopia
-       cd /opt/transitopia && git checkout v2        # prod, once it has Phase 2
-       cp infra/.env.example infra/.env && cp infra/rclone.conf.example infra/rclone.conf
-       chmod 600 infra/.env infra/rclone.conf
+Measured on 2026-09-30 on a Mac (Docker for Postgres), with a synthesized weekday of every route
+at the budgeted poll rate: 738 polls, 630,000 positions, up to 1,275 buses in one poll.
 
-   Fill in `infra/.env` (a long random `POSTGRES_PASSWORD`, `TRANSLINK_API_KEY`,
-   `AISSTREAM_API_KEY`, the GitHub app, `ADMIN_GITHUB_LOGINS`) and `infra/rclone.conf` (R2 and
-   FullHost endpoints and keys). The remote names must match `DATA_PUBLISH_REMOTE` and
-   `ARCHIVE_REMOTE` in `.env`.
+| What | Memory at peak | Time |
+|---|---|---|
+| Server as leader, live dispatch of 5 dates | 0.7 GB | |
+| Recording one poll of every bus | | 20 ms |
+| Statistics for one day of every route (in the server) | +0.8 GB | 27 s |
+| Data build, largest step (`build-dispatch`, a child process) | 0.5 GB | 21 s |
+| Data build, all steps | | ~1 min |
+| `build-rt-profile` on 75 h of history | 0.4 GB (was 12 GB before fix fe149ee) | 2 s |
+| PostgreSQL (default settings) during the statistics job | 0.2 GB | |
 
-#### First start
+Jobs run one at a time, so the server container stays under ~1.5 GB, and the whole stack under
+~2.5 GB: 4 GB of RAM is enough, 8 GB lets Postgres cache the recent raw data. Not measured yet: the
+profile build on 28 days of history (it keeps every fix of the drawn routes in memory; estimated
+under 1 GB), and real GPS data rather than synthetic positions.
 
-**Stop every other process polling with the same TransLink key first** (e.g. a local
-`npm run server` with `.secrets`): the 1,000 requests a day are per key. Since Phase 2 a local
-server doesn't poll unless `RT_POLL=1`.
+Disk, per day of every route:
 
-1. Copy the local history (and the GTFS feeds it was recorded against) to the VM, from your
-   machine:
+| What | Per day | Kept | Total |
+|---|---|---|---|
+| Raw positions in Postgres (with indexes) | 128 MB | 60 days | ~7.7 GB |
+| Hourly files (gzipped), plus the same in the archive bucket | 12 MB | 60 days | ~0.75 GB |
+| Observed stop times in Postgres (665,000 rows) | 215 MB | indefinitely | **~78 GB a year** |
+| Route statistics, trip changes, alerts, dispatch versions | < 5 MB | indefinitely | small |
 
-       cd var && rsync -aR rt-history ais-history dispatch-history raw/gtfs deploy@<vm>:history/
-
-2. Build the images and start the database:
-
-       cd /opt/transitopia
-       docker compose -f infra/compose.yml build
-       docker compose -f infra/compose.yml up -d db
-
-3. Import the history into the server's volume and the database (idempotent; about a minute for a
-   few days):
-
-       docker compose -f infra/compose.yml run --rm -v ~/history:/import:ro server \
-         sh -c 'cp -r /import/. var/ && npm run db:import-history'
-
-4. Start everything:
-
-       docker compose -f infra/compose.yml up -d
-       docker compose -f infra/compose.yml logs -f server
-
-   On first start the server applies the migrations, imports the committed corrections, starts
-   polling, and builds and publishes the transit data (a couple of minutes; it replaces what's on
-   `data.transitopia.org` with the same build from this commit).
-
-5. Check:
-
-       curl https://api.transitopia.org/healthz          # {"ok":true,…}
-       curl https://api.transitopia.org/rt/status        # leader: true, budget.used24h counting up
-       curl -sI https://api.transitopia.org/rt/live      # cf-cache-status: HIT within 10 s of a MISS
-
-   Sign in at https://www.transitopia.org/admin once the site is deployed (below), or from a
-   local `npm run dev` with `VITE_TRANSIT_API=https://api.transitopia.org/` (localhost:5173 is in
-   `ALLOWED_ORIGINS`).
-
-6. Run a backup now and look at the bucket:
-
-       docker compose -f infra/compose.yml run --rm backup /usr/local/bin/backup.sh --now
-       rclone ls fullhost:transitopia-archive/backups
-
-7. Deploy the site: merge `v2` into `prod` and push. `apps/web/.env.production` now sets
-   `VITE_TRANSIT_API=https://api.transitopia.org/`, so buses go live on transitopia.org.
+Observed stop times dominate: kept in Postgres they grow by ~78 GB a year, which a 160 GB disk
+holds for under two years. V2-PLAN.md §4.4 plans monthly files in object storage with only recent
+months in Postgres; that export isn't built yet and should be before the disk fills.
 
 #### Monitoring
 
 `/healthz` returns 503 when positions polls or AIS go stale, the database is unreachable, or a
-daily job (statistics, data build, backup) failed or hasn't succeeded for 36 hours. Point an
-uptime monitor at `https://api.transitopia.org/healthz` (e.g. UptimeRobot or Better Stack, every
-5 minutes, alert on anything but 200). The response body says which check failed; `/admin` shows
-the same, plus recent jobs.
+daily job (statistics, data build, backup) failed or hasn't succeeded for 36 hours. An uptime
+monitor watches it ([api-server-setup.md, step 13](api-server-setup.md#13-uptime-monitor)). The
+response body says which check failed; `/admin` shows the same, plus recent jobs.
 
 #### Automatic deploys
 
 `.github/workflows/deploy_server.yml` builds the server image on every push to `prod` that touches
-the server's code, pushes it to `ghcr.io/transitopia/transitopia-server`, and, once these
-repository secrets exist, restarts it on the VM:
-
-- `DEPLOY_HOST`, `DEPLOY_USER` (`deploy`), `DEPLOY_SSH_KEY` (a private key whose public half is in
-  the deploy user's `authorized_keys`), `DEPLOY_KNOWN_HOSTS` (`ssh-keyscan <vm>`).
-
-The GHCR package is private by default: either make it public (it contains no secrets), or run
-`docker login ghcr.io` on the VM with a token that can read packages. Migrations run when the
-server starts. After changing `infra/backup/`, rebuild it on the VM:
+the server's code, pushes it to `ghcr.io/transitopia/transitopia-server`, and restarts it on the VM
+(secrets and registry access: [api-server-setup.md, step 12](api-server-setup.md#12-automatic-deploys)).
+Migrations run when the server starts. After changing `infra/backup/`, rebuild it on the VM:
 `docker compose -f infra/compose.yml up -d --build backup`.
 
 #### Operations
@@ -198,7 +141,7 @@ server starts. After changing `infra/backup/`, rebuild it on the VM:
 - Recompute a date's statistics: `docker compose -f infra/compose.yml exec server npm run stats -- 20261001`.
 - Restore a backup (test quarterly, V2-PLAN.md §7.3, on a scratch database or VM):
 
-      rclone copy fullhost:transitopia-archive/backups/db/transitopia-<date>.dump .
+      rclone copy r2:transitopia-archive/backups/db/transitopia-<date>.dump .
       createdb restore_test && pg_restore -d restore_test transitopia-<date>.dump
 
 - The server's data lives in two Docker volumes: `transitopia_db` (PostgreSQL) and
