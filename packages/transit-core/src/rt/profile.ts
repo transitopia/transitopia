@@ -23,7 +23,7 @@ import type {
   PreparedTrip,
   TripPacer,
 } from "../schedule/engine.ts";
-import { addDays, localDate, serviceDayStart } from "../time.ts";
+import { addDays, localDate, serviceDayStart, toWallTime } from "../time.ts";
 import type { RtSnapshot, RtVehicle } from "./types.ts";
 
 export interface PredictionConfig {
@@ -106,14 +106,9 @@ export function bandOf(bandStartHours: number[], hour: number): number {
   return b;
 }
 
-const localHour = (ms: number, tz: string) =>
-  Number(
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: tz,
-      hour: "numeric",
-      hourCycle: "h23",
-    }).format(ms),
-  );
+// toWallTime reuses one formatter per time zone: creating an Intl.DateTimeFormat per fix allocated
+// native ICU memory faster than GC freed it (~8 GB for five days of fixes in build:rt-profile).
+const localHour = (ms: number, tz: string) => toWallTime(ms, tz).hour;
 
 interface Acc {
   time: Float64Array;
