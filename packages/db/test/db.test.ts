@@ -7,7 +7,7 @@ import {
 } from "../src/testing.ts";
 import { migrate } from "../src/migrate.ts";
 import { dropExpiredPartitions, ensurePartitions } from "../src/partitions.ts";
-import { runOnce } from "../src/jobs.ts";
+import { recoverInterrupted, runOnce } from "../src/jobs.ts";
 
 describe.skipIf(!TEST_DATABASE_URL)("database", () => {
   let t: TestDb;
@@ -113,5 +113,32 @@ describe.skipIf(!TEST_DATABASE_URL)("database", () => {
       "skipped",
     );
     expect(calls).toBe(2);
+  });
+
+  it("reruns a job interrupted mid-run as soon as the next leader starts", async () => {
+    let calls = 0;
+    // A run left "running" by a process that stopped.
+    await t.db
+      .insertInto("job_runs")
+      .values({
+        job: "data",
+        key: "20261001",
+        status: "running",
+        started_at: new Date(),
+        finished_at: null,
+        error: null,
+        detail: null,
+      })
+      .execute();
+    expect(await runOnce(t.db, "data", "20261001", async () => calls++)).toBe(
+      "skipped",
+    );
+    expect(await recoverInterrupted(t.db)).toEqual([
+      { job: "data", key: "20261001" },
+    ]);
+    expect(await runOnce(t.db, "data", "20261001", async () => calls++)).toBe(
+      "done",
+    );
+    expect(calls).toBe(1);
   });
 });

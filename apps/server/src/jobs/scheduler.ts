@@ -14,7 +14,7 @@ import { join } from "node:path";
 import recording from "@transitopia/region-metro-vancouver/config/recording.json" with { type: "json" };
 import { PUBLIC_DATA_DIR } from "@transitopia/pipelines/lib/paths.ts";
 import type { Db } from "@transitopia/db/connect.ts";
-import { runOnce } from "@transitopia/db/jobs.ts";
+import { recoverInterrupted, runOnce } from "@transitopia/db/jobs.ts";
 import { ensurePartitions } from "@transitopia/db/partitions.ts";
 import {
   addDays,
@@ -37,6 +37,7 @@ export class Jobs {
   private running = false;
   private ticking: Promise<void> | undefined;
   private lastDataBuild: number | undefined;
+  private recovered = false;
 
   private readonly db: Db | undefined;
   private readonly regionId: string;
@@ -62,6 +63,16 @@ export class Jobs {
     if (this.running) return;
     this.running = true;
     const loop = async () => {
+      // This process is the leader: runs another process left "running" were interrupted.
+      if (this.db && !this.recovered) {
+        this.recovered = true;
+        const reset = await recoverInterrupted(this.db).catch((e: Error) => {
+          this.log(`could not reset interrupted jobs: ${e.message}`);
+          return [];
+        });
+        for (const r of reset)
+          this.log(`${r.job}:${r.key} was interrupted; running it again`);
+      }
       await this.tick().catch((e: Error) =>
         this.log(`tick failed: ${e.message}`),
       );

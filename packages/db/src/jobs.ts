@@ -35,6 +35,7 @@ export async function runOnce(
     && now().getTime() - existing.started_at.getTime() < STALE_RUNNING_MS
   )
     return "skipped";
+  // An interrupted run (no finish time, see recoverInterrupted) retries at once.
   if (
     existing?.status === "failed"
     && existing.finished_at
@@ -87,6 +88,28 @@ export async function runOnce(
       .execute();
     return "failed";
   }
+}
+
+/**
+ * Mark runs left "running" by a process that's gone as interrupted, so they run again at once.
+ * Only for the leader at startup: only the leader runs jobs, so any run still marked running then
+ * was cut off (e.g. by a deploy restarting the server mid-build). Without this they'd wait out
+ * STALE_RUNNING_MS. They're recorded as failed with no finish time, which retries immediately and
+ * doesn't count as a recent failure for /healthz. Returns the runs it reset.
+ */
+export async function recoverInterrupted(
+  db: Db,
+): Promise<{ job: string; key: string }[]> {
+  return db
+    .updateTable("job_runs")
+    .set({
+      status: "failed",
+      finished_at: null,
+      error: "interrupted: the server stopped during the run",
+    })
+    .where("status", "=", "running")
+    .returning(["job", "key"])
+    .execute();
 }
 
 /** Latest runs per job, for /status and the admin page. */
