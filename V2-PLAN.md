@@ -518,7 +518,7 @@ Each phase ends deployed.
 - Move observations and disruptions into the DB with states, previews and export. Build the `/admin` disruption and preview UI.
 - Import the local history (`rt-history`, `ais-history`, `dispatch-history`). Add snapshot pull.
 - **Parity** is reached when everything skytrain-viz does locally works on transitopia.org.
-- *Status (2026-09-29, branch `v2`):* built and tested locally, **not deployed yet** (setup steps in `deployment/api-server-setup.md`). Done:
+- *Status (2026-10-01):* **live** at transitopia.org, with the server at api.transitopia.org (FullHost, Toronto; setup in `deployment/api-server-setup.md`). Done:
   - `packages/db`: PostgreSQL 18 + PostGIS, plain SQL migrations applied at server start, Kysely types, daily partitions for raw positions and AIS fixes, monthly for observed stop times. Tests run against a scratch database (CI has a PostGIS service).
   - The server: Hono; leader by advisory lock (followers forward and take over); the request ledger in `upstream_requests`; **every route recorded** in hour files and `rt_positions`, with clients still seeing only drawn routes; trip changes, alerts, AIS fixes and dispatch versions in the database; `/healthz` for freshness (polls, AIS, database, jobs, backups).
   - Jobs on the leader: partitions, 60-day retention (database, files, archive), observed stop times and route statistics for each finished service date (with catch-up), the daily data build and publish, hourly archiving.
