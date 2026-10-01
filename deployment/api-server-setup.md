@@ -170,9 +170,13 @@ In the `transitopia.org` zone:
   for `api.transitopia.org`, 15 years. Keep the certificate and private key for step 10 (the key is
   shown only once).
 - **Caching → Cache Rules:** when hostname equals `api.transitopia.org` and URI path starts with
-  `/rt/`: eligible for cache; edge TTL "Use cache-control header if present, bypass cache if not".
-  (`/rt/live` sends 10 s, closed history hours a day, dispatch versions a year; Cloudflare doesn't
-  cache JSON without a rule.) Nothing else on `api.` is cached (`/healthz`, `/admin`, `/auth`).
+  `/rt/`: eligible for cache; edge TTL "Use cache-control header if present, bypass cache if not";
+  **browser TTL "Respect origin TTL"**. (`/rt/live` sends 10 s, coverage and service changes 30 s,
+  closed history hours a day, dispatch versions a year; Cloudflare doesn't cache JSON without a
+  rule.) Without the browser TTL setting, Cloudflare tells browsers to keep every response for its
+  default 4 hours, so the site keeps showing hours-old coverage, dispatch versions and AIS fixes.
+  Check with `curl -sI https://api.transitopia.org/rt/coverage`: it must say `max-age=30`, not
+  `14400`. Nothing else on `api.` is cached (`/healthz`, `/admin`, `/auth`).
 - Optional: a rate-limiting rule for `api.transitopia.org`.
 
 ## 10. Configuration
