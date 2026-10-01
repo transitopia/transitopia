@@ -138,11 +138,14 @@ R2 → Manage API tokens → Create API token:
 - **For developers' `npm run snapshot:pull`:** "Object Read only", `transitopia-archive` only.
 
 Note each token's access key ID and secret access key, and the S3 endpoint
-(`https://<account id>.r2.cloudflarestorage.com`). Check the server's token on your Mac, with an
-`[r2]` remote set up as in `infra/rclone.conf.example`:
+(`https://<account id>.r2.cloudflarestorage.com`). Check the server's token on your Mac, giving
+rclone the same `r2` remote the server uses, through environment variables:
 
 ```sh
 # Mac
+export RCLONE_CONFIG_R2_TYPE=s3 RCLONE_CONFIG_R2_PROVIDER=Cloudflare \
+  RCLONE_CONFIG_R2_ENDPOINT=https://<account id>.r2.cloudflarestorage.com \
+  RCLONE_CONFIG_R2_ACCESS_KEY_ID=<key id> RCLONE_CONFIG_R2_SECRET_ACCESS_KEY=<secret>
 rclone copy README.md r2:transitopia-archive/test --s3-no-check-bucket
 rclone ls r2:transitopia-archive
 rclone purge r2:transitopia-archive/test
@@ -179,23 +182,23 @@ The repo is in `/opt/transitopia` since step 5.
 ```sh
 # VM (deploy)
 cd /opt/transitopia
-cp infra/.env.example infra/.env && cp infra/rclone.conf.example infra/rclone.conf
-chmod 600 infra/.env infra/rclone.conf
+cp infra/.env.example infra/.env
+chmod 600 infra/.env
 install -d -m 700 infra/certs
 nano infra/certs/origin.pem                   # the origin certificate from step 9
 nano infra/certs/origin.key                   # its private key
 chmod 600 infra/certs/*
 ```
 
-Fill in:
+Fill in `infra/.env`:
 
-- `infra/.env`: a long random `POSTGRES_PASSWORD` (`openssl rand -hex 32`), `TRANSLINK_API_KEY`,
+- A long random `POSTGRES_PASSWORD` (`openssl rand -hex 32`), `TRANSLINK_API_KEY`,
   `AISSTREAM_API_KEY`, `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` (step 8), and
   `ADMIN_GITHUB_LOGINS`.
-- `infra/rclone.conf`: the R2 endpoint and the server's token (step 7). The remote's name (`r2`)
-  must match `DATA_PUBLISH_REMOTE` and `ARCHIVE_REMOTE` in `.env`.
+- The `RCLONE_CONFIG_R2_*` lines: the R2 endpoint and the server's token (step 7). The remote's
+  name (`r2`) must match `DATA_PUBLISH_REMOTE` and `ARCHIVE_REMOTE`.
 
-`infra/.env`, `infra/rclone.conf` and `infra/certs/` are gitignored.
+`infra/.env` and `infra/certs/` are gitignored.
 
 ## 11. First start
 
@@ -292,7 +295,5 @@ docker login ghcr.io -u <your GitHub login>
 
 ## 13. Uptime monitor
 
-Point an uptime monitor (e.g. UptimeRobot or Better Stack) at
-`https://api.transitopia.org/healthz`, every 5 minutes, alerting on anything but 200. It goes
-through Cloudflare like visitors do, and `/healthz` is never cached. What it checks is in
-[README.md → Monitoring](README.md#monitoring).
+Configure https://dashboard.uptimerobot.com/monitors to monitor `https://api.transitopia.org/healthz`
+and `https://www.transitopia.org`.

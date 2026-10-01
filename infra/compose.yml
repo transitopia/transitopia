@@ -1,7 +1,7 @@
 # Production on the FullHost VM (V2-PLAN.md §7.1): the server, PostgreSQL + PostGIS, Caddy (TLS)
-# and nightly backups. Settings and secrets are in infra/.env (from .env.example, never committed);
-# rclone remotes in infra/rclone.conf. Setup: deployment/api-server-setup.md; operations:
-# deployment/README.md.
+# and nightly backups. Settings and secrets, including the R2 remote rclone uses
+# (RCLONE_CONFIG_R2_*), are in infra/.env (from .env.example, never committed). Setup:
+# deployment/api-server-setup.md; operations: deployment/README.md.
 #
 #   docker compose -f infra/compose.yml up -d
 #   docker compose -f infra/compose.yml logs -f server
@@ -36,7 +36,6 @@ services:
       BUILD_DATA: "1"
     volumes:
       - var:/app/var
-      - ./rclone.conf:/home/node/.config/rclone/rclone.conf:ro
     depends_on:
       db:
         condition: service_healthy
@@ -64,8 +63,12 @@ services:
     environment:
       DATABASE_URL: postgres://transitopia:${POSTGRES_PASSWORD}@db:5432/transitopia
       BACKUP_REMOTE: ${ARCHIVE_REMOTE:?set ARCHIVE_REMOTE in infra/.env}/backups
-    volumes:
-      - ./rclone.conf:/var/lib/postgresql/.config/rclone/rclone.conf:ro
+      # Only the R2 remote's settings, not the rest of infra/.env.
+      RCLONE_CONFIG_R2_TYPE: s3
+      RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+      RCLONE_CONFIG_R2_ENDPOINT: ${RCLONE_CONFIG_R2_ENDPOINT:?set RCLONE_CONFIG_R2_ENDPOINT in infra/.env}
+      RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${RCLONE_CONFIG_R2_ACCESS_KEY_ID:?}
+      RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${RCLONE_CONFIG_R2_SECRET_ACCESS_KEY:?}
     depends_on:
       db:
         condition: service_healthy

@@ -5,7 +5,7 @@
 #       no users or sessions, and no raw positions, AIS fixes or request log (those come as hourly
 #       files for the dates asked for)
 # Restore: pg_restore --clean --if-exists -d "$DATABASE_URL" transitopia-<date>.dump
-# Run once now: docker compose run --rm backup /usr/local/bin/backup.sh --now
+# Run once now: docker compose run --rm backup /usr/local/bin/backup.sh --now (exits 1 on failure)
 set -eu
 
 : "${DATABASE_URL:?}" "${BACKUP_REMOTE:?}"
@@ -21,25 +21,39 @@ on conflict (job, key) do update set status = excluded.status, finished_at = now
 SQL
 }
 
+# Every step is checked explicitly: `set -e` doesn't apply inside a function called from `if` or
+# `&&`, so without these a failed upload still reported "done".
 backup() {
   day=$(date -u +%Y-%m-%d)
-  tmp=$(mktemp -d)
+  tmp=$(mktemp -d) || return 1
   echo "[backup] $day: dumping"
-  pg_dump -Fc -d "$DATABASE_URL" -f "$tmp/full.dump"
-  rclone copyto "$tmp/full.dump" "$BACKUP_REMOTE/db/transitopia-$day.dump" --s3-no-check-bucket
-  rclone delete "$BACKUP_REMOTE/db" --min-age "${KEEP}d"
+  pg_dump -Fc -d "$DATABASE_URL" -f "$tmp/full.dump" || return 1
+  rclone copyto "$tmp/full.dump" "$BACKUP_REMOTE/db/transitopia-$day.dump" --s3-no-check-bucket || return 1
+  rclone delete "$BACKUP_REMOTE/db" --min-age "${KEEP}d" || return 1
   pg_dump -Fc -d "$DATABASE_URL" -f "$tmp/snapshot.dump" \
     --exclude-table-data=users --exclude-table-data=sessions \
     --exclude-table-data='rt_positions*' --exclude-table-data='ais_fixes*' \
-    --exclude-table-data=upstream_requests --exclude-table-data=service_leader
-  rclone copyto "$tmp/snapshot.dump" "$BACKUP_REMOTE/snapshots/db-latest.dump" --s3-no-check-bucket
+    --exclude-table-data=upstream_requests --exclude-table-data=service_leader || return 1
+  rclone copyto "$tmp/snapshot.dump" "$BACKUP_REMOTE/snapshots/db-latest.dump" --s3-no-check-bucket || return 1
   rm -rf "$tmp"
-  echo "[backup] $day: done ($(rclone size "$BACKUP_REMOTE/db" --json | tr -d '\n'))"
+  size=$(rclone size "$BACKUP_REMOTE/db" --json) || return 1
+  echo "[backup] $day: done ($(echo "$size" | tr -d '\n'))"
+}
+
+run() {
+  day=$(date -u +%Y-%m-%d)
+  if backup; then
+    record done "$day"
+  else
+    echo "[backup] $day: FAILED"
+    record failed "$day" "see the backup container's log" || true
+    return 1
+  fi
 }
 
 if [ "${1:-}" = "--now" ]; then
-  backup && record done "$(date -u +%Y-%m-%d)"
-  exit 0
+  run
+  exit $?
 fi
 
 while true; do
@@ -48,10 +62,5 @@ while true; do
   [ "$next" -le "$now" ] && next=$(date -u -d "tomorrow $AT" +%s)
   echo "[backup] next backup at $(date -u -d "@$next")"
   sleep $((next - now))
-  if backup; then
-    record done "$(date -u +%Y-%m-%d)"
-  else
-    echo "[backup] FAILED"
-    record failed "$(date -u +%Y-%m-%d)" "see the backup container's log" || true
-  fi
+  run || true
 done
