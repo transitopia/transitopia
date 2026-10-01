@@ -143,3 +143,4 @@ npx tsx pipelines/screenshot.ts out.png "/transit?date=2026-09-28&t=08:00:00&pau
 - After changing infrastructure, config, or pipeline code, rebuild and run both validators before calling the work done.
 - For visual changes, run the app and look at it (`pipelines/screenshot.ts` drives the local Chrome; `window.transit` is a debug handle on /transit with `map`, `clock`, `store`, `rt`, `vehicles()`), especially at station zoom around Waterfront, Columbia/Sapperton, Commercial–Broadway, Lougheed, Edmonds (OMC 1), and Bridgeport, where the track work is densest. Check the phone layout too.
 - Prefer small, reviewable commits per milestone step.
+- Branches: work on feature branches forked from `main`; production (site and server) deploys from `prod` when `main` is merged into it and pushed (`deployment/README.md` → Branches).

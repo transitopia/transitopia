@@ -4,9 +4,9 @@
 
 Transitopia is a mapping project that aims to provide high-quality **public transit**, **cycling**, and **pedestrian** infrastructure maps. The goal is to promote best practices and celebrate high quality infrastructure, while calling attention to unsafe and low-quality infrastructure.
 
-**Current status** (Sep 2026): Online now are **cycling / micromobility maps** for British Columbia. We're building Transitopia V2 ([plan](V2-PLAN.md)), which adds a real-time **transit** map of Metro Vancouver: SkyTrain on the correct track through every switch, SeaBus from live AIS, West Coast Express, and the express buses from GTFS-realtime, with a time slider covering past, live and projected service. The transit engine comes from the skytrain-viz project, merged into this repository with its history.
+**Current status** (Oct 2026): The first release of **our real-time transit map is in beta** for Metro Vancouver, showing only Translink's "Fast & Frequent" network. Also available is the **cycling / micromobility map** for all of British Columbia.
 
-Online at: **[www.transitopia.org](https://www.transitopia.org/cycling)**.
+Online at: **[www.transitopia.org](https://www.transitopia.org/)**.
 
 ![Screenshot of www.transitopia.org](./readme-screenshot.png)
 
@@ -14,21 +14,21 @@ Online at: **[www.transitopia.org](https://www.transitopia.org/cycling)**.
 
 This repository is a monorepo (npm workspaces) containing most of the parts you need to run and develop Transitopia locally:
 
-* `apps/web`: the Single Page Application that implements the website with the Transitopia map, seen at https://www.transitopia.org/
-* `apps/server`: the real-time service: it polls TransLink's GTFS-realtime feeds within a request budget, streams SeaBus AIS positions, records history, and re-dispatches trains live.
-* `packages/transit-core`: the DOM-free transit engine: GTFS, the SkyTrain track graph, run inference, a signalling-aware dispatcher, playback, corrections, and bus prediction.
+* `apps/web`: the Single Page Application that implements the website with the Transitopia map, seen at https://www.transitopia.org
+* `apps/server`: the real-time service: it polls available data feeds (GTFS Realtime, AIS, etc.), streams the data to the web app, adheres to rate limits, records history, and re-dispatches trains live.
+* `packages/transit-core`: the DOM-free transit engine: GTFS, the SkyTrain track graph, run inference, a signalling-aware train dispatcher, playback, corrections, and bus prediction.
 * `packages/transit-map`: the transit map engine (clock, playback, WebGL vehicle layers), mounted by the website on `/transit`.
 * `packages/map-style`: the site's basemap style (Protomaps, light and dark).
 * `packages/shared`: definitions shared by the website and server, such as the dataset registry behind the map's credits.
 * `pipelines`: build-time data pipelines and validators.
 * `regions/metro-vancouver`: curated data for Metro Vancouver (config, track infrastructure, scenarios, observations and disruptions).
-* `map-layers`: A Transitopia profile for [Planetiler](https://github.com/onthegomap/planetiler) that generates our unique map layers/overlays, like the cycling/micromobility map.
+* `map-layers`: A Transitopia profile for [Planetiler](https://github.com/onthegomap/planetiler) that generates our unique map layers/overlays (currently just the cycling/micromobility map).
 
 [CLAUDE.md](CLAUDE.md) has more detail on the layout and every command.
 
 ## How to run Transitopia locally
 
-You need Node.js 22+ (and optionally Java 21+ if you want to build the maps yourself). Clone this repo, then run `npm install` at its root.
+You need Node.js 24+ (and optionally Java 21+ if you want to build the cycling maps yourself). Clone this repo, then run `npm install` at its root.
 
 1. Build the basemap (a British Columbia extract of the [Protomaps](https://protomaps.com/) daily build, about 2 GB, plus its fonts and icons):
 
@@ -51,7 +51,7 @@ You need Node.js 22+ (and optionally Java 21+ if you want to build the maps your
 
 Downloads and build output go to `var/` (gitignored). The track network itself is committed (`regions/metro-vancouver/infrastructure/`), and `npm run data:osm` re-imports it from OpenStreetMap.
 
-The site shows transit schedules only (*estimated* positions) unless it's pointed at an RT service: run `npm run server` and start the site with `VITE_TRANSIT_API=http://localhost:8787/ npm run dev`. Without TransLink and aisstream.io API keys the RT service is schedule-only too, which is what development normally uses: TransLink allows 1,000 requests a day per key, and one poller spends them for production (see [V2-PLAN.md §4.5 and §7.5](V2-PLAN.md)).
+The site shows transit schedules only (*estimated* positions) unless it's pointed at an RT service: run `npm run server` and start the site with `VITE_TRANSIT_API=http://localhost:8787/ npm run dev`. A local server doesn't poll TransLink or aisstream.io (even with API keys) unless started with `RT_POLL=1`: TransLink allows 1,000 requests a day per key, and the production server spends them (see [V2-PLAN.md §4.5 and §7.5](V2-PLAN.md)). To see live data locally, start it with `RT_FORWARD_TO=https://api.transitopia.org`, or point the site straight at production with `VITE_TRANSIT_API=https://api.transitopia.org/ npm run dev`.
 
 ## Credits
 
@@ -59,14 +59,12 @@ Transitopia is a project by [Braden MacDonald](https://www.bradenmacdonald.com) 
 
 All source code is open source and all data is open data, but the licenses vary.
 
-The primary source of map data is [OpenStreetMap](https://www.openstreetmap.org/). Vector map tiles are generated using [planetiler](https://github.com/onthegomap/planetiler) - see the `map-layers` folder for all the details on how the map is generated.
+The primary source of map data is [OpenStreetMap](https://www.openstreetmap.org/). The basemap is built from the [Protomaps](https://protomaps.com/) daily build of OpenStreetMap, styled with [Protomaps basemaps](https://github.com/protomaps/basemaps) in light and dark flavours. Custom vector map tiles are generated using [planetiler](https://github.com/onthegomap/planetiler) - see the `map-layers` folder.
 
 The map is rendered using [MapLibre GL](https://maplibre.org/).
 
-Transit data: TransLink GTFS static and GTFS-realtime ([app developer resources](https://www.translink.ca/about-us/doing-business-with-translink/app-developer-resources/gtfs/gtfs-realtime)). Some of the data used in this product or service is provided by permission of TransLink. TransLink assumes no responsibility for the accuracy or currency of the Data used in this product or service. SkyTrain track topology is cross-checked against the [Vancouver SkyTrain track diagram v3](https://commons.wikimedia.org/wiki/File:Vancouver_SkyTrain_track_diagram_v3.svg) (Wikimedia Commons). The transit map's basemap is built with [Protomaps](https://protomaps.com/). This is not an official TransLink product, and train positions are estimates.
-
 Map vector tile data is stored in the [PMTiles](https://github.com/protomaps/PMTiles) format.
 
-The basemap is built from the [Protomaps](https://protomaps.com/) daily build of OpenStreetMap, styled with [Protomaps basemaps](https://github.com/protomaps/basemaps) in light and dark flavours.
-
-Hosting is provided by [Cloudflare Workers](https://workers.cloudflare.com/).
+Transit data sources:
+* [TransLink GTFS static and GTFS Realtime](https://www.translink.ca/about-us/doing-business-with-translink/app-developer-resources/gtfs/gtfs-realtime). Some of the data used in this product or service is provided by permission of TransLink. TransLink assumes no responsibility for the accuracy or currency of the Data used in this product or service. This is not an official TransLink product, and train positions are estimates.
+* [AIS Stream](https://aisstream.io/) provides marine vessel movements.

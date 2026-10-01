@@ -1,11 +1,11 @@
 # Transitopia V2: Plan (draft)
 
-Status: **draft**, revised 2026-09-29 with two rounds of decisions (§0). The questions still open are in §12. Items marked *(proposed)* are assumptions until they're confirmed.
+Status: Phases 0–2 are **live** at transitopia.org (2026-10-01); Phase 3 is next (§9). Decisions are in §0, the questions still open in §12. Items marked *(proposed)* are assumptions until they're confirmed, and *As built* notes record where the implementation differs from the plan.
 
 Transitopia V2 merges two projects:
 
 - **Transitopia** (this repo): the public site at transitopia.org. It has a cycling/micromobility map for British Columbia and a placeholder walking map.
-- **skytrain-viz** (`~/skytrain-viz`, to be merged in with its full history): a real-time and schedule-driven animation of Metro Vancouver transit. It shows SkyTrain on the right track through every switch, SeaBus from live AIS, West Coast Express, and the 99 and R1–R6 buses from GTFS-RT. It has a time slider covering past, live and projected future, corrections, disruptions, scenarios, and a signalling-aware dispatcher.
+- **skytrain-viz** (merged in with its full history in Phase 0): a real-time and schedule-driven animation of Metro Vancouver transit. It shows SkyTrain on the right track through every switch, SeaBus from live AIS, West Coast Express, and the 99 and R1–R6 buses from GTFS-RT. It has a time slider covering past, live and projected future, corrections, disruptions, scenarios, and a signalling-aware dispatcher.
 
 V2 is one site with transit and cycling modes (walking returns later), backed by a long-running server in Canada and a PostgreSQL database for everything we collect and curate.
 
@@ -47,7 +47,7 @@ V2 is one site with transit and cycling modes (walking returns later), backed by
 
 ## 1. Where each project stands
 
-### 1.1 Transitopia (today)
+### 1.1 Transitopia (before V2)
 
 | Part | What it is |
 |---|---|
@@ -59,7 +59,7 @@ V2 is one site with transit and cycling modes (walking returns later), backed by
 
 I only reviewed the files named above; other workflows and the tile worker's config weren't reviewed.
 
-### 1.2 skytrain-viz (today)
+### 1.2 skytrain-viz (before the merge)
 
 See its `PLAN.md` for detail. The parts that matter for the merge:
 
@@ -133,7 +133,7 @@ These are skytrain-viz's ground rules, extended site-wide:
                          │ api.transitopia.org ─┐     proxied; /rt/live edge-cached 10 s       │
                          └──────────────────────┼────────────────────────────────────────────┘
                                                 ▼
-                         ┌───────────── FullHost VM, Vancouver (Docker Compose) ────────────┐
+                         ┌───────────── FullHost VM, Toronto (Docker Compose) ──────────────┐
                          │ server (Node/TS)                                                 │
                          │  ├ API: live, history, changes, dispatch (+ previews), stops,    │
                          │  │      vehicles, annotations, reports, auth, admin              │
@@ -171,13 +171,14 @@ transitopia/
   regions/
     metro-vancouver/                # region.json, config/, infrastructure/, scenarios/, fixtures/
   var/                              # gitignored: downloads, recordings, build output (var/public = web root)
-  infra/                            # docker-compose.yml, Caddyfile, provisioning, backup config
+  infra/                            # compose.yml, Caddyfile, server image, backups, firewall
+  deployment/                       # server setup and operations, tile worker
   docs/                             # OPEN-QUESTIONS.md, data-sources.md, ADRs
 ```
 
 ### 4.2 Frontend
 
-- **One map, several mode layers.** `apps/web` keeps Transitopia's `<Map>` and context. `CyclingMap` stays as is. `TransitMap` creates the engine on mount (`createTransitEngine(map, { region, dataBase, apiBase })`) and disposes it on unmount. `WalkingMap` and its nav button are removed for now.
+- **One map, several mode layers.** `apps/web` keeps Transitopia's `<Map>` and context. `CyclingMap` stays as is. `TransitMap` creates the engine on mount (`TransitEngine.create(map, { dataBase, apiBase, theme })` as built) and disposes it on unmount. `WalkingMap` and its nav button are removed for now.
 - **React ↔ engine bridge.** The engine keeps its tiny store (clock, selection, feed and date, badges). React reads it with `useSyncExternalStore`. The per-frame path (clock → playback → WebGL) never goes through React.
 - **Details panels** are one component family: a side panel on desktop and a bottom sheet on phones. It covers vehicle, stop/station, cycling way, parking, annotation and dock/scooter.
 - **Dark mode** site-wide via `map-style` tokens (skytrain-viz already has a dark basemap).
@@ -186,7 +187,7 @@ transitopia/
 
 ### 4.3 Server (`apps/server`)
 
-- **Node 22+, TypeScript**, reusing `transit-core` directly. *(Proposed)* **Hono** for HTTP, and `zod` from `packages/shared` to validate requests.
+- **Node 22+, TypeScript**, reusing `transit-core` directly, with **Hono** for HTTP. *(Proposed)* `zod` from `packages/shared` to validate requests. *As built (Phase 2):* the admin API is the only one that accepts writes, and it checks its payloads with the corrections' own validators (`disruptionProblems`, `observationProblems`); zod isn't used on the server yet. Production runs the official Node image (`node:26-slim`).
 - **Leader election** via a Postgres advisory lock (it replaces the lock file). Exactly one process polls, records and dispatches.
 - **Jobs** in Postgres: aggregates, archiving, frequency builds, GTFS builds, GitHub issue sync, snapshot exports. *As built (Phase 2):* a `job_runs` table keyed by job and date, run by the leader every 5 minutes, so each runs once, failures retry after an hour and missed days are caught up. Revisit `graphile-worker`/`pg-boss` when jobs need concurrency or fan-out.
 - **Live data**: `/rt/live` stays a small snapshot polled every 10–30 s and cached at the edge for 10 s, so server load doesn't grow with visitors.
@@ -343,6 +344,7 @@ It already works in skytrain-viz. V2 changes where the inputs live and adds **pr
 
 - Every observation and disruption has a state: `draft → previewing → confirmed | discarded`.
 - **Preview**: an admin toggles one or more drafts on. The server dispatches a **preview version** of the affected dates that includes them, stored like any other version but not advertised in `/rt/live`. `?preview=<id>` in the app (admin only, and never cached at the edge) shows it, with a before/after toggle and the `validate:plan` delta (added delay, holds, conflicts).
+  - *As built (Phase 2):* one draft at a time, for dates within a week of today. `/admin` links to `/transit?preview=<YYYYMMDD>:<version>`, and the time bar warns that it shows unconfirmed corrections. Preview versions are immutable patches like any other (`/rt/dispatch/<date>/<version>.json`, edge-cached), so anyone with the link can see one; they hold nothing private. The before/after toggle and the `validate:plan` delta aren't built yet.
 - **Confirm** publishes the input, and the next regular dispatch includes it. **Toggle off** a confirmed input (e.g. one found to be wrong) re-dispatches without it, and the change is kept in history.
 - The precedence order stays documented and visible as provenance: manual observation > live sensor (GTFS-RT, AIS, recorded track) > confirmed disruption or alert > schedule.
 
@@ -413,6 +415,8 @@ regions/metro-vancouver/
   fixtures/                    # exported observations/disruptions used by tests
 ```
 
+*As built:* there's no `fixtures/` yet. `observations/` and `disruptions/` hold corrections in the file format: a new database imports them, local runs without a database use them, and `npm run corrections -- export` writes the database's back out (§5.6).
+
 The skytrain-viz rule applies everywhere: every assumption lives in config with a source or "guess", plus an OPEN-QUESTIONS cross-reference.
 
 ---
@@ -422,7 +426,7 @@ The skytrain-viz rule applies everywhere: every assumption lives in config with 
 ### 7.1 FullHost
 
 - A **VM in FullHost's Toronto data centre** (decided 2026-09-30): Ubuntu 26.04 LTS, 4 vCPU, 8 GB RAM, 100 GB SSD, $36/month. Vancouver only offered a 2 vCPU plan at $48; the ~60–70 ms from Vancouver doesn't matter behind Cloudflare's edge cache, and local times come from the region's time zone, never the host's. *Measured for Phase 2 (deployment/README.md "Sizing"):* the stack peaks around 2.5 GB; disk is driven by observed stop times (§4.4), so 100 GB lasts about a year before their monthly export is needed.
-- Docker Compose runs `server` (×1–2), `postgres` (PostGIS image), `caddy`, and backup and monitoring sidecars.
+- Docker Compose runs `server` (×1–2), `postgres` (PostGIS image), `caddy`, and backup and monitoring sidecars. *As built:* one `server`, `db`, `caddy` and `backup`; monitoring is an external uptime check of `/healthz` (deployment/api-server-setup.md, step 13).
 - ~~FullHost Object Storage~~ for archives and backups was replaced by R2 (§7.2), decided 2026-10-01: one provider and toolchain for all buckets, no egress fees for developers' snapshot pulls, and backups kept with a different provider from the VM.
 
 ### 7.2 What stays on Cloudflare (decided)
@@ -443,7 +447,8 @@ Nothing in this data is sensitive, so we use Cloudflare wherever it helps perfor
 
 - **PRs**: typecheck, lint, vitest, `validate:infra`, `validate:plan` on a fixture feed, and a web preview deploy.
 - **main**: deploy the web; build the server image (GHCR); deploy to the VM (SSH + `docker compose pull && up -d`), running migrations first.
-- **Scheduled**: the cycling layer (existing), the basemap refresh, and OSM track-import diff reports. GTFS feed detection and builds run **on the server**, which publishes to object storage.
+  - *As built:* work happens on `main`, and production deploys from **`prod`** (merge `main` into `prod` and push): Cloudflare Pages builds the site from it, and `deploy_server.yml` builds the server image and updates the VM, whose checkout stays detached at `origin/prod`. Migrations run when the server starts. Scheduled workflows run from `main`, the default branch.
+- **Scheduled**: the cycling layer (existing, daily), the basemap refresh (weekly), and OSM track-import diff reports (not built yet). GTFS feed detection and builds run **on the server**, which publishes to object storage.
 - **Environments**: production and local dev only for now. Keep staging cheap to add later: all configuration in env files, hostnames and buckets as config, migrations that run unattended, and a compose project name per environment. A future staging environment can then be a second compose project on the same VM (its own database and buckets). Staging **never polls TransLink**: it replays snapshots or reads production's API.
 
 ### 7.5 Dev environment with production data
@@ -470,7 +475,7 @@ Privacy-friendly analytics (decided): no cookies, no personal data, and no cross
 | `www.transitopia.org` | SPA |
 | `map-tiles.transitopia.org` | Basemap, cycling, frequency and (later) annotation tiles |
 | `data.transitopia.org` | Public immutable build output and public archives |
-| `api.transitopia.org` | FullHost VM (behind the CDN under option (a)) |
+| `api.transitopia.org` | FullHost VM, behind Cloudflare's proxy (only Cloudflare can connect) |
 
 ---
 

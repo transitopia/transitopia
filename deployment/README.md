@@ -1,5 +1,16 @@
 ## Deployment Notes
 
+### Branches
+
+Work happens on `main`. Production deploys from `prod`: merge `main` into `prod` and push. Cloudflare
+Pages builds the site from `prod`, and `.github/workflows/deploy_server.yml` deploys the server.
+Scheduled workflows (the basemap and cycling builds) run from `main`, the default branch.
+
+The VM's checkout at `/opt/transitopia` stays detached at `origin/prod`. To update it by hand, do
+what the deploy workflow does, not `git pull`:
+
+    git -C /opt/transitopia fetch -q origin prod && git -C /opt/transitopia checkout -q --detach origin/prod
+
 ### Map tiles (map-tiles.transitopia.org)
 
 Map data is served from PMTiles vector map files hosted on CloudFlare R2 (bucket `transitopia-maps`)
@@ -36,8 +47,10 @@ format is stabilized). https://github.com/transitopia/transitopia/issues/8
 ### Transit data (data.transitopia.org)
 
 `/transit` reads its published data (`data/manifest.json`, plans, movements, track network, dispatch
-patches) from `https://data.transitopia.org/`. `.github/workflows/build_transit_data.yml` rebuilds
-it daily and uploads it to the R2 bucket `transitopia-data`.
+patches) from `https://data.transitopia.org/`. The server builds it daily (its `data` job, at
+`dataBuildAt` in `regions/metro-vancouver/config/recording.json`) and uploads it to the R2 bucket
+`transitopia-data`, so its live dispatch patches fit the published plans.
+`.github/workflows/build_transit_data.yml` is a manual fallback only (see the comment at its top).
 
 One-time setup (done):
 
@@ -45,11 +58,11 @@ One-time setup (done):
 2. Add a CORS policy allowing `GET` and `HEAD` from `https://www.transitopia.org` (and
    `https://transitopia.org`, `https://*.transitopia-web.pages.dev`, `http://localhost:5173`).
 3. Cache: `data/manifest.json` should be short-lived (e.g. 5 minutes); everything else can be cached
-   for longer. (Content-hashed paths are planned, V2-PLAN.md §5.2.) The workflow stores
+   for longer. (Content-hashed paths are planned, V2-PLAN.md §5.2.) The upload stores
    `Cache-Control` on each object when it uploads (5 minutes for the manifest, a day for the rest),
    and a Cache Rule for `data.transitopia.org` makes the edge follow it (Cloudflare doesn't cache
    `.json` by default). Set the same headers when uploading by hand, or an overwrite drops them.
-4. Add GitHub secrets `RCLONE_CONFIG_TRANSITOPIA_DATA_R2_ACCESS_KEY_ID` and
+4. For the fallback workflow, add GitHub secrets `RCLONE_CONFIG_TRANSITOPIA_DATA_R2_ACCESS_KEY_ID` and
    `RCLONE_CONFIG_TRANSITOPIA_DATA_R2_SECRET_ACCESS_KEY` (an R2 API token that can write the bucket;
    the endpoint is shared with the maps bucket).
 
@@ -115,8 +128,8 @@ Disk, per day of every route:
 | Observed stop times in Postgres (665,000 rows) | 215 MB | indefinitely | **~78 GB a year** |
 | Route statistics, trip changes, alerts, dispatch versions | < 5 MB | indefinitely | small |
 
-Observed stop times dominate: kept in Postgres they grow by ~78 GB a year, which a 160 GB disk
-holds for under two years. V2-PLAN.md §4.4 plans monthly files in object storage with only recent
+Observed stop times dominate: kept in Postgres they grow by ~78 GB a year, which the VM's 100 GB
+disk holds for about a year. V2-PLAN.md §4.4 plans monthly files in object storage with only recent
 months in Postgres; that export isn't built yet and should be before the disk fills.
 
 #### Monitoring

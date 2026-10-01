@@ -93,7 +93,7 @@ configures it) and install the script and its service:
 ```sh
 # VM (root)
 sudo -u deploy git clone https://github.com/transitopia/transitopia.git /opt/transitopia
-sudo -u deploy git -C /opt/transitopia checkout v2        # prod, once it has Phase 2
+sudo -u deploy git -C /opt/transitopia checkout -q --detach origin/prod   # as deploys leave it
 install -m 755 /opt/transitopia/infra/firewall/transitopia-firewall /usr/local/sbin/
 install -m 644 /opt/transitopia/infra/firewall/transitopia-firewall.service /etc/systemd/system/
 systemctl daemon-reload
@@ -273,7 +273,7 @@ server doesn't poll unless `RT_POLL=1`.
    rclone ls r2:transitopia-archive/backups
    ```
 
-7. Deploy the site: merge `v2` into `prod` and push. `apps/web/.env.production` sets
+7. Deploy the site: merge `main` into `prod` and push. `apps/web/.env.production` sets
    `VITE_TRANSIT_API=https://api.transitopia.org/`, so buses go live on transitopia.org.
 
 ## 12. Automatic deploys
