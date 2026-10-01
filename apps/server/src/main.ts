@@ -38,7 +38,13 @@ if (tzProblems.length) {
   process.exit(1);
 }
 
-const env = readEnv();
+let env: ReturnType<typeof readEnv>;
+try {
+  env = readEnv();
+} catch (e) {
+  console.error(`[server] ${(e as Error).message}`);
+  process.exit(1);
+}
 let db: ReturnType<typeof createDb> | undefined;
 if (env.databaseUrl) {
   db = createDb(env.databaseUrl);
