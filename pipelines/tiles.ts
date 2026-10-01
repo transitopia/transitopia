@@ -67,7 +67,7 @@ async function exists(p: string): Promise<boolean> {
 
 async function download(url: string, dest: string): Promise<void> {
   const res = await fetch(url, {
-    headers: { "User-Agent": "skytrain-viz/0.1" },
+    headers: { "User-Agent": "Transitopia (+https://www.transitopia.org)" },
   });
   if (!res.ok || !res.body)
     throw new Error(`Download failed (${res.status}): ${url}`);

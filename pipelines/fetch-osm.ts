@@ -52,7 +52,7 @@ async function main() {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": "skytrain-viz/0.1",
+          "User-Agent": "Transitopia (+https://www.transitopia.org)",
         },
         body: new URLSearchParams({ data: QUERY }),
         signal: AbortSignal.timeout(240_000),

@@ -40,7 +40,7 @@ export async function fetchGtfs(url = LATEST_URL): Promise<FetchedFeed> {
   const tmp = join(GTFS_RAW_DIR, `download-${process.pid}.zip`);
   log(`Downloading ${url}`);
   const res = await fetch(url, {
-    headers: { "User-Agent": "skytrain-viz/0.1" },
+    headers: { "User-Agent": "Transitopia (+https://www.transitopia.org)" },
   });
   if (!res.ok || !res.body)
     throw new Error(`GTFS download failed: HTTP ${res.status}`);

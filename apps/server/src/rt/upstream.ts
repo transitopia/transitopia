@@ -174,7 +174,7 @@ async function fetchFeed(
   const res = await fetch(
     `${BASE}/${endpoint}?apikey=${encodeURIComponent(apiKey)}`,
     {
-      headers: { "User-Agent": "skytrain-viz/0.1" },
+      headers: { "User-Agent": "Transitopia (+https://www.transitopia.org)" },
       signal: signal ?? null,
     },
   );
