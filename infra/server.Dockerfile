@@ -5,6 +5,7 @@
 # that data is too old for the region (region.json timezoneChecks), so keep the Node version current.
 
 FROM node:26-slim AS rclone
+# Keep in step with infra/backup/Dockerfile.
 ARG RCLONE_VERSION=1.75.0
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip \
   && ARCH="$(dpkg --print-architecture)" \
