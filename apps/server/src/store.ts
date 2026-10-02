@@ -37,8 +37,9 @@ export interface TripChangeRow {
 
 /** Rows per INSERT (Postgres allows 65,535 parameters per statement). */
 const CHUNK = 2000;
+/** YYYYMMDD → YYYY-MM-DD, for date columns. */
 const isoDate = (yyyymmdd: string) =>
-  `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
+  Temporal.PlainDate.from(yyyymmdd).toString();
 
 export class Store {
   readonly db: Db;
