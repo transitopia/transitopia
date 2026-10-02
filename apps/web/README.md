@@ -17,12 +17,13 @@ Locally the site reads the pipelines' output from `var/public/`, served at `/dev
 
 | Path | What |
 |---|---|
-| `src/App.tsx` | Routes: `/transit`, `/cycling`, `/admin`; `/` opens `/transit`, and old `/walking` links go to `/cycling` |
+| `src/App.tsx` | Routes: `/transit`, `/cycling`, `/admin`, `/trackside`; `/` opens `/transit`, and old `/walking` links go to `/cycling` |
 | `src/Map/` | The one MapLibre map every mode shares, its context, the basemap, and the position in the URL |
 | `src/TransitMap/` | `/transit`: mounts the transit engine and renders its controls |
 | `src/CyclingMap/`, `src/OSMData/` | `/cycling`: the cycling layer, and OSM feature details (e.g. bike parking) loaded from the OSM API |
 | `src/Attribution/` | The attribution control |
-| `src/Admin/` | `/admin`, without the map |
+| `src/Admin/` | `/admin`, without the map; `api.ts` holds the sign-in token and API calls shared with `/trackside` |
+| `src/Trackside/` | `/trackside`: the trackside camera test tool, for admins |
 | `src/Theme/` | Light, dark, or the system's |
 
 ## Modes and URL state
@@ -52,7 +53,15 @@ Light and dark basemaps come from [packages/map-style](../../packages/map-style/
 
 ## Admin
 
-`/admin` (`src/Admin/Admin.tsx`) is the review queue for corrections: the server's status and health, recent jobs, disruptions drafted from TransLink alerts, observation sets, and alerts the parser couldn't draft. Admins edit, preview, confirm, discard and reopen corrections there. Sign-in is with GitHub through the server; the token comes back in the URL fragment, is removed from the address bar at once, and is kept in local storage ([apps/server → Admin API and sign-in](../server/README.md#admin-api-and-sign-in)).
+`/admin` (`src/Admin/Admin.tsx`) is the review queue for corrections: the server's status and health, recent jobs, trackside camera passes, disruptions drafted from TransLink alerts, observation sets, and alerts the parser couldn't draft. Admins edit, preview, confirm, discard and reopen corrections there. Sign-in is with GitHub through the server; the token comes back in the URL fragment, is removed from the address bar at once, and is kept in local storage ([apps/server → Admin API and sign-in](../server/README.md#admin-api-and-sign-in)).
+
+## Trackside
+
+`/trackside` (`src/Trackside/`) tests trackside cameras with a phone ([packages/trackside](../../packages/trackside/README.md)); it's for admins (with no server configured, clips can still be replayed). Its own chunk is loaded only on that route, and the text reader (onnxruntime-web and the models) comes from jsDelivr when the camera starts, so regular visitors download none of it.
+
+- **Setup** (`SetupStep.tsx`): the site's map with the SkyTrain tracks. The camera's position comes from GPS or a tap; a tap on the guideway sets the point in view. It shows the near and far track, their distances, and which screen direction goes toward which station. The place is remembered in local storage.
+- **Camera** (`CameraStep.tsx`, `session.ts`): the rear camera (1080p, 60 fps if offered) or a chosen clip. Three lines over the preview set the region of interest and split line (remembered); the bands light up when the detector sees motion. Each frame's region goes through `PassDetector` on the main thread; each pass's panorama goes to the reader in a worker (`ocr-worker.ts`), and the page turns the crops into JPEGs. Finished reports are uploaded, retried every 15 s while offline; clips are never uploaded. A wake lock keeps the screen on, and a zoom slider appears when the camera supports zoom. Hold the phone sideways.
+- `/admin` lists the latest passes with their number crops (`src/Admin/TracksidePasses.tsx`).
 
 ## Analytics
 

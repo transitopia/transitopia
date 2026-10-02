@@ -5,6 +5,8 @@
 
 import React from "react";
 import { transitApi } from "../config.ts";
+import { loadToken, saveToken, useApi } from "./api.ts";
+import { TracksidePasses } from "./TracksidePasses.tsx";
 import region from "@transitopia/region-metro-vancouver/region.json";
 import type { Disruption } from "@transitopia/transit-core/disruption/types.ts";
 import type { ObservationFile } from "@transitopia/transit-core/corrections/types.ts";
@@ -41,59 +43,11 @@ type Previews = Record<
   { version: string; summary: { inputs: string[] } }
 >;
 
-const TOKEN_KEY = "transitopia:admin-token";
-
-function loadToken(): string | undefined {
-  try {
-    return localStorage.getItem(TOKEN_KEY) ?? undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function saveToken(token: string | undefined): void {
-  try {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
-  } catch {
-    // The token only lasts this page view then.
-  }
-}
-
 const SIGN_IN_ERRORS: Record<string, string> = {
   "not-admin": "That GitHub account isn't an admin here.",
   expired: "The sign-in took too long or was started elsewhere. Try again.",
   github: "GitHub didn't confirm the sign-in. Try again.",
 };
-
-class ApiError extends Error {
-  status: number;
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-  }
-}
-
-function useApi(token: string | undefined) {
-  return React.useCallback(
-    async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
-      const res = await fetch(`${transitApi}${path}`, {
-        ...init,
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          ...(init.body ? { "Content-Type": "application/json" } : {}),
-        },
-      });
-      const body = (await res.json().catch(() => ({}))) as T & {
-        error?: string;
-      };
-      if (!res.ok)
-        throw new ApiError(res.status, body.error ?? `HTTP ${res.status}`);
-      return body;
-    },
-    [token],
-  );
-}
 
 const card =
   "rounded-lg border border-gray-300 bg-white p-4 dark:border-gray-700 dark:bg-gray-900";
@@ -180,7 +134,7 @@ export default function Admin() {
               Sign in with GitHub
             </a>
           </div>
-        : <Dashboard api={api} />}
+        : <Dashboard api={api} token={token} />}
       </main>
     </div>
   );
@@ -188,7 +142,7 @@ export default function Admin() {
 
 type Api = ReturnType<typeof useApi>;
 
-function Dashboard({ api }: { api: Api }) {
+function Dashboard({ api, token }: { api: Api; token: string | undefined }) {
   const [data, setData] = React.useState<Corrections>();
   const [error, setError] = React.useState<string>();
   const reload = React.useCallback(() => {
@@ -205,6 +159,7 @@ function Dashboard({ api }: { api: Api }) {
   return (
     <>
       <Status api={api} />
+      <TracksidePasses api={api} token={token} />
       {error ?
         <p className="text-red-700 dark:text-red-400">{error}</p>
       : null}

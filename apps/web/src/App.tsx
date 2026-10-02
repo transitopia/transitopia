@@ -18,6 +18,8 @@ import {
 const TransitMap = React.lazy(() => import("./TransitMap/TransitMap.tsx"));
 // The admin pages (apps/web/README.md#admin), without the map.
 const Admin = React.lazy(() => import("./Admin/Admin.tsx"));
+// The trackside camera test tool, for admins (apps/web/README.md#trackside).
+const Trackside = React.lazy(() => import("./Trackside/Trackside.tsx"));
 
 const modeButton =
   "mx-1 flex h-9 w-9 items-center justify-center rounded-full bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700";
@@ -29,6 +31,11 @@ function App() {
         <Route path="/admin">
           <React.Suspense fallback={null}>
             <Admin />
+          </React.Suspense>
+        </Route>
+        <Route path="/trackside">
+          <React.Suspense fallback={null}>
+            <Trackside />
           </React.Suspense>
         </Route>
         <Route>
