@@ -1,0 +1,13 @@
+{
+  "$comment": "Trackside cameras (packages/trackside/README.md): how car numbers are read and checked. guess unless noted; OPEN-QUESTIONS #32.",
+  "cars": {
+    "$pattern": "Car numbers as painted: three digits on Mk I and Mk III cars (seen in the 2026-10-01 test video near Main Street–Science World, Braden). Mk II, Mk V and Canada Line numbering is a guess. OPEN-QUESTIONS #32",
+    "pattern": "^[0-9]{3}$",
+    "$marriedPairs": "Cars run in married pairs numbered odd then even (n, n+1), so reading one car names its partner. Seen on 7 pairs in that video (085/086, 097/098, 101/102, 309/310, 317/318, 333/334, 335/336); assumed for every car with an odd/even partner except Mk V sets (5-car articulated, numbering unknown). OPEN-QUESTIONS #32",
+    "marriedPairs": true,
+    "$minConfidence": "Readings below this mean digit probability (0–1) aren't reported as cars (only as uncertain crops). In the test video every correct reading scored 0.99–1.00 and every wrong one 0.6–0.75 (Mk I numbers, too small at that zoom). guess",
+    "minConfidence": 0.85,
+    "$maxHeightFraction": "Text boxes taller than this fraction of the image are windows or livery, not numbers (numbers were 5–10 % of a train-height image). guess",
+    "maxHeightFraction": 0.15
+  }
+}

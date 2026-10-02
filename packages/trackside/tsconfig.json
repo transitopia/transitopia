@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // DOM-free: the page runs it on the main thread or in a worker, and pipelines run it in Node.
+    "lib": ["ES2023", "WebWorker"],
+    "types": ["node"]
+  },
+  "include": ["src", "test"]
+}

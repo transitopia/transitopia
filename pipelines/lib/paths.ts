@@ -28,6 +28,8 @@ export const GTFS_RAW_DIR = join(RAW_DIR, "gtfs");
 export const RT_HISTORY_DIR = join(VAR_DIR, "rt-history");
 export const AIS_HISTORY_DIR = join(VAR_DIR, "ais-history");
 export const DISPATCH_HISTORY_DIR = join(VAR_DIR, "dispatch-history");
+/** Trackside camera passes and number crops without a database, replays and cached OCR models. */
+export const TRACKSIDE_DIR = join(VAR_DIR, "trackside");
 /** The server's export of confirmed corrections from its database (TRANSITOPIA_CORRECTIONS_DIR). */
 export const CORRECTIONS_EXPORT_DIR = join(VAR_DIR, "corrections");
 /** Served at the web root by the transit viewer (/data/…, /tiles/…, /basemap-assets/…). */

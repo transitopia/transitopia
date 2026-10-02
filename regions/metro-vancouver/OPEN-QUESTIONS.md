@@ -33,6 +33,8 @@ Evidence cited below comes from feed `26SEP_20260925`, OSM (2026-09-25), and the
     - *Assumption:* none. Inference output is reported, not constrained, until caps are known.
 11. **Any public source for train or car numbers per run?** Examples: fan logs, TransLink releases, ground observation.
     - *Assumption:* none.
+32. **Car numbering** (`config/trackside.json` → `cars`; [packages/trackside](../../packages/trackside/README.md)). Trackside cameras read the numbers painted on cars. Mk I and Mk III cars carry three-digit numbers near each end, and pairs are numbered odd then even (seven pairs seen near Main Street–Science World, 2026-10-01, Braden). Open: the number ranges of each fleet (Mk I, Mk II, Mk III, Mk V, Canada Line), how Mk V sets are numbered, and whether every Mk II and Mk III car is in an odd/even pair.
+    - *Assumption:* every car number is three digits; cars pair as (odd, odd + 1), except Mk V.
 
 ## Kinematics and dwell
 

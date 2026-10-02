@@ -1,0 +1,16 @@
+{
+  "name": "@transitopia/trackside",
+  "private": true,
+  "description": "DOM-free trackside camera core: detects trains passing a camera beside the guideway (track, direction, speed) and reads their car numbers. Runs in the /trackside page and in Node.",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@transitopia/region-metro-vancouver": "*",
+    "@transitopia/transit-core": "*"
+  }
+}

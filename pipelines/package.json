@@ -12,6 +12,7 @@
   "dependencies": {
     "@transitopia/region-metro-vancouver": "*",
     "@transitopia/server": "*",
+    "@transitopia/trackside": "*",
     "@transitopia/transit-core": "*",
     "csv-parse": "^7.0.3",
     "gtfs-realtime-bindings": "^2.2.0",
