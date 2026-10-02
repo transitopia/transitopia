@@ -5,9 +5,9 @@
 //   npm run snapshot:pull -- --from 2026-09-20 --to 2026-09-27 [--db] [--remote r2:transitopia-archive]
 //
 // Needs rclone with read access to the archive (TRANSITOPIA_ARCHIVE or --remote). Raw recordings
-// exist for the last 60 days only. Everything is private for now: whether TransLink's and
-// aisstream.io's data may be republished is still being checked (DATA-LICENSES.md), so there are
-// no public snapshots yet.
+// exist for the last 60 days only. Everything is private for now: whether TransLink's data may be
+// republished is still being checked (DATA-LICENSES.md; aisstream.io's may be), so there are no
+// public snapshots yet.
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";

@@ -14,7 +14,7 @@ const url = (v: string | undefined) => (v ? v.replace(/\/$/, "") : undefined);
 
 export interface ServerEnv {
   port: number;
-  /** postgres://…; without it the server records to files only, as skytrain-viz did. */
+  /** postgres://…; without it the server records to files only. */
   databaseUrl: string | undefined;
   /**
    * Poll TransLink and aisstream.io with the keys in the environment or .secrets. Off unless set:

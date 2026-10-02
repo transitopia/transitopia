@@ -1,7 +1,5 @@
-// Import recorded history into the database (apps/server/README.md#command-line-tools): what a skytrain-viz-style local
-// recorder left in var/ (copy it to the server's var/ first, e.g. with rsync), so statistics and the
-// budget ledger continue from it. Idempotent: hours, batches and versions already imported are
-// skipped.
+// Import recorded history into the database (apps/server/README.md#command-line-tools)
+// Idempotent: hours, batches and versions already imported are skipped.
 //
 //   DATABASE_URL=postgres://… npm run db:import-history [-- --var <dir>]
 //

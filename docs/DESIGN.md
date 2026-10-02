@@ -132,7 +132,7 @@ Weekends have their own, flatter schedule with a midday peak. Together they stay
 - **Only production polls.** The key's budget is shared, so a server polls only with `RT_POLL=1`. Local development forwards to production (`RT_FORWARD_TO=https://api.transitopia.org`), points the site straight at it, or uses snapshots of production data ([deployment/README.md → Snapshots](../deployment/README.md#snapshots-for-development)).
 - **Effect on quality**: fixes come 1–5 minutes apart instead of ~30 s. Thresholds that depend on the cadence (stale data, coverage gaps, "observed" windows, prediction limits) follow the interval in use (`packages/transit-core/src/rt/budget.ts`). `npx tsx pipelines/eval-rt.ts --subsample schedule` replays recorded history as if polled on the schedule.
 
-Other providers get budgets under their own terms. aisstream.io is one WebSocket held by the leader.
+Other providers get budgets under their own terms. aisstream.io allows 3 connections per account: production's leader holds one WebSocket, which leaves room for `pipelines/probe-ais.ts` and the occasional local test.
 
 ## Corrections and previews
 
