@@ -89,6 +89,66 @@ describe("serviceDayStart (noon minus 12h)", () => {
   });
 });
 
+describe("toWallTime", () => {
+  // About every second around transitions and every 37 minutes across two years, compared with ICU itself.
+  const zones = [
+    "America/Vancouver",
+    "America/Los_Angeles",
+    "Australia/Lord_Howe", // 30-minute DST shift
+    "Asia/Kolkata",
+    "America/St_Johns",
+  ];
+  const formatters = new Map<string, Intl.DateTimeFormat>();
+  const icu = (ms: number, tz: string) => {
+    let f = formatters.get(tz);
+    if (!f)
+      formatters.set(
+        tz,
+        (f = new Intl.DateTimeFormat("en-CA", {
+          timeZone: tz,
+          hourCycle: "h23",
+          year: "numeric",
+          month: "numeric",
+          day: "numeric",
+          hour: "numeric",
+          minute: "numeric",
+          second: "numeric",
+        })),
+      );
+    const p = Object.fromEntries(
+      f.formatToParts(new Date(ms)).map((x) => [x.type, x.value]),
+    );
+    return {
+      year: +p.year!,
+      month: +p.month!,
+      day: +p.day!,
+      hour: +p.hour!,
+      minute: +p.minute!,
+      second: +p.second!,
+    };
+  };
+  it("matches the runtime's tzdata through offset changes", () => {
+    for (const tz of zones) {
+      const from = Date.parse("2025-01-01T00:00:00Z");
+      const to = Date.parse("2027-01-01T00:00:00Z");
+      for (let t = from; t < to; t += 37 * 60_000 + 1234)
+        expect(toWallTime(t, tz)).toEqual(icu(t, tz));
+    }
+    for (const [at, tz] of [
+      ["2026-03-08T10:00:00Z", "America/Vancouver"],
+      ["2026-11-01T09:00:00Z", "America/Los_Angeles"],
+      ["2026-04-04T15:00:00Z", "Australia/Lord_Howe"],
+      ["2026-03-08T05:30:00Z", "America/St_Johns"], // mid-hour in UTC
+    ] as const)
+      for (
+        let t = Date.parse(at) - 2 * 3600_000;
+        t < Date.parse(at) + 2 * 3600_000;
+        t += 4999
+      )
+        expect(toWallTime(t, tz)).toEqual(icu(t, tz));
+  });
+});
+
 describe("checkTimezoneData", () => {
   const checks = [
     {

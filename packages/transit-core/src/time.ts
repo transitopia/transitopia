@@ -56,8 +56,8 @@ export interface WallTime {
   second: number;
 }
 
-/** Local wall-clock time of an instant in the given time zone. */
-export function toWallTime(epochMs: number, tz = TIMEZONE): WallTime {
+/** Wall-clock time from the formatter (slow: ICU formatting on every call). */
+function formatWallTime(epochMs: number, tz: string): WallTime {
   const out: Record<string, number> = {};
   for (const p of partsFormatter(tz).formatToParts(new Date(epochMs))) {
     if (p.type !== "literal") out[p.type] = Number(p.value);
@@ -72,9 +72,7 @@ export function toWallTime(epochMs: number, tz = TIMEZONE): WallTime {
   };
 }
 
-/** Offset (ms) of the zone from UTC at the given instant: local = utc + offset. */
-export function tzOffsetMs(epochMs: number, tz = TIMEZONE): number {
-  const w = toWallTime(epochMs, tz);
+function offsetOf(w: WallTime, epochMs: number): number {
   const asUtc = Date.UTC(
     w.year,
     w.month - 1,
@@ -84,6 +82,56 @@ export function tzOffsetMs(epochMs: number, tz = TIMEZONE): number {
     w.second,
   );
   return asUtc - Math.floor(epochMs / 1000) * 1000;
+}
+
+const OFFSET_BUCKET_MS = 3600_000;
+const MAX_OFFSET_BUCKETS = 20_000;
+/** Per zone, per UTC hour: the zone's offset throughout that hour, or null when it changes within it. */
+const offsetBuckets = new Map<string, Map<number, number | null>>();
+
+/**
+ * The zone's offset at an instant from a per-hour cache, or undefined in an hour with a transition.
+ * Both ends of the hour come from the runtime's tzdata, so this hard-codes no zone rules; it assumes
+ * only that a zone never changes its offset twice within one hour.
+ */
+function steadyOffsetMs(epochMs: number, tz: string): number | undefined {
+  let byBucket = offsetBuckets.get(tz);
+  if (!byBucket) offsetBuckets.set(tz, (byBucket = new Map()));
+  const bucket = Math.floor(epochMs / OFFSET_BUCKET_MS);
+  let offset = byBucket.get(bucket);
+  if (offset === undefined) {
+    const start = bucket * OFFSET_BUCKET_MS;
+    const end = start + OFFSET_BUCKET_MS - 1000;
+    const a = offsetOf(formatWallTime(start, tz), start);
+    const b = offsetOf(formatWallTime(end, tz), end);
+    offset = a === b ? a : null;
+    if (byBucket.size >= MAX_OFFSET_BUCKETS) byBucket.clear();
+    byBucket.set(bucket, offset);
+  }
+  return offset ?? undefined;
+}
+
+/** Local wall-clock time of an instant in the given time zone. */
+export function toWallTime(epochMs: number, tz = TIMEZONE): WallTime {
+  const offset = steadyOffsetMs(epochMs, tz);
+  if (offset === undefined) return formatWallTime(epochMs, tz);
+  const d = new Date(Math.floor(epochMs / 1000) * 1000 + offset);
+  return {
+    year: d.getUTCFullYear(),
+    month: d.getUTCMonth() + 1,
+    day: d.getUTCDate(),
+    hour: d.getUTCHours(),
+    minute: d.getUTCMinutes(),
+    second: d.getUTCSeconds(),
+  };
+}
+
+/** Offset (ms) of the zone from UTC at the given instant: local = utc + offset. */
+export function tzOffsetMs(epochMs: number, tz = TIMEZONE): number {
+  return (
+    steadyOffsetMs(epochMs, tz)
+    ?? offsetOf(formatWallTime(epochMs, tz), epochMs)
+  );
 }
 
 /** A known fact about a time zone: its UTC offset at an instant. */
