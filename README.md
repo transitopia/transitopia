@@ -29,7 +29,7 @@ How it all fits together is in [docs/DESIGN.md](docs/DESIGN.md), with each part'
 
 ## How to run Transitopia locally
 
-You need Node.js 24+ (and optionally Java 21+ if you want to build the cycling maps yourself). Clone this repo, then run `npm install` at its root.
+You need Node.js 26+ (and optionally Java 21+ if you want to build the cycling maps yourself). Clone this repo, then run `npm install` at its root.
 
 1. Build the basemap (a British Columbia extract of the [Protomaps](https://protomaps.com/) daily build, about 2 GB, plus its fonts and icons):
 
