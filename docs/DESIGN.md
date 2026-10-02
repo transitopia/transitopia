@@ -79,6 +79,7 @@ packages/transit-map/      the engine on a host MapLibre map: clock, playback, W
 packages/map-style/        the Protomaps basemap style (light and dark), zoom helpers
 packages/db/               PostgreSQL: SQL migrations, Kysely types, partitions, jobs
 packages/shared/           shared by web and server: the dataset registry
+packages/trackside/        DOM-free trackside camera core: train passes and car numbers from a camera beside the guideway
 pipelines/                 build-time pipelines and validators; lib/paths.ts knows where data lives
 regions/metro-vancouver/   committed, curated inputs: region.json, config/, infrastructure/, scenarios/, observations/, disruptions/
 map-layers/                Planetiler (Java) profile for the cycling layer
@@ -99,6 +100,7 @@ var/                       gitignored: downloads, recordings, build output (var/
 | Trip changes (cancellations, skipped stops), alerts with first and last seen, dispatch versions | Database (and files) | indefinitely |
 | GTFS static feeds | Archive bucket (the original zips) and `gtfs_feeds` | indefinitely |
 | Request ledger (`upstream_requests`) | Database | |
+| Trackside camera passes and their number crops | Database (`trackside_passes`, `trackside_crops`), or files under `var/trackside/` without one | indefinitely (for now) |
 | Published transit data (plans, movements, patches) | `transitopia-data` on R2, behind data.transitopia.org | |
 
 Tables and migrations are described in [packages/db/README.md](../packages/db/README.md).
@@ -193,6 +195,7 @@ Made while planning V2 (2026-09-29 to 2026-10-01). Change them deliberately, and
 | Code license | **MIT** across the repo. |
 | Data license | **ODbL** wherever we can, including our own content; no dual licensing ([DATA-LICENSES.md](../DATA-LICENSES.md)). |
 | Fleet data | Our own: sightings, photos, reports and recorded tracks. The CPTDB wiki is used only to check ours, never copied. |
+| Trackside cameras | Tested with a phone at `/trackside` (admins only) before buying hardware. Devices send **only metadata** plus small crops of car numbers, never video. Detection is classical image processing; number reading uses off-the-shelf OCR models fetched from a CDN, not a model we train. Passes are stored in shadow mode until matching them to runs is designed ([packages/trackside](../packages/trackside/README.md)). |
 | Photos | Our own uploads, plus hand-picked Wikimedia Commons photos with license metadata. Never automatic. |
 | Annotations | Live in the database, with an optional linked GitHub issue. |
 | Mobile app | Low priority; mobile web must be good enough for testing and reporting. **Capacitor** is tentatively accepted (our core is MapLibre GL JS plus a custom WebGL layer, which React Native's native MapLibre bindings can't run), to be reviewed before starting. Meanwhile: token auth, bottom-sheet panels, touch targets ≥ 44 px, no dependence on hover. |

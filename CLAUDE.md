@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for working in this repo. The design is in [docs/DESIGN.md](docs/DESIGN.md) (architecture, principles, decisions), with each part's design next to its code: [apps/web](apps/web/README.md), [apps/server](apps/server/README.md), [packages/db](packages/db/README.md), the transit engine in [packages/transit-core/DESIGN.md](packages/transit-core/DESIGN.md) (track graph, run inference, dispatcher, buses, AIS), [packages/transit-map](packages/transit-map/README.md), [pipelines](pipelines/README.md) and [deployment](deployment/README.md). Read the relevant one before making structural changes. What we know about Metro Vancouver's operations is in [regions/metro-vancouver/README.md](regions/metro-vancouver/README.md), and the assumptions still open in its [OPEN-QUESTIONS.md](regions/metro-vancouver/OPEN-QUESTIONS.md). Planned work is in GitHub issues.
+Guidance for working in this repo. The design is in [docs/DESIGN.md](docs/DESIGN.md) (architecture, principles, decisions), with each part's design next to its code: [apps/web](apps/web/README.md), [apps/server](apps/server/README.md), [packages/db](packages/db/README.md), [packages/trackside](packages/trackside/README.md) (trackside cameras), the transit engine in [packages/transit-core/DESIGN.md](packages/transit-core/DESIGN.md) (track graph, run inference, dispatcher, buses, AIS), [packages/transit-map](packages/transit-map/README.md), [pipelines](pipelines/README.md) and [deployment](deployment/README.md). Read the relevant one before making structural changes. What we know about Metro Vancouver's operations is in [regions/metro-vancouver/README.md](regions/metro-vancouver/README.md), and the assumptions still open in its [OPEN-QUESTIONS.md](regions/metro-vancouver/OPEN-QUESTIONS.md). Planned work is in GitHub issues.
 
 ## Layout
 
@@ -15,6 +15,7 @@ npm workspaces ([docs/DESIGN.md → Repository layout](docs/DESIGN.md#repository
 | `packages/transit-map/` | The transit engine on a host map: `TransitEngine.create(map, { dataBase, apiBase, theme })` (`engine.ts`); clock, playback, WebGL layers, and a snapshot store React reads with `useSyncExternalStore`. No UI framework. |
 | `packages/map-style/` | The site's Protomaps basemap (light and dark), fonts list and zoom helpers. |
 | `packages/shared/` | Shared by web and server: the dataset registry (`datasets.ts`) behind the attribution control. |
+| `packages/trackside/` | DOM-free trackside camera core: detects trains passing a camera beside the guideway (track, direction, speed) and reads car numbers. Used by the admin-only `/trackside` page. |
 | `pipelines/` | Build-time pipelines and validators. `pipelines/lib/paths.ts` is the one place that knows where data lives. |
 | `regions/metro-vancouver/` | Committed, curated inputs: `config/`, `infrastructure/`, `scenarios/`, `observations/`, `disruptions/`; what we know about operations (`README.md`) and what we don't (`OPEN-QUESTIONS.md`). |
 | `map-layers/` | Java/Planetiler profile for the cycling layer (built daily in CI). |
@@ -125,6 +126,7 @@ npm run scenario -- <name> # build regions/metro-vancouver/scenarios/<name>/ →
 npx tsx pipelines/eval-rt.ts [--test-last 3] [--set key=value] # replay recorded RT: prediction error and live-view jumps, old vs new
 npx tsx pipelines/probe-ais.ts [--minutes 30] # record raw aisstream.io messages for the SeaBus fleet and summarise them
 npx tsx pipelines/eval-ais.ts [YYYYMMDD]      # recorded SeaBus AIS vs the timetable: matches, lateness, vessels per block, berths
+npx tsx pipelines/trackside-replay.ts <video> --roi x,y,w,h --split 0.38 [--ocr]   # a clip through the trackside camera detector (packages/trackside)
 npx tsx pipelines/screenshot.ts out.png "/transit?date=2026-09-28&t=08:00:00&paused=1#map=14/49.28/-123.11" [--mobile] [--dark] [--pick expo]
 ```
 
