@@ -26,7 +26,7 @@ async function main() {
   const builders = new Map<PreparedPlan, ProfileBuilder>();
   let hours = 0;
   for await (const h of eachRecordedHour(
-    `${since.slice(0, 4)}-${since.slice(4, 6)}-${since.slice(6, 8)}`,
+    Temporal.PlainDate.from(since).toString(),
   )) {
     hours++;
     // Group each hour's snapshots by the feed in effect.

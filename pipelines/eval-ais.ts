@@ -23,6 +23,7 @@ import {
   formatServiceTime,
   localDate,
   serviceDayStart,
+  TIMEZONE,
 } from "@transitopia/transit-core/time.ts";
 
 const kin = await readJson<any>(join(CONFIG_DIR, "kinematics.json"));
@@ -35,11 +36,12 @@ const names = new Map<string, string>(
   seabus.ais.vessels.map((v: any) => [v.mmsi, v.name]),
 );
 
+const now = Temporal.Now.zonedDateTimeISO(TIMEZONE);
 const date =
   process.argv[2]
-  ?? (new Date().getHours() < 3 ?
-    localDate(Date.now() - 86_400_000)
-  : localDate(Date.now()));
+  ?? localDate(
+    (now.hour < 3 ? now.subtract({ days: 1 }) : now).epochMilliseconds,
+  );
 const pp = preparePlan(await loadLatestPlan(), kin);
 const fixes = (
   await readRecordedFixes(new Recorder(AIS_HISTORY_DIR, 75_000), date)

@@ -93,6 +93,31 @@ describe.skipIf(!TEST_DATABASE_URL)("database", () => {
     expect(rows[0]!.n).toBe(1);
   });
 
+  it("creates monthly partitions for last, this and next month", async () => {
+    await ensurePartitions(t.db, Date.parse("2026-12-31T23:30:00Z"), 0);
+    const { rows } = await sql<{ name: string; bound: string }>`
+      select c.relname as name, pg_get_expr(c.relpartbound, c.oid) as bound
+      from pg_inherits i
+      join pg_class c on c.oid = i.inhrelid
+      join pg_class p on p.oid = i.inhparent
+      where p.relname = 'observed_stop_times' and c.relname >= 'observed_stop_times_202611'
+      order by c.relname`.execute(t.db);
+    expect(rows).toEqual([
+      {
+        name: "observed_stop_times_202611",
+        bound: "FOR VALUES FROM ('2026-11-01') TO ('2026-12-01')",
+      },
+      {
+        name: "observed_stop_times_202612",
+        bound: "FOR VALUES FROM ('2026-12-01') TO ('2027-01-01')",
+      },
+      {
+        name: "observed_stop_times_202701",
+        bound: "FOR VALUES FROM ('2027-01-01') TO ('2027-02-01')",
+      },
+    ]);
+  });
+
   it("runs a job once per key and retries failures", async () => {
     let calls = 0;
     const fail = async () => {

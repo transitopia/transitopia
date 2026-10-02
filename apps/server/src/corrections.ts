@@ -106,12 +106,9 @@ const valid = (obs: Observation[]) =>
 export const observationDates = (f: ObservationFile): string[] =>
   [...new Set(f.observations.map((o) => o.date))].sort();
 
-const toIso = (yyyymmdd: string) =>
-  `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
-
 /** Service dates (YYYY-MM-DD) a disruption touches. */
 export const disruptionDates = (d: Disruption): string[] =>
-  datesOf(d).map(toIso);
+  datesOf(d).map((date) => Temporal.PlainDate.from(date).toString());
 
 export interface ObservationSetRow {
   id: string;

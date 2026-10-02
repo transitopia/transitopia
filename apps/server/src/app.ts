@@ -272,8 +272,10 @@ export function disruptionProblems(
   if (!Array.isArray(d.active) || !d.active.length)
     p.push("active needs at least one period");
   for (const a of d.active ?? [])
-    if (!(Date.parse(a.from) < Date.parse(a.until)))
-      p.push(`period ${a.from} → ${a.until} is not a valid ISO 8601 range`);
+    if (!(instantOrNaN(a.from) < instantOrNaN(a.until)))
+      p.push(
+        `period ${a.from} → ${a.until} is not a valid range of ISO 8601 times with offset`,
+      );
   if (!d.singleTrack?.length && !d.headway?.length)
     p.push("needs singleTrack or headway (or both)");
   for (const s of d.singleTrack ?? []) {
@@ -335,4 +337,13 @@ export async function health({ service, db, jobs }: AppDeps): Promise<Health> {
   }
   if (jobs) Object.assign(checks, await jobs.health());
   return { ok: Object.values(checks).every((c) => c.ok), checks };
+}
+
+/** Epoch ms of an ISO 8601 time with offset (what the disruption format requires), else NaN. */
+function instantOrNaN(iso: unknown): number {
+  try {
+    return Temporal.Instant.from(iso as string).epochMilliseconds;
+  } catch {
+    return NaN;
+  }
 }

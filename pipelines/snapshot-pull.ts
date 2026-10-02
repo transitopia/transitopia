@@ -63,11 +63,11 @@ function rclone(...a: string[]): void {
 
 const dates: string[] = [];
 for (
-  let t = Date.parse(`${from}T12:00:00Z`);
-  t <= Date.parse(`${to}T12:00:00Z`);
-  t += 86_400_000
+  let d = Temporal.PlainDate.from(from);
+  Temporal.PlainDate.compare(d, Temporal.PlainDate.from(to!)) <= 0;
+  d = d.add({ days: 1 })
 )
-  dates.push(new Date(t).toISOString().slice(0, 10));
+  dates.push(d.toString());
 
 for (const d of dates) {
   const compact = d.replaceAll("-", "");

@@ -11,8 +11,11 @@ export const DAILY_TABLES = ["rt_positions", "ais_fixes"] as const;
 /** Tables partitioned by month on service_date. */
 export const MONTHLY_TABLES = ["observed_stop_times"] as const;
 
-const DAY_MS = 86_400_000;
-const ymd = (t: number) => new Date(t).toISOString().slice(0, 10);
+/** The UTC day an instant falls on. */
+const utcDate = (t: number) =>
+  Temporal.Instant.fromEpochMilliseconds(t)
+    .toZonedDateTimeISO("UTC")
+    .toPlainDate();
 
 /** Create daily partitions for [from − 1 day, from + daysAhead] and monthly ones for this month and the next. */
 export async function ensurePartitions(
@@ -20,28 +23,24 @@ export async function ensurePartitions(
   now = Date.now(),
   daysAhead = 3,
 ): Promise<void> {
-  const today = Math.floor(now / DAY_MS) * DAY_MS;
+  const today = utcDate(now);
   for (const table of DAILY_TABLES)
     for (let d = -1; d <= daysAhead; d++) {
-      const from = today + d * DAY_MS;
-      const name = `${table}_${ymd(from).replaceAll("-", "")}`;
+      const from = today.add({ days: d });
+      const name = `${table}_${from.toString().replaceAll("-", "")}`;
       await sql`create table if not exists ${sql.id(name)} partition of ${sql.id(table)}
-        for values from (${sql.lit(ymd(from))}) to (${sql.lit(ymd(from + DAY_MS))})`.execute(
+        for values from (${sql.lit(from.toString())}) to (${sql.lit(from.add({ days: 1 }).toString())})`.execute(
         db,
       );
     }
-  const month = new Date(now);
+  const month = today.toPlainYearMonth();
   for (const table of MONTHLY_TABLES)
     for (let m = -1; m <= 1; m++) {
-      const start = new Date(
-        Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + m, 1),
-      );
-      const end = new Date(
-        Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1),
-      );
-      const name = `${table}_${ymd(start.getTime()).slice(0, 7).replace("-", "")}`;
+      const start = month.add({ months: m });
+      const end = start.add({ months: 1 });
+      const name = `${table}_${start.toString().replace("-", "")}`;
       await sql`create table if not exists ${sql.id(name)} partition of ${sql.id(table)}
-        for values from (${sql.lit(ymd(start.getTime()))}) to (${sql.lit(ymd(end.getTime()))})`.execute(
+        for values from (${sql.lit(start.toPlainDate({ day: 1 }).toString())}) to (${sql.lit(end.toPlainDate({ day: 1 }).toString())})`.execute(
         db,
       );
     }
@@ -53,8 +52,13 @@ export async function ensurePartitionsFor(
   from: number,
   to: number,
 ): Promise<void> {
-  for (let t = Math.floor(from / DAY_MS) * DAY_MS; t <= to; t += DAY_MS)
-    await ensurePartitions(db, t, 0);
+  const last = utcDate(to);
+  for (
+    let d = utcDate(from);
+    Temporal.PlainDate.compare(d, last) <= 0;
+    d = d.add({ days: 1 })
+  )
+    await ensurePartitions(db, d.toZonedDateTime("UTC").epochMilliseconds, 0);
 }
 
 /** Drop daily partitions that end before `cutoff`. Returns the dropped names. */
@@ -70,10 +74,11 @@ export async function dropExpiredPartitions(
       join pg_class p on p.oid = i.inhparent
       where p.relname = ${table}`.execute(db);
     for (const { name } of rows) {
-      const m = /_(\d{4})(\d{2})(\d{2})$/.exec(name);
-      if (!m) continue;
-      const end =
-        Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) + DAY_MS;
+      const day = /_(\d{8})$/.exec(name)?.[1];
+      if (!day) continue;
+      const end = Temporal.PlainDate.from(day)
+        .add({ days: 1 })
+        .toZonedDateTime("UTC").epochMilliseconds;
       if (end > cutoff) continue;
       await sql`drop table ${sql.id(name)}`.execute(db);
       dropped.push(name);
