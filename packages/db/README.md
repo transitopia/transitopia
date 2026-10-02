@@ -30,5 +30,6 @@ PostgreSQL (18, with PostGIS) for the Transitopia server: SQL migrations, [Kysel
 | `route_stats_daily` | Per-route statistics per service date and time band; `coverage` is the share of scheduled trip time the recorder covered, so a gap is a gap, never a zero | indefinitely |
 | `job_runs` | Scheduled and catch-up jobs, one row per job and key | |
 | `users`, `sessions` | Admins signed in with GitHub; sessions store only the token's SHA-256 | |
+| `trackside_passes`, `trackside_crops` | Trains seen by trackside cameras ([packages/trackside](../trackside/README.md#reports)): the report, and JPEG crops of the car numbers read (with a `label` for a person's correction) | indefinitely (for now) |
 
 Locally: `npm run db:up` starts PostgreSQL on port 5433 (`infra/compose.dev.yml`). Tests: `TEST_DATABASE_URL=postgres://transitopia:transitopia@localhost:5433/postgres npm test`.

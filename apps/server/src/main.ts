@@ -19,6 +19,8 @@ import { CorrectionsRepo } from "./corrections.ts";
 import { Auth } from "./auth.ts";
 import { createApp } from "./app.ts";
 import { Jobs } from "./jobs/scheduler.ts";
+import { DbTracksideStore, FileTracksideStore } from "./trackside.ts";
+import { TRACKSIDE_DIR } from "@transitopia/pipelines/lib/paths.ts";
 
 const log = (m: string) => console.log(`[server] ${m}`);
 
@@ -99,7 +101,19 @@ if (!env.poll && !env.forwardTo)
   );
 
 const auth = new Auth(db?.db, env);
-const app = createApp({ service, auth, env, db: db?.db, repo, jobs });
+const trackside =
+  db ?
+    new DbTracksideStore(db.db, region.id)
+  : new FileTracksideStore(TRACKSIDE_DIR);
+const app = createApp({
+  service,
+  auth,
+  env,
+  db: db?.db,
+  repo,
+  jobs,
+  trackside,
+});
 const server = serve({ fetch: app.fetch, port: env.port }, (info) => {
   log(`Listening on http://localhost:${info.port} (/rt/live, /healthz)`);
   void service.start(info.port);

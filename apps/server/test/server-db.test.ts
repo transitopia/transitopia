@@ -24,6 +24,7 @@ import { RtService } from "../src/rt/service.ts";
 import { Store } from "../src/store.ts";
 import { PgLeaderLock } from "../src/leader.ts";
 import { CorrectionsRepo } from "../src/corrections.ts";
+import { DbTracksideStore } from "../src/trackside.ts";
 import { Auth } from "../src/auth.ts";
 import { createApp } from "../src/app.ts";
 import { readEnv } from "../src/env.ts";
@@ -353,5 +354,48 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
     };
     expect(Object.keys(exported.disruptions)).toContain("alert-1");
     expect(Object.keys(exported.disruptions)).not.toContain("works-1");
+  });
+
+  it("stores trackside passes once, with their crops apart", async () => {
+    const store = new DbTracksideStore(t.db, REGION);
+    const jpeg = `data:image/jpeg;base64,${btoa(String.fromCharCode(0xff, 0xd8, 0xff, 0xe0))}`;
+    const report = {
+      id: "3f2c9a1e-0000-4000-8000-000000000009",
+      setup: {
+        id: "8a1b2c3d-0000-4000-8000-000000000002",
+        at: [-123.1008, 49.27295] as [number, number],
+        lines: ["expo"],
+        nearSegment: "w1.0",
+        nearDistanceM: 37,
+        rightwardBearing: 110,
+        hfovDeg: 65,
+        frameWidth: 1920,
+      },
+      start: "2026-10-01T22:44:40.000Z",
+      end: "2026-10-01T22:44:47.000Z",
+      track: "far" as const,
+      screen: "left" as const,
+      bearing: 290,
+      speedKmh: null,
+      pxPerS: 1500,
+      occluded: false,
+      cars: [
+        { number: "335", confidence: 1, reads: 1, crop: jpeg },
+        { number: "336", confidence: 0.99, reads: 2 },
+      ],
+      source: "camera" as const,
+    };
+    expect(await store.add(report, "braden")).toBe("added");
+    expect(await store.add(report, "braden")).toBe("duplicate");
+    const [row] = await store.list(10);
+    expect(row).toMatchObject({ id: report.id, createdBy: "braden" });
+    expect(row!.report.cars.map((c) => c.number)).toEqual(["335", "336"]);
+    expect(row!.report.cars[0]).not.toHaveProperty("crop");
+    expect(row!.crops).toEqual([
+      { idx: 0, reading: "335", confidence: 1, accepted: true, label: null },
+    ]);
+    expect((await store.crop(report.id, 0))?.slice(0, 2)).toEqual(
+      Buffer.from([0xff, 0xd8]),
+    );
   });
 });

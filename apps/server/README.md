@@ -28,7 +28,7 @@ GET /rt/dispatch/<date>/<v>.json    a patch version (immutable)
 GET /rt/ais/fixes?date=YYYYMMDD[&after=cursor]   SeaBus AIS fixes for a service date
 GET /healthz                        data freshness: 503 when polls, AIS, the database or a daily job are stale
 GET /auth/github/login, /auth/github/callback, /auth/me; POST /auth/logout     admin sign-in
-/admin/api/*                        the review queue behind /admin (admins only)
+/admin/api/*                        the review queue behind /admin, and trackside camera uploads (admins only)
 ```
 
 `/rt/*` is public, with CORS for everyone, and cached at Cloudflare's edge (`/rt/live` for 10 s), so server load doesn't grow with visitors. `/admin/api` and `/auth` allow only `ALLOWED_ORIGINS`.
@@ -71,6 +71,10 @@ A patch only fits the build it was dispatched against (`baseBuiltAt`), which is 
 | `archive` | local hour | Copy closed recordings to `ARCHIVE_REMOTE` |
 
 Backups run in their own container (`infra/backup/`) and record themselves in `job_runs`. `/healthz` fails when a daily job (statistics, data build, backup) failed in the last 3 days or hasn't succeeded for 36 hours.
+
+## Trackside cameras
+
+`src/trackside.ts` ([packages/trackside](../../packages/trackside/README.md#reports)). Phones running `/trackside` upload each train they see to `POST /admin/api/trackside/passes` (admins only, ≤ 2 MB): the report is validated (`passProblems`) and stored once by its device-made id, in `trackside_passes` with the number crops in `trackside_crops`, or without a database as one JSON file per pass under `var/trackside/passes/<UTC date>/` and crops under `var/trackside/crops/<id>/`. `GET /admin/api/trackside/passes?limit=` lists the latest with crop metadata, and `GET /admin/api/trackside/crops/<id>/<n>` serves a crop. Nothing feeds the dispatcher yet.
 
 ## Admin API and sign-in
 

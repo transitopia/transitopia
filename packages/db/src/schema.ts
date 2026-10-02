@@ -194,4 +194,27 @@ export interface Database {
     created_at: DefaultTimestamp;
     expires_at: Timestamp;
   };
+  trackside_passes: {
+    id: string;
+    region_id: string;
+    setup_id: string;
+    started_at: Timestamp;
+    ended_at: Timestamp;
+    track: "near" | "far";
+    bearing: number;
+    speed_kmh: number | null;
+    cars: string[];
+    report: Json<unknown>;
+    created_by: string | null;
+    received_at: DefaultTimestamp;
+  };
+  trackside_crops: {
+    pass_id: string;
+    idx: number;
+    reading: string;
+    confidence: number;
+    accepted: boolean;
+    jpeg: Buffer;
+    label: string | null;
+  };
 }

@@ -4,7 +4,8 @@
 //   /healthz           freshness checks for monitoring (503 when data is stale)
 //   /auth/*            admin sign-in with GitHub (auth.ts)
 //   /admin/api/*       the review queue behind /admin: disruptions and observations with previews,
-//                      jobs and status. Admins only; CORS for ALLOWED_ORIGINS.
+//                      jobs and status; trackside camera passes (trackside.ts). Admins only; CORS
+//                      for ALLOWED_ORIGINS.
 
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
@@ -23,6 +24,9 @@ import type { Auth, SessionUser } from "./auth.ts";
 import { originAllowed, type ServerEnv } from "./env.ts";
 import type { CorrectionsRepo } from "./corrections.ts";
 import type { Jobs } from "./jobs/scheduler.ts";
+import type { TracksideStore } from "./trackside.ts";
+import type { PassReport } from "@transitopia/trackside/types.ts";
+import { passProblems } from "@transitopia/trackside/validate.ts";
 
 export interface AppDeps {
   service: RtService;
@@ -31,14 +35,17 @@ export interface AppDeps {
   db?: Db | undefined;
   repo?: CorrectionsRepo | undefined;
   jobs?: Jobs | undefined;
+  trackside?: TracksideStore | undefined;
 }
 
 type Env = { Variables: { user: SessionUser } };
 
 const ID = /^[a-z0-9][a-z0-9._-]{0,120}$/i;
+/** Trackside uploads: a report and its number crops (a few kB each). */
+const MAX_TRACKSIDE_BODY = 2_000_000;
 
 export function createApp(deps: AppDeps): Hono<Env> {
-  const { service, auth, env, db, repo } = deps;
+  const { service, auth, env, db, repo, trackside } = deps;
   const app = new Hono<Env>();
 
   app.onError((e, c) => {
@@ -251,6 +258,39 @@ export function createApp(deps: AppDeps): Hono<Env> {
     for (const d of await repo.disruptions(["confirmed"]))
       disruptions[d.id] = { disruptions: [{ ...d.body, status: "confirmed" }] };
     return c.json({ observations, disruptions });
+  });
+
+  // Trackside cameras (packages/trackside/README.md#reports): stored and listed only, for now.
+  app.post("/admin/api/trackside/passes", async (c) => {
+    if (!trackside)
+      return c.json({ error: "Trackside passes aren't stored here" }, 404);
+    if (Number(c.req.header("Content-Length") ?? 0) > MAX_TRACKSIDE_BODY)
+      return c.json({ error: "Too large" }, 413);
+    const report = await c.req.json<PassReport>().catch(() => undefined);
+    const problems = report ? passProblems(report) : ["not JSON"];
+    if (problems.length) return c.json({ error: problems.join("; ") }, 400);
+    const result = await trackside.add(report!, c.get("user").login);
+    return c.json({ ok: true, result }, result === "added" ? 201 : 200);
+  });
+  app.get("/admin/api/trackside/passes", async (c) => {
+    if (!trackside) return c.json({ passes: [] });
+    const limit = Math.min(
+      500,
+      Math.max(1, Number(c.req.query("limit") ?? 100) || 100),
+    );
+    return c.json({ passes: await trackside.list(limit) });
+  });
+  app.get("/admin/api/trackside/crops/:id/:idx{[0-9]+}", async (c) => {
+    const id = c.req.param("id");
+    if (!trackside || !ID.test(id)) return c.json({ error: "Not found" }, 404);
+    const jpeg = await trackside.crop(id, Number(c.req.param("idx")));
+    if (!jpeg) return c.json({ error: "Not found" }, 404);
+    return new Response(new Uint8Array(jpeg), {
+      headers: {
+        "Content-Type": "image/jpeg",
+        "Cache-Control": "private, max-age=86400",
+      },
+    });
   });
 
   app.notFound((c) => c.json({ error: "Not found" }, 404));
