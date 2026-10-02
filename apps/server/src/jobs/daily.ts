@@ -1,4 +1,4 @@
-// The daily statistics job for one finished service date (V2-PLAN.md §4.4): observed stop times from
+// The daily statistics job for one finished service date (docs/DESIGN.md#retention-and-statistics): observed stop times from
 // the raw positions (while they exist: 60 days), then per-route statistics from those. Every route
 // TransLink reports, not just the ones we draw.
 

@@ -1,4 +1,4 @@
-// The leader's scheduled jobs (V2-PLAN.md §4.3–4.4). Every few minutes it runs whatever is due, one
+// The leader's scheduled jobs (apps/server/README.md#jobs). Every few minutes it runs whatever is due, one
 // job at a time; job_runs makes each (job, key) run once and retries failures on the next tick, so
 // missed days are caught up after downtime:
 //

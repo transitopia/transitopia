@@ -1,4 +1,4 @@
-// The dispatcher's view of a train run (docs/skytrain-viz-PLAN.md §4.11): the run's movement events turned into a
+// The dispatcher's view of a train run (packages/transit-core/DESIGN.md#dispatcher): the run's movement events turned into a
 // sequence of waits (stops, layovers) and one-direction moves along a single "route coordinate" G,
 // the distance the train has travelled along its own path since the run started. Everything the
 // simulation tracks per train (position, reservations, released junctions) is a range of G.
@@ -227,7 +227,7 @@ function buildModel(
   };
 }
 
-/** Kinematics for empty moves, matching playback (docs/skytrain-viz-PLAN.md §4.4). */
+/** Kinematics for empty moves, matching playback (packages/transit-core/DESIGN.md#movements-and-playback). */
 export function deadheadKinematics(
   k: Kinematics,
   speedFactor: number,

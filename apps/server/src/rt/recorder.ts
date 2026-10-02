@@ -1,4 +1,4 @@
-// Appends each snapshot to hourly NDJSON files and maintains a coverage index (docs/skytrain-viz-PLAN.md §4.6):
+// Appends each snapshot to hourly NDJSON files and maintains a coverage index (apps/server/README.md#real-time-service):
 //   var/rt-history/YYYY-MM-DD/HH.ndjson      (current hour, appended)
 //   var/rt-history/YYYY-MM-DD/HH.ndjson.gz   (closed hours, compressed)
 //   var/rt-history/coverage.json             ({ intervals: [[startMs, endMs], ...] })

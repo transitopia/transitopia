@@ -1,4 +1,4 @@
-// TransLink service alerts → draft disruptions (docs/skytrain-viz-PLAN.md §4.10, M8.5).
+// TransLink service alerts → draft disruptions (packages/transit-core/DESIGN.md#disruptions-and-alerts).
 //
 // Alerts carry structured route, stop and period fields, but the operating change is free text, e.g.
 // "Trains will single-track between Bridgeport Station and Richmond-Brighouse Station" and

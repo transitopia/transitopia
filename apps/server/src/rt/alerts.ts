@@ -1,4 +1,4 @@
-// Alert drafts (docs/skytrain-viz-PLAN.md §4.10, M8.5): TransLink alerts for our rail lines → draft
+// Alert drafts (packages/transit-core/DESIGN.md#disruptions-and-alerts): TransLink alerts for our rail lines → draft
 // disruptions, which a person confirms: in the database's review queue (/admin) when there is one,
 // else in regions/metro-vancouver/disruptions/drafts/ for `npm run disruptions -- confirm <id>`.
 // Every change to the alert set is appended to var/rt-history/alerts.ndjson.

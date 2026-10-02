@@ -1,6 +1,6 @@
 // Real-time snapshot format shared by the RT service (apps/server/src/) and the browser. One snapshot is one
 // upstream poll. History files store one compact snapshot per line (NDJSON) with every route's
-// vehicles (V2-PLAN.md §4.5: recording all routes costs no extra requests); vehicles on routes we
+// vehicles (docs/DESIGN.md#upstream-request-budget: recording all routes costs no extra requests); vehicles on routes we
 // don't draw have an untracked route key, and readers keep only tracked ones (trackedOnly).
 
 export interface RtVehicle {
@@ -62,7 +62,7 @@ export interface RtLiveResponse {
   stale: boolean;
   /** Why data is unavailable (e.g. no API key), for display. */
   error?: string;
-  /** Live dispatch (docs/skytrain-viz-PLAN.md §4.11): service date (YYYYMMDD) → current patch version. */
+  /** Live dispatch (packages/transit-core/DESIGN.md#dispatcher): service date (YYYYMMDD) → current patch version. */
   dispatch?: Record<string, string>;
 }
 

@@ -1,5 +1,5 @@
-// Corrections in the database, as files (V2-PLAN.md §5.6: "an export to files for tests and
-// reproducible bug reports"). /admin is where they're reviewed; this is for moving them around.
+// Corrections in the database, as files (docs/DESIGN.md#corrections-and-previews), e.g. for tests and
+// reproducible bug reports. /admin is where they're reviewed; this is for moving them around.
 //
 //   DATABASE_URL=… npm run corrections -- export <dir>   # confirmed ones → <dir>/{observations,disruptions}/*.json
 //   DATABASE_URL=… npm run corrections -- import [<dir>] # files → database (default: regions/metro-vancouver); existing ids are kept

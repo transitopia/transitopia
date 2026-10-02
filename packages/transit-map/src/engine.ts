@@ -1,4 +1,4 @@
-// The transit engine, mounted imperatively on a MapLibre map the host owns (V2-PLAN.md §4.2):
+// The transit engine, mounted imperatively on a MapLibre map the host owns (packages/transit-map/README.md):
 // clock → playback → WebGL each frame, without React. Hosts read a small snapshot store (throttled
 // to a few updates a second, plus every discrete change) with useSyncExternalStore, and call the
 // methods here for controls.
@@ -210,7 +210,7 @@ export class TransitEngine {
     this.vehicles = new VehicleLayer(map, kinematics.sizing);
     this.vehicles.selectedId = this.selectedId;
     this.rt = new RtClient({ data: opts.dataBase, api: opts.apiBase });
-    // SeaBus: AIS fixes anchor the timetable (docs/skytrain-viz-PLAN.md §4.12).
+    // SeaBus: AIS fixes anchor the timetable (packages/transit-core/DESIGN.md#seabus-ais).
     this.ais = new AisClient(opts.apiBase);
     // Schedule estimates for buses stop at stops, using the same travel-time profile as live prediction.
     store.pacerFor = (pp) => this.rt.predictorFor(pp)?.pacer;
@@ -616,7 +616,7 @@ export class TransitEngine {
     this.raf = requestAnimationFrame(this.frame);
   };
 
-  /** What the map shows right now, for the attribution control (V2-PLAN.md §4.6). */
+  /** What the map shows right now, for the attribution control (docs/DESIGN.md#attribution). */
   private datasetsDrawn(rtVehicles: number, aisUsed: boolean): string[] {
     const out: string[] = [];
     const routesShown = routeKeys(this.shownFeed).some(

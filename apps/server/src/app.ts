@@ -294,7 +294,7 @@ export interface Health {
   checks: Record<string, { ok: boolean; detail?: string }>;
 }
 
-/** Data freshness (V2-PLAN.md §7.3): the poller, AIS, the database and the jobs. */
+/** Data freshness (deployment/README.md#monitoring): the poller, AIS, the database and the jobs. */
 export async function health({ service, db, jobs }: AppDeps): Promise<Health> {
   const checks: Health["checks"] = {};
   if (db) {

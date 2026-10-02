@@ -1,4 +1,4 @@
-// Leader election (V2-PLAN.md §4.3): exactly one process per deployment polls, records and
+// Leader election (apps/server/README.md#leader): exactly one process per deployment polls, records and
 // dispatches; the others forward /rt/* to it.
 //
 // - With a database: a session advisory lock on a dedicated connection. Postgres releases it when

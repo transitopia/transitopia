@@ -1,4 +1,4 @@
-// Validate the track graph against GTFS and the diagram checklist (docs/skytrain-viz-PLAN.md §7). Exits non-zero on
+// Validate the track graph against GTFS and the diagram checklist (packages/transit-core/DESIGN.md#validation). Exits non-zero on
 // errors; warnings are printed for review.
 //
 //   npm run validate:infra
@@ -91,7 +91,7 @@ async function main() {
   if (works.length) {
     const ways = [...new Set(works.map((s) => s.osmWay))];
     warn(
-      `${works.length} in-service segments are tagged construction/disused in OSM (ways ${ways.join(", ")}); see OPEN-QUESTIONS #17`,
+      `${works.length} in-service segments are tagged construction/disused in OSM (ways ${ways.join(", ")}); see regions/metro-vancouver/README.md, "Braid and the OMC4 works"`,
     );
   }
 

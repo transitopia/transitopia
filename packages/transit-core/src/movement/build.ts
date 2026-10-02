@@ -1,5 +1,5 @@
 // Build movement files: infer physical train runs from the timetable and lay them onto the track
-// graph (docs/skytrain-viz-PLAN.md §4.3–4.4). This is the "best guess" layer; every assumption comes from
+// graph (packages/transit-core/DESIGN.md#run-inference). This is the "best guess" layer; every assumption comes from
 // regions/metro-vancouver/config/operations.json and kinematics.json so it can be corrected.
 //
 // Steps: route each stop pattern over the tracks → chain trips into runs at termini (FIFO: each

@@ -32,7 +32,7 @@ export interface BuildAllInput {
   patternPositions?: Map<number, Map<number, TrackPos>>;
   kin: KinematicsConfig;
   ops: OperationsConfig;
-  /** Signalling-aware dispatch (docs/skytrain-viz-PLAN.md §4.11); omit to write the timetable-only plan. */
+  /** Signalling-aware dispatch (packages/transit-core/DESIGN.md#dispatcher); omit to write the timetable-only plan. */
   dispatch?: DispatchConfig;
   /** Absolute output directory for movement files. */
   outDir: string;

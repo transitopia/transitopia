@@ -1,4 +1,4 @@
-// /admin (V2-PLAN.md §4.3): the server's status and the review queue for corrections. Disruptions
+// /admin (apps/web/README.md#admin): the server's status and the review queue for corrections. Disruptions
 // drafted from TransLink alerts, and observation sets, are edited here, previewed on the map as
 // dispatch versions nobody else sees, then confirmed (or discarded). Admins sign in with GitHub;
 // the server returns a bearer token in the URL fragment, kept in localStorage.

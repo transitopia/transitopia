@@ -1,4 +1,4 @@
-# Production on the FullHost VM (V2-PLAN.md §7.1): the server, PostgreSQL + PostGIS, Caddy (TLS)
+# Production on the FullHost VM (deployment/README.md#hosting): the server, PostgreSQL + PostGIS, Caddy (TLS)
 # and nightly backups. Settings and secrets, including the R2 remote rclone uses
 # (RCLONE_CONFIG_R2_*), are in infra/.env (from .env.example, never committed). Setup:
 # deployment/api-server-setup.md; operations: deployment/README.md.

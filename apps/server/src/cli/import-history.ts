@@ -1,4 +1,4 @@
-// Import recorded history into the database (V2-PLAN.md Phase 2): what a skytrain-viz-style local
+// Import recorded history into the database (apps/server/README.md#command-line-tools): what a skytrain-viz-style local
 // recorder left in var/ (copy it to the server's var/ first, e.g. with rsync), so statistics and the
 // budget ledger continue from it. Idempotent: hours, batches and versions already imported are
 // skipped.

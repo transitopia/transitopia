@@ -51,7 +51,7 @@ function viewInRegion(map: MapType): boolean {
 }
 
 /**
- * /transit (V2-PLAN.md §4.2, §5.2): mounts the transit engine on the shared map and renders its
+ * /transit (apps/web/README.md#transit-mode): mounts the transit engine on the shared map and renders its
  * controls. The engine draws every frame on its own; React only sees its snapshot store.
  */
 export default function TransitMap() {

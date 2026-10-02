@@ -1,6 +1,6 @@
 {
-  "$comment": "Real-time (GTFS-RT) service settings; see docs/skytrain-viz-PLAN.md \u00a74.6. Upstream request rate is fixed by the poll schedule no matter how many clients connect.",
-  "$poll": "TransLink's Open API terms allow an API key 'a maximum of 1,000 requests per day' (https://www.translink.ca/about-us/doing-business-with-translink/app-developer-resources/terms-of-use, checked 2026-09-29; unclear whether that covers GTFS-RT). Until TransLink says otherwise, the leader stays under dailyCap across all three feeds in any 24 hours (a ledger in var/rt-history/requests.json enforces it across restarts), polling most often at peak. Bands (local time) are guesses at when buses are busiest; at most ~970 in any 24 hours (~965 on a weekday, ~815 on a weekend day) (packages/transit-core/src/rt/budget.ts, test/rt-budget.test.ts). Holidays run the weekday schedule. SkyTrain alerts with a recognised operating change become draft disruptions (docs/skytrain-viz-PLAN.md \u00a74.10), so alertsS delays drafts by up to that long. OPEN-QUESTIONS #29.",
+  "$comment": "Real-time (GTFS-RT) service settings; see apps/server/README.md#real-time-service. Upstream request rate is fixed by the poll schedule no matter how many clients connect.",
+  "$poll": "TransLink's Open API terms allow an API key 'a maximum of 1,000 requests per day' (https://www.translink.ca/about-us/doing-business-with-translink/app-developer-resources/terms-of-use, checked 2026-09-29; unclear whether that covers GTFS-RT). Until TransLink says otherwise, the leader stays under dailyCap across all three feeds in any 24 hours (a ledger in var/rt-history/requests.json enforces it across restarts), polling most often at peak. Bands (local time) are guesses at when buses are busiest; at most ~970 in any 24 hours (~965 on a weekday, ~815 on a weekend day) (packages/transit-core/src/rt/budget.ts, test/rt-budget.test.ts). Holidays run the weekday schedule. SkyTrain alerts with a recognised operating change become draft disruptions (packages/transit-core/DESIGN.md#disruptions-and-alerts), so alertsS delays drafts by up to that long. OPEN-QUESTIONS #29.",
   "poll": {
     "dailyCap": 1000,
     "weekday": [
@@ -29,14 +29,14 @@
   "$extrapolateSlackS": "At the live edge, predict a vehicle forward along its route for at most the positions poll interval plus this (fixes are already ~20-60 s old when fetched). Was 90 s at a fixed 20 s interval.",
   "extrapolateSlackS": 70,
   "clientPollS": 10,
-  "$detourNearM": "A bus off its route while a TransLink detour alert covers it counts as on detour only within this distance of a stop the alert lists (guess; long-running detours would otherwise switch off shifted-GPS handling route-wide). See docs/OPEN-QUESTIONS.md #28.",
+  "$detourNearM": "A bus off its route while a TransLink detour alert covers it counts as on detour only within this distance of a stop the alert lists (guess; long-running detours would otherwise switch off shifted-GPS handling route-wide). See regions/metro-vancouver/OPEN-QUESTIONS.md #28.",
   "detourNearM": 3000,
-  "$dispatchCheckS": "Live dispatch (docs/skytrain-viz-PLAN.md §4.11): how often the RT service checks regions/metro-vancouver/observations and regions/metro-vancouver/disruptions for changes. Only changed inputs re-dispatch a date; client requests never do.",
+  "$dispatchCheckS": "Live dispatch (apps/server/README.md#live-dispatch-and-previews): how often the RT service checks regions/metro-vancouver/observations and regions/metro-vancouver/disruptions for changes. Only changed inputs re-dispatch a date; client requests never do.",
   "dispatchCheckS": 30,
   "$dispatchWindowDays": "Live dispatch covers service dates this many days either side of today; older and later dates come from build:dispatch.",
   "dispatchWindowDays": 7,
   "serverPort": 8787,
-  "$prediction": "Live bus prediction and learned travel-time profiles (packages/transit-core/src/rt/profile.ts, docs/skytrain-viz-PLAN.md \u00a74.5). Values are guesses tuned against recorded data with pipelines/eval-rt.ts unless noted; see docs/OPEN-QUESTIONS.md #25.",
+  "$prediction": "Live bus prediction and learned travel-time profiles (packages/transit-core/src/rt/profile.ts, packages/transit-core/DESIGN.md#buses). Values are guesses tuned against recorded data with pipelines/eval-rt.ts unless noted; see regions/metro-vancouver/OPEN-QUESTIONS.md #25.",
   "prediction": {
     "binM": 50,
     "$bandStartHours": "Time-of-day bands: night, AM peak, midday, PM peak, evening (local hours).",
@@ -77,7 +77,7 @@
     "$profileHistoryDays": "build:rt-profile learns from this many days of recorded history (guess: long enough for weekday and weekend patterns, short enough to follow road changes, and to build in minutes on the server).",
     "profileHistoryDays": 28
   },
-  "$carry": "Carrying RT bus delays into schedule estimates (packages/transit-core/src/rt/carry.ts). Guesses; see docs/OPEN-QUESTIONS.md #25.",
+  "$carry": "Carrying RT bus delays into schedule estimates (packages/transit-core/src/rt/carry.ts). Guesses; see regions/metro-vancouver/OPEN-QUESTIONS.md #25.",
   "carry": {
     "minLayoverS": 120,
     "maxTrips": 2

@@ -1,7 +1,7 @@
 import React from "react";
 import { creditsFor, legendsFor } from "@transitopia/shared/datasets.ts";
 
-// Credits for exactly the data on screen (V2-PLAN.md §4.6): each mode (and the transit engine)
+// Credits for exactly the data on screen (docs/DESIGN.md#attribution): each mode (and the transit engine)
 // declares what it draws with useDatasets(); the basemap is always there.
 
 const BASEMAP_DATASETS = ["osm", "protomaps"];

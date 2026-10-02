@@ -3,7 +3,7 @@ import { useLocation, useRoute } from "wouter";
 
 /**
  * Link to a mode (/transit, /cycling). The map position (#map=…) is shared by every mode, so it's
- * kept; the query string holds the current mode's own state, so it isn't (V2-PLAN.md §1.3).
+ * kept; the query string holds the current mode's own state, so it isn't (apps/web/README.md#modes-and-url-state).
  */
 export function ModeLink({
   href,

@@ -1,6 +1,6 @@
 // Download the latest TransLink GTFS static feed (or a dated History snapshot) and archive it by
 // feed_version under var/raw/gtfs/<feed_version>/google_transit.zip. Idempotent: an already-archived
-// version is left alone. See docs/skytrain-viz-PLAN.md §4.2.
+// version is left alone. See packages/transit-core/DESIGN.md#timetables.
 //
 //   tsx pipelines/fetch-gtfs.ts                 # latest feed
 //   tsx pipelines/fetch-gtfs.ts --history 2026-09-25

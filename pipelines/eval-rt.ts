@@ -1,4 +1,4 @@
-// Evaluate live bus prediction against recorded GTFS-RT data (docs/skytrain-viz-PLAN.md §4.5).
+// Evaluate live bus prediction against recorded GTFS-RT data (packages/transit-core/DESIGN.md#buses).
 //
 // Builds a travel-time profile from the training hours, then replays the test hours: from each fix,
 // predict where the bus will be at its next fixes and compare with where they actually put it

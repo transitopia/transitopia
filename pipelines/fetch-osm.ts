@@ -1,4 +1,4 @@
-// Download SkyTrain track data from OpenStreetMap via Overpass (docs/skytrain-viz-PLAN.md §4.1): every
+// Download SkyTrain track data from OpenStreetMap via Overpass (packages/transit-core/DESIGN.md#track-graph): every
 // railway=subway way (mainline, pockets, crossovers, yards) with node geometry, the railway=switch /
 // buffer_stop nodes on them, stop positions, and platforms. Saved with a date so imports are
 // reproducible: var/raw/osm/skytrain-YYYY-MM-DD.json (and latest.json).

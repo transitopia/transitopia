@@ -2,7 +2,7 @@
 // Input:  var/raw/gtfs/<version>/google_transit.zip, regions/metro-vancouver/config/routes.json,
 //         regions/metro-vancouver/infrastructure/seabus.json + regions/metro-vancouver/config/seabus.json (SeaBus berths and lanes)
 // Output: var/public/data/feeds/<version>/plan.json, var/public/data/manifest.json
-// See docs/skytrain-viz-PLAN.md §4.2.
+// See packages/transit-core/DESIGN.md#timetables.
 //
 //   tsx pipelines/build-schedule.ts            # build any feed version not yet built
 //   tsx pipelines/build-schedule.ts --force    # rebuild all

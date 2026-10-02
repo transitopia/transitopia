@@ -1,4 +1,4 @@
-// The site's basemap: Protomaps layers over a PMTiles extract (V2-PLAN.md §0, §5.12), with
+// The site's basemap: Protomaps layers over a PMTiles extract (docs/DESIGN.md#regions), with
 // self-hosted glyphs and sprites (pipelines/tiles.ts). Nothing here calls third-party servers.
 
 import type {
@@ -78,7 +78,7 @@ export function basemapStyle(o: BasemapOptions): StyleSpecification {
     glyphs: `${o.assets}fonts/{fontstack}/{range}.pbf`,
     sprite,
     sources: {
-      // Credits come from the site's attribution control (V2-PLAN.md §4.6), not the source.
+      // Credits come from the site's attribution control (docs/DESIGN.md#attribution), not the source.
       [BASEMAP_SOURCE]: { type: "vector", url: o.tiles },
     },
     layers: layers(BASEMAP_SOURCE, flavor(o.theme), { lang: "en" }),

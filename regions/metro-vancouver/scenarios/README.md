@@ -1,6 +1,6 @@
 # Scenarios
 
-Alternate infrastructure and/or service, built with the same pipeline as the real network (docs/skytrain-viz-PLAN.md §4.8).
+Alternate infrastructure and/or service, built with the same pipeline as the real network (packages/transit-core/DESIGN.md#scenarios).
 
 ```sh
 npm run scenario -- broadway-subway          # build
@@ -39,7 +39,7 @@ Service operations so far:
 - `extend` (continue a line past a terminus through new stations).
 - `truncate` (`{ "op": "truncate", "route": "99", "at": [lon, lat], "keep": [lon, lat], "terminusName": "Arbutus Station" }`): cut every trip at its stop nearest `at` and keep the side toward `keep`. Trips entirely on the cut side are removed.
 
-Buses in scenarios are schedule-only: live and recorded positions are never mixed into a hypothetical network. Run times come from distance and kinematics (`regions/metro-vancouver/config/kinematics.json`) × `padding`, plus `dwell`. More operations (headway patterns, short-turns, removing trips) are future work (see docs/skytrain-viz-PLAN.md §4.8).
+Buses in scenarios are schedule-only: live and recorded positions are never mixed into a hypothetical network. Run times come from distance and kinematics (`regions/metro-vancouver/config/kinematics.json`) × `padding`, plus `dwell`. More operations (headway patterns, short-turns, removing trips) are future work (see packages/transit-core/DESIGN.md#scenarios).
 
 ## broadway-subway
 

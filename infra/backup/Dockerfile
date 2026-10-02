@@ -1,4 +1,4 @@
-# Nightly database backups and dev snapshots (V2-PLAN.md §7.3, §7.5): pg_dump from the same major
+# Nightly database backups and dev snapshots (deployment/README.md#backups): pg_dump from the same major
 # version as the server, uploaded with rclone. rclone is the official build, the same version as in
 # infra/server.Dockerfile: Debian's package (1.60) got "501 Not Implemented" from R2 on uploads.
 FROM postgres:18 AS rclone

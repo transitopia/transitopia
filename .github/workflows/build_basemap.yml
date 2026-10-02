@@ -1,6 +1,6 @@
 name: Build BC Basemap
 
-# The site's basemap (V2-PLAN.md §5.12): a British Columbia extract of the Protomaps daily planet
+# The site's basemap (docs/DESIGN.md#regions): a British Columbia extract of the Protomaps daily planet
 # build, served by the tile worker at https://map-tiles.transitopia.org/protomaps-bc.json.
 
 on:

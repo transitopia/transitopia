@@ -1,4 +1,4 @@
-// Observations: ground truth that corrects the schedule-inferred trains (docs/skytrain-viz-PLAN.md §4.7).
+// Observations: ground truth that corrects the schedule-inferred trains (packages/transit-core/DESIGN.md#corrections).
 //
 // Observations reference stable identifiers: a service date plus a GTFS trip_id, or a stop and a
 // time. Never inferred run ids (e.g. "expo-012"), which change whenever runs are rebuilt. Times are

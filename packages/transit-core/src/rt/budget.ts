@@ -1,4 +1,4 @@
-// TransLink request budget (docs/OPEN-QUESTIONS.md #29): the RT leader polls each GTFS-RT feed on a
+// TransLink request budget (regions/metro-vancouver/OPEN-QUESTIONS.md #29): the RT leader polls each GTFS-RT feed on a
 // time-of-day schedule that fits a daily request cap, and a rolling 24-hour ledger enforces the cap.
 // Thresholds that depend on how often we poll (stale data, recorder coverage, how far apart two fixes
 // may be to interpolate between them, how long to predict past the latest fix) follow the schedule

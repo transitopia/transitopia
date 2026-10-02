@@ -1,4 +1,4 @@
-// Every dataset the site shows, with its credit and license (V2-PLAN.md §4.6, §10). Map layers and
+// Every dataset the site shows, with its credit and license (docs/DESIGN.md#attribution, DATA-LICENSES.md). Map layers and
 // the transit engine declare which of these they draw from, and the attribution control credits
 // exactly the ones visible.
 

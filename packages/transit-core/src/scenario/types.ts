@@ -1,4 +1,4 @@
-// Scenario definitions (docs/skytrain-viz-PLAN.md §4.8): alternate infrastructure and/or service, as config files in
+// Scenario definitions (packages/transit-core/DESIGN.md#scenarios): alternate infrastructure and/or service, as config files in
 // regions/metro-vancouver/scenarios/<name>/scenario.json, built by `npm run scenario <name>`.
 
 import type { LonLat } from "../geo.ts";

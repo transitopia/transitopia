@@ -1,5 +1,5 @@
 // Build the track network (segments, nodes with turns, stop positions) from way/node data
-// (docs/skytrain-viz-PLAN.md §4.1). Used by pipelines/import-osm.ts for OpenStreetMap and by scenarios, which feed it the
+// (packages/transit-core/DESIGN.md#track-graph). Used by pipelines/import-osm.ts for OpenStreetMap and by scenarios, which feed it the
 // base network plus future/custom track.
 //
 // Segments are ways split at junctions/switches (ids "w<wayId>.<piece>", stable while the way is

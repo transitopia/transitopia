@@ -1,4 +1,4 @@
-// Evaluate recorded SeaBus AIS fixes against the timetable (docs/skytrain-viz-PLAN.md §4.12): how many fixes match a
+// Evaluate recorded SeaBus AIS fixes against the timetable (packages/transit-core/DESIGN.md#seabus-ais): how many fixes match a
 // trip, how late each vessel ran, which vessel ran which block, and which berths were used.
 //
 //   npx tsx pipelines/eval-ais.ts [YYYYMMDD]      # default: today's service date

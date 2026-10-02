@@ -1,6 +1,6 @@
 // Jobs on the leader: each run of a job is keyed (usually by service date) in job_runs, so a job
 // runs once per key, a failed run is retried, and missed keys are caught up on startup. This covers
-// Phase 2's handful of daily jobs without a queue library (V2-PLAN.md §4.3 suggested one; revisit
+// a handful of daily jobs without a queue library (docs/DESIGN.md#decisions, "Server stack": revisit
 // when jobs need concurrency or fan-out).
 
 import type { Db } from "./connect.ts";

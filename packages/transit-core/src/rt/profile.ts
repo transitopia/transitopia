@@ -1,5 +1,5 @@
 // Bus travel-time profiles learned from recorded GTFS-RT positions, and a predictor that walks a bus
-// forward along its trip with them (docs/skytrain-viz-PLAN.md §4.5).
+// forward along its trip with them (packages/transit-core/DESIGN.md#buses).
 //
 // Profile, per trip shape and time-of-day band:
 //  - pace (s/m) per bin along the shape, from consecutive fixes of the same trip. Time between two

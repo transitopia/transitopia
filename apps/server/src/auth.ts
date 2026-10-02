@@ -1,7 +1,7 @@
-// Admin sign-in with GitHub (V2-PLAN.md §4.3, §0 "Accounts"). Phase 2 only needs admins; Phase 5
-// opens sign-in to everyone.
+// Admin sign-in with GitHub (apps/server/README.md#admin-api-and-sign-in). Only admins sign in for
+// now; reports and submissions will open sign-in to everyone.
 //
-// The site and the API are on different origins, and the mobile app (§8) can't rely on cookies,
+// The site and the API are on different origins, and a mobile app can't rely on cookies,
 // so a session is a bearer token: GitHub redirects back to /auth/github/callback, which creates a
 // session and sends the browser to <site>/admin#token=…; the site keeps the token and sends
 // `Authorization: Bearer …`. Only the token's SHA-256 is stored.
@@ -104,7 +104,7 @@ export class Auth {
     if (!userRes.ok) return back("error=github");
     const gh = (await userRes.json()) as { id: number; login: string };
     const admin = this.env.adminLogins.includes(gh.login.toLowerCase());
-    // Phase 2 has nothing for non-admins to sign in to.
+    // There's nothing for non-admins to sign in to yet.
     if (!admin) return back("error=not-admin");
     const user = await this.db
       .insertInto("users")

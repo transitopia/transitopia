@@ -1,6 +1,6 @@
 // Route GTFS stop patterns over the track graph: each consecutive platform pair becomes a path, with
 // the train's direction carried from hop to hop (no reversing between stops). Used by the validator
-// and by movement building (docs/skytrain-viz-PLAN.md §4.4).
+// and by movement building (packages/transit-core/DESIGN.md#movements-and-playback).
 
 import type { PlanPattern, ServicePlan } from "../plan/types.ts";
 import type { Dir, Path, TrackGraph, TrackPos } from "./graph.ts";

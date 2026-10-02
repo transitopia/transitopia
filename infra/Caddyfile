@@ -1,4 +1,4 @@
-# api.transitopia.org, behind Cloudflare's proxy (V2-PLAN.md §7.2). TLS between Cloudflare and
+# api.transitopia.org, behind Cloudflare's proxy (deployment/README.md#hosting). TLS between Cloudflare and
 # this VM uses a Cloudflare Origin CA certificate (SSL/TLS mode "Full (strict)"), saved as
 # infra/certs/origin.pem and origin.key; see deployment/api-server-setup.md.
 {

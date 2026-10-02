@@ -1,6 +1,6 @@
 # Disruptions
 
-Track out of service and reduced service for a period, applied by the dispatcher (docs/skytrain-viz-PLAN.md §4.11). Put JSON files here, then run `npm run build:dispatch` (part of `npm run data`); the RT service re-dispatches live when a file changes. Only disruptions with `"status": "confirmed"` apply.
+Track out of service and reduced service for a period, applied by the dispatcher (packages/transit-core/DESIGN.md#dispatcher). Put JSON files here, then run `npm run build:dispatch` (part of `npm run data`); the RT service re-dispatches live when a file changes. Only disruptions with `"status": "confirmed"` apply.
 
 In production, disruptions live in the server's database and are reviewed at https://www.transitopia.org/admin (drafts from alerts, previews on the map, confirm or discard); these files seed a new database and are what local runs without a database use. `npm run corrections -- pull` fetches production's confirmed ones in this format.
 

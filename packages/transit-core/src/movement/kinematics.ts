@@ -1,5 +1,5 @@
 // Motion profiles for a single stop-to-stop leg. Given the leg's distance and scheduled duration,
-// produce distance-covered as a function of elapsed time. See docs/skytrain-viz-PLAN.md §4.4.
+// produce distance-covered as a function of elapsed time. See packages/transit-core/DESIGN.md#movements-and-playback.
 
 export interface Kinematics {
   accel: number; // m/s²

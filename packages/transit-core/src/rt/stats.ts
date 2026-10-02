@@ -1,4 +1,4 @@
-// Per-route statistics for one service date (V2-PLAN.md §4.4), from observed stop times, the
+// Per-route statistics for one service date (docs/DESIGN.md#retention-and-statistics), from observed stop times, the
 // timetable, cancellations and the recorder's coverage. Rows are per route, direction and time
 // band (a trip belongs to the band of its first departure), plus "day" for the whole date.
 //

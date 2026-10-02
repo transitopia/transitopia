@@ -46,7 +46,7 @@ function basemapAssets(): Plugin {
   };
 }
 
-/** Cloudflare Web Analytics (cookieless; V2-PLAN.md §7.6), when a site token is configured. */
+/** Cloudflare Web Analytics (cookieless; apps/web/README.md#analytics), when a site token is configured. */
 function analytics(token: string | undefined): Plugin {
   return {
     name: "transitopia-analytics",

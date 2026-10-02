@@ -1,5 +1,5 @@
 // Play back movement files: train positions on the track graph as a pure function of
-// (movements, plan, time) (docs/skytrain-viz-PLAN.md §4.4). Revenue trips take their times from the service plan
+// (movements, plan, time) (packages/transit-core/DESIGN.md#movements-and-playback). Revenue trips take their times from the service plan
 // (with the same modelled dwell as the schedule engine) and their paths from the routed patterns.
 
 import type { LonLat } from "../geo.ts";
@@ -164,7 +164,7 @@ export class TrainPlayback {
 
   /**
    * Trains visible at `sec` (service-day seconds) of this file's service day. With a dispatch patch
-   * applied (docs/skytrain-viz-PLAN.md §4.11), runs carry their observations: positions within 90 s of a sighting are
+   * applied (packages/transit-core/DESIGN.md#dispatcher), runs carry their observations: positions within 90 s of a sighting are
    * observed, times moved by observations or disruptions interpolated.
    */
   vehiclesAt(

@@ -22,7 +22,7 @@ import {
   type MapType,
 } from "./MapUtils.ts";
 
-/** Where the basemap has tiles (BC, V2-PLAN.md §5.12), with some margin. */
+/** Where the basemap has tiles (BC, docs/DESIGN.md#regions), with some margin. */
 const MAX_BOUNDS: [[number, number], [number, number]] = [
   [-142, 46],
   [-112, 62],
@@ -96,7 +96,7 @@ export const Map: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       hash: "map",
       maxBounds: MAX_BOUNDS,
       style: siteStyle(themeRef.current),
-      // Credits come from our own control, for exactly the data on screen (V2-PLAN.md §4.6).
+      // Credits come from our own control, for exactly the data on screen (docs/DESIGN.md#attribution).
       attributionControl: false,
       pitchWithRotate: false,
     });

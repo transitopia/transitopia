@@ -1,15 +1,15 @@
 {
-  "$comment": "What the server keeps and derives from real-time data (V2-PLAN.md §4.4). Read by apps/server/src/jobs/.",
-  "$retentionDays": "Raw real-time data (GTFS-RT positions, AIS fixes: database rows and hourly files) is deleted after this many days. Decided (V2-PLAN.md §0 'Retention'). Observed stop times, statistics, service changes, alerts and GTFS feeds are kept indefinitely.",
+  "$comment": "What the server keeps and derives from real-time data (docs/DESIGN.md#retention-and-statistics). Read by apps/server/src/jobs/.",
+  "$retentionDays": "Raw real-time data (GTFS-RT positions, AIS fixes: database rows and hourly files) is deleted after this many days. Decided (docs/DESIGN.md#decisions 'Retention'). Observed stop times, statistics, service changes, alerts and GTFS feeds are kept indefinitely.",
   "retentionDays": 60,
-  "$observed": "Observed stop times from recorded positions (packages/transit-core/src/rt/observed.ts). Guesses; see docs/OPEN-QUESTIONS.md #30.",
+  "$observed": "Observed stop times from recorded positions (packages/transit-core/src/rt/observed.ts). Guesses; see regions/metro-vancouver/OPEN-QUESTIONS.md #30.",
   "observed": {
     "maxOffsetM": 100,
     "maxGapS": 600,
     "stopToleranceM": 30,
     "backtrackM": 50
   },
-  "$stats": "Daily per-route statistics (packages/transit-core/src/rt/stats.ts). onTimeS is decided (V2-PLAN.md §0 'Statistics': 1 min early to 3 min late at timepoints). maxPrecisionS, minTripCoverage, bunchingShare and the bands are guesses; see docs/OPEN-QUESTIONS.md #30. Bands are seconds since the service day's start, by a trip's first scheduled departure.",
+  "$stats": "Daily per-route statistics (packages/transit-core/src/rt/stats.ts). onTimeS is decided (docs/DESIGN.md#decisions 'Statistics': 1 min early to 3 min late at timepoints). maxPrecisionS, minTripCoverage, bunchingShare and the bands are guesses; see regions/metro-vancouver/OPEN-QUESTIONS.md #30. Bands are seconds since the service day's start, by a trip's first scheduled departure.",
   "stats": {
     "onTimeS": [-60, 180],
     "maxPrecisionS": 300,

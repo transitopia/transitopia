@@ -1,5 +1,5 @@
 // Shareable view state in the query string: ?date=2026-09-28&t=08:15:00&rate=10&paused=1&select=<vehicle>
-// (V2-PLAN.md §1.3; `v` is the older name for `select`).
+// (apps/web/README.md#modes-and-url-state; `v` is the older name for `select`).
 // No time parameters means "live". The map position lives in the hash (MapLibre's hash option).
 // `t` is service-day time, so it may exceed 24:00 for after-midnight trips.
 

@@ -1,5 +1,5 @@
 // Schedule-based vehicle positions: a pure function of (plan, service date, time). This is the
-// "estimated" layer for every mode; SkyTrain will switch to track-level movements (docs/skytrain-viz-PLAN.md §4.4),
+// "estimated" layer for every mode; SkyTrain will switch to track-level movements (packages/transit-core/DESIGN.md#movements-and-playback),
 // and buses overlay real-time observations on top (§4.5).
 
 import {

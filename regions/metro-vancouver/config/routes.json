@@ -1,5 +1,5 @@
 {
-  "$comment": "Routes shown on the map. Matched against GTFS routes.txt by name (never route_id, which changes between feeds). 'kind' drives how vehicles are modelled: 'skytrain' = track-level (docs/skytrain-viz-PLAN.md §4.1–4.4), 'shape' = interpolated along GTFS shapes, 'bus' = GTFS-RT with schedule fallback. 'color' is optional; when omitted the GTFS route_color is used. GTFS has no colours for buses, so each gets a distinct colour for legibility.",
+  "$comment": "Routes shown on the map. Matched against GTFS routes.txt by name (never route_id, which changes between feeds). 'kind' drives how vehicles are modelled: 'skytrain' = track-level (packages/transit-core/DESIGN.md#track-graph–4.4), 'shape' = interpolated along GTFS shapes, 'bus' = GTFS-RT with schedule fallback. 'color' is optional; when omitted the GTFS route_color is used. GTFS has no colours for buses, so each gets a distinct colour for legibility.",
   "routes": [
     {
       "key": "expo",

@@ -1,5 +1,5 @@
 {
-  "$comment": "Canada Line maintenance, night of Sun Sep 27 2026 (TransLink alert, seen 2026-09-26; docs/skytrain-viz-PLAN.md §4.10). The alerts for Sep 28–30 are confirmed separately (alert-*.json); this night's alert had expired by the time alert drafting existed, so the start time (21:00) and headways are taken from the Sep 28 alert's pattern: guesses. Riders see all trains board at Lansdowne Platform 1 (docs/skytrain-viz-PLAN.md §4.10), so that's the track kept open.",
+  "$comment": "Canada Line maintenance, night of Sun Sep 27 2026 (TransLink alert, seen 2026-09-26; packages/transit-core/DESIGN.md#disruptions-and-alerts). The alerts for Sep 28–30 are confirmed separately (alert-*.json); this night's alert had expired by the time alert drafting existed, so the start time (21:00) and headways are taken from the Sep 28 alert's pattern: guesses. Riders see all trains board at Lansdowne Platform 1 (packages/transit-core/DESIGN.md#disruptions-and-alerts), so that's the track kept open.",
   "disruptions": [
     {
       "id": "2026-09-27-canada-brighouse-single-track",

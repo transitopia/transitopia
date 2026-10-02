@@ -18,7 +18,7 @@ export interface ServerEnv {
   databaseUrl: string | undefined;
   /**
    * Poll TransLink and aisstream.io with the keys in the environment or .secrets. Off unless set:
-   * every poll spends the key's daily budget, which production needs (V2-PLAN.md §7.5).
+   * every poll spends the key's daily budget, which production needs (docs/DESIGN.md#upstream-request-budget).
    */
   poll: boolean;
   /** Only forward /rt/* here (e.g. https://api.transitopia.org) instead of polling. */

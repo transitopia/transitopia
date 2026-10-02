@@ -1,4 +1,4 @@
-// What the leader records in PostgreSQL (V2-PLAN.md §4.4): upstream requests (the budget ledger),
+// What the leader records in PostgreSQL (docs/DESIGN.md#where-data-lives): upstream requests (the budget ledger),
 // raw positions and AIS fixes for every route, service changes and alerts, and dispatch versions.
 // The hourly NDJSON files (recorder.ts) are written alongside; both expire after the retention period.
 

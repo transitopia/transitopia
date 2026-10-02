@@ -1,6 +1,6 @@
 // One service date's whole timetable, every route (unlike plan.json, which has only the routes we
 // draw), read from the archived GTFS zips in var/raw/gtfs/. For observed stop times and statistics,
-// which cover every bus route (V2-PLAN.md §4.4).
+// which cover every bus route (docs/DESIGN.md#retention-and-statistics).
 
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";

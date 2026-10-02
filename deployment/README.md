@@ -1,8 +1,27 @@
 ## Deployment Notes
 
+How Transitopia is hosted, deployed and operated. The system's design is in [docs/DESIGN.md](../docs/DESIGN.md).
+
+### Hosting
+
+| Host | Serves | Where |
+|---|---|---|
+| `www.transitopia.org` | The site (`apps/web`) | Cloudflare Pages (`transitopia-web`), built from `prod` |
+| `map-tiles.transitopia.org` | Basemap and cycling tiles | A Cloudflare worker (`worker.js`) over the R2 bucket `transitopia-maps` |
+| `data.transitopia.org` | The published transit data | The R2 bucket `transitopia-data` |
+| `api.transitopia.org` | The server (`apps/server`) | A FullHost VM in Toronto, behind Cloudflare's proxy (only Cloudflare can connect) |
+
+- **FullHost** (Canadian, with data centres in Vancouver, Calgary, Toronto and Montreal): the VM is Ubuntu 26.04 LTS, 4 vCPU, 8 GB RAM, 100 GB SSD, $36/month, in Toronto. Vancouver only offered a 2 vCPU plan at $48; the ~60–70 ms from Vancouver doesn't matter behind Cloudflare's cache, and local times come from the region's time zone, never the host's. Docker Compose runs the server, PostgreSQL (PostGIS), Caddy and backups.
+- **Cloudflare**: DNS, the static site, the CDN and edge cache (including `/rt/live` and the published data), WAF and rate limiting in front of `api.transitopia.org`, the tile worker, Web Analytics, and **R2**: `transitopia-maps` (tiles), `transitopia-data` (published transit data) and the private `transitopia-archive` (backups, raw recordings, GTFS feeds, developer snapshots). R2 has no Canadian location; nothing here is sensitive. Keeping all object storage at one provider means one toolchain (rclone), no egress fees for snapshot pulls, and backups at a different provider from the VM.
+- Bucket locations are settings (`DATA_PUBLISH_REMOTE`, `ARCHIVE_REMOTE`), and everything runs as portable Docker and S3, so either part can move.
+
+### Environments
+
+Production and local development. Local development never polls TransLink (the key's 1,000 requests a day belong to production): it forwards to production's API or uses snapshots ([below](#snapshots-for-development)). A staging environment can be added cheaply: configuration is in env files, hostnames and buckets are settings, migrations run unattended, and a second Compose project on the same VM (with its own database and buckets) would do. Staging would never poll TransLink either.
+
 ### Branches
 
-Work happens on `main`. Production deploys from `prod`: merge `main` into `prod` and push. Cloudflare
+Work happens on feature branches merged into `main`. Production deploys from `prod`: merge `main` into `prod` and push. Cloudflare
 Pages builds the site from `prod`, and `.github/workflows/deploy_server.yml` deploys the server.
 Scheduled workflows (the basemap and cycling builds) run from `main`, the default branch.
 
@@ -38,11 +57,8 @@ To upload by hand:
     rclone copy var/public/tiles/protomaps-bc.pmtiles transitopia-r2:transitopia-maps --s3-no-check-bucket
 
 The changes will not be visible for a while (4 hours?) unless you purge the cache at
-https://dash.cloudflare.com AND view the site in an incognito window.
-
-TODO: maybe put a version string in the filename so it clears the cache better,
-and/or so we can have time-travel maps / map history in the future (once map
-format is stabilized). https://github.com/transitopia/transitopia/issues/8
+https://dash.cloudflare.com AND view the site in an incognito window. Versioned file names would
+avoid that ([#8](https://github.com/transitopia/transitopia/issues/8)).
 
 ### Transit data (data.transitopia.org)
 
@@ -58,7 +74,7 @@ One-time setup (done):
 2. Add a CORS policy allowing `GET` and `HEAD` from `https://www.transitopia.org` (and
    `https://transitopia.org`, `https://*.transitopia-web.pages.dev`, `http://localhost:5173`).
 3. Cache: `data/manifest.json` should be short-lived (e.g. 5 minutes); everything else can be cached
-   for longer. (Content-hashed paths are planned, V2-PLAN.md §5.2.) The upload stores
+   for longer (the other paths aren't content-addressed yet, and some are rewritten). The upload stores
    `Cache-Control` on each object when it uploads (5 minutes for the manifest, a day for the rest),
    and a Cache Rule for `data.transitopia.org` makes the edge follow it (Cloudflare doesn't cache
    `.json` by default). Set the same headers when uploading by hand, or an overwrite drops them.
@@ -74,14 +90,14 @@ and the repo is an npm workspace, so the Cloudflare build settings need:
 - Root directory: the repository root
 - Build command: `npm ci && npm run build -w @transitopia/web`
 - Output directory: `apps/web/dist`
-- `CF_WEB_ANALYTICS_TOKEN`: the Cloudflare Web Analytics site token (optional; V2-PLAN.md §7.6).
+- `CF_WEB_ANALYTICS_TOKEN`: the Cloudflare Web Analytics site token (optional; [apps/web → Analytics](../apps/web/README.md#analytics)).
   Alternatively, turn on Web Analytics in the Cloudflare dashboard, which injects the beacon itself.
 
 Production data locations are in `apps/web/.env.production`.
 
 ### The server (api.transitopia.org)
 
-The server (`apps/server`, V2-PLAN.md §4.3, §7) runs on a FullHost VM in Toronto with Docker
+The server ([apps/server](../apps/server/README.md)) runs on a FullHost VM in Toronto with Docker
 Compose (`infra/compose.yml`): the server, PostgreSQL + PostGIS, Caddy for TLS, and a backup
 container. Cloudflare proxies `api.transitopia.org` to it. The leader server:
 
@@ -92,9 +108,6 @@ container. Cloudflare proxies `api.transitopia.org` to it. The leader server:
   archives new GTFS feeds;
 - computes observed stop times and route statistics for each finished service date;
 - copies closed recordings to the archive bucket hourly.
-
-Backups: `pg_dump` nightly at 11:30 UTC to `<ARCHIVE_REMOTE>/backups/db/` (30 days), plus a
-developer snapshot without users, sessions or raw rows (`npm run snapshot:pull -- --db`).
 
 Setting it up (the VM, Docker, SSH, firewall, accounts, Cloudflare, configuration and the first
 start) is in [api-server-setup.md](api-server-setup.md).
@@ -129,8 +142,27 @@ Disk, per day of every route:
 | Route statistics, trip changes, alerts, dispatch versions | < 5 MB | indefinitely | small |
 
 Observed stop times dominate: kept in Postgres they grow by ~78 GB a year, which the VM's 100 GB
-disk holds for about a year. V2-PLAN.md §4.4 plans monthly files in object storage with only recent
-months in Postgres; that export isn't built yet and should be before the disk fills.
+disk holds for about a year. Older months need to move to monthly files in object storage, with only
+recent months in Postgres ([docs/DESIGN.md → Retention and statistics](../docs/DESIGN.md#retention-and-statistics));
+that export isn't built yet and must be before the disk fills.
+
+#### Backups
+
+`pg_dump` nightly at 11:30 UTC to `<ARCHIVE_REMOTE>/backups/db/`, keeping 30 days, from the backup
+container (`infra/backup/`, a different provider from the VM). Each dump grows with the observed stop
+times, so revisit how many to keep once they're large; continuous WAL archiving (WAL-G) can replace
+nightly dumps later. The backups protect the long-lived data (statistics, observed stop times,
+curated corrections); git and GitHub cover the rest. Test a restore every quarter
+([Operations](#operations)).
+
+#### Snapshots for development
+
+Developers work against real data without polling: `npm run snapshot:pull -- --from 2026-09-20 --to 2026-09-27 [--db]`
+downloads recorded hours for that range from the archive bucket (the last 60 days only; older periods
+have statistics and observed stop times but no raw fixes), and with `--db` restores the nightly
+developer snapshot: every table except users, sessions and raw rows. It needs rclone access to
+`transitopia-archive`. Snapshots stay private to the team until each source's terms allow
+publishing them ([DATA-LICENSES.md](../DATA-LICENSES.md)).
 
 #### Monitoring
 
@@ -152,7 +184,7 @@ Migrations run when the server starts. After changing `infra/backup/`, rebuild i
 - Logs: `docker compose -f infra/compose.yml logs -f server` (or `db`, `caddy`, `backup`).
 - A psql shell: `docker compose -f infra/compose.yml exec db psql -U transitopia`.
 - Recompute a date's statistics: `docker compose -f infra/compose.yml exec server npm run stats -- 20261001`.
-- Restore a backup (test quarterly, V2-PLAN.md §7.3, on a scratch database or VM):
+- Restore a backup (test it quarterly, on a scratch database or VM):
 
       rclone copy r2:transitopia-archive/backups/db/transitopia-<date>.dump .
       createdb restore_test && pg_restore -d restore_test transitopia-<date>.dump

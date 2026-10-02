@@ -1,5 +1,4 @@
-// Copies closed recordings to object storage (V2-PLAN.md §4.4: hourly NDJSON.gz files for dev
-// snapshots and replay) and expires raw data after the retention period, locally, in the database
+// Copies closed recordings to object storage (for developer snapshots and replay; deployment/README.md#snapshots-for-development) and expires raw data after the retention period, locally, in the database
 // and in the archive. Service changes, alerts and dispatch versions are kept.
 
 import { existsSync } from "node:fs";

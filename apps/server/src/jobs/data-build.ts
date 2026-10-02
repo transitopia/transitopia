@@ -1,5 +1,5 @@
-// The daily transit data build on the server (V2-PLAN.md §7.4: "GTFS feed detection and builds run
-// on the server, which publishes to object storage"). It runs the same steps as `npm run data`, with
+// The daily transit data build on the server (apps/server/README.md#jobs). It detects new GTFS feeds and
+// publishes to object storage. It runs the same steps as `npm run data`, with
 // the confirmed corrections exported from the database, then archives new GTFS feeds and publishes
 // var/public/data for data.transitopia.org. Building here keeps the live dispatcher's base plans
 // identical to what browsers load: a dispatch patch only fits the build it was made from.

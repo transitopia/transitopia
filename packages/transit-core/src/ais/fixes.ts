@@ -1,5 +1,5 @@
 // AIS fixes: parsing aisstream.io messages, the compact wire format of GET /rt/ais/fixes, and
-// which fixes belong to a service date. Shared by the RT service and the browser (docs/skytrain-viz-PLAN.md §4.12).
+// which fixes belong to a service date. Shared by the RT service and the browser (packages/transit-core/DESIGN.md#seabus-ais).
 
 import type { RtVehicle } from "../rt/types.ts";
 import { serviceDayStart } from "../time.ts";

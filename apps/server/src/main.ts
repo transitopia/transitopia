@@ -1,4 +1,4 @@
-// The Transitopia server (V2-PLAN.md §4.3): the real-time API, and on the leader the budgeted
+// The Transitopia server (apps/server/README.md): the real-time API, and on the leader the budgeted
 // pollers, recorder, live dispatcher and scheduled jobs. Settings come from the environment (env.ts).
 //
 //   npm run server                                   # local: schedules only, or forward (below)
@@ -70,7 +70,7 @@ const jobs =
 
 const service = new RtService({
   // Without RT_POLL, keys in .secrets or the environment are ignored: polling spends the key's
-  // daily budget, and production needs all of it (V2-PLAN.md §7.5).
+  // daily budget, and production needs all of it (docs/DESIGN.md#upstream-request-budget).
   ...(env.poll ? {} : { apiKey: null, aisApiKey: null }),
   forwardTo: env.forwardTo,
   store,

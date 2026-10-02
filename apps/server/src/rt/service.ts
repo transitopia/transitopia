@@ -1,5 +1,5 @@
 // The RT service: one upstream poller shared by all clients, an in-memory cache of the latest
-// snapshot, the recorder, and a framework-free HTTP handler (docs/skytrain-viz-PLAN.md §4.6).
+// snapshot, the recorder, and a framework-free HTTP handler (apps/server/README.md#real-time-service).
 //
 //   GET /rt/live                        latest snapshot (JSON, CORS, Cache-Control max-age=10)
 //   GET /rt/history?date=YYYY-MM-DD&hour=HH   recorded snapshots for one local hour (NDJSON)
@@ -9,7 +9,7 @@
 //   GET /rt/changes?date=YYYYMMDD       bus trips cancelled or skipping stops, and bus route alerts, for a service date
 //   GET /rt/dispatch                    live dispatch: current patch per service date (index)
 //   GET /rt/dispatch/<date>/<v>.json    a patch version (immutable)
-//   GET /rt/ais/fixes?date=YYYYMMDD[&after=cursor]   SeaBus AIS fixes for a service date (docs/skytrain-viz-PLAN.md §4.12)
+//   GET /rt/ais/fixes?date=YYYYMMDD[&after=cursor]   SeaBus AIS fixes for a service date (packages/transit-core/DESIGN.md#seabus-ais)
 //
 // Client requests never trigger upstream calls: the upstream rate is fixed by the poll schedule,
 // which keeps TransLink requests under a daily cap (packages/transit-core/src/rt/budget.ts, OPEN-QUESTIONS #29). A
@@ -124,7 +124,7 @@ export interface RtServiceOptions {
   aisHistoryDir?: string;
   /** Where confirmed disruptions live and alert drafts are written (default regions/metro-vancouver/disruptions). */
   disruptionsDir?: string;
-  /** Live dispatch (docs/skytrain-viz-PLAN.md §4.11): on by default; false disables it, an object configures it. */
+  /** Live dispatch (apps/server/README.md#live-dispatch-and-previews): on by default; false disables it, an object configures it. */
   dispatch?: boolean | LiveDispatchOptions;
   /** Record to PostgreSQL as well as files (and keep the request ledger there). */
   store?: Store | undefined;

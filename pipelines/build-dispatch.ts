@@ -1,4 +1,4 @@
-// Publish dispatch patches for dates with inputs (docs/skytrain-viz-PLAN.md §4.11): re-dispatch each date that has
+// Publish dispatch patches for dates with inputs (packages/transit-core/DESIGN.md#dispatcher): re-dispatch each date that has
 // observations or disruptions and write what changed against its base plan.
 //   var/public/data/observations/*.json (from build:observations) + regions/metro-vancouver/disruptions/*.json
 //     → var/public/data/dispatch/<date>.json + index.json

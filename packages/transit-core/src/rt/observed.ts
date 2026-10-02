@@ -1,4 +1,4 @@
-// Observed stop times (V2-PLAN.md §4.4): when a vehicle actually served each stop of a trip, from
+// Observed stop times (docs/DESIGN.md#retention-and-statistics): when a vehicle actually served each stop of a trip, from
 // its recorded GTFS-RT fixes. Kept indefinitely, they're the atom behind every statistic, so each
 // carries its precision: the time between the two fixes it was interpolated from (0 when the vehicle
 // reported itself stopped at that stop).

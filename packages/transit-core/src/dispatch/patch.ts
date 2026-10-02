@@ -1,4 +1,4 @@
-// Dispatch patches (docs/skytrain-viz-PLAN.md §4.11): what one service date's inputs (observations, disruptions)
+// Dispatch patches (packages/transit-core/DESIGN.md#dispatcher): what one service date's inputs (observations, disruptions)
 // change in its base plan. Built at build time for static hosting and by the RT service live, in
 // the same format; clients apply the patch for the date they show.
 

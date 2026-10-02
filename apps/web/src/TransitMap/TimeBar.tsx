@@ -10,7 +10,7 @@ import { clockTime, fromIsoDate, isoDate, rateLabel } from "./format.ts";
 const TICKS = Array.from({ length: 12 }, (_, i) => 4 + i * 2);
 
 /**
- * Time controls (V2-PLAN.md §5.2): play/pause, time, date, speed, Live, and a slider across the
+ * Time controls (apps/web/README.md#transit-mode): play/pause, time, date, speed, Live, and a slider across the
  * service day, shaded where real bus positions were recorded.
  */
 export const TimeBar: React.FC<{

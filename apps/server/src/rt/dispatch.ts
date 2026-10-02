@@ -1,4 +1,4 @@
-// Live dispatch (docs/skytrain-viz-PLAN.md §4.11, M8.4): one dispatcher per deployment, shared by every client.
+// Live dispatch (apps/server/README.md#live-dispatch-and-previews): one dispatcher per deployment, shared by every client.
 //
 // Every `dispatchCheckS` it reads the confirmed corrections (the database, or without one
 // regions/metro-vancouver/observations/*.json and disruptions/*.json) and, for each service date near
@@ -8,7 +8,7 @@
 // Versions are kept in var/dispatch-history/<date>/<version>.json (and listed in dispatch_versions),
 // so any version can be served again (and, later, an "as known then" view).
 //
-// Previews (V2-PLAN.md §5.6): an admin can dispatch a date with a correction that isn't confirmed
+// Previews (docs/DESIGN.md#corrections-and-previews): an admin can dispatch a date with a correction that isn't confirmed
 // yet. That's a version like any other, reachable by its link, but never current.
 
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";

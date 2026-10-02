@@ -1,4 +1,4 @@
-// Review and confirm disruptions (docs/skytrain-viz-PLAN.md §4.10–4.11, M8.5).
+// Review and confirm disruptions (packages/transit-core/DESIGN.md#disruptions-and-alerts).
 //
 //   npm run disruptions                               # list confirmed, drafts, and alerts we couldn't parse
 //   npm run disruptions -- pull [--from <url>]        # draft from the running RT service's /rt/alerts

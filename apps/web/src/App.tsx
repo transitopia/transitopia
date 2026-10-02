@@ -14,9 +14,9 @@ import {
   AttributionProvider,
 } from "./Attribution/Attribution.tsx";
 
-// The transit engine (and transit-core) is a separate chunk, loaded on /transit (V2-PLAN.md §4.2).
+// The transit engine (and transit-core) is a separate chunk, loaded on /transit (apps/web/README.md#transit-mode).
 const TransitMap = React.lazy(() => import("./TransitMap/TransitMap.tsx"));
-// The admin pages (V2-PLAN.md §4.3), without the map.
+// The admin pages (apps/web/README.md#admin), without the map.
 const Admin = React.lazy(() => import("./Admin/Admin.tsx"));
 
 const modeButton =
@@ -78,7 +78,7 @@ function MapApp() {
             <Route path="/cycling">
               <CyclingMap />
             </Route>
-            {/* Walking returns when it has real content (V2-PLAN.md §2). */}
+            {/* Walking is disabled for now until it has real content (docs/DESIGN.md#goals-and-scope). */}
             <Route path="/walking">
               <Redirect to={`/cycling${location.hash}`} replace />
             </Route>

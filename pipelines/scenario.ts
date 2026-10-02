@@ -1,4 +1,4 @@
-// Build a scenario (docs/skytrain-viz-PLAN.md §4.8): alternate track and/or service defined in
+// Build a scenario (packages/transit-core/DESIGN.md#scenarios): alternate track and/or service defined in
 // regions/metro-vancouver/scenarios/<name>/scenario.json, run through the same pipeline as the base network:
 // compose tracks → modify service → map platforms → infer runs → movements. Output:
 //   var/public/data/scenarios/<name>/{manifest.json, plan.json, tracks.geojson, movements/}

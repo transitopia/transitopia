@@ -1,4 +1,4 @@
-// Convert the OSM extract (pipelines/fetch-osm.ts) into our track model (docs/skytrain-viz-PLAN.md §4.1):
+// Convert the OSM extract (pipelines/fetch-osm.ts) into our track model (packages/transit-core/DESIGN.md#track-graph):
 //   regions/metro-vancouver/infrastructure/tracks.generated.geojson   in-service track (committed; don't hand-edit)
 //   regions/metro-vancouver/infrastructure/future.generated.geojson   track with a future opening_date (scenario material)
 //
@@ -45,7 +45,7 @@ function isFuture(tags: Record<string, string>, today: string): boolean {
  * Track ways we model: railway=subway, plus existing SkyTrain track that OSM marks as under
  * construction/disused (e.g. the Braid–Lougheed Expo track, "opening_date 2027-06") when it is still
  * a member of a current route relation. GTFS keeps scheduling both tracks there, so we treat it as in
- * service but flag it (docs/OPEN-QUESTIONS.md #17).
+ * service but flag it (regions/metro-vancouver/README.md#braid-and-the-omc4-works).
  */
 function isTrack(w: OsmWay, routeMembers: Set<number>): boolean {
   const t = w.tags ?? {};

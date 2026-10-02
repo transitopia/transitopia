@@ -1,4 +1,4 @@
-// Learn bus travel-time profiles from recorded GTFS-RT positions (docs/skytrain-viz-PLAN.md §4.5):
+// Learn bus travel-time profiles from recorded GTFS-RT positions (packages/transit-core/DESIGN.md#buses):
 //   var/rt-history/**  →  var/public/data/feeds/<version>/rt-profile.json (one per feed with data)
 //
 //   npm run build:rt-profile

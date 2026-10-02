@@ -1,4 +1,4 @@
-// Turns a series of RT snapshots into bus positions at any instant, with provenance (docs/skytrain-viz-PLAN.md §4.5):
+// Turns a series of RT snapshots into bus positions at any instant, with provenance (packages/transit-core/DESIGN.md#buses):
 //  - between two fixes of the same vehicle ≤ maxInterpolateS apart (which, like maxExtrapolateS, can
 //    depend on the time, following how often positions are polled: packages/transit-core/src/rt/budget.ts): moved along the trip's shape,
 //    paced by the travel-time profile (stops and slow sections) and fitted to both fixes;

@@ -1,4 +1,4 @@
-// Browser side of real-time buses (docs/skytrain-viz-PLAN.md §4.5–4.6). Near "now" it polls /rt/live; at other times
+// Browser side of real-time buses (packages/transit-core/DESIGN.md#buses). Near "now" it polls /rt/live; at other times
 // it loads recorded hours from /rt/history. It also tracks recorder coverage, which decides per
 // instant whether buses are shown from RT data (observed/interpolated) or schedule (estimated), and
 // loads TransLink's service changes (cancelled trips, skipped stops, detours) for the days shown.

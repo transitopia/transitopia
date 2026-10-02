@@ -1,4 +1,4 @@
-// Corrections: observations and disruptions (V2-PLAN.md §5.6). With a database they live in the
+// Corrections: observations and disruptions (docs/DESIGN.md#corrections-and-previews). With a database they live in the
 // observation_sets and disruptions tables with a review state (draft → previewing → confirmed |
 // discarded); without one, in the files under regions/metro-vancouver/ as before. The live
 // dispatcher reads whichever applies through `Corrections`; `export` writes the confirmed ones back

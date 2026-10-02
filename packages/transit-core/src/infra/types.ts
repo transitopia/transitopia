@@ -1,4 +1,4 @@
-// Track infrastructure model (docs/skytrain-viz-PLAN.md §4.1). Stored as GeoJSON so it opens in geojson.io / QGIS:
+// Track infrastructure model (packages/transit-core/DESIGN.md#track-graph). Stored as GeoJSON so it opens in geojson.io / QGIS:
 // LineString features are track segments, Point features are nodes (with their allowed turns) and
 // OSM stop positions. Built by pipelines/import-osm.ts; hand fixes live in overrides.json.
 

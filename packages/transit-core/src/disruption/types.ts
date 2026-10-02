@@ -1,4 +1,4 @@
-// Disruptions (docs/skytrain-viz-PLAN.md §4.10–4.11): track out of service and service changes for a period, as
+// Disruptions (packages/transit-core/DESIGN.md#disruptions-and-alerts): track out of service and service changes for a period, as
 // dispatcher inputs. Written by hand in regions/metro-vancouver/disruptions/*.json, or drafted from TransLink alerts and
 // confirmed by a person (alerts don't say which track is closed).
 

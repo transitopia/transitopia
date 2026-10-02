@@ -1,6 +1,6 @@
 # Observations
 
-Ground-truth corrections to the schedule-inferred SkyTrain trains and to timetable vehicles (SeaBus, WCE, buses without real-time data) (docs/skytrain-viz-PLAN.md §4.7). Put JSON files here, e.g. `2026-09-28-rider-reports.json`, then run `npm run build:observations && npm run build:dispatch` (both run as part of `npm run data`). SkyTrain observations are applied centrally by the dispatcher, which re-dispatches each observed date (`var/public/data/dispatch/<date>.json`); the app applies timetable-vehicle observations itself.
+Ground-truth corrections to the schedule-inferred SkyTrain trains and to timetable vehicles (SeaBus, WCE, buses without real-time data) (packages/transit-core/DESIGN.md#corrections). Put JSON files here, e.g. `2026-09-28-rider-reports.json`, then run `npm run build:observations && npm run build:dispatch` (both run as part of `npm run data`). SkyTrain observations are applied centrally by the dispatcher, which re-dispatches each observed date (`var/public/data/dispatch/<date>.json`); the app applies timetable-vehicle observations itself.
 
 ```json
 {

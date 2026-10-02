@@ -18,13 +18,14 @@ This repository is a monorepo (npm workspaces) containing most of the parts you 
 * `apps/server`: the real-time service: it polls available data feeds (GTFS Realtime, AIS, etc.), streams the data to the web app, adheres to rate limits, records history, and re-dispatches trains live.
 * `packages/transit-core`: the DOM-free transit engine: GTFS, the SkyTrain track graph, run inference, a signalling-aware train dispatcher, playback, corrections, and bus prediction.
 * `packages/transit-map`: the transit map engine (clock, playback, WebGL vehicle layers), mounted by the website on `/transit`.
+* `packages/db`: the server's PostgreSQL migrations and types.
 * `packages/map-style`: the site's basemap style (Protomaps, light and dark).
 * `packages/shared`: definitions shared by the website and server, such as the dataset registry behind the map's credits.
 * `pipelines`: build-time data pipelines and validators.
 * `regions/metro-vancouver`: curated data for Metro Vancouver (config, track infrastructure, scenarios, observations and disruptions).
 * `map-layers`: A Transitopia profile for [Planetiler](https://github.com/onthegomap/planetiler) that generates our unique map layers/overlays (currently just the cycling/micromobility map).
 
-[CLAUDE.md](CLAUDE.md) has more detail on the layout and every command.
+How it all fits together is in [docs/DESIGN.md](docs/DESIGN.md), with each part's design in its own folder. [CLAUDE.md](CLAUDE.md) lists every command. Planned work is in [GitHub issues](https://github.com/transitopia/transitopia/issues).
 
 ## How to run Transitopia locally
 
@@ -51,7 +52,7 @@ You need Node.js 24+ (and optionally Java 21+ if you want to build the cycling m
 
 Downloads and build output go to `var/` (gitignored). The track network itself is committed (`regions/metro-vancouver/infrastructure/`), and `npm run data:osm` re-imports it from OpenStreetMap.
 
-The site shows transit schedules only (*estimated* positions) unless it's pointed at an RT service: run `npm run server` and start the site with `VITE_TRANSIT_API=http://localhost:8787/ npm run dev`. A local server doesn't poll TransLink or aisstream.io (even with API keys) unless started with `RT_POLL=1`: TransLink allows 1,000 requests a day per key, and the production server spends them (see [V2-PLAN.md §4.5 and §7.5](V2-PLAN.md)). To see live data locally, start it with `RT_FORWARD_TO=https://api.transitopia.org`, or point the site straight at production with `VITE_TRANSIT_API=https://api.transitopia.org/ npm run dev`.
+The site shows transit schedules only (*estimated* positions) unless it's pointed at an RT service: run `npm run server` and start the site with `VITE_TRANSIT_API=http://localhost:8787/ npm run dev`. A local server doesn't poll TransLink or aisstream.io (even with API keys) unless started with `RT_POLL=1`: TransLink allows 1,000 requests a day per key, and the production server spends them (see [docs/DESIGN.md → Upstream request budget](docs/DESIGN.md#upstream-request-budget)). To see live data locally, start it with `RT_FORWARD_TO=https://api.transitopia.org`, or point the site straight at production with `VITE_TRANSIT_API=https://api.transitopia.org/ npm run dev`.
 
 ## Credits
 

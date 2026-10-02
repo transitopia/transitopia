@@ -1,5 +1,5 @@
 {
-  "$comment": "SkyTrain operating assumptions for run inference and movements (docs/skytrain-viz-PLAN.md §4.3–4.4). All 'guess' unless noted; see docs/OPEN-QUESTIONS.md #1–#8, #18. Times in seconds, distances in metres, speeds in km/h.",
+  "$comment": "SkyTrain operating assumptions for run inference and movements (packages/transit-core/DESIGN.md#run-inference). All 'guess' unless noted; see OPEN-QUESTIONS #1–#7, #18 (answered ones are in regions/metro-vancouver/README.md). Times in seconds, distances in metres, speeds in km/h.",
   "fleets": {
     "$comment": "Lines whose trains are interchangeable, so a run may continue from one line's trip onto another's (interlining). Expo and Millennium share rolling stock and OMC 1 (diagram v3).",
     "groups": [["expo", "millennium"], ["canada"]]
@@ -9,9 +9,9 @@
     "minLayoverS": 75,
     "$maxLayoverS": "Longer gaps end the run (train goes to a yard) rather than waiting at the terminus.",
     "maxLayoverS": 2400,
-    "$stubMaxLayoverS": "At stub termini (Waterfront Expo/Canada, Lafarge Lake–Douglas, …) a train that would wait longer than this for a departure (in place or via the tail tracks) is surplus: it returns to the yard empty instead of occupying the platform. Operators run such trains between scheduled trains (Braden, 2026-09-26; OPEN-QUESTIONS #21). guess",
+    "$stubMaxLayoverS": "At stub termini (Waterfront Expo/Canada, Lafarge Lake–Douglas, …) a train that would wait longer than this for a departure (in place or via the tail tracks) is surplus: it returns to the yard empty instead of occupying the platform. Operators run such trains between scheduled trains (Braden, 2026-09-26; regions/metro-vancouver/README.md#surplus-trains-at-termini; how long they wait is OPEN-QUESTIONS #21). guess",
     "stubMaxLayoverS": 600,
-    "$maxPullUpM": "An in-place turnback waits at the buffer of a dead-ended platform track (clear of the switch behind it) only when the buffer is within this distance of the platform stop. Farther away, the dead end is closed track, not a berth, and the train turns at the platform: Braid Platform 1, where the west track is closed beyond the platform for the OMC4 works (~430 m of it remains in OSM; Braden, 2026-09-27; OPEN-QUESTIONS #17, #20). Other termini pull up 9–40 m. guess",
+    "$maxPullUpM": "An in-place turnback waits at the buffer of a dead-ended platform track (clear of the switch behind it) only when the buffer is within this distance of the platform stop. Farther away, the dead end is closed track, not a berth, and the train turns at the platform: Braid Platform 1, where the west track is closed beyond the platform for the OMC4 works (~430 m of it remains in OSM; Braden, 2026-09-27; regions/metro-vancouver/README.md#braid-and-the-omc4-works). Other termini pull up 9–40 m. guess",
     "maxPullUpM": 100,
     "maxTurnbackM": 4000,
     "unloadS": 30,

@@ -5,7 +5,7 @@ name: Build Transit Data
 # (the site's VITE_TRANSIT_DATA). It downloads GTFS static from gtfs-static.translink.ca, not the
 # rate-limited Open API.
 #
-# Since Phase 2 the server builds and publishes this daily itself (apps/server/src/jobs/data-build.ts),
+# The server builds and publishes this daily itself (apps/server/src/jobs/data-build.ts),
 # with the corrections from its database, so its live dispatch patches fit the published plans. This
 # workflow is a manual fallback only: running it while the server publishes would replace the
 # server's build (and its dispatch patches would no longer fit until the server's next build).

@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-Guidance for working in this repo. Transitopia V2 is being built to [V2-PLAN.md](V2-PLAN.md): read it before making structural changes, and update it when a decision changes. The transit engine's design (track graph, run inference, dispatcher, RT, AIS) is in [docs/skytrain-viz-PLAN.md](docs/skytrain-viz-PLAN.md), and operations assumptions are tracked in [docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md).
+Guidance for working in this repo. The design is in [docs/DESIGN.md](docs/DESIGN.md) (architecture, principles, decisions), with each part's design next to its code: [apps/web](apps/web/README.md), [apps/server](apps/server/README.md), [packages/db](packages/db/README.md), the transit engine in [packages/transit-core/DESIGN.md](packages/transit-core/DESIGN.md) (track graph, run inference, dispatcher, buses, AIS), [packages/transit-map](packages/transit-map/README.md), [pipelines](pipelines/README.md) and [deployment](deployment/README.md). Read the relevant one before making structural changes. What we know about Metro Vancouver's operations is in [regions/metro-vancouver/README.md](regions/metro-vancouver/README.md), and the assumptions still open in its [OPEN-QUESTIONS.md](regions/metro-vancouver/OPEN-QUESTIONS.md). Planned work is in GitHub issues.
 
 ## Layout
 
-npm workspaces (V2-PLAN.md §4.1). Cross-workspace imports use package specifiers (`@transitopia/transit-core/time.ts`); imports inside a workspace stay relative.
+npm workspaces ([docs/DESIGN.md → Repository layout](docs/DESIGN.md#repository-layout)). Cross-workspace imports use package specifiers (`@transitopia/transit-core/time.ts`); imports inside a workspace stay relative.
 
 | Path | What |
 |---|---|
@@ -16,27 +16,27 @@ npm workspaces (V2-PLAN.md §4.1). Cross-workspace imports use package specifier
 | `packages/map-style/` | The site's Protomaps basemap (light and dark), fonts list and zoom helpers. |
 | `packages/shared/` | Shared by web and server: the dataset registry (`datasets.ts`) behind the attribution control. |
 | `pipelines/` | Build-time pipelines and validators. `pipelines/lib/paths.ts` is the one place that knows where data lives. |
-| `regions/metro-vancouver/` | Committed, curated inputs: `config/`, `infrastructure/`, `scenarios/`, `observations/`, `disruptions/`. |
+| `regions/metro-vancouver/` | Committed, curated inputs: `config/`, `infrastructure/`, `scenarios/`, `observations/`, `disruptions/`; what we know about operations (`README.md`) and what we don't (`OPEN-QUESTIONS.md`). |
 | `map-layers/` | Java/Planetiler profile for the cycling layer (built daily in CI). |
 | `infra/` | Deployment: `compose.yml` (server, PostGIS, Caddy, backups), `server.Dockerfile`, `compose.dev.yml` (the local database). See `deployment/README.md`. |
 | `var/` | Gitignored downloads, recordings and build output. The web dev server serves `var/public/` at `/dev-data/`. |
 
 ## Scope
 
-- **Transit routes**: Expo, Millennium, and Canada Lines (track-level); SeaBus and West Coast Express (shape-level); buses 99, R1, R2, R3, R4, R5, R6. **No other bus routes** until Phase 7 (V2-PLAN.md §9), though the recorder keeps every route.
-- **Transit stack**: TypeScript, Vite, and MapLibre GL JS v6 with a PMTiles vector basemap (Protomaps, `packages/map-style`). Vehicles are drawn by our own WebGL2 custom layer (`packages/transit-map/src/layers/gl-polygons.ts`) using only MapLibre's public API. Don't reintroduce deck.gl: its MapLibre integration depends on private internals that v6 removed. The engine stays framework-free; React is for the site's chrome (V2-PLAN.md §4.2). MIT licensed.
+- **Transit routes**: Expo, Millennium, and Canada Lines (track-level); SeaBus and West Coast Express (shape-level); buses 99, R1, R2, R3, R4, R5, R6. **No other bus routes** until the all-buses work (a GitHub milestone), though the recorder keeps every route.
+- **Transit stack**: TypeScript, Vite, and MapLibre GL JS v6 with a PMTiles vector basemap (Protomaps, `packages/map-style`). Vehicles are drawn by our own WebGL2 custom layer (`packages/transit-map/src/layers/gl-polygons.ts`) using only MapLibre's public API. Don't reintroduce deck.gl: its MapLibre integration depends on private internals that v6 removed. The engine stays framework-free; React is for the site's chrome. MIT licensed.
 - Desktop-first, but the map and time controls must work on phones. Keep chrome minimal.
 
 ## Ground rules
 
 - **Never print, log, commit, or bundle the API keys.** They live in `.secrets` (`TRANSLINK_API_KEY=...`, `AISSTREAM_API_KEY=...`, gitignored). Only `apps/server/` and `pipelines/` read them. Browser code must never see them.
 - **Never let client requests trigger TransLink API calls.** A single poller fetches upstream on a time-of-day schedule that stays under TransLink's 1,000 requests a day (`regions/metro-vancouver/config/rt.json` → `poll`, enforced by a ledger: the `upstream_requests` table, or `var/rt-history/requests.json` without a database). Clients only read the cached snapshot. Don't add requests outside that budget, and don't assume fixes arrive every ~20 s: use the thresholds in `packages/transit-core/src/rt/budget.ts`. Only the leader polls, records, dispatches and runs jobs: a Postgres advisory lock (`apps/server/src/leader.ts`; the `var/rt-history/.lock` file without a database), and other instances forward `/rt/*` to it. **Only production polls** (the key's budget is shared): the server polls only with `RT_POLL=1`; locally use `RT_FORWARD_TO=https://api.transitopia.org` or point the site at production (`VITE_TRANSIT_API=https://api.transitopia.org/ npm run dev`).
-- **Dispatching is central.** The signalling-aware dispatcher (docs/skytrain-viz-PLAN.md §4.11) runs only at build time and in the server, and every visitor gets the same versioned result. A patch only fits the build it was dispatched against (`baseBuiltAt`), which is why the server builds and publishes the transit data itself. Browsers never run it, and client requests never trigger a dispatch.
+- **Dispatching is central.** The signalling-aware dispatcher (`packages/transit-core/DESIGN.md` → Dispatcher) runs only at build time and in the server, and every visitor gets the same versioned result. A patch only fits the build it was dispatched against (`baseBuiltAt`), which is why the server builds and publishes the transit data itself. Browsers never run it, and client requests never trigger a dispatch.
 - **Positions are a pure function of (plan, overlays, t).** Don't introduce frame-stepped simulation state. Seek, rewind, and fast-forward depend on this.
 - **Every vehicle state carries provenance** (`observed | interpolated | estimated`) and a source. Never render an estimate as if it were observed.
 - **`packages/transit-core/src/` stays DOM-free.** It's shared by pipelines, tests, the server and the browser; its tsconfig has no DOM lib.
 - **Infrastructure is data.** Base geometry is imported from OSM (`tracks.generated.geojson`, don't hand-edit it). Fixes go in `regions/metro-vancouver/infrastructure/overrides.json`. The result must pass `npm run validate:infra`.
-- **Assumptions go in `regions/metro-vancouver/config/`** with a comment citing the source or saying "guess", and a cross-reference to the matching item in `docs/OPEN-QUESTIONS.md`. No magic numbers in code.
+- **Assumptions go in `regions/metro-vancouver/config/`** with a comment citing the source or saying "guess", and a cross-reference to the matching item in `regions/metro-vancouver/OPEN-QUESTIONS.md` ("OPEN-QUESTIONS #N"; numbers are stable). When a question is answered, update the config and move the answer, with its source, to the region's `README.md`. No magic numbers in code.
 - Select GTFS routes **by name** (`route_long_name` "Expo Line", `route_short_name` "099"/"R1"/"WCE", etc.), never by `route_id`. IDs change between feeds.
 - Timetables: support the current feed and every future feed. Pick the feed for a date via the manifest (newest feed covering that date).
 
@@ -58,22 +58,22 @@ npm workspaces (V2-PLAN.md §4.1). Cross-workspace imports use package specifier
 - Playback (`playback.ts`) is pure: (movement file, prepared plan, graph, t) → positions. Keep it that way.
 - Debug with `npm run build:movements -- --verbose` (per-terminus chaining stats) and `npm run validate:plan` (conflict hot spots).
 
-## Dispatcher notes (`packages/transit-core/src/dispatch/`, docs/skytrain-viz-PLAN.md §4.11)
+## Dispatcher notes (`packages/transit-core/src/dispatch/`, `packages/transit-core/DESIGN.md` → Dispatcher)
 
 - `build:movements` runs inferred runs through the signalling simulation (moving block, junction locks, sections for track used both ways, stub berths). Its output is still a movement file; playback stays pure. `--no-dispatch` writes the timetable-only plan for comparison.
-- Deadlocks are prevented by resource order (see docs/skytrain-viz-PLAN.md §4.11 "As built"), not by the breaker. A "deadlock broken" line in `validate:plan` is a bug to look at: `DISPATCH_DEBUG=1` prints the waits-for chain, `DISPATCH_TRACE=<run> DISPATCH_TRACE_FROM=<s> DISPATCH_TRACE_TO=<s>` traces one train.
+- Deadlocks are prevented by resource order (see `packages/transit-core/DESIGN.md` → Dispatcher, "Resource order"), not by the breaker. A "deadlock broken" line in `validate:plan` is a bug to look at: `DISPATCH_DEBUG=1` prints the waits-for chain, `DISPATCH_TRACE=<run> DISPATCH_TRACE_FROM=<s> DISPATCH_TRACE_TO=<s>` traces one train.
 
 ## Corrections
 
 - Observations (`packages/transit-core/src/corrections/`) reference **service date + GTFS trip_id** or **stop + time**, never inferred run ids.
-- **Where corrections live:** in production, the database (`observation_sets`, `disruptions`) with review states `draft → previewing → confirmed | discarded`, reviewed at `/admin` (V2-PLAN.md §5.6): a preview is a dispatch version only its link shows (`/transit?preview=<YYYYMMDD>:<version>`). The files under `regions/metro-vancouver/{observations,disruptions}` are imported on a new database and are what local runs without a database use; `npm run corrections -- export|import|pull` moves them between the two.
+- **Where corrections live:** in production, the database (`observation_sets`, `disruptions`) with review states `draft → previewing → confirmed | discarded`, reviewed at `/admin` (`docs/DESIGN.md` → Corrections and previews): a preview is a dispatch version only its link shows (`/transit?preview=<YYYYMMDD>:<version>`). The files under `regions/metro-vancouver/{observations,disruptions}` are imported on a new database and are what local runs without a database use; `npm run corrections -- export|import|pull` moves them between the two.
 - SkyTrain: `railInputs()` turns them into dispatcher anchors (a stop at a time), cancellations, consists and parked trains. The dispatcher re-dispatches the date centrally (`build:dispatch` → `var/public/data/dispatch/<date>.json`, a patch of the runs that changed); playback marks positions observed within 90 s of a sighting and interpolated where times moved. Browsers never reconcile rail observations.
 - Timetable vehicles (SeaBus, WCE, buses without RT): `reconcileScheduled()` in the app, as before.
 - Disruptions (format in `regions/metro-vancouver/disruptions/README.md`): single-track sections and reduced headways for a period. `build:dispatch` re-plans each affected date (`packages/transit-core/src/disruption/apply.ts` → re-inferred runs with closures → dispatch). Only confirmed entries apply. The server drafts them from TransLink alerts (into the database, or `regions/metro-vancouver/disruptions/drafts/` without one); never confirm a draft without knowing which track stays open (`/admin` refuses to).
 - A future rail real-time adapter should emit `Observation`s rather than touch playback.
 - **Every route is recorded** (hour files and `rt_positions`), not just the ones drawn: vehicles on other routes get an untracked route key (`gtfs:<route_id>`), and every reader keeps only tracked ones (`trackedOnly` in `packages/transit-core/src/rt/types.ts`; `/rt/history` filters). Raw data expires after 60 days (`config/recording.json`); before that, the nightly job derives observed stop times and per-route statistics (`packages/transit-core/src/rt/observed.ts`, `stats.ts`), kept indefinitely. Recompute a date with `npm run stats -- <YYYYMMDD>`.
-- Bus service changes from GTFS-RT (cancelled trips, skipped stops, detour alerts) are recorded per service date in `var/rt-history/changes/` and served at `/rt/changes`. `packages/transit-core/src/rt/changes.ts` explains them; see docs/skytrain-viz-PLAN.md §4.5. TransLink sends detours only as alert text, so they aren't drawn.
-- SeaBus AIS (docs/skytrain-viz-PLAN.md §4.12): the RT leader streams aisstream.io and records to `var/ais-history/`; the browser turns fixes into `ScheduleCorrections` with `aisCorrections()` (`packages/transit-core/src/ais/match.ts`). Fixes anchor the timetable rather than being drawn raw, because they arrive in bursts.
+- Bus service changes from GTFS-RT (cancelled trips, skipped stops, detour alerts) are recorded per service date in `var/rt-history/changes/` and served at `/rt/changes`. `packages/transit-core/src/rt/changes.ts` explains them; see `packages/transit-core/DESIGN.md` → Buses. TransLink sends detours only as alert text, so they aren't drawn.
+- SeaBus AIS (`packages/transit-core/DESIGN.md` → SeaBus AIS): the RT leader streams aisstream.io and records to `var/ais-history/`; the browser turns fixes into `ScheduleCorrections` with `aisCorrections()` (`packages/transit-core/src/ais/match.ts`). Fixes anchor the timetable rather than being drawn raw, because they arrive in bursts.
 
 ## Scenarios
 
@@ -143,4 +143,5 @@ npx tsx pipelines/screenshot.ts out.png "/transit?date=2026-09-28&t=08:00:00&pau
 - After changing infrastructure, config, or pipeline code, rebuild and run both validators before calling the work done.
 - For visual changes, run the app and look at it (`pipelines/screenshot.ts` drives the local Chrome; `window.transit` is a debug handle on /transit with `map`, `clock`, `store`, `rt`, `vehicles()`), especially at station zoom around Waterfront, Columbia/Sapperton, Commercial–Broadway, Lougheed, Edmonds (OMC 1), and Bridgeport, where the track work is densest. Check the phone layout too.
 - Prefer small, reviewable commits per milestone step.
+- Docs describe what's built: update the design doc next to the code you change (and `docs/DESIGN.md` → Decisions when a decision changes). Planned work, follow-ups and known limitations go in GitHub issues, not in docs or TODO comments. Code comments cite docs by path and section, e.g. `packages/transit-core/DESIGN.md#dispatcher`.
 - Branches: work on feature branches forked from `main`; production (site and server) deploys from `prod` when `main` is merged into it and pushed (`deployment/README.md` → Branches).

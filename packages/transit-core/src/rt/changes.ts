@@ -11,7 +11,7 @@
 //    its alert). Those listing stops ("resuming service at Lonsdale Quay") skip just those stops;
 //  - DETOUR alerts. They name the route (and direction or trip) and the affected stops; the detour
 //    path is only in the text ("via Gilmore Ave, Lougheed Hwy, ..."), so it isn't drawn.
-// See docs/OPEN-QUESTIONS.md #28.
+// See regions/metro-vancouver/OPEN-QUESTIONS.md #28.
 
 /** GTFS-RT Alert.Effect values. */
 export const EFFECT_NO_SERVICE = 1;

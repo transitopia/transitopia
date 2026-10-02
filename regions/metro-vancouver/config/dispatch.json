@@ -1,5 +1,5 @@
 {
-  "$comment": "Signalling-aware dispatcher (docs/skytrain-viz-PLAN.md §4.11). SkyTrain uses moving-block CBTC; every value here is a guess until OPEN-QUESTIONS #26 is answered.",
+  "$comment": "Signalling-aware dispatcher (packages/transit-core/DESIGN.md#dispatcher). SkyTrain uses moving-block CBTC; every value here is a guess until OPEN-QUESTIONS #26 is answered.",
   "$stepS": "Simulation time step (s). Trains on plan follow their exact timetable profile; only constrained motion is integrated at this step.",
   "stepS": 1,
   "$safetyMarginM": "Moving block: a train's authority ends this far behind the rear of the train ahead, or before a fouling point it may not pass. guess, OPEN-QUESTIONS #26",

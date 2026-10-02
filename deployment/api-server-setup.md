@@ -11,7 +11,7 @@ your own machine in a checkout of this repo.
 
 FullHost, Toronto: Ubuntu 26.04 LTS, 4 vCPU, 8 GB RAM, 100 GB storage. See
 [README.md → Sizing](README.md#sizing): memory peaks around 2.5 GB, and 100 GB lasts about a year
-before observed stop times need moving to object storage (V2-PLAN.md §4.4).
+before observed stop times need moving to object storage ([docs/DESIGN.md → Retention and statistics](../docs/DESIGN.md#retention-and-statistics)).
 
 Keep Ubuntu's `unattended-upgrades` on (the default), so security updates install themselves.
 
@@ -207,7 +207,7 @@ Fill in `infra/.env`:
 ## 11. First start
 
 **Stop every other process polling with the same TransLink key first** (e.g. a local
-`npm run server` with `.secrets`): the 1,000 requests a day are per key. Since Phase 2 a local
+`npm run server` with `.secrets`): the 1,000 requests a day are per key. A local
 server doesn't poll unless `RT_POLL=1`.
 
 1. Copy the local history, and the GTFS feeds it was recorded against, to the VM:

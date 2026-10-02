@@ -1,4 +1,4 @@
-// Pull production data into a local checkout (V2-PLAN.md §7.5): recorded hours for a date range
+// Pull production data into a local checkout (deployment/README.md#snapshots-for-development): recorded hours for a date range
 // and, optionally, the nightly database snapshot (everything but users, sessions and raw rows; see
 // infra/backup/backup.sh), restored into the dev database (infra/compose.dev.yml).
 //
@@ -6,7 +6,7 @@
 //
 // Needs rclone with read access to the archive (TRANSITOPIA_ARCHIVE or --remote). Raw recordings
 // exist for the last 60 days only. Everything is private for now: whether TransLink's and
-// aisstream.io's data may be republished is still being checked (V2-PLAN.md §10.3), so there are
+// aisstream.io's data may be republished is still being checked (DATA-LICENSES.md), so there are
 // no public snapshots yet.
 
 import { spawnSync } from "node:child_process";

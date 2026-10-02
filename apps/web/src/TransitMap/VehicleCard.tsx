@@ -81,7 +81,7 @@ function rows(v: VehicleState, now: number): [string, string][] {
 }
 
 /**
- * The selected vehicle (V2-PLAN.md §5.3), following it by id each frame, and saying plainly whether
+ * The selected vehicle (apps/web/README.md#transit-mode), following it by id each frame, and saying plainly whether
  * its position is observed or estimated.
  */
 export const VehicleCard: React.FC<{

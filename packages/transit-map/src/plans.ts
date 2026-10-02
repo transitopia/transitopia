@@ -151,7 +151,7 @@ export class PlanStore {
   }
 
   /**
-   * The dispatch patch for a date (observations, disruptions; docs/skytrain-viz-PLAN.md §4.11): null if there is
+   * The dispatch patch for a date (observations, disruptions; packages/transit-core/DESIGN.md#dispatcher): null if there is
    * none, undefined while loading. Patches are dispatched centrally, never in the browser.
    */
   private patchFor(date: string): DispatchPatch | null | undefined {
@@ -288,7 +288,7 @@ export class PlanStore {
 
   /**
    * Show these dispatch versions (service date → version) instead of the current ones: previews of
-   * corrections not confirmed yet (V2-PLAN.md §5.6, ?preview=<YYYYMMDD>:<version>).
+   * corrections not confirmed yet (docs/DESIGN.md#corrections-and-previews, ?preview=<YYYYMMDD>:<version>).
    */
   setPreview(versions: Record<string, string>): void {
     this.preview = { ...versions };

@@ -1,5 +1,5 @@
 // Animated vehicles. Each is a pointed rectangle at true scale, enlarged to a minimum pixel size
-// when zoomed out (docs/skytrain-viz-PLAN.md §4.9), drawn by GlPolygonLayer. Estimated positions have a pale tint of
+// when zoomed out (packages/transit-map/README.md#rendering), drawn by GlPolygonLayer. Estimated positions have a pale tint of
 // the route colour with a route-coloured outline; observed ones are solid with a halo outline (§4.6),
 // so both stand out against their own route line. Picking is done on the CPU.
 

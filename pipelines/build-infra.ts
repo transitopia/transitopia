@@ -1,4 +1,4 @@
-// Publish the track network and per-feed platform mapping for the browser (docs/skytrain-viz-PLAN.md §4.1):
+// Publish the track network and per-feed platform mapping for the browser (packages/transit-core/DESIGN.md#track-graph):
 //   var/public/data/infra/tracks.geojson                 segments, nodes, stop positions
 //   var/public/data/feeds/<version>/platforms.json       GTFS stop_id → track position
 //

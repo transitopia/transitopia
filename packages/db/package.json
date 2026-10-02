@@ -1,7 +1,7 @@
 {
   "name": "@transitopia/db",
   "private": true,
-  "description": "PostgreSQL for the Transitopia server: SQL migrations, Kysely schema types, partitions and jobs (V2-PLAN.md §4.4).",
+  "description": "PostgreSQL for the Transitopia server: SQL migrations, Kysely schema types, partitions and jobs (packages/db/README.md).",
   "type": "module",
   "exports": {
     "./*": "./src/*"

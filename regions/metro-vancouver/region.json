@@ -1,5 +1,5 @@
 {
-  "$comment": "Region record (V2-PLAN.md §5.12, §6). bbox: where this region's transit data applies, [west, south, east, north]. initialBounds: the first view of /transit when the URL has no map position (the SkyTrain network, UBC to King George).",
+  "$comment": "Region record (docs/DESIGN.md#regions). bbox: where this region's transit data applies, [west, south, east, north]. initialBounds: the first view of /transit when the URL has no map position (the SkyTrain network, UBC to King George).",
   "id": "metro-vancouver",
   "name": "Metro Vancouver",
   "timezone": "America/Vancouver",
