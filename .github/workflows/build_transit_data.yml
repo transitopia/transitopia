@@ -1,0 +1,62 @@
+name: Build Transit Data
+
+# Published transit data for /transit: the service plans, track network and platform mapping,
+# dispatched movements, observations and dispatch patches, served from https://data.transitopia.org/
+# (the site's VITE_TRANSIT_DATA). It downloads GTFS static from gtfs-static.translink.ca, not the
+# rate-limited Open API.
+#
+# The server builds and publishes this daily itself (apps/server/src/jobs/data-build.ts),
+# with the corrections from its database, so its live dispatch patches fit the published plans. This
+# workflow is a manual fallback only: running it while the server publishes would replace the
+# server's build (and its dispatch patches would no longer fit until the server's next build).
+
+on:
+  workflow_dispatch:
+
+jobs:
+  Build-And-Upload:
+    runs-on: ubuntu-latest
+    env:
+      RCLONE_CONFIG_TRANSITOPIA_DATA_R2_TYPE: s3
+      RCLONE_CONFIG_TRANSITOPIA_DATA_R2_PROVIDER: Cloudflare
+      RCLONE_CONFIG_TRANSITOPIA_DATA_R2_ENDPOINT: ${{ secrets.RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_ENDPOINT }}
+      RCLONE_CONFIG_TRANSITOPIA_DATA_R2_ACCESS_KEY_ID: ${{ secrets.RCLONE_CONFIG_TRANSITOPIA_DATA_R2_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_TRANSITOPIA_DATA_R2_SECRET_ACCESS_KEY: ${{ secrets.RCLONE_CONFIG_TRANSITOPIA_DATA_R2_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Fetch the latest GTFS feed and build service plans
+        run: npm run data:gtfs
+      - name: Build the track network and platform mapping
+        run: npm run build:infra
+      - name: Validate infrastructure
+        run: npm run validate:infra
+      - name: Build movements (runs through the dispatcher)
+        run: npm run build:movements
+      - name: Validate the plan
+        run: npm run validate:plan
+      - name: Publish observations and dispatch patches
+        run: |
+          npm run build:observations
+          npm run build:dispatch
+      - name: Install rclone
+        run: |
+          curl -fsSL -o /tmp/rclone.zip https://downloads.rclone.org/v1.75.0/rclone-v1.75.0-linux-amd64.zip
+          sudo unzip -j -o /tmp/rclone.zip '*/rclone' -d /usr/local/bin
+          rclone --version
+      # Everything but the manifest first, so a client never reads a manifest pointing at files that
+      # aren't there yet. Old files are kept (copy, not sync) for clients holding an older manifest.
+      # Cache-Control is stored on each object: the manifest is short-lived so new builds show up
+      # within minutes; the rest isn't content-addressed yet (some paths are rewritten), so a day.
+      - name: Upload
+        run: |
+          rclone copy var/public/data transitopia_data_r2:transitopia-data/data --exclude manifest.json \
+            --header-upload "Cache-Control: public, max-age=86400" --s3-no-check-bucket
+          rclone copy var/public/data/manifest.json transitopia_data_r2:transitopia-data/data \
+            --header-upload "Cache-Control: public, max-age=300" --s3-no-check-bucket

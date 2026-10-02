@@ -1,0 +1,55 @@
+{
+  "$comment": "Confirmed 2026-09-28 from a draft of TransLink alert 756352.",
+  "disruptions": [
+    {
+      "id": "alert-756352",
+      "source": "TransLink alert",
+      "text": "Canada Line Track Maintenance on Tue, Sept 29 from 9:00 PM until the end of service.",
+      "note": "Canada Line Track Maintenance on Tue, Sept 29 from 9:00 PM until the end of service. Trains will single-track between Bridgeport Station and Richmond-Brighouse Station. Please allow extra travel time.\n\n\r\nThe effective headways during this work are: \r\nWaterfront Station - Bridgeport Station - 10 minutes \r\nBridgeport Station - Richmond-Brighouse Station - 20 minutes \r\nBridgeport Station - YVR Airport Station - 20 minutes \r\n\nLast trains will depart stations approximately 5 minutes later than normal timetable stated times.",
+      "status": "confirmed",
+      "alertId": "756352",
+      "active": [
+        {
+          "from": "2026-09-30T04:00:00.000Z",
+          "until": "2026-09-30T11:00:00.000Z"
+        }
+      ],
+      "singleTrack": [
+        {
+          "line": "canada",
+          "between": [
+            "Bridgeport",
+            "Richmond-Brighouse"
+          ],
+          "keep": "Lansdowne Station @ Platform 1"
+        }
+      ],
+      "headway": [
+        {
+          "line": "canada",
+          "between": [
+            "Waterfront",
+            "Bridgeport"
+          ],
+          "minS": 600
+        },
+        {
+          "line": "canada",
+          "between": [
+            "Bridgeport",
+            "Richmond-Brighouse"
+          ],
+          "minS": 1200
+        },
+        {
+          "line": "canada",
+          "between": [
+            "Bridgeport",
+            "YVR Airport"
+          ],
+          "minS": 1200
+        }
+      ]
+    }
+  ]
+}

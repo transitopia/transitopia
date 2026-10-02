@@ -1,0 +1,38 @@
+name: Build BC Basemap
+
+# The site's basemap (docs/DESIGN.md#regions): a British Columbia extract of the Protomaps daily planet
+# build, served by the tile worker at https://map-tiles.transitopia.org/protomaps-bc.json.
+
+on:
+  schedule:
+    # Mondays at 08:15 UTC (Protomaps' daily build is out by then).
+    - cron: "15 8 * * 1"
+  workflow_dispatch:
+
+jobs:
+  Build-And-Upload:
+    runs-on: ubuntu-latest
+    env:
+      RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_TYPE: s3
+      RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_PROVIDER: Cloudflare
+      RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_ENDPOINT: ${{ secrets.RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_ENDPOINT }}
+      RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_ACCESS_KEY_ID: ${{ secrets.RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_SECRET_ACCESS_KEY: ${{ secrets.RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Extract BC from the latest Protomaps build (~2 GB)
+        run: npx tsx pipelines/tiles.ts --region bc --force
+      - name: Install rclone
+        run: |
+          curl -fsSL -o /tmp/rclone.zip https://downloads.rclone.org/v1.75.0/rclone-v1.75.0-linux-amd64.zip
+          sudo unzip -j -o /tmp/rclone.zip '*/rclone' -d /usr/local/bin
+          rclone --version
+      - name: Upload
+        run: rclone copy var/public/tiles/protomaps-bc.pmtiles transitopia_maps_r2:transitopia-maps --s3-no-check-bucket

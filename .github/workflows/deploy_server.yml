@@ -1,0 +1,69 @@
+name: Deploy Server
+
+# The server (apps/server) on the FullHost VM (deployment/README.md#automatic-deploys): build the image, push it to GHCR,
+# then on the VM check out the same commit (for infra/ files) and restart with the new image.
+# Migrations run when the server starts. Deploys from `prod`, like the site. The VM step is skipped until the DEPLOY_* secrets exist (deployment/api-server-setup.md, step 12).
+
+on:
+  push:
+    branches:
+      - prod
+    paths:
+      - "apps/server/**"
+      - "packages/**"
+      - "pipelines/**"
+      - "regions/**"
+      - "infra/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/deploy_server.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-server
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/transitopia-server
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/server.Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:prod
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Deploy to the VM
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        if: env.DEPLOY_HOST != ''
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          echo "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/id_deploy "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd /opt/transitopia && git fetch -q origin prod && git checkout -q --detach origin/prod \
+             && docker compose -f infra/compose.yml pull server \
+             && docker compose -f infra/compose.yml up -d"

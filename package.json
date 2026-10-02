@@ -1,0 +1,56 @@
+{
+  "name": "transitopia",
+  "private": true,
+  "description": "Transitopia: maps of transit, cycling and micromobility, starting with Metro Vancouver and British Columbia.",
+  "author": "Braden MacDonald",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/web",
+    "apps/server",
+    "packages/*",
+    "pipelines",
+    "regions/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @transitopia/web",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint --type-aware",
+    "format": "prettier --write .",
+    "format-check": "prettier --check .",
+    "server": "tsx apps/server/src/main.ts",
+    "db:up": "docker compose -f infra/compose.dev.yml up -d",
+    "db:import-history": "tsx apps/server/src/cli/import-history.ts",
+    "corrections": "tsx apps/server/src/cli/corrections.ts",
+    "stats": "tsx apps/server/src/cli/stats.ts",
+    "snapshot:pull": "tsx pipelines/snapshot-pull.ts",
+    "data": "tsx pipelines/data.ts",
+    "data:gtfs": "tsx pipelines/fetch-gtfs.ts && tsx pipelines/build-schedule.ts",
+    "data:osm": "tsx pipelines/fetch-osm.ts && tsx pipelines/import-osm.ts",
+    "tiles": "tsx pipelines/tiles.ts",
+    "build:infra": "tsx pipelines/build-infra.ts",
+    "validate:infra": "tsx pipelines/validate-infra.ts",
+    "build:movements": "tsx pipelines/build-movements.ts",
+    "validate:plan": "tsx pipelines/validate-plan.ts",
+    "build:observations": "tsx pipelines/build-observations.ts",
+    "build:dispatch": "tsx pipelines/build-dispatch.ts",
+    "disruptions": "tsx pipelines/disruptions.ts",
+    "build:rt-profile": "tsx pipelines/build-rt-profile.ts",
+    "scenario": "tsx pipelines/scenario.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "oxlint": "^1.78",
+    "oxlint-tsgolint": "^7",
+    "prettier": "^3",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.2"
+  }
+}

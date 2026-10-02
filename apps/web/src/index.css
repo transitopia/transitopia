@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+/* Dark mode follows the site theme (src/Theme/Theme.tsx), not only the system setting. */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+@theme {
+  --color-cyclist-green: #5cc88d;
+  --color-pedestrian-orange: #eea550;
+  --color-transit-blue: #31cddc;
+  --color-main-blue: #043760;
+}
+
+:root {
+  color-scheme: light;
+  background: #f5f4f1;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  background: #15181c;
+}
+
+/* MapLibre's controls: keep the scale bar above our credits line, and match the dark theme. */
+.maplibregl-ctrl-bottom-left {
+  bottom: 1.75rem;
+}
+:root[data-theme="dark"] .maplibregl-ctrl-group {
+  background: #1f2937;
+}
+:root[data-theme="dark"] .maplibregl-ctrl-group button + button {
+  border-top-color: #4b5563;
+}
+:root[data-theme="dark"] .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: invert(1);
+}
+:root[data-theme="dark"] .maplibregl-ctrl-scale {
+  background: rgb(17 24 39 / 0.8);
+  color: #e5e7eb;
+  border-color: #e5e7eb;
+}

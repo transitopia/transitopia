@@ -1,0 +1,26 @@
+{
+  "name": "@transitopia/server",
+  "private": true,
+  "description": "The Transitopia server: RT pollers within the request budget, recorder, live dispatch.",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.3",
+    "@transitopia/pipelines": "*",
+    "@transitopia/region-metro-vancouver": "*",
+    "@transitopia/transit-core": "*",
+    "gtfs-realtime-bindings": "^2.2.0",
+    "hono": "^4.13.11",
+    "pg": "^8.23.0",
+    "@transitopia/db": "*"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1"
+  }
+}

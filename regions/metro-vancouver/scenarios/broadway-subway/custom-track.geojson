@@ -1,0 +1,200 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "VCC\u2013Clark connection, north (sketch)",
+    "kind": "main",
+    "lines": [
+     "millennium"
+    ]
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -123.0817734,
+      49.2662785
+     ],
+     [
+      -123.08195,
+      49.2663107
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "VCC\u2013Clark connection, south (sketch)",
+    "kind": "main",
+    "lines": [
+     "millennium"
+    ]
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -123.0817848,
+      49.2662424
+     ],
+     [
+      -123.0819771,
+      49.2662777
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Broadway Subway (sketch) north track",
+    "kind": "main",
+    "lines": [
+     "millennium"
+    ]
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -123.0954824,
+      49.2670169
+     ],
+     [
+      -123.0974724,
+      49.2654851
+     ],
+     [
+      -123.0991725,
+      49.263985
+     ],
+     [
+      -123.100488,
+      49.263128
+     ],
+     [
+      -123.1029999,
+      49.2630966
+     ],
+     [
+      -123.1149001,
+      49.2630966
+     ],
+     [
+      -123.1266005,
+      49.2631566
+     ],
+     [
+      -123.1386013,
+      49.2633266
+     ],
+     [
+      -123.1480019,
+      49.2636767
+     ],
+     [
+      -123.1488,
+      49.2637006
+     ],
+     [
+      -123.1530013,
+      49.2638266
+     ],
+     [
+      -123.158501,
+      49.2639266
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Broadway Subway (sketch) south track",
+    "kind": "main",
+    "lines": [
+     "millennium"
+    ]
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -123.095371,
+      49.2669474
+     ],
+     [
+      -123.0975276,
+      49.2655149
+     ],
+     [
+      -123.0992275,
+      49.264015
+     ],
+     [
+      -123.100512,
+      49.263172
+     ],
+     [
+      -123.1030001,
+      49.2631434
+     ],
+     [
+      -123.1148999,
+      49.2631434
+     ],
+     [
+      -123.1265995,
+      49.2632034
+     ],
+     [
+      -123.1385987,
+      49.2633734
+     ],
+     [
+      -123.1479981,
+      49.2637233
+     ],
+     [
+      -123.1492,
+      49.2637594
+     ],
+     [
+      -123.1529987,
+      49.2638734
+     ],
+     [
+      -123.158499,
+      49.2639734
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "Arbutus crossover (sketch)",
+    "kind": "crossover",
+    "lines": [
+     "millennium"
+    ]
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      -123.1488,
+      49.2637006
+     ],
+     [
+      -123.1492,
+      49.2637594
+     ]
+    ]
+   }
+  }
+ ]
+}

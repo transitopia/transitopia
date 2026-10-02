@@ -1,0 +1,91 @@
+{
+  "$comment": "Hand fixes applied on top of the OSM import (packages/transit-core/DESIGN.md#track-graph). Survives re-imports: refer to OSM ids and coordinates, never to generated segment ids. osm.includeWays/excludeWays: OSM way ids to force in/out of the in-service network (applied by import-osm). turns.add/remove: {node: [lon, lat], a: [lon, lat], b: [lon, lat], note} — at the node nearest `node` (≤5 m), allow/forbid passing between the incident tracks nearest `a` and `b`. platforms: {stop: GTFS stop_name, near: [lon, lat], note} pins that stop to the track nearest `near`. addTrack: optional GeoJSON of track missing from OSM (joined to existing track within 4 m of its endpoints). patternPlatforms: role-based pins — for patterns that start/end at (or pass through) a station, use the track nearest each given point at the listed stations (for temporary operations GTFS platform numbers don't describe).",
+  "osm": {
+    "includeWays": [],
+    "excludeWays": [
+      87493028,
+      87493029,
+      392377336,
+      923211605
+    ],
+    "$excludeWaysNote": "Braid–Lougheed Expo track closed until ~2027 for the OMC4 flyover works (confirmed by Braden, 2026-09-26); the other track is single-tracked. regions/metro-vancouver/README.md#braid-and-the-omc4-works."
+  },
+  "turns": {
+    "add": [],
+    "remove": []
+  },
+  "platforms": [
+    {
+      "stop": "Waterfront Station @ Platform 5",
+      "near": [
+        -123.1132357,
+        49.2856543
+      ],
+      "note": "GTFS coordinate lies on the scissors crossover ~100 m south of the platform; pinned to the northbound stub (OSM way 923508922) 35 m from the buffer stop."
+    },
+    {
+      "stop": "Waterfront Station @ Platform 4",
+      "near": [
+        -123.1133613,
+        49.2857338
+      ],
+      "note": "As P5: pinned to the other stub (OSM way 923508923) 35 m from the buffer stop."
+    },
+    {
+      "stop": "Stadium-Chinatown Station @ Platform 2",
+      "near": [
+        -123.1091419,
+        49.2792249
+      ],
+      "note": "Platform 2 is the middle track (OSM way 809550055). The westernmost track (OSM siding 809550056) is Platform 3: closed to passengers, used only to park trains (Braden, 2026-09-26). The GTFS coordinate is closer to it."
+    },
+    {
+      "stop": "Waterfront Station @ Platform 1",
+      "near": [
+        -123.1120779,
+        49.2860635
+      ],
+      "note": "Waterfront Expo: OSM platform ways ref 1/2 put Platform 1 on the south approach track and Platform 2 on the north one (left when arriving), west of the throat switches; the stubs beyond are tail tracks. Usual pattern: drop off at P1, reverse in the tail, board at P2; when quiet, trains may go straight to P2 and turn there (Braden, 2026-09-26). GTFS coordinates sit near the switches, hence the pins."
+    },
+    {
+      "stop": "Waterfront Station @ Platform 2",
+      "near": [
+        -123.1120121,
+        49.2861423
+      ],
+      "note": "Waterfront Expo: OSM platform ways ref 1/2 put Platform 1 on the south approach track and Platform 2 on the north one (left when arriving), west of the throat switches; the stubs beyond are tail tracks. Usual pattern: drop off at P1, reverse in the tail, board at P2; when quiet, trains may go straight to P2 and turn there (Braden, 2026-09-26). GTFS coordinates sit near the switches, hence the pins."
+    }
+  ],
+  "patternPlatforms": [
+    {
+      "station": "Braid",
+      "patterns": "terminating",
+      "pins": {
+        "Braid": [
+          -122.8828349,
+          49.2332356
+        ],
+        "Sapperton": [
+          -122.8894012,
+          49.2246884
+        ]
+      },
+      "note": "OMC4 works (Feb 2024–~2027): Braid short-turns use the west track (Platform 1 at Sapperton and Braid), closed just north of Braid, running in both directions between Braid and the crossover ~460 m south of Sapperton. Satellite imagery 2026 shows no crossover near Braid (Braden, 2026-09-26); platform signs and GPS (Braden, 2026-09-27)."
+    },
+    {
+      "station": "Braid",
+      "patterns": "through",
+      "pins": {
+        "Braid": [
+          -122.882772,
+          49.2332415
+        ],
+        "Sapperton": [
+          -122.8893491,
+          49.2246624
+        ]
+      },
+      "note": "Trains to/from Lougheed and Production Way–University use the east track in both directions (single-track north of Braid; Platform 2 at Sapperton and Braid)."
+    }
+  ]
+}

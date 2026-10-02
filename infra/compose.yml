@@ -1,0 +1,79 @@
+# Production on the FullHost VM (deployment/README.md#hosting): the server, PostgreSQL + PostGIS, Caddy (TLS)
+# and nightly backups. Settings and secrets, including the R2 remote rclone uses
+# (RCLONE_CONFIG_R2_*), are in infra/.env (from .env.example, never committed). Setup:
+# deployment/api-server-setup.md; operations: deployment/README.md.
+#
+#   docker compose -f infra/compose.yml up -d
+#   docker compose -f infra/compose.yml logs -f server
+name: transitopia
+services:
+  db:
+    image: postgis/postgis:18-3.6
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: transitopia
+      POSTGRES_DB: transitopia
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/.env}
+    volumes:
+      - db:/var/lib/postgresql
+    shm_size: 256mb
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "transitopia"]
+      interval: 10s
+      retries: 10
+
+  server:
+    image: ${SERVER_IMAGE:-ghcr.io/transitopia/transitopia-server:prod}
+    build:
+      context: ..
+      dockerfile: infra/server.Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://transitopia:${POSTGRES_PASSWORD}@db:5432/transitopia
+      ADVERTISE_URL: http://server:8787
+      RT_POLL: "1"
+      BUILD_DATA: "1"
+    volumes:
+      - var:/app/var
+    depends_on:
+      db:
+        condition: service_healthy
+    # Measured 2026-09-30 (deployment/README.md, "Sizing"): ~0.7 GB as leader with live dispatch;
+    # jobs run one at a time and add at most ~0.8 GB (statistics for a day of every route) or
+    # ~0.5 GB (data build step, a child process). The limit leaves room for more history and dates.
+    mem_limit: 3g
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/etc/caddy/certs:ro
+      - caddy:/data
+    depends_on:
+      - server
+
+  backup:
+    build: ./backup
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://transitopia:${POSTGRES_PASSWORD}@db:5432/transitopia
+      BACKUP_REMOTE: ${ARCHIVE_REMOTE:?set ARCHIVE_REMOTE in infra/.env}/backups
+      # Only the R2 remote's settings, not the rest of infra/.env.
+      RCLONE_CONFIG_R2_TYPE: s3
+      RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+      RCLONE_CONFIG_R2_ENDPOINT: ${RCLONE_CONFIG_R2_ENDPOINT:?set RCLONE_CONFIG_R2_ENDPOINT in infra/.env}
+      RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${RCLONE_CONFIG_R2_ACCESS_KEY_ID:?}
+      RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${RCLONE_CONFIG_R2_SECRET_ACCESS_KEY:?}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db:
+  var:
+  caddy:

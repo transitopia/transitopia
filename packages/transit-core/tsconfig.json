@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // DOM-free: Worker-safe globals only. `node` types cover the DISPATCH_* debug env vars.
+    "lib": ["ES2023", "WebWorker"],
+    "types": ["node", "geojson"]
+  },
+  "include": ["src", "test"]
+}

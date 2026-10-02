@@ -1,0 +1,37 @@
+{
+  "$comment": "SkyTrain operating assumptions for run inference and movements (packages/transit-core/DESIGN.md#run-inference). All 'guess' unless noted; see OPEN-QUESTIONS #1–#7, #18 (answered ones are in regions/metro-vancouver/README.md). Times in seconds, distances in metres, speeds in km/h.",
+  "fleets": {
+    "$comment": "Lines whose trains are interchangeable, so a run may continue from one line's trip onto another's (interlining). Expo and Millennium share rolling stock and OMC 1 (diagram v3).",
+    "groups": [["expo", "millennium"], ["canada"]]
+  },
+  "turnback": {
+    "$minLayoverS": "Minimum time from arrival at a terminus to departure of the next trip: unloading, reversing, loading (driverless trains change ends quickly). Too high and trains skip to a later departure, overfilling terminus berths. guess, OPEN-QUESTIONS #6",
+    "minLayoverS": 75,
+    "$maxLayoverS": "Longer gaps end the run (train goes to a yard) rather than waiting at the terminus.",
+    "maxLayoverS": 2400,
+    "$stubMaxLayoverS": "At stub termini (Waterfront Expo/Canada, Lafarge Lake–Douglas, …) a train that would wait longer than this for a departure (in place or via the tail tracks) is surplus: it returns to the yard empty instead of occupying the platform. Operators run such trains between scheduled trains (Braden, 2026-09-26; regions/metro-vancouver/README.md#surplus-trains-at-termini; how long they wait is OPEN-QUESTIONS #21). guess",
+    "stubMaxLayoverS": 600,
+    "$maxPullUpM": "An in-place turnback waits at the buffer of a dead-ended platform track (clear of the switch behind it) only when the buffer is within this distance of the platform stop. Farther away, the dead end is closed track, not a berth, and the train turns at the platform: Braid Platform 1, where the west track is closed beyond the platform for the OMC4 works (~430 m of it remains in OSM; Braden, 2026-09-27; regions/metro-vancouver/README.md#braid-and-the-omc4-works). Other termini pull up 9–40 m. guess",
+    "maxPullUpM": 100,
+    "maxTurnbackM": 4000,
+    "unloadS": 30,
+    "$speedFactor": "Turnbacks (short empty moves between an arrival and the next departure, e.g. through the crossovers west of Production Way–University) run at this fraction of line max speed. At the pull-out speed (0.55) the 4-minute Production Way turnaround in the timetable was infeasible, so trains waited 16 min for a later departure, parked on Millennium platforms. guess, OPEN-QUESTIONS #6",
+    "speedFactor": 0.8,
+    "$reversalS": "Time to change ends / reverse direction (driverless, so short). guess",
+    "reversalS": 40,
+    "$blockBonusS": "Unused since GTFS block successors are now always preferred (kept for config compatibility).",
+    "blockBonusS": 600
+  },
+  "yard": {
+    "$comment": "Pull-outs/pull-ins between yards and the first/last platform of each run (OPEN-QUESTIONS #1, #2). The nearest reachable yard by track distance is used, even for runs that really lay up on the line overnight (regions/metro-vancouver/README.md#yards-and-overnight-layup).",
+    "maxDeadheadM": 30000,
+    "$pullOutLeadS": "Pull-outs arrive at the first platform this long before the first departure.",
+    "pullOutLeadS": 90,
+    "$deadheadSpeedFactor": "Deadheads run at this fraction of line max speed: about the line's average including stops, so pull-outs don't catch up with trains in service.",
+    "deadheadSpeedFactor": 0.55,
+    "$runIntoYardM": "How far into the yard a pulling-in train is drawn before it disappears (and a pull-out appears).",
+    "runIntoYardM": 150,
+    "$againstTrafficPenalty": "Pull-outs and pull-ins keep to the normal direction of traffic: running against it costs this many extra metres per metre when choosing their path, so they take the wrong track only where it's much shorter (e.g. single-track sections). Without it, shortest paths ran empty trains against traffic over ~74 km of main line, which signalling can't allow between trains in service. guess, OPEN-QUESTIONS #22",
+    "againstTrafficPenalty": 3
+  }
+}

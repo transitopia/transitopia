@@ -1374,6 +1374,24 @@ var R2Source = class {
     };
   }
 };
+// Transitopia change (not in the upstream Protomaps worker): ALLOWED_ORIGINS entries may use "*" for
+// one subdomain label, e.g. "https://*.transitopia-web.pages.dev" for Cloudflare Pages previews, and
+// may have spaces after the commas. A lone "*" still allows every origin.
+function originPattern(entry) {
+  const escaped = entry.replace(/[.+?^${}()|[\]\\/]/g, "\\$&");
+  return new RegExp("^" + escaped.replaceAll("*", "[^./:]+") + "$");
+}
+function allowedOrigin(setting, origin) {
+  if (typeof setting === "undefined") return "";
+  for (const raw of setting.split(",")) {
+    const entry = raw.trim();
+    if (entry === "*") return "*";
+    if (!origin || !entry) continue;
+    if (entry === origin || (entry.includes("*") && originPattern(entry).test(origin)))
+      return origin;
+  }
+  return "";
+}
 var src_default = {
   async fetch(request, env, ctx) {
     if (request.method.toUpperCase() === "POST")
@@ -1382,14 +1400,10 @@ var src_default = {
     const { ok, name, tile, ext } = tile_path(url.pathname);
     const cache = caches.default;
     if (ok) {
-      let allowed_origin = "";
-      if (typeof env.ALLOWED_ORIGINS !== "undefined") {
-        for (const o of env.ALLOWED_ORIGINS.split(",")) {
-          if (o === request.headers.get("Origin") || o === "*") {
-            allowed_origin = o;
-          }
-        }
-      }
+      const allowed_origin = allowedOrigin(
+        env.ALLOWED_ORIGINS,
+        request.headers.get("Origin")
+      );
       const cached = await cache.match(request.url);
       if (cached) {
         const resp_headers = new Headers(cached.headers);

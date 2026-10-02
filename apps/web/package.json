@@ -1,0 +1,36 @@
+{
+  "name": "@transitopia/web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsx ../../pipelines/tiles.ts --assets-only && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.101.4",
+    "@transitopia/map-style": "*",
+    "@transitopia/region-metro-vancouver": "*",
+    "@transitopia/shared": "*",
+    "@transitopia/transit-core": "*",
+    "@transitopia/transit-map": "*",
+    "maplibre-gl": "^6.11.2",
+    "pmtiles": "^4.5.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "wouter": "^3.10.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6",
+    "sirv": "^3.0.2",
+    "tailwindcss": "^4",
+    "typescript": "^7",
+    "vite": "^8"
+  }
+}

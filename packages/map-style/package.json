@@ -1,0 +1,16 @@
+{
+  "name": "@transitopia/map-style",
+  "private": true,
+  "description": "The site-wide map style: the Protomaps basemap (light and dark), zoom helpers and colour tokens.",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@maplibre/maplibre-gl-style-spec": "^26.4.4",
+    "@protomaps/basemaps": "^5.7.2"
+  }
+}

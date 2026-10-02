@@ -1,0 +1,25 @@
+{
+  "name": "@transitopia/pipelines",
+  "private": true,
+  "description": "Build-time data pipelines and validators (run from the repo root, e.g. npm run build:movements).",
+  "type": "module",
+  "exports": {
+    "./*": "./*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@transitopia/region-metro-vancouver": "*",
+    "@transitopia/server": "*",
+    "@transitopia/transit-core": "*",
+    "csv-parse": "^7.0.3",
+    "gtfs-realtime-bindings": "^2.2.0",
+    "playwright-core": "^1.63.0",
+    "yauzl": "^3.4.0"
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.16",
+    "@types/yauzl": "^3.4.0"
+  }
+}
