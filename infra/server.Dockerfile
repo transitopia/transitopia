@@ -24,6 +24,7 @@ COPY apps/web/package.json apps/web/
 COPY packages/db/package.json packages/db/
 COPY packages/map-style/package.json packages/map-style/
 COPY packages/shared/package.json packages/shared/
+COPY packages/trackside/package.json packages/trackside/
 COPY packages/transit-core/package.json packages/transit-core/
 COPY packages/transit-map/package.json packages/transit-map/
 COPY pipelines/package.json pipelines/
