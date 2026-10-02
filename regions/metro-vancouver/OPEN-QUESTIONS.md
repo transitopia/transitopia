@@ -7,17 +7,15 @@ Evidence cited below comes from feed `26SEP_20260925`, OSM (2026-09-25), and the
 ## Yards and layup
 
 1. **Which yard serves which trains?**
-   - Evidence: OSM shows three rail yards: OMC 1 south of Edmonds (~75 yard tracks), the Canada Line OMC east of Bridgeport (~50), and a ~16-track yard near Inlet Centre/Coquitlam Central. The diagram says Expo and Millennium share a central OMC south of Edmonds, "with an extra storage facility in Coquitlam".
-   - *Assumption:* Expo uses OMC 1. Millennium uses the Coquitlam yard for its eastern end and OMC 1 otherwise. Canada Line uses its own OMC.
-2. **Do trains lay up overnight on tail, pocket, or platform tracks instead of returning to a yard?**
+   - Evidence: three yards: OMC 1 (Edmonds), the Canada Line OMC (Bridgeport) and OMC 3 (Falcon Drive, Coquitlam) ([README → Yards and overnight layup](README.md#yards-and-overnight-layup)). The diagram says Expo and Millennium share OMC 1, "with an extra storage facility in Coquitlam".
+   - *Assumption:* each run uses the nearest yard by track distance: in practice Expo uses OMC 1, Millennium uses OMC 3 for its eastern end and OMC 1 otherwise, and Canada Line uses its own OMC.
+2. **Where exactly do trains lay up overnight on the line?** Answered in part: most trains stay at OMC 1, but 15 sleep on the tracks along the Millennium Line and near King George (2022; [README](README.md#yards-and-overnight-layup)). *Still open:* which tracks (tails, pockets, platforms) and how many at each, whether the number has changed since 2022, and whether Canada Line trains lay up outside their OMC.
    - Evidence: weekday Expo runs start at King George (33) and Waterfront (30), and 50 of 89 Millennium runs start at Lafarge Lake–Douglas.
-   - *Assumption:* trains run light from the nearest yard before the first trip, and back after the last trip. No on-line layup.
-3. **How do Expo trains reach King George for early departures?** Is it a deadhead from OMC 1 via the Skybridge, or overnight storage on the King George tail tracks?
-   - *Assumption:* a deadhead from OMC 1.
-4. **Where does the Millennium Line / Coquitlam yard lead join the mainline, and is it the "Falcon Drive" facility on the diagram?** OSM places the yard around 49.28, −122.82.
-   - *Assumption:* use the OSM lead location.
+   - *Assumption (known to be wrong):* trains run light from the nearest yard before the first trip, and back after the last trip. On-line layup isn't modelled.
+3. *Answered:* Expo trains for King George's early departures are stored overnight near the station. See [README → Yards and overnight layup](README.md#yards-and-overnight-layup).
+4. *Answered:* the Coquitlam yard is OMC 3 at Falcon Drive, and OSM's location and connections are correct. See [README → Yards and overnight layup](README.md#yards-and-overnight-layup).
 5. **Expo trips ending at Lougheed P2, and Millennium trips starting at Lougheed P3.** Are these yard transfers between lines?
-   - *Assumption:* yes. Expo trains continue light to the Coquitlam yard or back to OMC 1.
+   - *Assumption:* yes. Expo trains continue light to OMC 3 or back to OMC 1.
 
 ## Turnbacks and pockets
 

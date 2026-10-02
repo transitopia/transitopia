@@ -23,7 +23,7 @@
     "blockBonusS": 600
   },
   "yard": {
-    "$comment": "Pull-outs/pull-ins between yards and the first/last platform of each run (OPEN-QUESTIONS #1–#3). The nearest reachable yard by track distance is used.",
+    "$comment": "Pull-outs/pull-ins between yards and the first/last platform of each run (OPEN-QUESTIONS #1, #2). The nearest reachable yard by track distance is used, even for runs that really lay up on the line overnight (regions/metro-vancouver/README.md#yards-and-overnight-layup).",
     "maxDeadheadM": 30000,
     "$pullOutLeadS": "Pull-outs arrive at the first platform this long before the first departure.",
     "pullOutLeadS": 90,

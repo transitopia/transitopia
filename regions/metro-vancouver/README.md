@@ -14,6 +14,14 @@ This page records what we've learned about how the system actually runs, and whe
 
 ## SkyTrain
 
+### Yards and overnight layup
+
+*Was OPEN-QUESTIONS #3 and #4, and part of #2.*
+
+- **Yards**: OMC 1 south of Edmonds (Expo and Millennium; ~75 yard tracks in OSM), the Canada Line OMC east of Bridgeport (~50), and the small **OMC 3** at Falcon Drive in Coquitlam (~16 tracks, near Inlet Centre/Coquitlam Central), the "extra storage facility in Coquitlam" on the Wikipedia diagram. OSM's location and track connections for OMC 3 are correct, and the map already shows it connected to the Millennium Line (Braden, 2026-10-02).
+- **Overnight layup on the line**: "Most of the SkyTrains refuge [near] Edmonds SkyTrain station in TransLink's Maintenance and Storage Facility [OMC 1]. Yet, 15 trains sleep on the tracks along the Millennium Line and near King George Station." (Vancouver Is Awesome, 2022, ["Do not board"](https://www.vancouverisawesome.com/local-news/translink-skytrain-bus-seabus-train-do-not-board-vancouver-bc-6082544), quoted by Braden, 2026-10-02.) So King George's early departures come from trains stored overnight near the station, not from empty runs out of OMC 1.
+- **Not modelled yet**: run inference starts and ends every run in the nearest yard, including runs that really lay up on the line overnight, so the map shows empty moves to and from the yards around the start and end of service that don't happen. Which tracks the 15 trains use is still open (OPEN-QUESTIONS #2).
+
 ### Terminus platforms at Richmond-Brighouse and YVR-Airport
 
 *Was OPEN-QUESTIONS #8.* GTFS has an "@ Platform 1" stop and an unnumbered "@ Canada Line" stop at each. Both are single-platform, single-track stations (Braden, 2026-09-28). OSM agrees: the platform mapping puts both GTFS stops at each station on the one track there (`w551355748.0` at Richmond-Brighouse, `w551364384.0` at YVR-Airport). Trains arrive and depart from the same platform, so each terminus holds one train at a time.
