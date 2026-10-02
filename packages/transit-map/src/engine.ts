@@ -115,6 +115,10 @@ const RT_BADGE: Record<RtMode, [string, string]> = {
     "Buses: recorded",
     "Bus positions replayed from recorded real-time data",
   ],
+  loading: [
+    "Buses: loading…",
+    "Loading recorded bus positions: estimated from the schedule until they arrive",
+  ],
   estimated: [
     "Buses: estimated",
     "No real-time data recorded for this time: bus positions estimated from the schedule",
@@ -125,6 +129,11 @@ const RT_BADGE: Record<RtMode, [string, string]> = {
   ],
 };
 
+/**
+ * Clock changes (a seek on every slider input while scrubbing) write the URL at most this often:
+ * Safari throws after ~100 history.replaceState calls in 10 s.
+ */
+const URL_WRITE_THROTTLE_MS = 300;
 /** Snapshot refresh while playing (discrete changes publish immediately). */
 const SNAPSHOT_INTERVAL_MS = 200;
 /** Sources the engine adds to the host's map (removed on dispose). */
@@ -165,6 +174,7 @@ export class TransitEngine {
   private lastCoverageUpdate = 0;
   private coverage: [number, number][] = [];
   private lastUrlWrite = 0;
+  private urlTimer: ReturnType<typeof setTimeout> | undefined;
   private raf = 0;
   private disposed = false;
   private cleanups: (() => void)[] = [];
@@ -260,7 +270,7 @@ export class TransitEngine {
     this.cleanups.push(
       this.clock.subscribe(() => {
         this.dirty = true;
-        this.writeUrl();
+        this.writeUrlSoon();
       }),
       store.onChange(() => {
         this.syncStatic();
@@ -355,6 +365,7 @@ export class TransitEngine {
     if (this.disposed) return;
     this.disposed = true;
     cancelAnimationFrame(this.raf);
+    clearTimeout(this.urlTimer);
     for (const fn of this.cleanups) fn();
     this.rt.stop();
     this.vehicles.detach();
@@ -378,6 +389,15 @@ export class TransitEngine {
 
   private writeUrl(): void {
     if (!this.disposed) writeUrl(this.clock, this.selectedId);
+  }
+
+  /** Writes the URL once a burst of clock changes settles (URL_WRITE_THROTTLE_MS). */
+  private writeUrlSoon(): void {
+    if (this.urlTimer !== undefined) return;
+    this.urlTimer = setTimeout(() => {
+      this.urlTimer = undefined;
+      this.writeUrl();
+    }, URL_WRITE_THROTTLE_MS);
   }
 
   private describeDate(date: string): string {

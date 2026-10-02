@@ -47,6 +47,10 @@ const LIVE_WINDOW_MS = 10 * 60_000;
 /** How much live history to keep in memory for interpolation. */
 const LIVE_BUFFER_MS = 20 * 60_000;
 const MAX_HOURS_CACHED = 8;
+/** Recorded hours fetched at once: scrubbing across the day shouldn't fetch every hour it passes. */
+const MAX_HOUR_LOADS = 2;
+/** Timelines kept for recently shown snapshot sets: scrubbing back and forth near hour boundaries switches between them. */
+const MAX_TIMELINES_CACHED = 4;
 const PREDICTION = rtConfig.prediction as unknown as PredictionConfig;
 /** Thresholds that follow how often the server polls (packages/transit-core/src/rt/budget.ts). */
 const CADENCE = cadence(rtConfig as unknown as CadenceConfig);
@@ -54,7 +58,13 @@ const CADENCE = cadence(rtConfig as unknown as CadenceConfig);
 const CHANGES_REFRESH_MS = 60_000;
 const MAX_CHANGE_DAYS_CACHED = 6;
 
-export type RtMode = "live" | "recorded" | "estimated" | "unavailable";
+export type RtMode =
+  | "live"
+  | "recorded"
+  /** Recorded data covers the time but is still loading (schedule estimates meanwhile). */
+  | "loading"
+  | "estimated"
+  | "unavailable";
 
 interface DayChanges {
   data?: RtDayChanges;
@@ -76,8 +86,8 @@ export class RtClient {
   private coverage: [number, number][] = [];
   private coverageRange: [number, number] | undefined;
   private coverageFetchedAt = 0;
-  private timeline: RtTimeline | undefined;
-  private timelineKey = "";
+  /** Most recently used last. */
+  private timelines = new Map<string, RtTimeline>();
   private carryMemo:
     | {
         delays: TripDelay[];
@@ -168,7 +178,7 @@ export class RtClient {
     if (!covered) return { mode: "estimated" };
 
     const snapshots = inLive ? this.live : this.snapshotsAround(t);
-    if (!snapshots) return { mode: "estimated" };
+    if (!snapshots) return { mode: "loading" };
     return {
       mode: inLive ? "live" : "recorded",
       vehicles: this.timelineFor(snapshots, inLive, pp).vehiclesAt(t, routes),
@@ -182,9 +192,10 @@ export class RtClient {
   ): RtTimeline {
     const predictor = pp ? this.predictorFor(pp) : undefined;
     const key = `${live ? "live" : "rec"}:${snapshots.length}:${snapshots[0]?.fetchedAt}:${snapshots.at(-1)?.fetchedAt}:${pp?.plan.feedVersion}:${predictor ? "p" : ""}:${this.changesVersion}`;
-    if (key !== this.timelineKey || !this.timeline) {
-      this.timelineKey = key;
-      this.timeline = new RtTimeline(snapshots, pp, kinematics, {
+    let timeline = this.timelines.get(key);
+    if (timeline) this.timelines.delete(key);
+    else {
+      timeline = new RtTimeline(snapshots, pp, kinematics, {
         maxInterpolateS: CADENCE.maxInterpolateS,
         maxExtrapolateS: CADENCE.maxExtrapolateS,
         source: live ? "GTFS-RT live" : "GTFS-RT recorded",
@@ -192,8 +203,11 @@ export class RtClient {
         detourNearM: rtConfig.detourNearM,
         ...(predictor ? { prediction: { cfg: PREDICTION, predictor } } : {}),
       });
+      if (this.timelines.size >= MAX_TIMELINES_CACHED)
+        this.timelines.delete(this.timelines.keys().next().value!);
     }
-    return this.timeline;
+    this.timelines.set(key, timeline);
+    return timeline;
   }
 
   /**
@@ -424,17 +438,29 @@ export class RtClient {
     if (!coverageContains(this.coverage, t, 15 * 60_000)) return;
     const margin = CADENCE.maxInterpolateLimitS * 1000;
     const ids = new Map<string, { date: string; hour: string }>();
-    for (const x of [t - margin, t, t + margin]) {
+    // The hour containing t first: it's the one needed to show anything.
+    for (const x of [t, t - margin, t + margin]) {
       const h = this.hourId(x);
       ids.set(h.id, h);
     }
+    let loading = 0;
+    for (const chunk of this.hours.values())
+      if (chunk.status === "loading") loading++;
     for (const [id, { date, hour }] of ids) {
-      if (this.hours.has(id)) continue;
+      const cached = this.hours.get(id);
+      if (cached) {
+        // Most recently used last.
+        this.hours.delete(id);
+        this.hours.set(id, cached);
+        continue;
+      }
+      if (loading >= MAX_HOUR_LOADS) continue;
+      loading++;
       const chunk: HourChunk = { status: "loading", snapshots: [] };
       this.hours.set(id, chunk);
       void this.loadHour(date, hour, chunk);
     }
-    // Evict least-recently-added hours beyond the cache size.
+    // Evict least-recently-used hours beyond the cache size.
     while (this.hours.size > MAX_HOURS_CACHED)
       this.hours.delete(this.hours.keys().next().value!);
   }
@@ -461,8 +487,13 @@ export class RtClient {
     }
   }
 
-  /** Snapshots from loaded hours around t, or undefined while they load. */
+  /**
+   * Snapshots from loaded hours around t, or undefined while the hour containing t loads. A
+   * neighbouring hour still loading is left out until it arrives.
+   */
   private snapshotsAround(t: number): RtSnapshot[] | undefined {
+    const own = this.hours.get(this.hourId(t).id);
+    if (!own || own.status === "loading") return undefined;
     const margin = CADENCE.maxInterpolateLimitS * 1000;
     const out: RtSnapshot[] = [];
     const seen = new Set<string>();
@@ -471,8 +502,7 @@ export class RtClient {
       if (seen.has(id)) continue;
       seen.add(id);
       const chunk = this.hours.get(id);
-      if (!chunk || chunk.status === "loading") return undefined;
-      out.push(...chunk.snapshots);
+      if (chunk?.status === "ready") out.push(...chunk.snapshots);
     }
     return out.sort((a, b) => a.fetchedAt - b.fetchedAt);
   }
