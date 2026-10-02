@@ -15,6 +15,7 @@ import {
 } from "@transitopia/transit-core/infra/network.ts";
 import { composeNetwork } from "@transitopia/transit-core/scenario/network.ts";
 import type { LineKey } from "@transitopia/transit-core/infra/types.ts";
+import { TIMEZONE } from "@transitopia/transit-core/time.ts";
 
 interface OsmRelation {
   type: "relation";
@@ -102,7 +103,8 @@ async function main() {
       );
     }
   }
-  const today = new Date().toISOString().slice(0, 10);
+  // OSM's opening_date is a local date.
+  const today = Temporal.Now.plainDateISO(TIMEZONE).toString();
   const current = ways.filter((w) => !isFuture(w.tags ?? {}, today));
   const future = ways.filter((w) => isFuture(w.tags ?? {}, today));
   const stopNodes = [...nodes.values()].filter(
