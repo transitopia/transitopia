@@ -129,8 +129,10 @@ function Page({ children }: { children: React.ReactNode }) {
 /**
  * While /trackside is open, the page describes itself as a home-screen app (iOS reads these when
  * "Add to Home Screen" is chosen) and lets content run under the notch and home indicator, which
- * the camera view pads around. Everything is restored on the way out, so the rest of the site is
- * unaffected.
+ * the camera view pads around. The document itself never scrolls (only panels do): under the
+ * status bar it can end up a little taller than the screen, and a drag on a panel with nothing
+ * left to scroll then moved the whole page. Everything is restored on the way out, so the rest of
+ * the site is unaffected.
  */
 function useHomeScreenApp(): void {
   React.useEffect(() => {
@@ -153,7 +155,18 @@ function useHomeScreenApp(): void {
     if (viewport) viewport.content = `${content}, viewport-fit=cover`;
     const title = document.title;
     document.title = "Trackside";
+    const root = document.documentElement.style;
+    const body = document.body.style;
+    const saved = [root.overflow, root.overscrollBehavior, body.overflow];
+    root.overflow = "hidden";
+    root.overscrollBehavior = "none";
+    body.overflow = "hidden";
     return () => {
+      [root.overflow, root.overscrollBehavior, body.overflow] = saved as [
+        string,
+        string,
+        string,
+      ];
       for (const e of added) e.remove();
       if (viewport && content !== undefined) viewport.content = content;
       document.title = title;

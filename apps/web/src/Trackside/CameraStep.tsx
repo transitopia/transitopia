@@ -181,7 +181,7 @@ function Sheet({
     : `${insetLeft} ${insetRight} ${bottom} max-h-[60dvh] lg:left-auto lg:w-[32rem]`;
   return (
     <div
-      className={`absolute ${place} overflow-y-auto rounded-xl bg-white/95 p-3 text-sm text-gray-900 shadow-lg dark:bg-gray-900/95 dark:text-gray-100`}>
+      className={`absolute ${place} overflow-y-auto overscroll-contain rounded-xl bg-white/95 p-3 text-sm text-gray-900 shadow-lg dark:bg-gray-900/95 dark:text-gray-100`}>
       <button
         className="float-right -mr-1 -mt-1 h-9 w-9 rounded-full text-lg hover:bg-gray-200 dark:hover:bg-gray-800"
         onClick={onClose}

@@ -258,7 +258,7 @@ function SetupOverlay({ onDone }: { onDone: (r: SetupResult) => void }) {
   }, [map, tracks, camera, place.target, setup, styleGeneration]);
 
   return (
-    <div className="absolute inset-x-0 bottom-0 z-50 max-h-[55dvh] overflow-y-auto border-t border-gray-300 bg-white p-4 text-sm text-gray-900 shadow-lg lg:left-5 lg:right-auto lg:bottom-5 lg:w-[28rem] lg:rounded-lg lg:border dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+    <div className="absolute inset-x-0 bottom-0 z-50 max-h-[55dvh] overflow-y-auto overscroll-contain border-t border-gray-300 bg-white p-4 text-sm text-gray-900 shadow-lg lg:left-5 lg:right-auto lg:bottom-5 lg:w-[28rem] lg:rounded-lg lg:border dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
       <h1 className="mb-1 text-base font-semibold">Trackside camera: setup</h1>
       {tracksError && (
         <p className="text-red-700 dark:text-red-400">{tracksError}</p>
