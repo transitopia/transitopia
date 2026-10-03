@@ -34,8 +34,12 @@ export interface AlertDraft {
   unparsed?: string;
 }
 
+/**
+ * "Trains will single-track in both directions between X Station & Y Station", "single track service
+ * will be in effect between X Station & Y Station": any words up to "between", within one sentence.
+ */
 const SINGLE_TRACK =
-  /single[- ]?track(?:ing)?(?:\s+in\s+both\s+directions)?\s+between\s+(.+?)\s+Station\s*(?:and|&)\s*(.+?)\s+Station/gi;
+  /single[- ]?track(?:ing)?\b[^.]*?\bbetween\s+(.+?)\s+Station\s*(?:and|&)\s*(.+?)\s+Station/gi;
 /** "…please board all trains from Platform 2 at both stations": the platform (track) that stays open. */
 const BOARD_FROM =
   /board\s+all\s+trains\s+from\s+Platform\s+(\d+)(\s+at\s+both\s+stations)?/i;

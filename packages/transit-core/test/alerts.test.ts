@@ -70,7 +70,34 @@ describe("alert drafts", () => {
     ]);
   });
 
+  it("reads other phrasings of single-tracking (alert 759265, 2026-10-03)", () => {
+    const { draft } = draftFromAlert({
+      ...canada,
+      id: "759265",
+      header:
+        "Canada Line single track service will be in effect between Bridgeport Station & Richmond-Brighouse Station from 11 PM until end of service on Sunday, Oct 4, due to track maintenance. Please allow extra travel time.",
+    });
+    expect(draft?.singleTrack).toEqual([
+      {
+        line: "canada",
+        between: ["Bridgeport", "Richmond-Brighouse"],
+        keep: "",
+      },
+    ]);
+    expect(draft?.headway).toHaveLength(3);
+  });
+
   it("keeps alerts it cannot model as unparsed", () => {
+    // Alert 758307 (2026-10-03): turnbacks and platform closures, which disruptions can't express.
+    expect(
+      draftFromAlert({
+        ...expo,
+        header:
+          "Expo Line LIM Rail Replacement: SkyTrain service between Waterfront and Commercial-Broadway stations will be impacted on Saturday and Sunday mornings from start of service until 10:15 AM. Customers should allow for 20 minutes extra trip time.",
+        description:
+          "Please board trains from platform 1 at Waterfront Station, Burrard Station and Granville Station; platform 2 is closed.",
+      }).unparsed,
+    ).toMatch(/no single-tracking/);
     const r = draftFromAlert({
       ...expo,
       header: "Elevator at Braid Station is out of service.",

@@ -331,6 +331,11 @@ export class RtService {
       const last = await this.recorder.lastSnapshot();
       this.latest = last ? trackedOnly(last) : null;
     }
+    // Likewise the last alerts, so /rt/alerts and /admin aren't empty until the first alerts poll.
+    this.alerts = await this.alertDrafts.restore().catch((e: Error) => {
+      this.log(`could not restore alerts (${e.message})`);
+      return [];
+    });
     const now = Date.now();
     this.log(
       `Polling TransLink on a schedule (now every ${pollIntervalS(SCHEDULE, "positions", now)}s positions, `
