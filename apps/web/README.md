@@ -54,6 +54,10 @@ Light and dark basemaps come from [packages/map-style](../../packages/map-style/
 
 `/admin` (`src/Admin/Admin.tsx`) is the review queue for corrections: the server's status and health, recent jobs, disruptions drafted from TransLink alerts, observation sets, and alerts the parser couldn't draft. Admins edit, preview, confirm, discard and reopen corrections there. Sign-in is with GitHub through the server; the token comes back in the URL fragment, is removed from the address bar at once, and is kept in local storage ([apps/server → Admin API and sign-in](../server/README.md#admin-api-and-sign-in)).
 
+## Current location
+
+The location button under the map controls (MapLibre's `GeolocateControl`, in `src/Map/Map.tsx`, so every mode has it) asks for the browser's location. Tapping it centres the map on you and follows as you move. Panning the map, or centring on a vehicle, stops following but keeps your dot, and tapping again turns it off. Outside the map's bounds (BC) the button shows an error instead of moving the map. The position stays in the browser: it is never sent to our server or recorded. Browsers only offer it on HTTPS (and `localhost`).
+
 ## Home screen
 
 The site can be added to a phone's home screen as "Transitopia". `public/manifest.webmanifest` gives the name, icons and `start_url` (Android and desktop installs). iOS uses `apple-touch-icon.png` and `apple-mobile-web-app-title` from `index.html` instead, because it can't use SVG icons. It also starts from whatever URL was open when the page was added, not from `start_url`. So when the page is opened as an installed app, `src/startup.ts` drops the query string (time, selection, preview), keeping the path and map position: the app always opens live.

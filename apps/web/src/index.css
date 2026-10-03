@@ -32,6 +32,13 @@
 :root[data-theme="dark"] .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
   filter: invert(1);
 }
+/* The location button's states are coloured (blue active, red error): keep their hue. */
+:root[data-theme="dark"]
+  .maplibregl-ctrl-group
+  button.maplibregl-ctrl-geolocate
+  .maplibregl-ctrl-icon {
+  filter: invert(1) hue-rotate(180deg);
+}
 :root[data-theme="dark"] .maplibregl-ctrl-scale {
   background: rgb(17 24 39 / 0.8);
   color: #e5e7eb;

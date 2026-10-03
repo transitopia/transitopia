@@ -109,6 +109,14 @@ export const Map: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       }
     }
     map.addControl(new MapControls({ visualizePitch: false }), "top-right");
+    // Show (and follow) where you are (apps/web/README.md#current-location). The position stays in the browser.
+    map.addControl(
+      new maplibregl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true,
+      }),
+      "top-right",
+    );
     map.addControl(
       new maplibregl.ScaleControl({ unit: "metric" }),
       "bottom-left",
