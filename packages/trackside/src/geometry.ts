@@ -10,6 +10,7 @@ import {
   bearingDeg,
   cumulativeLengths,
   distM,
+  localProjector,
   pointAlong,
   projectOnto,
   type LonLat,
@@ -102,6 +103,42 @@ function snap(segment: TrackSegment, p: LonLat): Snap {
   return { segment, offset, point: [at.lon, at.lat], bearing: at.bearing };
 }
 
+/**
+ * How far from the camera its line of sight (through the point tapped) crosses a track, near the
+ * point tapped; where it doesn't cross it there (e.g. it runs alongside), the distance to the
+ * track's point nearest the point tapped. Not the distance to the nearest point of the whole track:
+ * a long way can curve much closer to the camera elsewhere.
+ */
+function sightDistance(at: LonLat, target: LonLat, track: Snap): number {
+  const proj = localProjector(target[1]);
+  const [cx, cy] = proj.toXY(at);
+  const [tx, ty] = proj.toXY(target);
+  const dx = tx - cx;
+  const dy = ty - cy;
+  const sight = Math.hypot(dx, dy);
+  if (sight === 0) return distM(at, track.point);
+  let best: number | undefined;
+  const coords = track.segment.coords;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const [ax, ay] = proj.toXY(coords[i]!);
+    const [bx, by] = proj.toXY(coords[i + 1]!);
+    const ex = bx - ax;
+    const ey = by - ay;
+    const denom = dx * ey - dy * ex;
+    if (Math.abs(denom) < 1e-9) continue;
+    // camera + t·(target − camera) = a + u·(b − a)
+    const t = ((ax - cx) * ey - (ay - cy) * ex) / denom;
+    const u = ((ax - cx) * dy - (ay - cy) * dx) / denom;
+    if (u < 0 || u > 1 || t <= 0) continue;
+    const d = t * sight;
+    // Only crossings near the point tapped are the track in view.
+    if (Math.abs(d - sight) > MAX_TRACK_SPREAD_M) continue;
+    if (best === undefined || Math.abs(d - sight) < Math.abs(best - sight))
+      best = d;
+  }
+  return best ?? distM(at, track.point);
+}
+
 const angle = (a: number, b: number) => {
   const d = Math.abs((((a - b) % 360) + 360) % 360);
   return Math.min(d, 360 - d);
@@ -137,7 +174,7 @@ export function cameraSetup(opts: {
           angle(s.bearing, tapped.bearing + 180),
         ) <= PARALLEL_DEG,
     )
-    .map((s) => ({ ...s, fromCamera: distM(at, snap(s.segment, at).point) }))
+    .map((s) => ({ ...s, fromCamera: sightDistance(at, target, s) }))
     .sort((a, b) => a.fromCamera - b.fromCamera);
   if (inView.length > MAX_TRACKS)
     return {

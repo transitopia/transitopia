@@ -96,6 +96,28 @@ describe("cameraSetup", () => {
     ]);
   });
 
+  it("measures where the line of sight crosses each track, not to its nearest point anywhere", () => {
+    // The far track's way runs on and hooks back close to the camera, 300 m east of the view.
+    const hooked = {
+      ...track("north", 5),
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [-123.11, 49.27 + 5 * M],
+          [-123.096, 49.27 + 5 * M],
+          [-123.096, 49.27 - 40 * M],
+          [-123.0998, 49.27 - 40 * M],
+        ],
+      },
+    };
+    const s = setupWith([track("south", 0), hooked], [0, -30], [0, 2.5]);
+    if ("error" in s) throw new Error(s.error);
+    expect(s.tracks.map((t) => [t.segment, Math.round(t.distanceM)])).toEqual([
+      ["south", 30],
+      ["north", 35],
+    ]);
+  });
+
   it("explains a target away from the guideway, a camera on it, or too many tracks", () => {
     expect(setupWith(twoTracks, [0, -1000], [0, -500])).toHaveProperty("error");
     expect(setupWith(twoTracks, [0, 0], [0, 0])).toHaveProperty("error");
