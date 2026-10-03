@@ -11,17 +11,98 @@
 }
 
 :root {
+  /* Phones with a home indicator are the ones with rounded screen corners; elsewhere this is 0. */
+  --screen-corner-inset: env(safe-area-inset-bottom);
+  /* The header bar on phones, below the status bar (.map-header). */
+  --phone-header-height: 3.5rem;
+  /* Also the browser's theme-color (src/Theme/Theme.tsx), so the status bar matches the phone header bar. Hex for theme-color. */
+  --header-background: #fff;
   color-scheme: light;
   background: #f5f4f1;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
+  --header-background: #101828; /* gray-900 */
   background: #15181c;
 }
+/*
+ * iOS Safari colours the band behind the status bar from the page background, not theme-color:
+ * on phones, where the header is a bar across the top, the page takes the header's colour.
+ */
+:root,
+:root[data-theme="dark"] {
+  @variant max-sm {
+    background: var(--header-background);
+  }
+}
 
-/* MapLibre's controls: keep the scale bar above our credits line, and match the dark theme. */
+/*
+ * The map runs under the status bar, rounded corners and home indicator (viewport-fit=cover in
+ * index.html); everything drawn over it keeps to the safe area, except the credits line along the
+ * bottom edge, which pads its ends clear of the rounded corners. Overlays are positioned inside
+ * .map-chrome, which passes taps through to the map except on its children. In a layer, so a
+ * child's own pointer-events-none utility still wins.
+ */
+@layer components {
+  .map-chrome {
+    position: absolute;
+    /* Inside the map's own box (src/Map/Map.tsx): installed iOS apps report a shorter viewport. */
+    top: env(safe-area-inset-top);
+    right: env(safe-area-inset-right);
+    bottom: 0; /* the credits line is pinned to the bottom edge (src/Attribution/) */
+    left: env(safe-area-inset-left);
+    pointer-events: none;
+  }
+  .map-chrome > * {
+    pointer-events: auto;
+  }
+
+  /* The site header (src/App.tsx): floating at the top left, or on phones a bar across the top. */
+  .map-header {
+    position: absolute;
+    top: calc(env(safe-area-inset-top) + 1.25rem);
+    right: calc(
+      env(safe-area-inset-right) + 3.5rem
+    ); /* clear of the map controls */
+    left: calc(env(safe-area-inset-left) + 1.25rem);
+    padding: 0.5rem;
+    border-width: 1px;
+    border-radius: var(--radius-sm); /* as MapOverlayWindow (rounded-sm) */
+    @variant lg {
+      right: auto;
+      width: 24rem;
+    }
+    /* Under the status bar, with its contents below it; the chrome and map controls start below the bar. */
+    @variant max-sm {
+      top: 0;
+      right: 0;
+      left: 0;
+      height: calc(env(safe-area-inset-top) + var(--phone-header-height));
+      padding: env(safe-area-inset-top)
+        calc(env(safe-area-inset-right) + 0.75rem) 0
+        calc(env(safe-area-inset-left) + 0.75rem);
+      border-width: 0 0 1px;
+      border-radius: 0;
+    }
+  }
+  .map-chrome {
+    @variant max-sm {
+      top: calc(env(safe-area-inset-top) + var(--phone-header-height));
+    }
+  }
+}
+
+/* MapLibre's controls: keep to the safe area, the scale bar above our credits line, and match the dark theme. */
+.maplibregl-ctrl-top-right {
+  top: env(safe-area-inset-top);
+  right: env(safe-area-inset-right);
+  @variant max-sm {
+    top: calc(env(safe-area-inset-top) + var(--phone-header-height));
+  }
+}
 .maplibregl-ctrl-bottom-left {
   bottom: 1.75rem;
+  left: env(safe-area-inset-left);
 }
 :root[data-theme="dark"] .maplibregl-ctrl-group {
   background: #1f2937;

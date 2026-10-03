@@ -192,7 +192,7 @@ export const CyclingMap: React.FC = () => {
   return (
     <>
       {selectedFeature?.type === "cycling_way" ?
-        <MapOverlayWindow className="top-24">
+        <MapOverlayWindow className="top-5 sm:top-24">
           <div className="flex">
             <div className="flex-1">
               {selectedFeature.name ?
@@ -261,7 +261,7 @@ export const CyclingMap: React.FC = () => {
           }
         </MapOverlayWindow>
       : selectedFeature?.type === "bicycle_parking" ?
-        <MapOverlayWindow className="top-24">
+        <MapOverlayWindow className="top-5 sm:top-24">
           {selectedFeature.osmNodeId && (
             <InfoboxBikeParking
               featureType="node"

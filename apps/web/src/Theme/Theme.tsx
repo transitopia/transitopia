@@ -48,7 +48,15 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [pref]);
 
   React.useEffect(() => {
-    document.documentElement.dataset.theme = theme;
+    const root = document.documentElement;
+    root.dataset.theme = theme;
+    // The browser paints the status bar in theme-color: match the header (src/index.css).
+    const color = getComputedStyle(root)
+      .getPropertyValue("--header-background")
+      .trim();
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", color);
   }, [theme]);
 
   const setPref = React.useCallback((next: ThemePref) => {
