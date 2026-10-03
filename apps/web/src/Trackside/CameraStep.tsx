@@ -16,6 +16,8 @@ import { compass } from "./SetupStep.tsx";
 const button =
   "rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-100 disabled:opacity-50 dark:border-gray-600 dark:hover:bg-gray-800";
 const MIN_GAP = 0.03;
+/** Most of the screen's height the preview may take, in dvh. */
+const PREVIEW_MAX_DVH = 55;
 
 export function CameraStep({
   setup,
@@ -35,7 +37,7 @@ export function CameraStep({
 
   React.useEffect(() => {
     const s = new TracksideSession(setup, token);
-    s.video.className = "block w-full h-auto";
+    s.video.className = "block h-full w-full";
     videoBox.current!.prepend(s.video);
     setSession(s);
     void (file ? s.startFile(file) : s.startCamera());
@@ -53,11 +55,19 @@ export function CameraStep({
     () => session?.snapshot,
   );
 
+  // The preview keeps the video's shape and at most PREVIEW_MAX_DVH of the screen's height, so the
+  // controls stay reachable (the overlay's fractions are of this box).
+  const aspect = snap?.video ? snap.video.width / snap.video.height : 16 / 9;
   return (
     <div className="min-h-dvh bg-gray-100 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+      {snap && session && <StatusBar snap={snap} onBack={onBack} />}
       <div
         ref={videoBox}
-        className="relative mx-auto max-w-5xl touch-none select-none bg-black">
+        className="relative mx-auto select-none bg-black"
+        style={{
+          aspectRatio: String(aspect),
+          width: `min(100%, ${PREVIEW_MAX_DVH * aspect}dvh)`,
+        }}>
         {snap?.video && session && (
           <RoiOverlay
             roi={snap.roi}
@@ -70,7 +80,6 @@ export function CameraStep({
         <Controls
           session={session}
           snap={snap}
-          onBack={onBack}
           showImages={showImages}
           setShowImages={setShowImages}
         />
@@ -79,26 +88,15 @@ export function CameraStep({
   );
 }
 
-function Controls({
-  session,
-  snap,
-  onBack,
-  showImages,
-  setShowImages,
-}: {
-  session: TracksideSession;
-  snap: Snapshot;
-  onBack: () => void;
-  showImages: boolean;
-  setShowImages: (show: boolean) => void;
-}) {
+/** Always in view at the top: back to setup, and whether the camera, reader and uploads work. */
+function StatusBar({ snap, onBack }: { snap: Snapshot; onBack: () => void }) {
   const sent = snap.passes.filter((p) => p.upload === "sent").length;
   const waiting = snap.passes.filter(
     (p) => p.upload === "waiting" || p.upload === "sending",
   ).length;
   return (
-    <div className="mx-auto max-w-5xl space-y-3 p-3 text-sm">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+    <div className="sticky top-0 z-10 border-b border-gray-300 bg-white/95 px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] text-sm dark:border-gray-700 dark:bg-gray-900/95">
+      <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-1">
         <button className={button} onClick={onBack}>
           ← Setup
         </button>
@@ -128,11 +126,29 @@ function Controls({
         {snap.source === "file" && <span>Clip: passes aren't uploaded</span>}
       </div>
       {snap.video && snap.video.height > snap.video.width && (
-        <p className="rounded bg-amber-100 p-2 text-amber-900 dark:bg-amber-900 dark:text-amber-100">
+        <p className="mx-auto mt-2 max-w-5xl rounded bg-amber-100 p-2 text-amber-900 dark:bg-amber-900 dark:text-amber-100">
           Turn the phone sideways: trains cross a landscape view, and the
           detector needs the width.
         </p>
       )}
+    </div>
+  );
+}
+
+function Controls({
+  session,
+  snap,
+  showImages,
+  setShowImages,
+}: {
+  session: TracksideSession;
+  snap: Snapshot;
+  showImages: boolean;
+  setShowImages: (show: boolean) => void;
+}) {
+  return (
+    // Bottom padding clears Safari's floating toolbar and the home indicator.
+    <div className="mx-auto max-w-5xl space-y-3 p-3 pb-[calc(env(safe-area-inset-bottom)+6rem)] text-sm">
       {snap.zoom && snap.zoom.max > snap.zoom.min && (
         <label className="flex items-center gap-2">
           Zoom
@@ -264,7 +280,7 @@ function RoiOverlay({
   const pct = (f: number) => `${(f * 100).toFixed(2)}%`;
   const line = (key: keyof Roi, label: string, color: string) => (
     <div
-      className="absolute inset-x-0 -mt-4 flex h-8 cursor-ns-resize items-center"
+      className="absolute inset-x-0 -mt-4 flex h-8 cursor-ns-resize touch-none items-center"
       style={{ top: pct(roi[key]) }}
       onPointerDown={(e) => {
         (e.target as HTMLElement).setPointerCapture(e.pointerId);
