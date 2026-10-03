@@ -6,7 +6,7 @@
 
 import React from "react";
 import { trainsets } from "@transitopia/trackside/cars.ts";
-import type { CameraSetup } from "@transitopia/trackside/types.ts";
+import { trackNames, type CameraSetup } from "@transitopia/trackside/types.ts";
 import {
   roiOf,
   TracksideSession,
@@ -267,17 +267,19 @@ function TracksPanel({
       <ul className="flex flex-wrap gap-x-4">
         {setup.tracks.map((t, i) => (
           <li key={t.segment} className={COLORS[i]!.text}>
-            {i + 1}: {t.kind === "main" ? "main line" : t.kind},{" "}
+            {capitalize(trackNames(setup.tracks.length)[i]!)}:{" "}
+            {t.kind === "main" ? "main line" : t.kind},{" "}
             {Math.round(t.distanceM)} m
           </li>
         ))}
       </ul>
       <p className="text-gray-600 dark:text-gray-400">
-        Drag each band's ends (on the right of the preview) to where that
-        track's trains appear: from above, the tracks are separate lanes; from
-        level, the near track's trains look taller. Or, after a train passes,
-        tap its track in Passes: that sets the band. Car numbers read best when
-        they're large: zoom in if you can.
+        The near track is the one closest to you (as on the setup map). Drag
+        each band's ends (on the right of the preview) to where that track's
+        trains appear: from above, the near track is lower on screen and the
+        tracks are separate lanes; from level, the near track's trains look
+        taller. Or, after a train passes, tap its track in Passes: that sets the
+        band. Car numbers read best when they're large: zoom in if you can.
       </p>
       {snap.zoom && snap.zoom.max > snap.zoom.min && (
         <label className="flex items-center gap-2">
@@ -345,7 +347,9 @@ function LatestPass({ snap }: { snap: Snapshot }) {
   return (
     <span className="truncate">
       {r.screen === "right" ? "→" : "←"}{" "}
-      {r.track === undefined ? "track ?" : `track ${r.track + 1}`}
+      {r.track === undefined ?
+        "track ?"
+      : trackLabel(r.track, r.setup.tracks.length)}
       {" · "}
       {p.reading === "pending" ?
         "reading…"
@@ -355,6 +359,14 @@ function LatestPass({ snap }: { snap: Snapshot }) {
     </span>
   );
 }
+
+/** "near track", "middle track", "far track", or "track". */
+function trackLabel(index: number, count: number): string {
+  const name = trackNames(count)[index] ?? "track";
+  return name === "track" ? name : `${name} track`;
+}
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 function uploads(snap: Snapshot) {
   const count = (...states: PassView["upload"][]) =>
@@ -392,14 +404,14 @@ function PassRow({
           {Array.from({ length: tracks }, (_, i) => (
             <button
               key={i}
-              title={`Track ${i + 1}: also sets that track's band to this train`}
-              className={`h-9 w-9 rounded border text-sm ${
+              title={`${capitalize(trackLabel(i, tracks))}: also sets that track's band to this train`}
+              className={`h-9 min-w-9 rounded border px-2 text-sm ${
                 r.track === i ?
                   `${COLORS[i]!.bg} border-transparent text-white`
                 : "border-gray-300 dark:border-gray-600"
               }`}
               onClick={() => onTrack(i)}>
-              {i + 1}
+              {tracks === 1 ? "✓" : capitalize(trackNames(tracks)[i]!)}
             </button>
           ))}
           {r.track === undefined && <span className="text-gray-500">?</span>}
@@ -540,7 +552,7 @@ function BandsOverlay({
                   className={`pointer-events-none absolute flex w-2 items-center justify-center rounded ${c.bg}`}
                   style={{ top: pct(top), height: pct(bottom - top), right }}>
                   <span className={`rounded px-1 text-xs text-white ${c.bg}`}>
-                    {i + 1}
+                    {trackNames(bands.length)[i]}
                   </span>
                 </div>
                 {handle(0)}

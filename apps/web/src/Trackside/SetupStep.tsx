@@ -12,7 +12,7 @@ import {
   type Station,
   type TrackSegment,
 } from "@transitopia/trackside/geometry.ts";
-import type { CameraSetup } from "@transitopia/trackside/types.ts";
+import { trackNames, type CameraSetup } from "@transitopia/trackside/types.ts";
 import { AsyncMapLibreGLLoader, Map } from "../Map/Map.tsx";
 import { useMap, useStyleGeneration } from "../Map/MapUtils.ts";
 import { transitData } from "../config.ts";
@@ -339,7 +339,11 @@ function SetupSummary({ setup }: { setup: CameraSetup }) {
       <ul>
         {setup.tracks.map((t, i) => (
           <li key={t.segment} className={TRACK_TEXT[i]}>
-            Track {i + 1}: {t.kind === "main" ? "main line" : t.kind},{" "}
+            {trackNames(setup.tracks.length)[i]!.replace(/^./, (c) =>
+              c.toUpperCase(),
+            )}
+            {setup.tracks.length > 1 ? " track" : ""}:{" "}
+            {t.kind === "main" ? "main line" : t.kind},{" "}
             {Math.round(t.distanceM)} m away
           </li>
         ))}

@@ -81,3 +81,13 @@ export interface PassReport {
   /** Live camera, or a recorded clip replayed (tests: never uploaded). */
   source: "camera" | "file";
 }
+
+/**
+ * What people call each track in view, nearest the camera first: "near" and "far" (with a
+ * "middle" between them for three), or just "track" when there's one.
+ */
+export function trackNames(count: number): string[] {
+  if (count <= 1) return ["track"];
+  if (count === 2) return ["near", "far"];
+  return ["near", ...Array.from({ length: count - 2 }, () => "middle"), "far"];
+}

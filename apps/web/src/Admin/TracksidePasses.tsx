@@ -4,7 +4,7 @@
 
 import React from "react";
 import { trainsets } from "@transitopia/trackside/cars.ts";
-import type { PassReport } from "@transitopia/trackside/types.ts";
+import { trackNames, type PassReport } from "@transitopia/trackside/types.ts";
 import { transitApi } from "../config.ts";
 import type { useApi } from "./api.ts";
 
@@ -157,10 +157,11 @@ function CropImage({
     : <div className="h-10 w-16 rounded bg-gray-200 dark:bg-gray-800" />;
 }
 
-/** "track 2 of 3 (siding)". */
+/** "middle track of 3 (siding)". */
 function trackLabel(r: PassReport): string {
   const tracks = r.setup.tracks;
   if (r.track === undefined) return `track ? of ${tracks.length}`;
   const kind = tracks[r.track]?.kind;
-  return `track ${r.track + 1} of ${tracks.length}${kind && kind !== "main" ? ` (${kind})` : ""}`;
+  const name = trackNames(tracks.length)[r.track] ?? "track";
+  return `${name === "track" ? "" : `${name} `}track of ${tracks.length}${kind && kind !== "main" ? ` (${kind})` : ""}`;
 }
