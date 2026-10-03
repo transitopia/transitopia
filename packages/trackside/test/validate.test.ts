@@ -10,10 +10,10 @@ const report = (patch: Partial<PassReport> = {}): PassReport => ({
     id: "8a1b2c3d-0000-4000-8000-000000000002",
     at: [-123.1008, 49.27295],
     lines: ["expo"],
-    nearSegment: "w1.0",
-    farSegment: "w2.0",
-    nearDistanceM: 37,
-    farDistanceM: 44,
+    tracks: [
+      { segment: "w1.0", distanceM: 37, kind: "main", lines: ["expo"] },
+      { segment: "w2.0", distanceM: 44, kind: "main", lines: ["expo"] },
+    ],
     rightwardBearing: 110,
     towardRight: "Commercial–Broadway",
     towardLeft: "Stadium–Chinatown",
@@ -22,7 +22,9 @@ const report = (patch: Partial<PassReport> = {}): PassReport => ({
   },
   start: "2026-10-01T22:44:40.000Z",
   end: "2026-10-01T22:44:47.000Z",
-  track: "near",
+  track: 0,
+  trackSegment: "w1.0",
+  extent: [0.2, 0.7],
   screen: "right",
   bearing: 110,
   toward: "Commercial–Broadway",
@@ -38,6 +40,15 @@ const report = (patch: Partial<PassReport> = {}): PassReport => ({
 describe("passProblems", () => {
   it("accepts a camera report", () => {
     expect(passProblems(report())).toEqual([]);
+  });
+
+  it("refuses a track that isn't in view, and bad rows", () => {
+    expect(passProblems(report({ track: 2 }))).toEqual([
+      "track must be an index into setup.tracks",
+    ]);
+    expect(passProblems(report({ extent: [0.7, 0.2] }))).toEqual([
+      "extent must be [top, bottom] fractions, top first",
+    ]);
   });
 
   it("refuses clips, bad times and bad crops", () => {

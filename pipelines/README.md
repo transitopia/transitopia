@@ -36,5 +36,5 @@ What they check is in [packages/transit-core/DESIGN.md → Validation](../packag
 | `npx tsx pipelines/eval-rt.ts` | Replay recorded RT data as the live view would: prediction error and jumps (`--subsample schedule` thins it to the poll schedule) |
 | `npx tsx pipelines/probe-ais.ts` | Record raw aisstream.io messages for the SeaBus fleet and summarise them |
 | `npx tsx pipelines/eval-ais.ts [YYYYMMDD]` | Recorded SeaBus AIS against the timetable |
-| `npx tsx pipelines/trackside-replay.ts <video> --roi x,y,w,h --split f [--ocr]` | A recorded clip through the trackside camera detector and reader ([packages/trackside](../packages/trackside/README.md#replaying-clips)) |
+| `npx tsx pipelines/trackside-replay.ts <video> [--roi x,y,w,h] [--bands t,b;t,b] [--ocr]` | A recorded clip through the trackside camera detector and reader ([packages/trackside](../packages/trackside/README.md#replaying-clips)) |
 | `npx tsx pipelines/screenshot.ts out.png "<path>"` | Screenshot the running site with the local Chrome (`--mobile`, `--dark`, `--pick <route>`) |

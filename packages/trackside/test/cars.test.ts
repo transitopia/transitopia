@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { carsFromTexts, pairs, partner, uncertainTexts } from "../src/cars.ts";
+import {
+  carsFromTexts,
+  fleetOf,
+  setOf,
+  trainsets,
+  uncertainTexts,
+} from "../src/cars.ts";
 import type { OcrText } from "../src/ocr.ts";
 
 const text = (
@@ -15,15 +21,25 @@ const text = (
 });
 
 describe("car numbers", () => {
-  it("names married-pair partners (odd n with n + 1)", () => {
-    expect(partner("097")).toBe("098");
-    expect(partner("098")).toBe("097");
-    expect(partner("335")).toBe("336");
-    expect(partner("12")).toBeUndefined();
-    expect(pairs(["336", "335", "310", "317"])).toEqual([
-      "335·336",
+  it("groups cars into the sets that run together", () => {
+    expect(setOf("097")).toEqual(["097", "098"]);
+    expect(setOf("336")).toEqual(["335", "336"]);
+    expect(setOf("443")).toEqual(["441", "442", "443", "444"]);
+    expect(setOf("6011")).toEqual(["6011"]);
+    expect(fleetOf("477")?.type).toBe("Mk III");
+    expect(fleetOf("6225")?.type).toBe("Mk V");
+    // As read in the test videos, front first.
+    expect(trainsets(["309", "310", "336", "335"])).toEqual([
       "309·310",
-      "317·318",
+      "335·336",
+    ]);
+    expect(trainsets(["421", "422", "423", "424"])).toEqual(["421–424"]);
+    expect(trainsets(["6025", "6024", "6023", "6022", "6011"])).toEqual([
+      "6025",
+      "6024",
+      "6023",
+      "6022",
+      "6011",
     ]);
   });
 

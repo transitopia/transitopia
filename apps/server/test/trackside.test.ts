@@ -18,15 +18,16 @@ const report = (patch: Partial<PassReport> = {}): PassReport => ({
     id: "8a1b2c3d-0000-4000-8000-000000000002",
     at: [-123.1008, 49.27295],
     lines: ["expo"],
-    nearSegment: "w1.0",
-    nearDistanceM: 37,
+    tracks: [{ segment: "w1.0", distanceM: 37, kind: "main", lines: ["expo"] }],
     rightwardBearing: 110,
     hfovDeg: 65,
     frameWidth: 1920,
   },
   start: "2026-10-01T22:44:40.000Z",
   end: "2026-10-01T22:44:47.000Z",
-  track: "near",
+  track: 0,
+  trackSegment: "w1.0",
+  extent: [0.2, 0.7],
   screen: "right",
   bearing: 110,
   speedKmh: 62,
@@ -84,9 +85,10 @@ describe("trackside passes", () => {
       ok: true,
       result: "added",
     });
-    expect(await (await post(report())).json()).toEqual({
+    // Sent again (e.g. with its track corrected): replaced, crops kept.
+    expect(await (await post(report({ track: undefined }))).json()).toEqual({
       ok: true,
-      result: "duplicate",
+      result: "updated",
     });
 
     const { passes } = (await (

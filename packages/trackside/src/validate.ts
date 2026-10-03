@@ -1,6 +1,6 @@
 // What the server accepts from a trackside camera (packages/trackside/README.md#reports).
 
-import type { CarReading, PassReport } from "./types.ts";
+import { MAX_TRACKS, type CarReading, type PassReport } from "./types.ts";
 
 /** Crops are small JPEGs of a number; anything bigger isn't one. */
 export const MAX_CROP_BYTES = 40_000;
@@ -13,8 +13,18 @@ export function passProblems(r: PassReport): string[] {
   if (typeof r.id !== "string" || !ID.test(r.id))
     p.push("id must be 8–64 of [a-z0-9-]");
   if (r.source !== "camera") p.push("only live camera passes are stored");
-  if (r.track !== "near" && r.track !== "far")
-    p.push("track must be near or far");
+  const nTracks = Array.isArray(r.setup?.tracks) ? r.setup.tracks.length : 0;
+  if (
+    r.track !== undefined
+    && !(Number.isInteger(r.track) && r.track >= 0 && r.track < nTracks)
+  )
+    p.push("track must be an index into setup.tracks");
+  if (
+    !Array.isArray(r.extent)
+    || r.extent.length !== 2
+    || !(r.extent[0] >= 0 && r.extent[0] <= r.extent[1] && r.extent[1] <= 1)
+  )
+    p.push("extent must be [top, bottom] fractions, top first");
   if (r.screen !== "left" && r.screen !== "right")
     p.push("screen must be left or right");
   if (!isBearing(r.bearing)) p.push("bearing must be 0–360");
@@ -32,8 +42,17 @@ export function passProblems(r: PassReport): string[] {
     p.push("setup.id must be 8–64 of [a-z0-9-]");
   else {
     if (!isLonLat(s.at)) p.push("setup.at must be [lon, lat]");
-    if (typeof s.nearSegment !== "string")
-      p.push("setup.nearSegment is required");
+    if (
+      !Array.isArray(s.tracks)
+      || !s.tracks.length
+      || s.tracks.length > MAX_TRACKS
+      || s.tracks.some(
+        (t) => typeof t?.segment !== "string" || !(t.distanceM > 0),
+      )
+    )
+      p.push(
+        `setup.tracks must list 1–${MAX_TRACKS} tracks with segment and distanceM`,
+      );
     if (!Array.isArray(s.lines)) p.push("setup.lines must be a list");
   }
   const readings = [

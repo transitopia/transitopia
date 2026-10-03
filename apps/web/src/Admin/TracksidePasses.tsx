@@ -3,7 +3,7 @@
 // the map yet.
 
 import React from "react";
-import { pairs } from "@transitopia/trackside/cars.ts";
+import { trainsets } from "@transitopia/trackside/cars.ts";
 import type { PassReport } from "@transitopia/trackside/types.ts";
 import { transitApi } from "../config.ts";
 import type { useApi } from "./api.ts";
@@ -90,7 +90,7 @@ function PassCard({
       <div className="flex flex-wrap gap-x-3">
         <span className="font-mono">{new Date(r.start).toLocaleString()}</span>
         <span>
-          {s.lines.join(", ")} {r.track} track,{" "}
+          {s.lines.join(", ")} {trackLabel(r)},{" "}
           {r.screen === "right" ? "→" : "←"} {Math.round(r.bearing)}°
           {r.toward && ` toward ${r.toward}`}
         </span>
@@ -103,7 +103,7 @@ function PassCard({
       <div className="mt-1">
         Cars:{" "}
         <span className="font-mono">
-          {pairs(r.cars.map((c) => c.number)).join("  ") || "none read"}
+          {trainsets(r.cars.map((c) => c.number)).join("  ") || "none read"}
         </span>
       </div>
       {pass.crops.length > 0 && (
@@ -155,4 +155,14 @@ function CropImage({
         className="h-10 rounded border border-gray-300 dark:border-gray-700"
       />
     : <div className="h-10 w-16 rounded bg-gray-200 dark:bg-gray-800" />;
+}
+
+/** "track 2 of 3 (siding)"; passes stored before 1–3 track support say "near" or "far". */
+function trackLabel(r: PassReport): string {
+  const t = r.track as number | string | undefined;
+  if (typeof t === "string") return `${t} track`;
+  const tracks = r.setup.tracks ?? [];
+  if (t === undefined) return `track ? of ${tracks.length}`;
+  const kind = tracks[t]?.kind;
+  return `track ${t + 1} of ${tracks.length}${kind && kind !== "main" ? ` (${kind})` : ""}`;
 }

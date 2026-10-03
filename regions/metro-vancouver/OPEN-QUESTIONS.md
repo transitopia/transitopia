@@ -33,8 +33,8 @@ Evidence cited below comes from feed `26SEP_20260925`, OSM (2026-09-25), and the
     - *Assumption:* none. Inference output is reported, not constrained, until caps are known.
 11. **Any public source for train or car numbers per run?** Examples: fan logs, TransLink releases, ground observation.
     - *Assumption:* none.
-32. **Car numbering** (`config/trackside.json` → `cars`; [packages/trackside](../../packages/trackside/README.md)). Trackside cameras read the numbers painted on cars. Mk I and Mk III cars carry three-digit numbers near each end, and pairs are numbered odd then even (seven pairs seen near Main Street–Science World, 2026-10-01, Braden). Open: the number ranges of each fleet (Mk I, Mk II, Mk III, Mk V, Canada Line), how Mk V sets are numbered, and whether every Mk II and Mk III car is in an odd/even pair.
-    - *Assumption:* every car number is three digits; cars pair as (odd, odd + 1), except Mk V.
+32. **Car numbering** (`config/trackside.json` → `cars`, `fleets`; [packages/trackside](../../packages/trackside/README.md)). Trackside cameras read the numbers painted on cars, near each end of every car. Seen in test videos (2026-10-01 and 2026-10-03, Main Street–Science World and Stadium–Chinatown, Braden): Mk I and Mk II cars have three digits and run in married pairs numbered odd then even (035·036, 097·098, 101·102; 309·310, 319·320, 331·332, 335·336); Mk III cars are 4xx in 4-car sets numbered consecutively (421–424, 441–444, 473–476, 477–480); Mk V cars have four digits (6025 6024 6023 6022 6011; 6225 6224 6223 6222 6211). Open: each fleet's number range, how Mk V sets are numbered (the fifth car's number breaks the pattern), and Canada Line numbering.
+    - *Assumption:* Mk I is 001–199, Mk II 200–399, Mk III 400–499, Mk V 6000–6999; pairs and Mk III sets as above.
 
 ## Kinematics and dwell
 

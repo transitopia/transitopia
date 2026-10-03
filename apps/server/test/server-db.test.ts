@@ -365,15 +365,18 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
         id: "8a1b2c3d-0000-4000-8000-000000000002",
         at: [-123.1008, 49.27295] as [number, number],
         lines: ["expo"],
-        nearSegment: "w1.0",
-        nearDistanceM: 37,
+        tracks: [
+          { segment: "w1.0", distanceM: 26, kind: "main", lines: ["expo"] },
+        ],
         rightwardBearing: 110,
         hfovDeg: 65,
         frameWidth: 1920,
       },
       start: "2026-10-01T22:44:40.000Z",
       end: "2026-10-01T22:44:47.000Z",
-      track: "far" as const,
+      track: 0,
+      trackSegment: "w1.0",
+      extent: [0.13, 0.29] as [number, number],
       screen: "left" as const,
       bearing: 290,
       speedKmh: null,
@@ -386,9 +389,13 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
       source: "camera" as const,
     };
     expect(await store.add(report, "braden")).toBe("added");
-    expect(await store.add(report, "braden")).toBe("duplicate");
+    expect(await store.add({ ...report, speedKmh: 40 }, "braden")).toBe(
+      "updated",
+    );
+    expect(await store.add(report, "someone-else")).toBe("duplicate");
     const [row] = await store.list(10);
     expect(row).toMatchObject({ id: report.id, createdBy: "braden" });
+    expect(row!.report.speedKmh).toBe(40);
     expect(row!.report.cars.map((c) => c.number)).toEqual(["335", "336"]);
     expect(row!.report.cars[0]).not.toHaveProperty("crop");
     expect(row!.crops).toEqual([

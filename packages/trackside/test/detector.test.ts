@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { PassDetector, type DetectedPass } from "../src/detector.ts";
+import { PassDetector, type Band, type DetectedPass } from "../src/detector.ts";
 import { createRgba, type Rgba } from "../src/image.ts";
 
 const W = 320;
 const H = 120;
-const SPLIT = 0.4;
 
 /** A deterministic texture of 8×8 blocks. */
 function texture(seed: number, width: number, height: number): Uint8Array {
@@ -55,82 +54,105 @@ function frame(i: number, trains: Train[], shake = 0): Rgba {
 function run(
   frames: number,
   trains: Train[],
+  bands: Band[],
   shake?: (i: number) => number,
-  upper: "near" | "far" = "near",
+  dropped: (i: number) => boolean = () => false,
 ): DetectedPass[] {
-  const d = new PassDetector({ splitY: SPLIT, upper });
+  const d = new PassDetector({ bands });
   const passes: DetectedPass[] = [];
   for (let i = 0; i < frames; i++)
-    passes.push(...d.push({ t: i / 30, img: frame(i, trains, shake?.(i)) }));
+    if (!dropped(i))
+      passes.push(...d.push({ t: i / 30, img: frame(i, trains, shake?.(i)) }));
   return [...passes, ...d.flush()];
 }
 
+/** A train covering rows [top, bottom) of the frame (fractions), moving dx pixels a frame. */
 const train = (
   top: number,
+  bottom: number,
   dx: number,
   length = 3 * W,
-  bottom?: number,
 ): Train => ({
-  top,
-  ...(bottom !== undefined ? { bottom } : {}),
+  top: Math.round(top * H),
+  bottom: Math.round(bottom * H),
   x0: dx > 0 ? -length : W,
   dx,
   length,
-  pattern: texture(top + 7, length, H),
+  pattern: texture(Math.round(top * 100) + 7, length, H),
 });
 
+const summary = (passes: DetectedPass[]) =>
+  passes
+    .map((p) => [p.track, p.direction])
+    .sort((a, b) => Number(a[0]) - Number(b[0]));
+
 describe("PassDetector", () => {
-  it("finds a near-track train moving right", () => {
-    const [p, ...rest] = run(110, [train(0, 12)]);
+  // From level or below, a near train is taller and hides far trains' lower parts.
+  const level: Band[] = [
+    [0, 1],
+    [0.5, 1],
+  ];
+
+  it("level view: a near-track train moving right", () => {
+    const [p, ...rest] = run(110, [train(0, 1, 12)], level);
     expect(rest).toEqual([]);
-    expect(p).toMatchObject({ track: "near", direction: 1, occluded: false });
+    expect(p).toMatchObject({ track: 0, direction: 1, occluded: false });
     expect(p!.pxPerS).toBeCloseTo(360, -1);
+    expect(p!.extent[0]).toBeLessThan(0.1);
     // The panorama is about as long as the train.
     expect(p!.panorama.width).toBeGreaterThan(3 * W - 40);
-    expect(p!.panorama.height).toBe(H);
   });
 
-  it("finds a far-track train (only below the split) moving left", () => {
-    const [p, ...rest] = run(110, [train(Math.round(0.55 * H), -12)]);
+  it("level view: a far-track train, shorter on screen, moving left", () => {
+    const [p, ...rest] = run(110, [train(0.55, 1, -12)], level);
     expect(rest).toEqual([]);
-    expect(p).toMatchObject({ track: "far", direction: -1 });
+    expect(p).toMatchObject({ track: 1, direction: -1 });
+    // The panorama keeps the rows the train covered, with a margin, not the whole frame.
+    expect(p!.panorama.height).toBeLessThan(H);
   });
 
-  // From above, the far track is higher on screen: its trains alone appear above the split, and
-  // near trains (drawn last, in front) cover far trains' lower parts.
-  const farFromAbove = (dx: number) => train(0, dx, 3 * W, Math.round(0.6 * H));
-  const nearFromAbove = (dx: number) => train(Math.round(0.45 * H), dx);
+  // From above, three tracks are three lanes; nearer trains (drawn last) are lower on screen.
+  const above: Band[] = [
+    [0.66, 1],
+    [0.33, 0.63],
+    [0, 0.3],
+  ];
 
-  it("from above: a far-track train above the split", () => {
-    const [p, ...rest] = run(110, [farFromAbove(-12)], undefined, "far");
-    expect(rest).toEqual([]);
-    expect(p).toMatchObject({ track: "far", direction: -1 });
+  it("from above: one train on each of three tracks", () => {
+    for (const [i, [top, bottom]] of above.entries())
+      expect(summary(run(110, [train(top, bottom, 12)], above))).toEqual([
+        [i, 1],
+      ]);
   });
 
-  it("from above: a near-track train below the split", () => {
-    const [p, ...rest] = run(110, [nearFromAbove(12)], undefined, "far");
-    expect(rest).toEqual([]);
-    expect(p).toMatchObject({ track: "near", direction: 1 });
-  });
-
-  it("from above: trains passing each other on both tracks", () => {
-    const passes = run(
-      110,
-      [farFromAbove(-12), nearFromAbove(12)],
-      undefined,
-      "far",
-    );
-    expect(
-      passes
-        .map((p) => [p.track, p.direction])
-        .sort((a, b) => String(a).localeCompare(String(b))),
-    ).toEqual([
-      ["far", -1],
-      ["near", 1],
+  it("from above: trains passing each other on two tracks", () => {
+    const passes = run(110, [train(0, 0.3, -12), train(0.66, 1, 12)], above);
+    expect(summary(passes)).toEqual([
+      [0, 1],
+      [2, -1],
     ]);
   });
 
+  it("without bands, passes have rows but no track", () => {
+    const [p] = run(110, [train(0.33, 0.63, 12)], []);
+    expect(p!.track).toBeUndefined();
+    expect(p!.extent[0]).toBeCloseTo(0.33, 1);
+    expect(p!.extent[1]).toBeCloseTo(0.63, 1);
+  });
+
+  it("keeps one pass when frames arrive irregularly (a browser skipping frames)", () => {
+    const passes = run(
+      110,
+      [train(0, 1, 12)],
+      level,
+      undefined,
+      (i) => i % 7 === 3 || i % 11 === 5,
+    );
+    expect(summary(passes)).toEqual([[0, 1]]);
+    expect(passes[0]!.travelPx).toBeGreaterThan(3 * W);
+  });
+
   it("ignores camera shake", () => {
-    expect(run(60, [], (i) => (i % 3) - 1)).toEqual([]);
+    expect(run(60, [], level, (i) => (i % 3) - 1)).toEqual([]);
   });
 });

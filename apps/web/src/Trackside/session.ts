@@ -5,8 +5,9 @@
 
 import {
   PassDetector,
-  type BandState,
+  type Band,
   type DetectedPass,
+  type MovingObject,
 } from "@transitopia/trackside/detector.ts";
 import {
   speedKmh,
@@ -18,22 +19,24 @@ import { callApi } from "../Admin/api.ts";
 import type { Rgba } from "@transitopia/trackside/image.ts";
 import type { OcrRequest, OcrResponse, WorkerReading } from "./ocr-worker.ts";
 
-/** The region of interest and split line, as fractions of the video height. */
-export interface Roi {
-  top: number;
-  split: number;
-  bottom: number;
-  /**
-   * Where the camera is: below (or level with) the tracks, where near trains look taller and
-   * hide far trains' lower halves; or above them, looking down, where far trains are higher on
-   * screen. It decides which track's trains alone appear above the split line.
-   */
-  view: "below" | "above";
-}
+/**
+ * Where each track's trains appear on screen, nearest track first, as fractions of the video's
+ * height. Only the rows they span (plus a margin) are processed: the region of interest.
+ */
+export type Bands = Band[];
 
-/** The track whose trains alone appear above the split line. */
-export const upperTrack = (roi: Roi): "near" | "far" =>
-  roi.view === "above" ? "far" : "near";
+/** Rows processed beyond the bands, as a fraction of the video's height. */
+const ROI_MARGIN = 0.03;
+/** A band set from a pass (calibration) gets this margin around the rows the train covered. */
+const CALIBRATION_MARGIN = 0.02;
+
+/** The region of interest: the bands' rows plus a margin. */
+export function roiOf(bands: Bands): Band {
+  return [
+    Math.max(0, Math.min(...bands.map((b) => b[0])) - ROI_MARGIN),
+    Math.min(1, Math.max(...bands.map((b) => b[1])) + ROI_MARGIN),
+  ];
+}
 
 export interface PassView {
   report: PassReport;
@@ -48,8 +51,8 @@ export interface Snapshot {
   state: "idle" | "starting" | "running" | "error";
   error?: string | undefined;
   source?: "camera" | "file" | undefined;
-  near: BandState;
-  far: BandState;
+  /** What's moving now, in video-height fractions, with the track it looks like. */
+  objects: MovingObject[];
   /** Frames processed per second, and the detector's time per frame (ms). */
   fps: number;
   frameMs: number;
@@ -59,17 +62,16 @@ export interface Snapshot {
     error?: string | undefined;
   };
   passes: PassView[];
-  roi: Roi;
+  bands: Bands;
   video?: { width: number; height: number } | undefined;
   zoom?: { min: number; max: number; step: number; value: number } | undefined;
 }
 
-const ROI_KEY = "transitopia:trackside-roi";
-const DEFAULT_ROI: Roi = { top: 0.2, split: 0.45, bottom: 0.7, view: "below" };
+/** Bands are remembered per number of tracks in view. */
+const bandsKey = (n: number) => `transitopia:trackside-bands-${n}`;
 /** Panorama thumbnails in the debug list, in pixels. */
 const THUMB_HEIGHT = 72;
 const RETRY_MS = 15_000;
-const idle: BandState = { moving: false, dx: 0, movingFraction: 0 };
 
 export class TracksideSession {
   readonly video: HTMLVideoElement;
@@ -96,21 +98,17 @@ export class TracksideSession {
     this.video = document.createElement("video");
     this.video.muted = true;
     this.video.playsInline = true;
-    const roi = loadRoi();
+    const bands = loadBands(setup.tracks.length);
     this.snap = {
       state: "idle",
-      near: idle,
-      far: idle,
+      objects: [],
       fps: 0,
       frameMs: 0,
       ocr: { state: "idle", progress: 0 },
       passes: [],
-      roi,
+      bands,
     };
-    this.detector = new PassDetector({
-      splitY: splitWithin(roi),
-      upper: upperTrack(roi),
-    });
+    this.detector = new PassDetector({ bands: withinRoi(bands) });
   }
 
   subscribe = (fn: () => void): (() => void) => {
@@ -181,10 +179,43 @@ export class TracksideSession {
     this.run();
   }
 
-  setRoi(roi: Roi): void {
-    saveRoi(roi);
-    this.detector.setSplit(splitWithin(roi), upperTrack(roi));
-    this.update({ roi });
+  setBands(bands: Bands): void {
+    saveBands(bands);
+    this.detector.setBands(withinRoi(bands));
+    this.update({ bands });
+  }
+
+  /**
+   * The user says which track a pass was on: that track's band becomes the rows the train
+   * covered (calibrating later passes), and the corrected report is uploaded again.
+   */
+  setPassTrack(id: string, track: number): void {
+    const view = this.snap.passes.find((v) => v.report.id === id);
+    if (!view) return;
+    const [top, bottom] = view.report.extent;
+    const bands = this.snap.bands.map((b, i): Band =>
+      i === track ?
+        [
+          round(Math.max(0, top - CALIBRATION_MARGIN)),
+          round(Math.min(1, bottom + CALIBRATION_MARGIN)),
+        ]
+      : b,
+    );
+    this.setBands(bands);
+    this.patchPass(id, (v) => ({
+      ...v,
+      report: {
+        ...v.report,
+        track,
+        trackSegment: this.setup.tracks[track]?.segment,
+        speedKmh: this.speed(v.report.pxPerS, track),
+      },
+      upload:
+        v.upload === "local" ? "local"
+        : v.reading === "pending" ? v.upload
+        : "waiting",
+    }));
+    void this.flushUploads();
   }
 
   async setZoom(value: number): Promise<void> {
@@ -241,7 +272,7 @@ export class TracksideSession {
     const t0 = performance.now();
     const W = meta.width || this.video.videoWidth;
     const H = meta.height || this.video.videoHeight;
-    const { top, bottom } = this.snap.roi;
+    const [top, bottom] = roiOf(this.snap.bands);
     const y0 = Math.round(top * H);
     const h = Math.max(8, Math.round((bottom - top) * H));
     if (this.canvas.width !== W || this.canvas.height !== h) {
@@ -264,15 +295,26 @@ export class TracksideSession {
       this.update({
         fps: Math.round((s.frames * 1000) / elapsed),
         frameMs: Math.round(s.busyMs / s.frames),
-        near: this.detector.near,
-        far: this.detector.far,
       });
       this.stats = { frames: 0, since: performance.now(), busyMs: 0 };
-    } else if (
-      this.detector.near.moving !== this.snap.near.moving
-      || this.detector.far.moving !== this.snap.far.moving
-    )
-      this.update({ near: this.detector.near, far: this.detector.far });
+    }
+    const objects = this.detector.objects.map((o) => ({
+      ...o,
+      top: toVideo(o.top, this.snap.bands),
+      bottom: toVideo(o.bottom, this.snap.bands),
+    }));
+    if (objects.length || this.snap.objects.length) this.update({ objects });
+  }
+
+  /** Approximate speed for an image speed, on a track (the nearest if unknown). */
+  private speed(pxPerS: number, track: number | undefined): number {
+    const t = this.setup.tracks[track ?? 0] ?? this.setup.tracks[0]!;
+    return speedKmh(
+      pxPerS,
+      t.distanceM,
+      zoomedHfov(this.setup.hfovDeg, this.snap.zoom?.value ?? 1),
+      this.setup.frameWidth,
+    );
   }
 
   private endPasses(): void {
@@ -291,26 +333,22 @@ export class TracksideSession {
   private onPass(p: DetectedPass): void {
     const setup = this.setup;
     const screen = p.direction > 0 ? "right" : "left";
-    const distance =
-      p.track === "far" ?
-        (setup.farDistanceM ?? setup.nearDistanceM)
-      : setup.nearDistanceM;
-    const zoom = this.snap.zoom?.value ?? 1;
     const report: PassReport = {
       id: crypto.randomUUID(),
       setup,
       start: this.iso(p.startT),
       end: this.iso(p.endT),
       track: p.track,
+      trackSegment:
+        p.track === undefined ? undefined : setup.tracks[p.track]?.segment,
+      extent: [
+        round(toVideo(p.extent[0], this.snap.bands)),
+        round(toVideo(p.extent[1], this.snap.bands)),
+      ],
       screen,
       bearing: travelBearing(setup, screen),
       toward: screen === "right" ? setup.towardRight : setup.towardLeft,
-      speedKmh: speedKmh(
-        p.pxPerS,
-        distance,
-        zoomedHfov(setup.hfovDeg, zoom),
-        setup.frameWidth,
-      ),
+      speedKmh: this.speed(p.pxPerS, p.track),
       pxPerS: Math.round(p.pxPerS),
       occluded: p.occluded,
       cars: [],
@@ -466,34 +504,52 @@ export class TracksideSession {
   };
 }
 
-/** The split line as a fraction of the ROI (the detector's terms). */
-function splitWithin(roi: Roi): number {
-  return Math.min(
-    0.95,
-    Math.max(
-      0.05,
-      (roi.split - roi.top) / Math.max(0.01, roi.bottom - roi.top),
-    ),
-  );
+/** Bands in the detector's terms: fractions of the region of interest. */
+function withinRoi(bands: Bands): Band[] {
+  const [top, bottom] = roiOf(bands);
+  const h = Math.max(0.01, bottom - top);
+  return bands.map(([t, b]) => [(t - top) / h, (b - top) / h]);
 }
 
-function loadRoi(): Roi {
+/** A fraction of the region of interest as a fraction of the video's height. */
+function toVideo(f: number, bands: Bands): number {
+  const [top, bottom] = roiOf(bands);
+  return top + f * (bottom - top);
+}
+
+const round = (x: number) => Math.round(x * 1000) / 1000;
+
+/** Until the user sets them: stacked in the middle of the view, nearest track lowest. */
+function defaultBands(n: number): Bands {
+  const h = 0.5 / n;
+  return Array.from({ length: n }, (_, i): Band => [
+    round(0.25 + (n - 1 - i) * h),
+    round(0.25 + (n - i) * h),
+  ]);
+}
+
+function loadBands(n: number): Bands {
   try {
-    const r = JSON.parse(
-      localStorage.getItem(ROI_KEY) ?? "null",
-    ) as Partial<Roi> | null;
-    if (r?.top !== undefined && r.split !== undefined && r.bottom !== undefined)
-      if (r.top < r.split && r.split < r.bottom)
-        return { ...r, view: r.view === "above" ? "above" : "below" } as Roi;
+    const b = JSON.parse(
+      localStorage.getItem(bandsKey(n)) ?? "null",
+    ) as Bands | null;
+    if (
+      Array.isArray(b)
+      && b.length === n
+      && b.every(
+        (x) => Array.isArray(x) && x[0]! >= 0 && x[0]! < x[1]! && x[1]! <= 1,
+      )
+    )
+      return b;
   } catch {
     // Use the default.
   }
-  return DEFAULT_ROI;
+  return defaultBands(n);
 }
 
-function saveRoi(roi: Roi): void {
+function saveBands(bands: Bands): void {
   try {
-    localStorage.setItem(ROI_KEY, JSON.stringify(roi));
+    localStorage.setItem(bandsKey(bands.length), JSON.stringify(bands));
   } catch {
     // Only this session then.
   }

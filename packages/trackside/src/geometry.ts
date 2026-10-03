@@ -1,9 +1,10 @@
 // A camera's setup from where it is and the guideway point it looks at (packages/trackside/README.md#setup),
 // and speeds from image motion.
 //
-// The camera faces from its position to the point in view, so screen-right is that bearing plus
-// 90°: a train moving right travels along the track in whichever direction is closer to it. The
-// near track is the one closest to the camera; the far one is the next parallel track beyond it.
+// The tracks in view are the track at the point tapped and the tracks running alongside it (within
+// MAX_TRACK_SPREAD_M, roughly parallel), nearest the camera first: 1 to MAX_TRACKS of them. The
+// camera faces from its position to the point in view, so screen-right is that bearing plus 90°:
+// a train moving right travels along the track in whichever direction is closer to it.
 
 import {
   bearingDeg,
@@ -13,7 +14,7 @@ import {
   projectOnto,
   type LonLat,
 } from "@transitopia/transit-core/geo.ts";
-import type { CameraSetup } from "./types.ts";
+import { MAX_TRACKS, type CameraSetup, type TrackInView } from "./types.ts";
 
 /**
  * Horizontal field of view of a phone's main camera filming 16:9 video at 1× (iPhone 16: 26 mm
@@ -21,16 +22,17 @@ import type { CameraSetup } from "./types.ts";
  */
 export const DEFAULT_HFOV_DEG = 65;
 
-/** Tracks farther from the point in view than this aren't the ones in view. */
-const MAX_SNAP_M = 60;
-/** The far track runs within this angle of the near one and at most this far beyond it. */
+/** The point tapped must be this close to a track. */
+const MAX_SNAP_M = 30;
+/** Tracks in view run within this angle of the one tapped, and at most this far from the point tapped. */
 const PARALLEL_DEG = 25;
-const MAX_TRACK_SPACING_M = 15;
+const MAX_TRACK_SPREAD_M = 20;
 /** Stations considered for "toward …" labels. */
 const STATION_RANGE_M = 6000;
 
 export interface TrackSegment {
   id: string;
+  kind: string;
   lines: string[];
   coords: LonLat[];
   cum: Float64Array;
@@ -67,6 +69,7 @@ export function readTracks(fc: GeoJsonish): {
     const coords = f.geometry.coordinates as LonLat[];
     segments.push({
       id: String(p.id),
+      kind: typeof p.kind === "string" ? p.kind : "main",
       lines,
       coords,
       cum: cumulativeLengths(coords),
@@ -119,42 +122,47 @@ export function cameraSetup(opts: {
   frameWidth: number;
 }): CameraSetup | { error: string } {
   const { at, target } = opts;
-  const near = opts.segments
+  const snaps = opts.segments
     .map((s) => snap(s, target))
-    .filter((s) => s.offset <= MAX_SNAP_M)
-    .map((s) => ({ ...s, fromCamera: snap(s.segment, at).offset }))
+    .filter((s) => s.offset <= MAX_TRACK_SPREAD_M)
     .sort((a, b) => a.offset - b.offset);
-  if (!near.length)
+  const tapped = snaps[0];
+  if (!tapped || tapped.offset > MAX_SNAP_M)
     return { error: "No SkyTrain guideway there: tap on the track in view." };
-  // Of the tracks at the point in view, the nearest to the camera is the near track.
-  const here = near.filter(
-    (s) => s.offset <= near[0]!.offset + MAX_TRACK_SPACING_M,
-  );
-  here.sort((a, b) => a.fromCamera - b.fromCamera);
-  const nearTrack = here[0]!;
-  const farTrack = here.find(
-    (s) =>
-      s !== nearTrack
-      && s.fromCamera > nearTrack.fromCamera + 1
-      && s.fromCamera <= nearTrack.fromCamera + MAX_TRACK_SPACING_M
-      && Math.min(
-        angle(s.bearing, nearTrack.bearing),
-        angle(s.bearing, nearTrack.bearing + 180),
-      ) <= PARALLEL_DEG,
-  );
-  const distance = distM(at, nearTrack.point);
+  const inView = snaps
+    .filter(
+      (s) =>
+        Math.min(
+          angle(s.bearing, tapped.bearing),
+          angle(s.bearing, tapped.bearing + 180),
+        ) <= PARALLEL_DEG,
+    )
+    .map((s) => ({ ...s, fromCamera: distM(at, snap(s.segment, at).point) }))
+    .sort((a, b) => a.fromCamera - b.fromCamera);
+  if (inView.length > MAX_TRACKS)
+    return {
+      error: `${inView.length} tracks in view: up to ${MAX_TRACKS} are supported. Film somewhere with fewer tracks side by side.`,
+    };
+  const nearTrack = inView[0]!;
+  const distance = nearTrack.fromCamera;
   if (distance < 5)
     return {
       error:
         "The camera is on the guideway: set where the camera is, beside it.",
     };
+  const tracks: TrackInView[] = inView.map((s) => ({
+    segment: s.segment.id,
+    distanceM: Math.round(s.fromCamera * 10) / 10,
+    kind: s.segment.kind,
+    lines: s.segment.lines,
+  }));
   const facing = bearingDeg(at, nearTrack.point);
   const right = (facing + 90) % 360;
   const rightwardBearing =
     angle(nearTrack.bearing, right) <= 90 ?
       nearTrack.bearing
     : (nearTrack.bearing + 180) % 360;
-  const lines = [...new Set(here.flatMap((s) => s.segment.lines))].sort();
+  const lines = [...new Set(inView.flatMap((s) => s.segment.lines))].sort();
   const onLines = opts.stations.filter((s) =>
     s.lines.some((l) => lines.includes(l)),
   );
@@ -163,11 +171,7 @@ export function cameraSetup(opts: {
     at,
     accuracyM: opts.accuracyM,
     lines,
-    nearSegment: nearTrack.segment.id,
-    farSegment: farTrack?.segment.id,
-    nearDistanceM: Math.round(distance * 10) / 10,
-    farDistanceM:
-      farTrack ? Math.round(distM(at, farTrack.point) * 10) / 10 : undefined,
+    tracks,
     rightwardBearing: Math.round(rightwardBearing),
     towardRight: nextStation(nearTrack.point, rightwardBearing, onLines),
     towardLeft: nextStation(

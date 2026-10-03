@@ -1,13 +1,20 @@
 {
-  "$comment": "Trackside cameras (packages/trackside/README.md): how car numbers are read and checked. guess unless noted; OPEN-QUESTIONS #32.",
+  "$comment": "Trackside cameras (packages/trackside/README.md): how car numbers are read and grouped into trainsets. guess unless noted; OPEN-QUESTIONS #32.",
   "cars": {
-    "$pattern": "Car numbers as painted: three digits on Mk I and Mk III cars (seen in the 2026-10-01 test video near Main Street–Science World, Braden). Mk II, Mk V and Canada Line numbering is a guess. OPEN-QUESTIONS #32",
-    "pattern": "^[0-9]{3}$",
-    "$marriedPairs": "Cars run in married pairs numbered odd then even (n, n+1), so reading one car names its partner. Seen on 7 pairs in that video (085/086, 097/098, 101/102, 309/310, 317/318, 333/334, 335/336); assumed for every car with an odd/even partner except Mk V sets (5-car articulated, numbering unknown). OPEN-QUESTIONS #32",
-    "marriedPairs": true,
-    "$minConfidence": "Readings below this mean digit probability (0–1) aren't reported as cars (only as uncertain crops). In the test video every correct reading scored 0.99–1.00 and every wrong one 0.6–0.75 (Mk I numbers, too small at that zoom). guess",
+    "$pattern": "Car numbers as painted: three digits on Mk I, Mk II and Mk III cars, four on Mk V (test videos 2026-10-01 and 2026-10-03 near Main Street–Science World and Stadium–Chinatown, Braden).",
+    "pattern": "^[0-9]{3,4}$",
+    "$minConfidence": "Readings below this mean digit probability (0–1) aren't reported as cars (only as uncertain crops). In the test videos every correct reading scored 0.9–1.00 and every wrong one 0.6–0.75 (Mk I numbers, too small at that zoom). guess",
     "minConfidence": 0.85,
-    "$maxHeightFraction": "Text boxes taller than this fraction of the image are windows or livery, not numbers (numbers were 5–10 % of a train-height image). guess",
+    "$maxHeightFraction": "Text boxes taller than this fraction of the image are windows or livery, not numbers. guess",
     "maxHeightFraction": 0.15
+  },
+  "fleets": {
+    "$comment": "Which fleet a car number belongs to (Expo and Millennium Lines), and how its cars are grouped. A set of `setSize` consecutively numbered cars, the first numbered 1 more than a multiple of `setSize`, always runs together: Mk I and Mk II married pairs (035·036, 097·098, 101·102, 309·310, 319·320, 331·332, 335·336), Mk III 4-car sets (421–424, 441–444, 473–476, 477–480), all seen in the test videos. The number ranges are guesses from those sightings. Mk V cars run in 5-car articulated sets whose numbering doesn't follow that rule (6025 6024 6023 6022 6011 and 6225 6224 6223 6222 6211, read in that order), so they have no setSize. OPEN-QUESTIONS #32",
+    "list": [
+      { "type": "Mk I", "from": 1, "to": 199, "digits": 3, "setSize": 2 },
+      { "type": "Mk II", "from": 200, "to": 399, "digits": 3, "setSize": 2 },
+      { "type": "Mk III", "from": 400, "to": 499, "digits": 3, "setSize": 4 },
+      { "type": "Mk V", "from": 6000, "to": 6999, "digits": 4 }
+    ]
   }
 }

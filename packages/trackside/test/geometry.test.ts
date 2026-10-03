@@ -7,94 +7,103 @@ import {
   zoomedHfov,
 } from "../src/geometry.ts";
 
-// Two parallel east–west tracks 5 m apart (north and south), a station at each end.
-const dLat = 5 / 111_195;
-const fc = {
-  features: [
-    {
-      properties: { type: "segment", id: "south", lines: ["expo"] },
-      geometry: {
-        type: "LineString",
-        coordinates: [
-          [-123.11, 49.27],
-          [-123.09, 49.27],
-        ],
-      },
-    },
-    {
-      properties: { type: "segment", id: "north", lines: ["expo"] },
-      geometry: {
-        type: "LineString",
-        coordinates: [
-          [-123.09, 49.27 + dLat],
-          [-123.11, 49.27 + dLat],
-        ],
-      },
-    },
-    {
-      properties: { type: "stop", name: "West", segment: "south" },
-      geometry: { type: "Point", coordinates: [-123.105, 49.27] },
-    },
-    {
-      properties: { type: "stop", name: "East", segment: "south" },
-      geometry: { type: "Point", coordinates: [-123.095, 49.27] },
-    },
-    {
-      properties: { type: "stop", name: "Elsewhere", segment: "other" },
-      geometry: { type: "Point", coordinates: [-123.098, 49.27] },
-    },
-  ],
+// Parallel east–west tracks at y metres north of 49.27°, a station at each end.
+const M = 1 / 111_195;
+const track = (id: string, y: number, kind = "main") => ({
+  properties: { type: "segment", id, kind, lines: ["expo"] },
+  geometry: {
+    type: "LineString",
+    coordinates: [
+      [-123.11, 49.27 + y * M],
+      [-123.09, 49.27 + y * M],
+    ],
+  },
+});
+const stops = [
+  {
+    properties: { type: "stop", name: "West", segment: "south" },
+    geometry: { type: "Point", coordinates: [-123.105, 49.27] },
+  },
+  {
+    properties: { type: "stop", name: "East", segment: "south" },
+    geometry: { type: "Point", coordinates: [-123.095, 49.27] },
+  },
+  {
+    properties: { type: "stop", name: "Elsewhere", segment: "other" },
+    geometry: { type: "Point", coordinates: [-123.098, 49.27] },
+  },
+];
+const setupWith = (
+  tracks: ReturnType<typeof track>[],
+  at: [number, number],
+  target: [number, number],
+) => {
+  const { segments, stations } = readTracks({
+    features: [...tracks, ...stops],
+  });
+  return cameraSetup({
+    id: "setup-0001",
+    segments,
+    stations,
+    hfovDeg: 65,
+    frameWidth: 1920,
+    at: [-123.1 + at[0] * M, 49.27 + at[1] * M],
+    target: [-123.1 + target[0] * M, 49.27 + target[1] * M],
+  });
 };
-const { segments, stations } = readTracks(fc);
-const base = {
-  id: "setup-0001",
-  segments,
-  stations,
-  hfovDeg: 65,
-  frameWidth: 1920,
-};
+const twoTracks = [track("south", 0), track("north", 5)];
 
 describe("cameraSetup", () => {
-  it("from the south: the south track is near, and screen-right is east", () => {
-    const s = cameraSetup({
-      ...base,
-      at: [-123.1, 49.27 - 30 / 111_195],
-      target: [-123.1, 49.27 + dLat / 2],
-    });
+  it("from the south: the south track is nearest, and screen-right is east", () => {
+    const s = setupWith(twoTracks, [0, -30], [0, 2.5]);
+    if ("error" in s) throw new Error(s.error);
+    expect(
+      s.tracks.map((t) => [t.segment, Math.round(t.distanceM), t.kind]),
+    ).toEqual([
+      ["south", 30, "main"],
+      ["north", 35, "main"],
+    ]);
     expect(s).toMatchObject({
-      nearSegment: "south",
-      farSegment: "north",
       lines: ["expo"],
       towardRight: "East",
       towardLeft: "West",
     });
-    if ("error" in s) throw new Error(s.error);
-    expect(s.nearDistanceM).toBeCloseTo(30, 0);
-    expect(s.farDistanceM).toBeCloseTo(35, 0);
     expect(Math.abs(s.rightwardBearing - 90)).toBeLessThan(1);
     expect(Math.abs(travelBearing(s, "left") - 270)).toBeLessThan(1);
   });
 
-  it("from the north: the north track is near, and screen-right is west", () => {
-    const s = cameraSetup({
-      ...base,
-      at: [-123.1, 49.27 + 40 / 111_195],
-      target: [-123.1, 49.27],
-    });
-    expect(s).toMatchObject({
-      nearSegment: "north",
-      farSegment: "south",
-      towardRight: "West",
-    });
+  it("from the north: the north track is nearest, and screen-right is west", () => {
+    const s = setupWith(twoTracks, [0, 45], [0, 0]);
+    expect(s).toMatchObject({ towardRight: "West" });
+    if ("error" in s) throw new Error(s.error);
+    expect(s.tracks.map((t) => t.segment)).toEqual(["north", "south"]);
   });
 
-  it("explains a target away from the guideway, or a camera on it", () => {
-    expect(
-      cameraSetup({ ...base, at: [-123.1, 49.26], target: [-123.1, 49.265] }),
-    ).toHaveProperty("error");
-    expect(
-      cameraSetup({ ...base, at: [-123.1, 49.27], target: [-123.1, 49.27] }),
-    ).toHaveProperty("error");
+  it("one track, or three with a siding between the mains", () => {
+    const one = setupWith([track("south", 0)], [0, -20], [0, 0]);
+    if ("error" in one) throw new Error(one.error);
+    expect(one.tracks).toHaveLength(1);
+    const three = setupWith(
+      [track("south", 0), track("siding", 4.5, "siding"), track("north", 9)],
+      [0, -15],
+      [0, 4.5],
+    );
+    if ("error" in three) throw new Error(three.error);
+    expect(three.tracks.map((t) => [t.segment, t.kind])).toEqual([
+      ["south", "main"],
+      ["siding", "siding"],
+      ["north", "main"],
+    ]);
+  });
+
+  it("explains a target away from the guideway, a camera on it, or too many tracks", () => {
+    expect(setupWith(twoTracks, [0, -1000], [0, -500])).toHaveProperty("error");
+    expect(setupWith(twoTracks, [0, 0], [0, 0])).toHaveProperty("error");
+    const four = [0, 4, 8, 12].map((y) => track(`t${y}`, y));
+    expect(setupWith(four, [0, -20], [0, 6])).toEqual({
+      error:
+        "4 tracks in view: up to 3 are supported. Film somewhere with fewer tracks side by side.",
+    });
   });
 });
 

@@ -1,23 +1,33 @@
 // Car numbers from text readings (packages/trackside/README.md#reading-car-numbers): keep readings that look
 // like car numbers, merge repeats (cars carry their number at both ends), order them front first,
-// and name married-pair partners. Rules come from regions/metro-vancouver/config/trackside.json.
+// and group them into the sets of cars that always run together (Mk I and Mk II married pairs, Mk
+// III 4-car sets). Rules come from regions/metro-vancouver/config/trackside.json (OPEN-QUESTIONS #32).
 
 import config from "@transitopia/region-metro-vancouver/config/trackside.json" with { type: "json" };
 import type { Box } from "./image.ts";
 import type { OcrText } from "./ocr.ts";
 
+export interface Fleet {
+  type: string;
+  from: number;
+  to: number;
+  digits: number;
+  /** Consecutively numbered cars that always run together, if they follow that rule. */
+  setSize?: number | undefined;
+}
+
 export interface CarRules {
   pattern: RegExp;
-  marriedPairs: boolean;
   minConfidence: number;
   maxHeightFraction: number;
+  fleets: Fleet[];
 }
 
 export const carRules: CarRules = {
   pattern: new RegExp(config.cars.pattern),
-  marriedPairs: config.cars.marriedPairs,
   minConfidence: config.cars.minConfidence,
   maxHeightFraction: config.cars.maxHeightFraction,
+  fleets: config.fleets.list,
 };
 
 export interface CarSighting {
@@ -40,9 +50,7 @@ export function carsFromTexts(
 ): CarSighting[] {
   const byNumber = new Map<string, CarSighting>();
   for (const t of texts) {
-    if (t.box.h > rules.maxHeightFraction * imageHeight) continue;
-    if (!rules.pattern.test(t.digits) || t.confidence < rules.minConfidence)
-      continue;
+    if (!isCar(t, imageHeight, rules)) continue;
     const seen = byNumber.get(t.digits);
     if (!seen)
       byNumber.set(t.digits, {
@@ -63,32 +71,56 @@ export function carsFromTexts(
   return frontAtRight ? cars.reverse() : cars;
 }
 
-/** The other car of a married pair (odd n ↔ n + 1), or undefined. */
-export function partner(
-  number: string,
-  rules: CarRules = carRules,
-): string | undefined {
-  if (!rules.marriedPairs || !rules.pattern.test(number)) return undefined;
-  const n = Number(number);
-  const p = n % 2 ? n + 1 : n - 1;
-  return p > 0 ? String(p).padStart(number.length, "0") : undefined;
+/** A confident reading of a number in a known fleet, in a box no taller than a number's. */
+function isCar(t: OcrText, imageHeight: number, rules: CarRules): boolean {
+  return (
+    t.box.h <= rules.maxHeightFraction * imageHeight
+    && rules.pattern.test(t.digits)
+    && t.confidence >= rules.minConfidence
+    && fleetOf(t.digits, rules) !== undefined
+  );
 }
 
-/** Married pairs among the numbers read, e.g. ["097·098", "101·102"], in the order first seen. */
-export function pairs(numbers: string[], rules: CarRules = carRules): string[] {
+/** The fleet a car number belongs to, if it's a known one. */
+export function fleetOf(
+  number: string,
+  rules: CarRules = carRules,
+): Fleet | undefined {
+  const n = Number(number);
+  return rules.fleets.find(
+    (f) => number.length === f.digits && n >= f.from && n <= f.to,
+  );
+}
+
+/** Every car of the set a car belongs to (e.g. 097 → 097, 098; 443 → 441–444), or just itself. */
+export function setOf(number: string, rules: CarRules = carRules): string[] {
+  const k = fleetOf(number, rules)?.setSize;
+  if (!k) return [number];
+  const first = Math.floor((Number(number) - 1) / k) * k + 1;
+  return Array.from({ length: k }, (_, i) =>
+    String(first + i).padStart(number.length, "0"),
+  );
+}
+
+/**
+ * The numbers read, grouped by set in the order first seen, for people: "097·098" (a pair),
+ * "441–444" (a 4-car set); numbers outside known sets stay on their own.
+ */
+export function trainsets(
+  numbers: string[],
+  rules: CarRules = carRules,
+): string[] {
   const out: string[] = [];
   const done = new Set<string>();
   for (const n of numbers) {
     if (done.has(n)) continue;
-    const p = partner(n, rules);
-    if (!p) {
-      out.push(n);
-      done.add(n);
-      continue;
-    }
-    const [a, b] = Number(n) < Number(p) ? [n, p] : [p, n];
-    out.push(`${a}·${b}`);
-    done.add(a).add(b);
+    const set = setOf(n, rules);
+    for (const c of set) done.add(c);
+    out.push(
+      set.length === 1 ? n
+      : set.length === 2 ? set.join("·")
+      : `${set[0]}–${set.at(-1)}`,
+    );
   }
   return out;
 }
@@ -110,9 +142,7 @@ export function uncertainTexts(
       (t) =>
         t.box.h <= rules.maxHeightFraction * imageHeight
         && t.digits.length >= 2
-        && !(
-          rules.pattern.test(t.digits) && t.confidence >= rules.minConfidence
-        ),
+        && !isCar(t, imageHeight, rules),
     )
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, MAX_UNCERTAIN);

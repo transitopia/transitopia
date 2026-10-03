@@ -1,58 +1,74 @@
 // Detects trains passing a fixed camera beside the guideway (packages/trackside/README.md#detecting-passes).
 //
-// Each frame is the region of interest (ROI): the part of the view trains pass through. A
-// horizontal split line divides it into two bands, placed so that above it only one track's trains
-// can appear (`upper`). From below the guideway that's the near track: its trains look taller, and
-// the near side wall hides far trains' lower halves. From above, looking down, it's the far track:
-// it's higher on screen, and near trains cover far trains' lower parts. So the upper track is busy
-// when the upper band moves, and the other track when the lower band moves in a way the upper
-// track's train doesn't explain. In each band the horizontal shift between frames comes from block matching on moving
-// pixels at reduced resolution. While a train passes, a strip as wide as its shift is cut from
-// the centre column of each frame (a slit scan); together the strips make a panorama of the whole
-// train, sharper than any frame and with every car side-on, which is what car numbers are read from.
+// Each frame is the region of interest (ROI): the part of the view trains pass through. It's
+// divided into horizontal strips; in each, the horizontal shift between frames comes from block
+// matching on moving pixels at reduced resolution. Neighbouring moving strips with the same motion
+// are one moving object (a train, or the part of it in view), so two trains moving differently,
+// e.g. passing each other, are two objects. Objects are followed from frame to frame as passes.
+//
+// Which track a pass is on comes from the rows it covered: each track in view has a band where its
+// trains appear (set by the user over the preview), and the pass goes to the band it matches best.
+// From above, tracks are separate lanes on screen; from level or below, a near train covers more
+// rows than a far one (it's bigger, and its roof is higher). The rows are reported too, so the
+// server can reassign tracks later.
+//
+// While a train passes, a strip as wide as its shift is cut from the centre column of each frame (a
+// slit scan); together the strips make a panorama of the whole train, sharper than any frame and
+// with every car side-on, which is what car numbers are read from.
 
-import { createRgba, hstack, type Rgba } from "./image.ts";
-import type { TrackSide } from "./types.ts";
+import { createRgba, crop, hstack, type Rgba } from "./image.ts";
+
+/** A band of rows, as fractions of the ROI height from its top: [top, bottom]. */
+export type Band = [number, number];
 
 export interface DetectorOptions {
-  /** The split line, as a fraction of the ROI height from its top (0–1). */
-  splitY: number;
-  /** The track whose trains alone can appear above the split: near from below the guideway, far from above. */
-  upper?: TrackSide;
+  /** Where each track's trains appear, nearest track first. Without bands, passes have no track. */
+  bands?: Band[];
   /** The slit, as a fraction of the ROI width from its left. */
   slitX?: number;
   /** Block matching runs at 1/downscale resolution. */
   downscale?: number;
+  /** How many horizontal strips the ROI is divided into. */
+  strips?: number;
   /** Largest shift between frames to look for, in ROI pixels. */
   maxShiftPx?: number;
   /** Smaller shifts are camera shake, not trains, in ROI pixels per frame. */
   minShiftPx?: number;
   /** Luma change that counts a pixel as moving (0–255). */
   motionThreshold?: number;
-  /** Share of a band's pixels that must move. */
+  /** Share of a strip's pixels that must move. */
   minMovingFraction?: number;
-  /** How many moving frames in a row start a pass, and how long without motion ends it. */
+  /** How many moving frames start a pass, and how long without motion ends it. */
   startFrames?: number;
   endAfterS?: number;
   /** A pass must carry the train this far past the slit (a fraction of the ROI width), or it's noise. */
   minTravel?: number;
 }
 
-/** Lower-band motion within this fraction of the upper track's speed is that train (see push()). */
-const TAIL_SPEED_TOLERANCE = 0.35;
-
-const DEFAULTS: Required<Omit<DetectorOptions, "splitY">> = {
-  upper: "near",
+const DEFAULTS: Required<Omit<DetectorOptions, "bands">> = {
   slitX: 0.5,
   downscale: 4,
+  strips: 24,
   maxShiftPx: 160,
   minShiftPx: 3,
   motionThreshold: 14,
-  minMovingFraction: 0.12,
+  minMovingFraction: 0.1,
   startFrames: 3,
   endAfterS: 0.5,
-  minTravel: 1.5,
+  minTravel: 1,
 };
+
+/** Shifts the same train could make: same direction, speed within this fraction. */
+const SAME_MOTION = 0.35;
+/** Moving strips this far apart (in strips) with the same motion are still one object. */
+const MAX_GAP = 2;
+/**
+ * Panoramas keep this margin around the rows seen moving, as a fraction of their height (at least
+ * MIN_PANORAMA_MARGIN of the ROI): plain roofs and skirts barely register as moving, and car
+ * numbers sit near the roof.
+ */
+const PANORAMA_MARGIN = 0.5;
+const MIN_PANORAMA_MARGIN = 0.05;
 
 /** One frame of the ROI, at `t` seconds (any clock, as long as it's monotonic). */
 export interface Frame {
@@ -60,8 +76,19 @@ export interface Frame {
   img: Rgba;
 }
 
+/** Something moving in this frame: the rows it covers (fractions of the ROI height) and its shift. */
+export interface MovingObject {
+  top: number;
+  bottom: number;
+  /** Shift in ROI pixels per frame (+ right). */
+  dx: number;
+  /** The track whose band it matches best, if there are bands. */
+  track?: number | undefined;
+}
+
 export interface DetectedPass {
-  track: TrackSide;
+  /** Index into the bands (0: nearest track), if there are bands. */
+  track?: number | undefined;
   /** +1: moving right on screen; −1: left. */
   direction: 1 | -1;
   startT: number;
@@ -70,51 +97,63 @@ export interface DetectedPass {
   pxPerS: number;
   /** How far the train moved past the slit, in ROI pixels (≈ its length in the panorama). */
   travelPx: number;
-  /** The other track's train hid this one for part of the pass. */
+  /** The rows it covered (median over the pass), as fractions of the ROI height. */
+  extent: Band;
+  /** A bigger (nearer) train overlapped it on screen for part of the pass. */
   occluded: boolean;
   /** The train side-on, left to right as on screen (never mirrored, so numbers read normally). */
   panorama: Rgba;
 }
 
-/** What each band is doing now (for the live view). */
-export interface BandState {
-  moving: boolean;
-  /** Shift in ROI pixels per frame (+ right). */
-  dx: number;
-  movingFraction: number;
-}
-
 interface Active {
-  track: TrackSide;
+  id: number;
   startT: number;
   lastMovingT: number;
-  /** Signed shifts and their frame intervals. */
   shifts: number[];
-  speeds: number[];
+  /** Signed speeds in ROI pixels per second (frames can arrive irregularly, so shifts vary). */
+  velocities: number[];
+  tops: number[];
+  bottoms: number[];
   strips: Rgba[];
   carry: number;
   travel: number;
   occluded: boolean;
-  /** Consecutive moving frames so far (the pass is confirmed at `startFrames`). */
-  run: number;
 }
 
 export class PassDetector {
-  private readonly opts: Required<DetectorOptions>;
+  private readonly opts: Required<Omit<DetectorOptions, "bands">>;
+  private bands: Band[];
   private prev:
     { t: number; luma: Float32Array; w: number; h: number } | undefined;
-  private readonly active = new Map<TrackSide, Active>();
-  /** The latest band states, for display. */
-  near: BandState = { moving: false, dx: 0, movingFraction: 0 };
-  far: BandState = { moving: false, dx: 0, movingFraction: 0 };
+  private active: Active[] = [];
+  private nextId = 1;
+  /** What's moving in the latest frame (for the live view). */
+  objects: MovingObject[] = [];
 
-  constructor(opts: DetectorOptions) {
-    this.opts = { ...DEFAULTS, ...opts };
+  constructor(opts: DetectorOptions = {}) {
+    const { bands, ...rest } = opts;
+    this.opts = { ...DEFAULTS, ...rest };
+    this.bands = bands ?? [];
   }
 
-  setSplit(splitY: number, upper?: TrackSide): void {
-    this.opts.splitY = splitY;
-    if (upper) this.opts.upper = upper;
+  setBands(bands: Band[]): void {
+    this.bands = bands;
+  }
+
+  /** The band an extent matches best (by overlap over union), if any. */
+  trackOf(top: number, bottom: number): number | undefined {
+    let best: number | undefined;
+    let bestScore = 0;
+    this.bands.forEach(([t, b], i) => {
+      const inter = Math.min(b, bottom) - Math.max(t, top);
+      const union = Math.max(b, bottom) - Math.min(t, top);
+      const score = inter > 0 && union > 0 ? inter / union : 0;
+      if (score > bestScore) {
+        bestScore = score;
+        best = i;
+      }
+    });
+    return best;
   }
 
   /** Feed the next frame; returns any passes that just ended. */
@@ -130,124 +169,142 @@ export class PassDetector {
     const dt = t - prev.t;
     if (!(dt > 0)) return [];
 
-    const split = Math.max(
-      1,
-      Math.min(h - 1, Math.round(this.opts.splitY * h)),
-    );
-    const upper = this.band(prev.luma, luma, w, 0, split);
-    const lower = this.band(prev.luma, luma, w, split, h);
-    const top = this.opts.upper;
-    const other: TrackSide = top === "near" ? "far" : "near";
-    // Lower-band motion is the upper track's train when it moves with it: the rest of that train,
-    // or its sloped ends, which leave the upper band first. Otherwise it's the other track.
-    const a = this.active.get(top);
-    const withUpper =
-      lower.moving
-      && ((upper.moving && sameMotion(lower.dx, upper.dx))
-        || (a !== undefined
-          && a.run >= this.opts.startFrames
-          && Math.sign(lower.dx) === majority(a.shifts)
-          && sameMotion(Math.abs(lower.dx), median(a.shifts.map(Math.abs)))));
-    const topMoving = upper.moving || withUpper;
-    const topDx = upper.moving ? upper.dx : lower.dx;
-    const otherMoving = lower.moving && !withUpper;
-    const states = {
-      [top]: { ...upper, moving: topMoving, dx: topDx },
-      [other]: { ...lower, moving: otherMoving },
-    } as Record<TrackSide, BandState>;
-    this.near = states.near;
-    this.far = states.far;
+    const objects = this.findObjects(prev.luma, luma, w, h);
+    this.objects = objects.map((o) => ({
+      ...o,
+      track: this.trackOf(o.top, o.bottom),
+    }));
+
+    // Match objects to passes in progress: same motion, overlapping rows (best overlap first).
+    const claimed = new Map<Active, MovingObject>();
+    const unmatched: MovingObject[] = [];
+    for (const o of objects) {
+      let best: Active | undefined;
+      let bestOverlap = 0;
+      for (const a of this.active) {
+        if (!sameMotion(o.dx / dt, recentVelocity(a))) continue;
+        const top = median(a.tops.slice(-15));
+        const bottom = median(a.bottoms.slice(-15));
+        const overlap = Math.min(bottom, o.bottom) - Math.max(top, o.top);
+        if (overlap > bestOverlap) {
+          bestOverlap = overlap;
+          best = a;
+        }
+      }
+      if (!best) unmatched.push(o);
+      else {
+        // Two objects matching one pass are parts of one train (a gap in its texture): join them.
+        const seen = claimed.get(best);
+        claimed.set(
+          best,
+          seen ?
+            {
+              top: Math.min(seen.top, o.top),
+              bottom: Math.max(seen.bottom, o.bottom),
+              dx: (seen.dx + o.dx) / 2,
+            }
+          : o,
+        );
+      }
+    }
+    for (const o of unmatched) {
+      const a: Active = {
+        id: this.nextId++,
+        startT: t - dt,
+        lastMovingT: t,
+        shifts: [],
+        velocities: [],
+        tops: [],
+        bottoms: [],
+        strips: [],
+        carry: 0,
+        travel: 0,
+        occluded: false,
+      };
+      this.active.push(a);
+      claimed.set(a, o);
+    }
+    for (const [a, o] of claimed) {
+      a.lastMovingT = t;
+      a.shifts.push(o.dx);
+      a.velocities.push(o.dx / dt);
+      a.tops.push(o.top);
+      a.bottoms.push(o.bottom);
+      a.strips.push(this.strip(img, o.dx, a));
+    }
+    // A taller object overlapping another is in front of it.
+    const now = [...claimed];
+    for (const [a, o] of now)
+      for (const [b, p] of now)
+        if (
+          a !== b
+          && p.bottom - p.top > o.bottom - o.top
+          && Math.min(o.bottom, p.bottom) > Math.max(o.top, p.top)
+        )
+          a.occluded = true;
 
     const ended: DetectedPass[] = [];
-    this.step(top, topMoving, topDx, dt, t, img, ended);
-    // While the upper track's train fills the lower band, the other track can't be seen.
-    if (withUpper && this.active.has(other))
-      this.active.get(other)!.occluded = true;
-    if (otherMoving) this.step(other, true, lower.dx, dt, t, img, ended);
-    else if (withUpper) this.idleCheck(other, t, ended);
-    else this.step(other, false, 0, dt, t, img, ended);
+    for (const a of this.active) {
+      if (claimed.has(a)) continue;
+      // Not seen for a moment: a few frames of noise are dropped, a train that's gone has passed.
+      if (a.shifts.length < this.opts.startFrames) this.drop(a);
+      else if (t - a.lastMovingT >= this.opts.endAfterS) {
+        const p = this.finish(a);
+        if (p) ended.push(p);
+      }
+    }
     return ended;
   }
 
   /** End any pass in progress (e.g. when the camera stops). */
   flush(): DetectedPass[] {
     const out: DetectedPass[] = [];
-    for (const track of this.active.keys()) {
-      const p = this.finish(track);
+    for (const a of this.active) {
+      const p = this.finish(a);
       if (p) out.push(p);
     }
     return out;
   }
 
-  private step(
-    track: TrackSide,
-    moving: boolean,
-    dx: number,
-    dt: number,
-    t: number,
-    img: Rgba,
-    ended: DetectedPass[],
-  ): void {
-    const a = this.active.get(track);
-    if (moving) {
-      const cur = a ?? {
-        track,
-        startT: t - dt,
-        lastMovingT: t,
-        shifts: [],
-        speeds: [],
-        strips: [],
-        carry: 0,
-        travel: 0,
-        occluded: false,
-        run: 0,
-      };
-      if (!a) this.active.set(track, cur);
-      // A shift against the pass's direction is a mismatch, not the train reversing.
-      const dir = majority(cur.shifts);
-      if (dir && Math.sign(dx) !== dir) return;
-      cur.run++;
-      cur.lastMovingT = t;
-      cur.shifts.push(dx);
-      cur.speeds.push(Math.abs(dx) / dt);
-      cur.strips.push(this.strip(img, dx, cur));
-      return;
-    }
-    if (a && a.run < this.opts.startFrames && t - a.lastMovingT > 0) {
-      // Not enough moving frames in a row to be a train.
-      this.active.delete(track);
-      return;
-    }
-    this.idleCheck(track, t, ended);
+  private drop(a: Active): void {
+    this.active = this.active.filter((x) => x !== a);
   }
 
-  private idleCheck(track: TrackSide, t: number, ended: DetectedPass[]): void {
-    const a = this.active.get(track);
-    if (a && t - a.lastMovingT >= this.opts.endAfterS) {
-      const p = this.finish(track);
-      if (p) ended.push(p);
-    }
-  }
-
-  private finish(track: TrackSide): DetectedPass | undefined {
-    const a = this.active.get(track);
-    this.active.delete(track);
-    if (!a || !this.prev) return undefined;
+  private finish(a: Active): DetectedPass | undefined {
+    this.drop(a);
+    if (!this.prev) return undefined;
     const width = this.prev.w * this.opts.downscale;
     const direction = majority(a.shifts);
-    if (!direction || a.travel < this.opts.minTravel * width) return undefined;
+    if (
+      !direction
+      || a.shifts.length < this.opts.startFrames
+      || a.travel < this.opts.minTravel * width
+    )
+      return undefined;
+    const extent: Band = [median(a.tops), median(a.bottoms)];
     // Moving right, each new strip shows a part further back (left) of the train: reverse them so
     // the panorama reads left to right as on screen.
     const strips = direction > 0 ? [...a.strips].reverse() : a.strips;
+    const full = hstack(strips);
+    const margin = Math.max(
+      MIN_PANORAMA_MARGIN,
+      PANORAMA_MARGIN * (extent[1] - extent[0]),
+    );
+    const y0 = Math.max(0, Math.floor((extent[0] - margin) * full.height));
+    const y1 = Math.min(
+      full.height,
+      Math.ceil((extent[1] + margin) * full.height),
+    );
     return {
-      track,
+      track: this.trackOf(extent[0], extent[1]),
       direction,
       startT: a.startT,
       endT: a.lastMovingT,
-      pxPerS: median(a.speeds),
+      pxPerS: median(a.velocities.map(Math.abs)),
       travelPx: Math.round(a.travel),
+      extent,
       occluded: a.occluded,
-      panorama: hstack(strips),
+      panorama: crop(full, { x: 0, y: y0, w: full.width, h: y1 - y0 }),
     };
   }
 
@@ -272,14 +329,54 @@ export class PassDetector {
     return out;
   }
 
-  /** Motion in rows [y0, y1) of the small frames: share of moving pixels and the best shift. */
-  private band(
+  /** Moving objects: runs of moving strips with the same motion. */
+  private findObjects(
+    a: Float32Array,
+    b: Float32Array,
+    w: number,
+    h: number,
+  ): MovingObject[] {
+    const n = Math.min(this.opts.strips, h);
+    const rows = (i: number) => Math.round((i * h) / n);
+    const strips = Array.from({ length: n }, (_, i) =>
+      this.stripMotion(a, b, w, rows(i), rows(i + 1)),
+    );
+    const objects: MovingObject[] = [];
+    let cur: { first: number; last: number; shifts: number[] } | undefined;
+    const close = () => {
+      if (cur && cur.last > cur.first) {
+        objects.push({
+          top: rows(cur.first) / h,
+          bottom: rows(cur.last + 1) / h,
+          dx: median(cur.shifts),
+        });
+      }
+      cur = undefined;
+    };
+    strips.forEach((dx, i) => {
+      if (dx === undefined) {
+        if (cur && i - cur.last > MAX_GAP) close();
+        return;
+      }
+      if (cur && !sameMotion(dx, median(cur.shifts))) close();
+      if (!cur) cur = { first: i, last: i, shifts: [dx] };
+      else {
+        cur.last = i;
+        cur.shifts.push(dx);
+      }
+    });
+    close();
+    return objects;
+  }
+
+  /** The shift of rows [y0, y1) of the small frames, or undefined if they aren't moving. */
+  private stripMotion(
     a: Float32Array,
     b: Float32Array,
     w: number,
     y0: number,
     y1: number,
-  ): BandState {
+  ): number | undefined {
     const { motionThreshold, minMovingFraction, minShiftPx, downscale } =
       this.opts;
     const moving: number[] = [];
@@ -288,22 +385,21 @@ export class PassDetector {
         const i = y * w + x;
         if (Math.abs(b[i]! - a[i]!) > motionThreshold) moving.push(i);
       }
-    const fraction = moving.length / Math.max(1, (y1 - y0) * w);
-    if (fraction < minMovingFraction)
-      return { moving: false, dx: 0, movingFraction: fraction };
+    if (moving.length < minMovingFraction * Math.max(1, (y1 - y0) * w))
+      return undefined;
     // Block matching: the shift s (small pixels) minimising mean |b(x) − a(x − s)| over moving pixels.
     const maxS = Math.ceil(this.opts.maxShiftPx / downscale);
     const cost = new Float64Array(2 * maxS + 1);
     for (let s = -maxS; s <= maxS; s++) {
       let sum = 0;
-      let n = 0;
+      let count = 0;
       for (const i of moving) {
         const x = i % w;
         if (x - s < 0 || x - s >= w) continue;
         sum += Math.abs(b[i]! - a[i - s]!);
-        n++;
+        count++;
       }
-      cost[s + maxS] = n ? sum / n : Infinity;
+      cost[s + maxS] = count ? sum / count : Infinity;
     }
     let best = 0;
     for (let j = 1; j < cost.length; j++) if (cost[j]! < cost[best]!) best = j;
@@ -317,11 +413,7 @@ export class PassDetector {
       if (d > 0 && Number.isFinite(d)) sub = (0.5 * (l - r)) / d;
     }
     const dx = (best - maxS + sub) * downscale;
-    return {
-      moving: Math.abs(dx) >= minShiftPx,
-      dx,
-      movingFraction: fraction,
-    };
+    return Math.abs(dx) >= minShiftPx ? dx : undefined;
   }
 }
 
@@ -344,11 +436,13 @@ function smallLuma(img: Rgba, k: number, w: number, h: number): Float32Array {
   return out;
 }
 
-/** Two shifts the same train could make (same direction, speed within TAIL_SPEED_TOLERANCE). */
+const recentVelocity = (a: Active): number => median(a.velocities.slice(-10));
+
+/** Shifts the same train could make (same direction, speed within SAME_MOTION). */
 function sameMotion(a: number, b: number): boolean {
   return (
     Math.sign(a) === Math.sign(b)
-    && Math.abs(a - b) <= TAIL_SPEED_TOLERANCE * Math.abs(b)
+    && Math.abs(a - b) <= SAME_MOTION * Math.max(Math.abs(a), Math.abs(b))
   );
 }
 

@@ -126,7 +126,7 @@ npm run scenario -- <name> # build regions/metro-vancouver/scenarios/<name>/ →
 npx tsx pipelines/eval-rt.ts [--test-last 3] [--set key=value] # replay recorded RT: prediction error and live-view jumps, old vs new
 npx tsx pipelines/probe-ais.ts [--minutes 30] # record raw aisstream.io messages for the SeaBus fleet and summarise them
 npx tsx pipelines/eval-ais.ts [YYYYMMDD]      # recorded SeaBus AIS vs the timetable: matches, lateness, vessels per block, berths
-npx tsx pipelines/trackside-replay.ts <video> --roi x,y,w,h --split 0.38 [--ocr]   # a clip through the trackside camera detector (packages/trackside)
+npx tsx pipelines/trackside-replay.ts <video> [--roi x,y,w,h] [--bands t,b;t,b] [--ocr]   # a clip through the trackside camera detector (packages/trackside)
 npx tsx pipelines/screenshot.ts out.png "/transit?date=2026-09-28&t=08:00:00&paused=1#map=14/49.28/-123.11" [--mobile] [--dark] [--pick expo]
 ```
 

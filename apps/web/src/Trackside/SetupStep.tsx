@@ -177,12 +177,15 @@ function SetupOverlay({ onDone }: { onDone: (r: SetupResult) => void }) {
         source: "trackside-setup",
         filter: ["has", "track"],
         paint: {
+          // Track colours as on the camera view (CameraStep.tsx COLORS), nearest first.
           "line-color": [
             "match",
             ["get", "track"],
-            "near",
+            0,
             "#16a34a",
+            1,
             "#d97706",
+            "#7c3aed",
           ],
           "line-width": 5,
         },
@@ -242,18 +245,15 @@ function SetupOverlay({ onDone }: { onDone: (r: SetupResult) => void }) {
         properties: { kind: "sight" },
         geometry: { type: "LineString", coordinates: [camera, place.target] },
       });
-    for (const [track, id] of [
-      ["near", setup?.nearSegment],
-      ["far", setup?.farSegment],
-    ] as const) {
-      const seg = tracks.segments.find((s) => s.id === id);
+    setup?.tracks.forEach((t, track) => {
+      const seg = tracks.segments.find((s) => s.id === t.segment);
       if (seg)
         features.push({
           type: "Feature",
           properties: { track },
           geometry: { type: "LineString", coordinates: seg.coords },
         });
-    }
+    });
     void source.setData({ type: "FeatureCollection", features });
   }, [map, tracks, camera, place.target, setup, styleGeneration]);
 
@@ -333,19 +333,17 @@ function SetupSummary({ setup }: { setup: CameraSetup }) {
   return (
     <div className="rounded border border-gray-200 p-2 dark:border-gray-700">
       <div>
-        {lines || "SkyTrain"}:{" "}
-        <span className="text-green-700 dark:text-green-400">near track</span>{" "}
-        {Math.round(setup.nearDistanceM)} m away
-        {setup.farDistanceM !== undefined ?
-          <>
-            ,{" "}
-            <span className="text-amber-700 dark:text-amber-400">
-              far track
-            </span>{" "}
-            {Math.round(setup.farDistanceM)} m
-          </>
-        : ", no far track found"}
+        {lines || "SkyTrain"}: {setup.tracks.length}{" "}
+        {setup.tracks.length === 1 ? "track" : "tracks"} in view
       </div>
+      <ul>
+        {setup.tracks.map((t, i) => (
+          <li key={t.segment} className={TRACK_TEXT[i]}>
+            Track {i + 1}: {t.kind === "main" ? "main line" : t.kind},{" "}
+            {Math.round(t.distanceM)} m away
+          </li>
+        ))}
+      </ul>
       <div>
         → {compass(setup.rightwardBearing)}
         {setup.towardRight && ` toward ${setup.towardRight}`}
@@ -357,6 +355,13 @@ function SetupSummary({ setup }: { setup: CameraSetup }) {
     </div>
   );
 }
+
+/** Track colours as on the map and camera view, nearest first. */
+const TRACK_TEXT = [
+  "text-green-700 dark:text-green-400",
+  "text-amber-700 dark:text-amber-400",
+  "text-violet-700 dark:text-violet-400",
+];
 
 /** "eastbound" etc. for a bearing. */
 export function compass(bearing: number): string {

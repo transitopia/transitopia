@@ -5,6 +5,7 @@
 
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { sql } from "kysely";
 import type { Db } from "@transitopia/db/connect.ts";
 import type { PassReport } from "@transitopia/trackside/types.ts";
 import { jpegBytes } from "@transitopia/trackside/validate.ts";
@@ -27,11 +28,14 @@ export interface TracksidePass {
 }
 
 export interface TracksideStore {
-  /** Store a report; "duplicate" when its id is already stored. */
+  /**
+   * Store a report. Sending one with the same id again (from the same account) replaces it, e.g.
+   * when the user corrects its track, but keeps the crops first stored.
+   */
   add(
     report: PassReport,
     by: string | undefined,
-  ): Promise<"added" | "duplicate">;
+  ): Promise<"added" | "updated" | "duplicate">;
   /** The latest passes, newest first. */
   list(limit: number): Promise<TracksidePass[]>;
   crop(passId: string, idx: number): Promise<Uint8Array | undefined>;
@@ -79,28 +83,43 @@ export class DbTracksideStore implements TracksideStore {
   async add(
     report: PassReport,
     by: string | undefined,
-  ): Promise<"added" | "duplicate"> {
+  ): Promise<"added" | "updated" | "duplicate"> {
     const { bare, crops } = split(report);
+    const row = {
+      setup_id: report.setup.id,
+      started_at: report.start,
+      ended_at: report.end,
+      track: report.trackSegment ?? null,
+      track_index: report.track ?? null,
+      bearing: report.bearing,
+      speed_kmh: report.speedKmh,
+      cars: report.cars.map((c) => c.number),
+      report: JSON.stringify(bare),
+    };
     return this.db.transaction().execute(async (tx) => {
-      const inserted = await tx
+      // Same id again from the same account: replace the report (xmax is 0 only on a fresh insert).
+      const result = await tx
         .insertInto("trackside_passes")
         .values({
           id: report.id,
           region_id: this.regionId,
-          setup_id: report.setup.id,
-          started_at: report.start,
-          ended_at: report.end,
-          track: report.track,
-          bearing: report.bearing,
-          speed_kmh: report.speedKmh,
-          cars: report.cars.map((c) => c.number),
-          report: JSON.stringify(bare),
           created_by: by ?? null,
+          ...row,
         })
-        .onConflict((oc) => oc.column("id").doNothing())
-        .returning("id")
+        .onConflict((oc) =>
+          oc
+            .column("id")
+            .doUpdateSet(row)
+            .where(
+              "trackside_passes.created_by",
+              "is not distinct from",
+              by ?? null,
+            ),
+        )
+        .returning(sql<boolean>`(xmax = 0)`.as("inserted"))
         .executeTakeFirst();
-      if (!inserted) return "duplicate";
+      if (!result) return "duplicate";
+      if (!result.inserted) return "updated";
       if (crops.length)
         await tx
           .insertInto("trackside_crops")
@@ -176,11 +195,16 @@ export class FileTracksideStore implements TracksideStore {
   async add(
     report: PassReport,
     by: string | undefined,
-  ): Promise<"added" | "duplicate"> {
+  ): Promise<"added" | "updated" | "duplicate"> {
     const dayDir = join(this.dir, "passes", report.start.slice(0, 10));
     const file = join(dayDir, `${report.id}.json`);
-    if (await exists(file)) return "duplicate";
     const { bare, crops } = split(report);
+    if (await exists(file)) {
+      const old = JSON.parse(await readFile(file, "utf8")) as TracksidePass;
+      if (old.createdBy !== (by ?? null)) return "duplicate";
+      await writeFile(file, JSON.stringify({ ...old, report: bare }));
+      return "updated";
+    }
     const cropDir = join(this.dir, "crops", report.id);
     if (crops.length) {
       await mkdir(cropDir, { recursive: true });
