@@ -157,12 +157,10 @@ function CropImage({
     : <div className="h-10 w-16 rounded bg-gray-200 dark:bg-gray-800" />;
 }
 
-/** "track 2 of 3 (siding)"; passes stored before 1–3 track support say "near" or "far". */
+/** "track 2 of 3 (siding)". */
 function trackLabel(r: PassReport): string {
-  const t = r.track as number | string | undefined;
-  if (typeof t === "string") return `${t} track`;
-  const tracks = r.setup.tracks ?? [];
-  if (t === undefined) return `track ? of ${tracks.length}`;
-  const kind = tracks[t]?.kind;
-  return `track ${t + 1} of ${tracks.length}${kind && kind !== "main" ? ` (${kind})` : ""}`;
+  const tracks = r.setup.tracks;
+  if (r.track === undefined) return `track ? of ${tracks.length}`;
+  const kind = tracks[r.track]?.kind;
+  return `track ${r.track + 1} of ${tracks.length}${kind && kind !== "main" ? ` (${kind})` : ""}`;
 }

@@ -200,7 +200,7 @@ export interface Database {
     setup_id: string;
     started_at: Timestamp;
     ended_at: Timestamp;
-    /** The track's segment id ("near" or "far" on rows from before migration 003). */
+    /** The track's segment id. */
     track: string | null;
     track_index: number | null;
     bearing: number;
