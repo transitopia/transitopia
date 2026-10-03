@@ -6,6 +6,7 @@ import React from "react";
 import { pairs } from "@transitopia/trackside/cars.ts";
 import type { CameraSetup } from "@transitopia/trackside/types.ts";
 import {
+  upperTrack,
   TracksideSession,
   type PassView,
   type Roi,
@@ -16,6 +17,9 @@ import { compass } from "./SetupStep.tsx";
 const button =
   "rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-100 disabled:opacity-50 dark:border-gray-600 dark:hover:bg-gray-800";
 const MIN_GAP = 0.03;
+type Line = "top" | "split" | "bottom";
+const TINT = { near: "bg-green-500/30", far: "bg-amber-500/30" };
+const LINE = { near: "bg-green-600", far: "bg-amber-600" };
 /** Most of the screen's height the preview may take, in dvh. */
 const PREVIEW_MAX_DVH = 55;
 
@@ -164,11 +168,35 @@ function Controls({
           {snap.zoom.value.toFixed(1)}×
         </label>
       )}
+      <div className="flex flex-wrap items-center gap-2">
+        The camera is
+        {(["below", "above"] as const).map((view) => (
+          <button
+            key={view}
+            className={`${button} ${snap.roi.view === view ? "bg-blue-700! text-white" : ""}`}
+            onClick={() => session.setRoi({ ...snap.roi, view })}>
+            {view === "below" ?
+              "level with or below the tracks"
+            : "above the tracks, looking down"}
+          </button>
+        ))}
+      </div>
       <p className="text-gray-600 dark:text-gray-400">
-        Drag the lines: the top one just above a near-track train's roof, the
-        middle one just above far-track trains' roofs, the bottom one at the top
-        of the near wall. Car numbers read best when they're large: zoom in if
-        you can.
+        {snap.roi.view === "below" ?
+          <>
+            Drag the lines: the top one just above near-track trains' roofs, the
+            middle one just above far-track trains' roofs (above it, only a near
+            train can appear), and the bottom one at the top of the guideway's
+            near side wall, which hides the trains' lower parts.
+          </>
+        : <>
+            Drag the lines: the top one just above far-track trains' roofs, the
+            middle one just above near-track trains' roofs (above it, only a far
+            train can appear), and the bottom one at the bottom of near-track
+            trains.
+          </>
+        }{" "}
+        Car numbers read best when they're large: zoom in if you can.
       </p>
       <div className="flex items-center justify-between">
         <h2 className="font-semibold">Passes</h2>
@@ -267,7 +295,7 @@ function RoiOverlay({
   onChange: (roi: Roi) => void;
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
-  const [drag, setDrag] = React.useState<keyof Roi>();
+  const [drag, setDrag] = React.useState<Line>();
   const move = (e: React.PointerEvent) => {
     if (!drag || !ref.current) return;
     const rect = ref.current.getBoundingClientRect();
@@ -278,7 +306,9 @@ function RoiOverlay({
     onChange(next);
   };
   const pct = (f: number) => `${(f * 100).toFixed(2)}%`;
-  const line = (key: keyof Roi, label: string, color: string) => (
+  const upper = upperTrack(roi);
+  const lower = upper === "near" ? "far" : "near";
+  const line = (key: Line, label: string, color: string) => (
     <div
       className="absolute inset-x-0 -mt-4 flex h-8 cursor-ns-resize touch-none items-center"
       style={{ top: pct(roi[key]) }}
@@ -308,18 +338,23 @@ function RoiOverlay({
         className="pointer-events-none absolute inset-x-0 bottom-0 bg-black/40"
         style={{ top: pct(roi.bottom) }}
       />
+      {/* Each band lights up in its track's colour while the detector sees that track's train. */}
       <div
-        className={`pointer-events-none absolute inset-x-0 ${snap.near.moving ? "bg-green-500/30" : ""}`}
-        style={{ top: pct(roi.top), height: pct(roi.bottom - roi.top) }}
+        className={`pointer-events-none absolute inset-x-0 ${snap[upper].moving ? TINT[upper] : ""}`}
+        style={{ top: pct(roi.top), height: pct(roi.split - roi.top) }}
       />
       <div
-        className={`pointer-events-none absolute inset-x-0 ${snap.far.moving ? "bg-amber-500/30" : ""}`}
+        className={`pointer-events-none absolute inset-x-0 ${snap[lower].moving ? TINT[lower] : ""}`}
         style={{ top: pct(roi.split), height: pct(roi.bottom - roi.split) }}
       />
       <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-white/50" />
-      {line("top", "near roof", "bg-green-600")}
-      {line("split", "far roof", "bg-amber-600")}
-      {line("bottom", "near wall", "bg-blue-600")}
+      {line("top", `top of ${upper} trains`, LINE[upper])}
+      {line("split", `top of ${lower} trains`, LINE[lower])}
+      {line(
+        "bottom",
+        roi.view === "below" ? "top of near wall" : "bottom of near trains",
+        "bg-blue-600",
+      )}
     </div>
   );
 }

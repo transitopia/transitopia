@@ -1,10 +1,12 @@
 // Detects trains passing a fixed camera beside the guideway (packages/trackside/README.md#detecting-passes).
 //
-// Each frame is the region of interest (ROI): the guideway, from just above a near-track train's
-// roof down to the near wall. A horizontal split line divides it into two bands: above it only a
-// near-track train can appear (far-track trains sit lower, behind the near wall), below it either.
-// So the near track is busy when the upper band moves, and the far track when only the lower band
-// does. In each band the horizontal shift between frames comes from block matching on moving
+// Each frame is the region of interest (ROI): the part of the view trains pass through. A
+// horizontal split line divides it into two bands, placed so that above it only one track's trains
+// can appear (`upper`). From below the guideway that's the near track: its trains look taller, and
+// the near side wall hides far trains' lower halves. From above, looking down, it's the far track:
+// it's higher on screen, and near trains cover far trains' lower parts. So the upper track is busy
+// when the upper band moves, and the other track when the lower band moves in a way the upper
+// track's train doesn't explain. In each band the horizontal shift between frames comes from block matching on moving
 // pixels at reduced resolution. While a train passes, a strip as wide as its shift is cut from
 // the centre column of each frame (a slit scan); together the strips make a panorama of the whole
 // train, sharper than any frame and with every car side-on, which is what car numbers are read from.
@@ -15,6 +17,8 @@ import type { TrackSide } from "./types.ts";
 export interface DetectorOptions {
   /** The split line, as a fraction of the ROI height from its top (0–1). */
   splitY: number;
+  /** The track whose trains alone can appear above the split: near from below the guideway, far from above. */
+  upper?: TrackSide;
   /** The slit, as a fraction of the ROI width from its left. */
   slitX?: number;
   /** Block matching runs at 1/downscale resolution. */
@@ -34,10 +38,11 @@ export interface DetectorOptions {
   minTravel?: number;
 }
 
-/** Lower-band motion within this fraction of a near pass's speed continues it (see push()). */
+/** Lower-band motion within this fraction of the upper track's speed is that train (see push()). */
 const TAIL_SPEED_TOLERANCE = 0.35;
 
 const DEFAULTS: Required<Omit<DetectorOptions, "splitY">> = {
+  upper: "near",
   slitX: 0.5,
   downscale: 4,
   maxShiftPx: 160,
@@ -65,7 +70,7 @@ export interface DetectedPass {
   pxPerS: number;
   /** How far the train moved past the slit, in ROI pixels (≈ its length in the panorama). */
   travelPx: number;
-  /** The near train hid this (far) one for part of the pass. */
+  /** The other track's train hid this one for part of the pass. */
   occluded: boolean;
   /** The train side-on, left to right as on screen (never mirrored, so numbers read normally). */
   panorama: Rgba;
@@ -107,8 +112,9 @@ export class PassDetector {
     this.opts = { ...DEFAULTS, ...opts };
   }
 
-  setSplit(splitY: number): void {
+  setSplit(splitY: number, upper?: TrackSide): void {
     this.opts.splitY = splitY;
+    if (upper) this.opts.upper = upper;
   }
 
   /** Feed the next frame; returns any passes that just ended. */
@@ -130,30 +136,36 @@ export class PassDetector {
     );
     const upper = this.band(prev.luma, luma, w, 0, split);
     const lower = this.band(prev.luma, luma, w, split, h);
-    // A near train's sloped ends leave the upper band before the lower one: lower-band motion
-    // that matches a near pass in progress is still that train, not a far one.
-    const near = this.active.get("near");
-    const tail =
-      !upper.moving
-      && lower.moving
-      && near !== undefined
-      && near.run >= this.opts.startFrames
-      && Math.sign(lower.dx) === majority(near.shifts)
-      && Math.abs(Math.abs(lower.dx) - median(near.shifts.map(Math.abs)))
-        <= TAIL_SPEED_TOLERANCE * median(near.shifts.map(Math.abs));
-    const nearMoving = upper.moving || tail;
-    const nearDx = upper.moving ? upper.dx : lower.dx;
-    // Far-track trains show only below the split; the near one, when there, hides them.
-    const farMoving = !nearMoving && lower.moving;
-    this.near = { ...upper, moving: nearMoving, dx: nearDx };
-    this.far = { ...lower, moving: farMoving };
+    const top = this.opts.upper;
+    const other: TrackSide = top === "near" ? "far" : "near";
+    // Lower-band motion is the upper track's train when it moves with it: the rest of that train,
+    // or its sloped ends, which leave the upper band first. Otherwise it's the other track.
+    const a = this.active.get(top);
+    const withUpper =
+      lower.moving
+      && ((upper.moving && sameMotion(lower.dx, upper.dx))
+        || (a !== undefined
+          && a.run >= this.opts.startFrames
+          && Math.sign(lower.dx) === majority(a.shifts)
+          && sameMotion(Math.abs(lower.dx), median(a.shifts.map(Math.abs)))));
+    const topMoving = upper.moving || withUpper;
+    const topDx = upper.moving ? upper.dx : lower.dx;
+    const otherMoving = lower.moving && !withUpper;
+    const states = {
+      [top]: { ...upper, moving: topMoving, dx: topDx },
+      [other]: { ...lower, moving: otherMoving },
+    } as Record<TrackSide, BandState>;
+    this.near = states.near;
+    this.far = states.far;
 
     const ended: DetectedPass[] = [];
-    this.step("near", nearMoving, nearDx, dt, t, img, ended);
-    if (nearMoving && this.active.has("far"))
-      this.active.get("far")!.occluded = true;
-    if (!nearMoving) this.step("far", farMoving, lower.dx, dt, t, img, ended);
-    else this.idleCheck("far", t, ended);
+    this.step(top, topMoving, topDx, dt, t, img, ended);
+    // While the upper track's train fills the lower band, the other track can't be seen.
+    if (withUpper && this.active.has(other))
+      this.active.get(other)!.occluded = true;
+    if (otherMoving) this.step(other, true, lower.dx, dt, t, img, ended);
+    else if (withUpper) this.idleCheck(other, t, ended);
+    else this.step(other, false, 0, dt, t, img, ended);
     return ended;
   }
 
@@ -330,6 +342,14 @@ function smallLuma(img: Rgba, k: number, w: number, h: number): Float32Array {
       out[y * w + x] = s * norm;
     }
   return out;
+}
+
+/** Two shifts the same train could make (same direction, speed within TAIL_SPEED_TOLERANCE). */
+function sameMotion(a: number, b: number): boolean {
+  return (
+    Math.sign(a) === Math.sign(b)
+    && Math.abs(a - b) <= TAIL_SPEED_TOLERANCE * Math.abs(b)
+  );
 }
 
 function majority(shifts: number[]): 1 | -1 | 0 {

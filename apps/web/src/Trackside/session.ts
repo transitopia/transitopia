@@ -23,7 +23,17 @@ export interface Roi {
   top: number;
   split: number;
   bottom: number;
+  /**
+   * Where the camera is: below (or level with) the tracks, where near trains look taller and
+   * hide far trains' lower halves; or above them, looking down, where far trains are higher on
+   * screen. It decides which track's trains alone appear above the split line.
+   */
+  view: "below" | "above";
 }
+
+/** The track whose trains alone appear above the split line. */
+export const upperTrack = (roi: Roi): "near" | "far" =>
+  roi.view === "above" ? "far" : "near";
 
 export interface PassView {
   report: PassReport;
@@ -55,7 +65,7 @@ export interface Snapshot {
 }
 
 const ROI_KEY = "transitopia:trackside-roi";
-const DEFAULT_ROI: Roi = { top: 0.2, split: 0.45, bottom: 0.7 };
+const DEFAULT_ROI: Roi = { top: 0.2, split: 0.45, bottom: 0.7, view: "below" };
 /** Panorama thumbnails in the debug list, in pixels. */
 const THUMB_HEIGHT = 72;
 const RETRY_MS = 15_000;
@@ -97,7 +107,10 @@ export class TracksideSession {
       passes: [],
       roi,
     };
-    this.detector = new PassDetector({ splitY: splitWithin(roi) });
+    this.detector = new PassDetector({
+      splitY: splitWithin(roi),
+      upper: upperTrack(roi),
+    });
   }
 
   subscribe = (fn: () => void): (() => void) => {
@@ -170,7 +183,7 @@ export class TracksideSession {
 
   setRoi(roi: Roi): void {
     saveRoi(roi);
-    this.detector.setSplit(splitWithin(roi));
+    this.detector.setSplit(splitWithin(roi), upperTrack(roi));
     this.update({ roi });
   }
 
@@ -466,8 +479,12 @@ function splitWithin(roi: Roi): number {
 
 function loadRoi(): Roi {
   try {
-    const r = JSON.parse(localStorage.getItem(ROI_KEY) ?? "null") as Roi | null;
-    if (r && r.top < r.split && r.split < r.bottom) return r;
+    const r = JSON.parse(
+      localStorage.getItem(ROI_KEY) ?? "null",
+    ) as Partial<Roi> | null;
+    if (r?.top !== undefined && r.split !== undefined && r.bottom !== undefined)
+      if (r.top < r.split && r.split < r.bottom)
+        return { ...r, view: r.view === "above" ? "above" : "below" } as Roi;
   } catch {
     // Use the default.
   }

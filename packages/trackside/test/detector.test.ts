@@ -24,8 +24,9 @@ function texture(seed: number, width: number, height: number): Uint8Array {
 const background = texture(1, W, H);
 
 interface Train {
-  /** Rows it covers. */
+  /** Rows it covers: top to bottom (default: the frame's bottom). */
   top: number;
+  bottom?: number;
   /** Position of its left end at frame 0, and pixels per frame (+ right). */
   x0: number;
   dx: number;
@@ -41,7 +42,7 @@ function frame(i: number, trains: Train[], shake = 0): Rgba {
       let v = background[y * W + bx]!;
       for (const t of trains) {
         const tx = x - Math.round(t.x0 + t.dx * i);
-        if (y >= t.top && tx >= 0 && tx < t.length)
+        if (y >= t.top && y < (t.bottom ?? H) && tx >= 0 && tx < t.length)
           v = t.pattern[y * t.length + tx]!;
       }
       const o = (y * W + x) * 4;
@@ -55,16 +56,23 @@ function run(
   frames: number,
   trains: Train[],
   shake?: (i: number) => number,
+  upper: "near" | "far" = "near",
 ): DetectedPass[] {
-  const d = new PassDetector({ splitY: SPLIT });
+  const d = new PassDetector({ splitY: SPLIT, upper });
   const passes: DetectedPass[] = [];
   for (let i = 0; i < frames; i++)
     passes.push(...d.push({ t: i / 30, img: frame(i, trains, shake?.(i)) }));
   return [...passes, ...d.flush()];
 }
 
-const train = (top: number, dx: number, length = 3 * W): Train => ({
+const train = (
+  top: number,
+  dx: number,
+  length = 3 * W,
+  bottom?: number,
+): Train => ({
   top,
+  ...(bottom !== undefined ? { bottom } : {}),
   x0: dx > 0 ? -length : W,
   dx,
   length,
@@ -86,6 +94,40 @@ describe("PassDetector", () => {
     const [p, ...rest] = run(110, [train(Math.round(0.55 * H), -12)]);
     expect(rest).toEqual([]);
     expect(p).toMatchObject({ track: "far", direction: -1 });
+  });
+
+  // From above, the far track is higher on screen: its trains alone appear above the split, and
+  // near trains (drawn last, in front) cover far trains' lower parts.
+  const farFromAbove = (dx: number) => train(0, dx, 3 * W, Math.round(0.6 * H));
+  const nearFromAbove = (dx: number) => train(Math.round(0.45 * H), dx);
+
+  it("from above: a far-track train above the split", () => {
+    const [p, ...rest] = run(110, [farFromAbove(-12)], undefined, "far");
+    expect(rest).toEqual([]);
+    expect(p).toMatchObject({ track: "far", direction: -1 });
+  });
+
+  it("from above: a near-track train below the split", () => {
+    const [p, ...rest] = run(110, [nearFromAbove(12)], undefined, "far");
+    expect(rest).toEqual([]);
+    expect(p).toMatchObject({ track: "near", direction: 1 });
+  });
+
+  it("from above: trains passing each other on both tracks", () => {
+    const passes = run(
+      110,
+      [farFromAbove(-12), nearFromAbove(12)],
+      undefined,
+      "far",
+    );
+    expect(
+      passes
+        .map((p) => [p.track, p.direction])
+        .sort((a, b) => String(a).localeCompare(String(b))),
+    ).toEqual([
+      ["far", -1],
+      ["near", 1],
+    ]);
   });
 
   it("ignores camera shake", () => {

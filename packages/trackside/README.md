@@ -21,9 +21,14 @@ The camera's position (GPS, or tapped on the map) and the guideway point in the 
 
 ## Detecting passes
 
-The region of interest (ROI) is the guideway: from just above a near-track train's roof down to the top of the near wall. A **split line** divides it: above it only a near-track train can appear (far-track trains sit lower, half hidden behind the near wall). So the near track is busy when the upper band moves, and the far track when only the lower band does; a near train hides any far one, which is then marked `occluded`.
+The region of interest (ROI) is the part of the view trains pass through. A **split line** divides it so that above it only one track's trains can appear (`upper`), which depends on where the camera is:
 
-In each band, the horizontal shift between frames comes from block matching on moving pixels at ¼ resolution, refined to sub-pixel with a parabola. A pass starts after 3 moving frames and ends after 0.5 s without motion; it must carry the train at least 1.5 ROI widths past the slit, which rejects camera shake and passing objects. A near train's sloped ends leave the upper band before the lower one, so lower-band motion matching a near pass in progress (same direction, speed within 35 %) continues it rather than starting a far pass.
+- **Level with or below the tracks** (`upper: "near"`): near trains look taller, and the guideway's near side wall hides far trains' lower halves. Lines: top of near trains, top of far trains (the split), top of the near wall.
+- **Above the tracks, looking down** (`upper: "far"`): the far track is higher on screen, and near trains cover far trains' lower parts. Lines: top of far trains, top of near trains (the split), bottom of near trains.
+
+The upper track is busy when the upper band moves. Lower-band motion is that same train when it moves with it (same direction, speed within 35 %: the rest of the train, or its sloped ends, which leave the upper band first); otherwise it's the other track. From above, trains passing each other on both tracks are both detected; from below, a near train hides any far one, which is then marked `occluded`.
+
+In each band, the horizontal shift between frames comes from block matching on moving pixels at ¼ resolution, refined to sub-pixel with a parabola. A pass starts after 3 moving frames and ends after 0.5 s without motion; it must carry the train at least 1.5 ROI widths past the slit, which rejects camera shake and passing objects.
 
 While a train passes, a strip as wide as its shift is cut from the centre column of each frame (a **slit scan**). Together the strips make a panorama of the whole train, side-on, sharper than any single frame, and never mirrored (moving right, strips are reversed so it reads left to right).
 
