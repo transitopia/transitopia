@@ -54,6 +54,18 @@ Light and dark basemaps come from [packages/map-style](../../packages/map-style/
 
 `/admin` (`src/Admin/Admin.tsx`) is the review queue for corrections: the server's status and health, recent jobs, disruptions drafted from TransLink alerts, observation sets, and alerts the parser couldn't draft. Admins edit, preview, confirm, discard and reopen corrections there. Sign-in is with GitHub through the server; the token comes back in the URL fragment, is removed from the address bar at once, and is kept in local storage ([apps/server → Admin API and sign-in](../server/README.md#admin-api-and-sign-in)).
 
+## Home screen
+
+The site can be added to a phone's home screen as "Transitopia". `public/manifest.webmanifest` gives the name, icons and `start_url` (Android and desktop installs). iOS uses `apple-touch-icon.png` and `apple-mobile-web-app-title` from `index.html` instead, because it can't use SVG icons. It also starts from whatever URL was open when the page was added, not from `start_url`. So when the page is opened as an installed app, `src/startup.ts` drops the query string (time, selection, preview), keeping the path and map position: the app always opens live.
+
+The PNG icons are rendered from `public/transitopia-logo-app-icon.svg` (square, full-bleed: iOS and Android round the corners themselves). Regenerate them after changing it (from `apps/web/public`):
+
+```sh
+for n in 180:apple-touch-icon 192:transitopia-app-icon-192 512:transitopia-app-icon-512; do
+  rsvg-convert -w ${n%%:*} -h ${n%%:*} transitopia-logo-app-icon.svg -o ${n#*:}.png
+done
+```
+
 ## Analytics
 
 Cloudflare Web Analytics (cookieless, no personal data) is injected at build time when `CF_WEB_ANALYTICS_TOKEN` is set (`vite.config.ts`), or by Cloudflare itself when Web Analytics is turned on in its dashboard.
