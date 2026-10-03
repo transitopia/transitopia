@@ -1,0 +1,23 @@
+{
+  "name": "Transitopia Trackside",
+  "short_name": "Trackside",
+  "description": "Trackside camera test tool (admins only).",
+  "start_url": "/trackside",
+  "scope": "/trackside",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/trackside-icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/trackside-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

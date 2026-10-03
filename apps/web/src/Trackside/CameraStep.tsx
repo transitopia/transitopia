@@ -1,6 +1,8 @@
-// /trackside camera view (packages/trackside/README.md#the-trackside-page): the live preview with a band per
-// track in view to drag into place, what the detector sees moving, and the passes found with their
-// track (correctable, which also sets that track's band), car numbers and upload state.
+// /trackside camera view (packages/trackside/README.md#the-trackside-page): the live preview fills the screen,
+// with small controls over it that open panels: status (top right), the tracks' bands and zoom
+// (bottom left), and the passes found (bottom right), each with its track (correctable, which also
+// sets that track's band), car numbers and upload state. Meant for a phone held sideways, run from
+// the home screen without the browser's bars (Trackside.tsx).
 
 import React from "react";
 import { trainsets } from "@transitopia/trackside/cars.ts";
@@ -14,10 +16,8 @@ import {
 } from "./session.ts";
 import { compass } from "./SetupStep.tsx";
 
-const button =
-  "rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-100 disabled:opacity-50 dark:border-gray-600 dark:hover:bg-gray-800";
 const MIN_BAND = 0.03;
-/** Track colours, nearest track first: fill, border, text. */
+/** Track colours, nearest track first. */
 const COLORS = [
   {
     bg: "bg-green-600",
@@ -35,8 +35,16 @@ const COLORS = [
     text: "text-violet-700 dark:text-violet-400",
   },
 ];
-/** Most of the screen's height the preview may take, in dvh. */
-const PREVIEW_MAX_DVH = 55;
+/** Controls over the preview: dark, translucent, finger-sized. */
+const chip =
+  "pointer-events-auto flex min-h-11 items-center gap-2 rounded-full bg-black/60 px-4 text-sm text-white backdrop-blur hover:bg-black/75";
+// Overlays keep clear of the notch, the home indicator and rounded corners.
+const insetTop = "top-[max(0.75rem,env(safe-area-inset-top))]";
+const insetBottom = "bottom-[max(0.75rem,env(safe-area-inset-bottom))]";
+const insetLeft = "left-[max(0.75rem,env(safe-area-inset-left))]";
+const insetRight = "right-[max(0.75rem,env(safe-area-inset-right))]";
+
+type Panel = "status" | "tracks" | "passes";
 
 export function CameraStep({
   setup,
@@ -52,7 +60,8 @@ export function CameraStep({
   // Made in the effect, not during render, so StrictMode's remount gets a fresh session.
   const [session, setSession] = React.useState<TracksideSession>();
   const videoBox = React.useRef<HTMLDivElement>(null);
-  const [showImages, setShowImages] = React.useState(false);
+  const [panel, setPanel] = React.useState<Panel>();
+  const toggle = (p: Panel) => setPanel((cur) => (cur === p ? undefined : p));
 
   React.useEffect(() => {
     const s = new TracksideSession(setup, token);
@@ -74,103 +83,202 @@ export function CameraStep({
     () => session?.snapshot,
   );
 
-  // The preview keeps the video's shape and at most PREVIEW_MAX_DVH of the screen's height, so the
-  // controls stay reachable (the overlay's fractions are of this box).
+  // The preview is as large as fits, keeping the video's shape (the overlay's fractions are of it).
   const aspect = snap?.video ? snap.video.width / snap.video.height : 16 / 9;
+  const editing = panel === "tracks";
   return (
-    <div className="min-h-dvh bg-gray-100 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
-      {snap && session && <StatusBar snap={snap} onBack={onBack} />}
-      <div
-        ref={videoBox}
-        className="relative mx-auto select-none bg-black"
-        style={{
-          aspectRatio: String(aspect),
-          width: `min(100%, ${PREVIEW_MAX_DVH * aspect}dvh)`,
-        }}>
-        {snap?.video && session && (
-          <BandsOverlay
-            bands={snap.bands}
-            snap={snap}
-            onChange={(b) => session.setBands(b)}
-          />
-        )}
+    <div className="fixed inset-0 select-none overflow-hidden bg-black text-white">
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div
+          ref={videoBox}
+          className="relative"
+          style={{
+            aspectRatio: String(aspect),
+            width: `min(100vw, ${100 * aspect}dvh)`,
+          }}>
+          {snap?.video && session && (
+            <BandsOverlay
+              bands={snap.bands}
+              snap={snap}
+              editing={editing}
+              onChange={(b) => session.setBands(b)}
+            />
+          )}
+        </div>
       </div>
-      {snap && session && (
-        <Controls
-          session={session}
-          setup={setup}
-          snap={snap}
-          showImages={showImages}
-          setShowImages={setShowImages}
-        />
-      )}
-    </div>
-  );
-}
-
-/** Always in view at the top: back to setup, and whether the camera, reader and uploads work. */
-function StatusBar({ snap, onBack }: { snap: Snapshot; onBack: () => void }) {
-  const sent = snap.passes.filter((p) => p.upload === "sent").length;
-  const waiting = snap.passes.filter(
-    (p) => p.upload === "waiting" || p.upload === "sending",
-  ).length;
-  return (
-    <div className="sticky top-0 z-10 border-b border-gray-300 bg-white/95 px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] text-sm dark:border-gray-700 dark:bg-gray-900/95">
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-1">
-        <button className={button} onClick={onBack}>
+      <div className="pointer-events-none absolute inset-0">
+        <button
+          className={`${chip} absolute ${insetTop} ${insetLeft}`}
+          onClick={onBack}
+          aria-label="Back to setup">
           ← Setup
         </button>
-        <span>
-          {snap.state === "error" ?
-            <span className="text-red-700 dark:text-red-400">{snap.error}</span>
-          : snap.state === "running" ?
-            `${snap.source === "file" ? "Clip" : "Camera"} ${snap.video?.width}×${snap.video?.height}, ${snap.fps} fps, ${snap.frameMs} ms/frame`
-          : "Starting…"}
-        </span>
-        <span>
-          Reader:{" "}
-          {snap.ocr.state === "loading" ?
-            `loading ${Math.round(snap.ocr.progress * 100)} %`
-          : snap.ocr.state === "error" ?
-            <span className="text-red-700 dark:text-red-400">
-              {snap.ocr.error}
-            </span>
-          : snap.ocr.state}
-        </span>
-        {snap.source === "camera" && (
-          <span>
-            Uploaded {sent}
-            {waiting ? `, ${waiting} waiting` : ""}
-          </span>
+        {/* While editing bands, only "Done" stays, so nothing covers their handles. */}
+        {snap && !editing && (
+          <button
+            className={`${chip} absolute ${insetTop} ${insetRight} ${snap.state === "error" || snap.ocr.state === "error" ? "bg-red-700/80!" : ""}`}
+            onClick={() => toggle("status")}>
+            <StatusSummary snap={snap} />
+          </button>
         )}
-        {snap.source === "file" && <span>Clip: passes aren't uploaded</span>}
+        {snap?.video && snap.video.height > snap.video.width && (
+          <p className="absolute inset-x-6 top-1/3 rounded-xl bg-amber-500/90 p-3 text-center text-gray-950">
+            Turn the phone sideways: trains cross a landscape view, and the
+            detector needs the width.
+          </p>
+        )}
+        {snap && (
+          <div
+            className={`absolute ${insetBottom} ${insetLeft} ${insetRight} flex items-end justify-between gap-2`}>
+            <button
+              className={`${chip} ${editing ? "bg-blue-700/90!" : ""}`}
+              onClick={() => toggle("tracks")}>
+              {editing ? "Done" : `Tracks (${setup.tracks.length})`}
+            </button>
+            {!editing && (
+              <button
+                className={`${chip} min-w-0`}
+                onClick={() => toggle("passes")}>
+                <LatestPass snap={snap} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
-      {snap.video && snap.video.height > snap.video.width && (
-        <p className="mx-auto mt-2 max-w-5xl rounded bg-amber-100 p-2 text-amber-900 dark:bg-amber-900 dark:text-amber-100">
-          Turn the phone sideways: trains cross a landscape view, and the
-          detector needs the width.
-        </p>
+      {snap && session && panel && (
+        <Sheet side={panel === "tracks"} onClose={() => setPanel(undefined)}>
+          {panel === "status" && <StatusPanel snap={snap} />}
+          {panel === "tracks" && (
+            <TracksPanel session={session} setup={setup} snap={snap} />
+          )}
+          {panel === "passes" && (
+            <PassesPanel session={session} setup={setup} snap={snap} />
+          )}
+        </Sheet>
       )}
     </div>
   );
 }
 
-function Controls({
+/**
+ * A panel over the lower part of the preview (which stays visible above it), or, with `side`, a
+ * column on the left that keeps the band handles on the right free to drag.
+ */
+function Sheet({
+  children,
+  side,
+  onClose,
+}: {
+  children: React.ReactNode;
+  side: boolean;
+  onClose: () => void;
+}) {
+  const bottom =
+    "bottom-[max(4.25rem,calc(env(safe-area-inset-bottom)+3.5rem))]";
+  const place =
+    side ?
+      `${insetLeft} top-[max(4.25rem,calc(env(safe-area-inset-top)+3.5rem))] ${bottom} w-[min(20rem,45vw)]`
+    : `${insetLeft} ${insetRight} ${bottom} max-h-[60dvh] lg:left-auto lg:w-[32rem]`;
+  return (
+    <div
+      className={`absolute ${place} overflow-y-auto rounded-xl bg-white/95 p-3 text-sm text-gray-900 shadow-lg dark:bg-gray-900/95 dark:text-gray-100`}>
+      <button
+        className="float-right -mr-1 -mt-1 h-9 w-9 rounded-full text-lg hover:bg-gray-200 dark:hover:bg-gray-800"
+        onClick={onClose}
+        aria-label="Close">
+        ×
+      </button>
+      {children}
+    </div>
+  );
+}
+
+/** The status pill: frame rate, reader and uploads, at a glance. */
+function StatusSummary({ snap }: { snap: Snapshot }) {
+  const { sent, waiting, failed } = uploads(snap);
+  if (snap.state === "error") return <span>Camera error</span>;
+  if (snap.state !== "running") return <span>Starting…</span>;
+  return (
+    <>
+      <span>{snap.fps} fps</span>
+      <span>
+        {snap.ocr.state === "loading" ?
+          `reader ${Math.round(snap.ocr.progress * 100)} %`
+        : snap.ocr.state === "error" ?
+          "reader error"
+        : snap.ocr.state === "ready" ?
+          "reader ✓"
+        : "reader…"}
+      </span>
+      {snap.source === "camera" ?
+        <span>
+          ↑{sent}
+          {waiting ? ` ⋯${waiting}` : ""}
+          {failed ? ` ✕${failed}` : ""}
+        </span>
+      : <span>clip</span>}
+    </>
+  );
+}
+
+function StatusPanel({ snap }: { snap: Snapshot }) {
+  const { sent, waiting, failed } = uploads(snap);
+  return (
+    <div className="space-y-1">
+      <h2 className="font-semibold">Status</h2>
+      <p>
+        {snap.state === "error" ?
+          <span className="text-red-700 dark:text-red-400">{snap.error}</span>
+        : snap.state === "running" ?
+          `${snap.source === "file" ? "Clip" : "Camera"} ${snap.video?.width}×${snap.video?.height}, ${snap.fps} fps, ${snap.frameMs} ms per frame`
+        : "Starting…"}
+      </p>
+      <p>
+        Reader:{" "}
+        {snap.ocr.state === "loading" ?
+          `loading ${Math.round(snap.ocr.progress * 100)} % (~16 MB, once)`
+        : snap.ocr.state === "error" ?
+          <span className="text-red-700 dark:text-red-400">
+            {snap.ocr.error}
+          </span>
+        : snap.ocr.state}
+      </p>
+      <p>
+        {snap.source === "file" ?
+          "A clip: passes aren't uploaded."
+        : `Uploads: ${sent} sent, ${waiting} waiting, ${failed} failed.`}
+      </p>
+    </div>
+  );
+}
+
+function TracksPanel({
   session,
   setup,
   snap,
-  showImages,
-  setShowImages,
 }: {
   session: TracksideSession;
   setup: CameraSetup;
   snap: Snapshot;
-  showImages: boolean;
-  setShowImages: (show: boolean) => void;
 }) {
   return (
-    // Bottom padding clears Safari's floating toolbar and the home indicator.
-    <div className="mx-auto max-w-5xl space-y-3 p-3 pb-[calc(env(safe-area-inset-bottom)+6rem)] text-sm">
+    <div className="space-y-2">
+      <h2 className="font-semibold">Tracks</h2>
+      <ul className="flex flex-wrap gap-x-4">
+        {setup.tracks.map((t, i) => (
+          <li key={t.segment} className={COLORS[i]!.text}>
+            {i + 1}: {t.kind === "main" ? "main line" : t.kind},{" "}
+            {Math.round(t.distanceM)} m
+          </li>
+        ))}
+      </ul>
+      <p className="text-gray-600 dark:text-gray-400">
+        Drag each band's ends (on the right of the preview) to where that
+        track's trains appear: from above, the tracks are separate lanes; from
+        level, the near track's trains look taller. Or, after a train passes,
+        tap its track in Passes: that sets the band. Car numbers read best when
+        they're large: zoom in if you can.
+      </p>
       {snap.zoom && snap.zoom.max > snap.zoom.min && (
         <label className="flex items-center gap-2">
           Zoom
@@ -181,29 +289,28 @@ function Controls({
             step={snap.zoom.step || 0.1}
             value={snap.zoom.value}
             onChange={(e) => void session.setZoom(Number(e.target.value))}
-            className="w-48"
+            className="min-w-0 flex-1"
           />
           {snap.zoom.value.toFixed(1)}×
         </label>
       )}
-      <p className="text-gray-600 dark:text-gray-400">
-        {setup.tracks.length === 1 ?
-          "Drag the band's ends (on the right) to the top and bottom of the trains."
-        : `Drag each track's band (its ends are on the right) to where that track's trains appear: from above, the tracks are separate lanes; from level, the near track's trains look taller.`
-        }{" "}
-        Moving things are outlined in their track's colour. Or, after a train
-        passes, tap the track it was on: that sets its band. Car numbers read
-        best when they're large: zoom in if you can.
-      </p>
-      <ul className="flex flex-wrap gap-x-4">
-        {setup.tracks.map((t, i) => (
-          <li key={t.segment} className={COLORS[i]!.text}>
-            Track {i + 1}: {t.kind === "main" ? "main line" : t.kind},{" "}
-            {Math.round(t.distanceM)} m
-          </li>
-        ))}
-      </ul>
-      <div className="flex items-center justify-between">
+    </div>
+  );
+}
+
+function PassesPanel({
+  session,
+  setup,
+  snap,
+}: {
+  session: TracksideSession;
+  setup: CameraSetup;
+  snap: Snapshot;
+}) {
+  const [showImages, setShowImages] = React.useState(false);
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-x-4 pr-8">
         <h2 className="font-semibold">Passes</h2>
         <label className="flex items-center gap-1">
           <input
@@ -211,7 +318,7 @@ function Controls({
             checked={showImages}
             onChange={(e) => setShowImages(e.target.checked)}
           />
-          Show train images (this phone only)
+          Train images (this phone only)
         </label>
       </div>
       {!snap.passes.length && <p className="text-gray-500">None yet.</p>}
@@ -228,6 +335,35 @@ function Controls({
       </ul>
     </div>
   );
+}
+
+/** The latest pass in one line (or how many so far), to open the list. */
+function LatestPass({ snap }: { snap: Snapshot }) {
+  const p = snap.passes[0];
+  if (!p) return <span>No passes yet</span>;
+  const r = p.report;
+  return (
+    <span className="truncate">
+      {r.screen === "right" ? "→" : "←"}{" "}
+      {r.track === undefined ? "track ?" : `track ${r.track + 1}`}
+      {" · "}
+      {p.reading === "pending" ?
+        "reading…"
+      : trainsets(r.cars.map((c) => c.number)).join(" ") || "no numbers"}
+      {p.upload === "local" ? "" : ` · ${p.upload}`}
+      {snap.passes.length > 1 ? ` (${snap.passes.length})` : ""}
+    </span>
+  );
+}
+
+function uploads(snap: Snapshot) {
+  const count = (...states: PassView["upload"][]) =>
+    snap.passes.filter((p) => states.includes(p.upload)).length;
+  return {
+    sent: count("sent"),
+    waiting: count("waiting", "sending"),
+    failed: count("failed"),
+  };
 }
 
 function PassRow({
@@ -249,7 +385,7 @@ function PassRow({
   });
   return (
     <li className="rounded border border-gray-300 bg-white p-2 dark:border-gray-700 dark:bg-gray-900">
-      <div className="flex flex-wrap gap-x-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="font-mono">{time}</span>
         <span className="flex items-center gap-1">
           Track
@@ -257,7 +393,7 @@ function PassRow({
             <button
               key={i}
               title={`Track ${i + 1}: also sets that track's band to this train`}
-              className={`h-7 w-7 rounded border text-sm ${
+              className={`h-9 w-9 rounded border text-sm ${
                 r.track === i ?
                   `${COLORS[i]!.bg} border-transparent text-white`
                 : "border-gray-300 dark:border-gray-600"
@@ -316,17 +452,19 @@ function PassRow({
 }
 
 /**
- * The tracks' bands over the video. Each has a bar on the right, one column per track, with
- * handles at its ends to drag; thin lines across the preview show its edges. What's moving is
- * outlined in the colour of the track it matches (white: none).
+ * Over the video: what's moving, outlined in the colour of the track it matches (white: none), and
+ * the tracks' bands. While editing, each band has a bar on the right, one column per track, with
+ * handles at its ends to drag; otherwise only faint lines mark its edges.
  */
 function BandsOverlay({
   bands,
   snap,
+  editing,
   onChange,
 }: {
   bands: Bands;
   snap: Snapshot;
+  editing: boolean;
   onChange: (bands: Bands) => void;
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
@@ -359,7 +497,7 @@ function BandsOverlay({
         className="pointer-events-none absolute inset-x-0 bottom-0 bg-black/40"
         style={{ top: pct(roiBottom) }}
       />
-      <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-white/50" />
+      <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-white/40" />
       {snap.objects.map((o, i) => (
         <div
           key={i}
@@ -369,10 +507,10 @@ function BandsOverlay({
       ))}
       {bands.map(([top, bottom], i) => {
         const c = COLORS[i]!;
-        const right = `${0.5 + i * 2.75}rem`;
+        const right = `${0.5 + i * 3}rem`;
         const handle = (end: 0 | 1) => (
           <div
-            className="absolute -mr-3 -mt-3 flex h-6 w-6 cursor-ns-resize touch-none items-center justify-center"
+            className="absolute -mr-4 -mt-4 flex h-8 w-8 cursor-ns-resize touch-none items-center justify-center"
             style={{
               top: pct(end ? bottom : top),
               right: `calc(${right} + 0.25rem)`,
@@ -382,29 +520,33 @@ function BandsOverlay({
               setDrag({ band: i, end });
             }}>
             <div
-              className={`h-4 w-4 rounded-full border-2 border-white ${c.bg}`}
+              className={`h-5 w-5 rounded-full border-2 border-white ${c.bg}`}
             />
           </div>
         );
         return (
           <React.Fragment key={i}>
             <div
-              className={`pointer-events-none absolute inset-x-0 h-px ${c.bg} opacity-70`}
+              className={`pointer-events-none absolute inset-x-0 h-px ${c.bg} ${editing ? "opacity-80" : "opacity-40"}`}
               style={{ top: pct(top) }}
             />
             <div
-              className={`pointer-events-none absolute inset-x-0 h-px ${c.bg} opacity-70`}
+              className={`pointer-events-none absolute inset-x-0 h-px ${c.bg} ${editing ? "opacity-80" : "opacity-40"}`}
               style={{ top: pct(bottom) }}
             />
-            <div
-              className={`pointer-events-none absolute flex w-2 items-center justify-center rounded ${c.bg}`}
-              style={{ top: pct(top), height: pct(bottom - top), right }}>
-              <span className={`rounded px-1 text-xs text-white ${c.bg}`}>
-                {i + 1}
-              </span>
-            </div>
-            {handle(0)}
-            {handle(1)}
+            {editing && (
+              <>
+                <div
+                  className={`pointer-events-none absolute flex w-2 items-center justify-center rounded ${c.bg}`}
+                  style={{ top: pct(top), height: pct(bottom - top), right }}>
+                  <span className={`rounded px-1 text-xs text-white ${c.bg}`}>
+                    {i + 1}
+                  </span>
+                </div>
+                {handle(0)}
+                {handle(1)}
+              </>
+            )}
           </React.Fragment>
         );
       })}

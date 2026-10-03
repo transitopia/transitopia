@@ -27,7 +27,7 @@ GET /rt/dispatch                    live dispatch: current patch version per ser
 GET /rt/dispatch/<date>/<v>.json    a patch version (immutable)
 GET /rt/ais/fixes?date=YYYYMMDD[&after=cursor]   SeaBus AIS fixes for a service date
 GET /healthz                        data freshness: 503 when polls, AIS, the database or a daily job are stale
-GET /auth/github/login, /auth/github/callback, /auth/me; POST /auth/logout     admin sign-in
+GET /auth/github/login[?page=trackside], /auth/github/callback, /auth/me; POST /auth/logout     admin sign-in
 /admin/api/*                        the review queue behind /admin, and trackside camera uploads (admins only)
 ```
 
@@ -78,7 +78,7 @@ Backups run in their own container (`infra/backup/`) and record themselves in `j
 
 ## Admin API and sign-in
 
-`src/auth.ts`, `src/app.ts`, `src/corrections.ts`. Admins sign in with GitHub: `/auth/github/login` redirects to GitHub (public profile only), and the callback creates a session and sends the browser to `<SITE_URL>/admin#token=…`. The site keeps the token and sends `Authorization: Bearer …`; only its SHA-256 is stored, and sessions last 30 days. Only logins listed in `ADMIN_GITHUB_LOGINS` can sign in, and removing a login revokes its access at once. Everyone else is anonymous for now.
+`src/auth.ts`, `src/app.ts`, `src/corrections.ts`. Admins sign in with GitHub: `/auth/github/login` redirects to GitHub (public profile only), and the callback creates a session and sends the browser to `<SITE_URL>/admin#token=…` (or `/trackside#token=…` with `?page=trackside`: that page runs as a home-screen app with storage of its own). The site keeps the token and sends `Authorization: Bearer …`; only its SHA-256 is stored, and sessions last 30 days. Only logins listed in `ADMIN_GITHUB_LOGINS` can sign in, and removing a login revokes its access at once. Everyone else is anonymous for now.
 
 `/admin/api` lists corrections (and unparsed alerts), edits disruptions and observation sets (an edit to a confirmed one sends it back to draft), previews, confirms, discards and reopens them, exports the confirmed ones in the file format, and reports status, health and recent jobs. A disruption can't be confirmed without saying which track stays open.
 

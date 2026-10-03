@@ -20,7 +20,7 @@ import type {
 import type { ObservationFile } from "@transitopia/transit-core/corrections/types.ts";
 import { observationProblems } from "@transitopia/transit-core/corrections/validate.ts";
 import type { RtService } from "./rt/service.ts";
-import type { Auth, SessionUser } from "./auth.ts";
+import { SIGN_IN_PAGES, type Auth, type SessionUser } from "./auth.ts";
 import { originAllowed, type ServerEnv } from "./env.ts";
 import type { CorrectionsRepo } from "./corrections.ts";
 import type { Jobs } from "./jobs/scheduler.ts";
@@ -83,7 +83,8 @@ export function createApp(deps: AppDeps): Hono<Env> {
   });
   app.use("/auth/*", adminCors);
   app.get("/auth/github/login", (c) => {
-    const to = auth.enabled ? auth.loginUrl() : undefined;
+    const page = SIGN_IN_PAGES.find((p) => p === c.req.query("page"));
+    const to = auth.enabled ? auth.loginUrl(page) : undefined;
     return to ?
         c.redirect(to)
       : c.json({ error: "GitHub sign-in isn't configured" }, 404);

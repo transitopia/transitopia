@@ -21,9 +21,19 @@ export interface SessionUser {
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 
+/**
+ * Site pages that can start a sign-in and get the token back: /admin, and /trackside, which runs
+ * as a home-screen app with storage of its own, so it signs in by itself.
+ */
+export const SIGN_IN_PAGES = ["admin", "trackside"] as const;
+export type SignInPage = (typeof SIGN_IN_PAGES)[number];
+
 export class Auth {
-  /** OAuth state → when it was issued (in memory: a restart only fails sign-ins in progress). */
-  private states = new Map<string, number>();
+  /**
+   * OAuth state → when it was issued and which page to return to (in memory: a restart only fails
+   * sign-ins in progress).
+   */
+  private states = new Map<string, { at: number; page: SignInPage }>();
 
   private readonly db: Db | undefined;
   private readonly env: ServerEnv;
@@ -43,14 +53,14 @@ export class Auth {
     return Boolean(this.db && this.env.github);
   }
 
-  /** Where to send the browser to sign in. */
-  loginUrl(): string | undefined {
+  /** Where to send the browser to sign in, coming back to `page` with the token. */
+  loginUrl(page: SignInPage = "admin"): string | undefined {
     if (!this.env.github) return undefined;
     const now = Date.now();
-    for (const [s, t] of this.states)
-      if (now - t > STATE_TTL_MS) this.states.delete(s);
+    for (const [s, v] of this.states)
+      if (now - v.at > STATE_TTL_MS) this.states.delete(s);
     const state = randomBytes(16).toString("hex");
-    this.states.set(state, now);
+    this.states.set(state, { at: now, page });
     const q = new URLSearchParams({
       client_id: this.env.github.clientId,
       redirect_uri: `${this.env.publicUrl}/auth/github/callback`,
@@ -64,12 +74,13 @@ export class Auth {
 
   /** Finish the GitHub redirect: the site URL to send the browser to (with a token, or an error). */
   async callback(code: string, state: string): Promise<string> {
-    const back = (hash: string) => `${this.env.siteUrl}/admin#${hash}`;
     const issued = this.states.get(state);
     this.states.delete(state);
+    const back = (hash: string) =>
+      `${this.env.siteUrl}/${issued?.page ?? "admin"}#${hash}`;
     if (
       !issued
-      || Date.now() - issued > STATE_TTL_MS
+      || Date.now() - issued.at > STATE_TTL_MS
       || !this.env.github
       || !this.db
     )

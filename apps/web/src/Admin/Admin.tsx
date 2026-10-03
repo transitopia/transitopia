@@ -106,6 +106,7 @@ export default function Admin() {
             <span className="text-sm text-gray-600 dark:text-gray-300">
               {me.login}
             </span>
+            {token && <CopyToken token={token} />}
             <button type="button" className={button} onClick={signOut}>
               Sign out
             </button>
@@ -137,6 +138,27 @@ export default function Admin() {
         : <Dashboard api={api} token={token} />}
       </main>
     </div>
+  );
+}
+
+/**
+ * The trackside camera page runs as a home-screen app with storage of its own, so it may need this
+ * session's token pasted in (apps/web/README.md#trackside).
+ */
+function CopyToken({ token }: { token: string }) {
+  const [copied, setCopied] = React.useState(false);
+  return (
+    <button
+      type="button"
+      className={button}
+      onClick={() =>
+        void navigator.clipboard.writeText(token).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        })
+      }>
+      {copied ? "Copied" : "Copy token for the Trackside app"}
+    </button>
   );
 }
 

@@ -235,6 +235,7 @@ export class TracksideSession {
     if (this.frameHandle !== undefined)
       this.video.cancelVideoFrameCallback(this.frameHandle);
     this.stopStream();
+    this.video.removeEventListener("resize", this.onResize);
     this.video.pause();
     this.video.removeAttribute("src");
     if (this.fileUrl) URL.revokeObjectURL(this.fileUrl);
@@ -251,15 +252,10 @@ export class TracksideSession {
   }
 
   private run(): void {
-    // Speeds need the real frame width, known only now.
-    this.setup = {
-      ...this.setup,
-      frameWidth: this.video.videoWidth || this.setup.frameWidth,
-    };
-    this.update({
-      state: "running",
-      video: { width: this.video.videoWidth, height: this.video.videoHeight },
-    });
+    this.update({ state: "running" });
+    this.onResize();
+    // Turning the phone turns the camera's frames (portrait ↔ landscape).
+    this.video.addEventListener("resize", this.onResize);
     const onFrame = (now: number, meta: VideoFrameCallbackMetadata) => {
       if (this.disposed) return;
       this.frame(now, meta);
@@ -316,6 +312,15 @@ export class TracksideSession {
       this.setup.frameWidth,
     );
   }
+
+  /** The video's size changed (or is first known): speeds need the real frame width. */
+  private onResize = (): void => {
+    const width = this.video.videoWidth;
+    const height = this.video.videoHeight;
+    if (!width || !height) return;
+    this.setup = { ...this.setup, frameWidth: width };
+    this.update({ video: { width, height } });
+  };
 
   private endPasses(): void {
     for (const p of this.detector.flush()) this.onPass(p);
