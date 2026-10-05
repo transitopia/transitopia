@@ -117,12 +117,12 @@ export default function TransitMap() {
   return (
     <>
       {error ?
-        <MapOverlayWindow className="top-24 text-red-700 dark:text-red-300">
+        <MapOverlayWindow className="top-5 sm:top-24 text-red-700 dark:text-red-300">
           <div role="alert">{error}</div>
         </MapOverlayWindow>
       : null}
       {!inRegion ?
-        <MapOverlayWindow className="top-24">
+        <MapOverlayWindow className="top-5 sm:top-24">
           Transit data isn't available here yet.{" "}
           <button
             type="button"

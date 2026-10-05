@@ -3,7 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/transitopia-icon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: the map runs under the status bar and screen corners; the chrome keeps to the safe area (src/index.css). -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- Home screen (apps/web/README.md#home-screen): iOS uses only a PNG touch icon, not the manifest's. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="Transitopia" />
+    <!-- Set to the header's colour for the current theme by src/Theme/Theme.tsx. -->
+    <meta name="theme-color" content="#fff" />
     <title>Transitopia</title>
   </head>
 

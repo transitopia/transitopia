@@ -67,7 +67,11 @@ function migrateLegacyPosition(): void {
   history.replaceState(history.state, "", url);
 }
 
-export const Map: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const Map: React.FC<{
+  /** The site header: a bar across the top on phones, floating otherwise (src/index.css). */
+  header: React.ReactNode;
+  children: React.ReactNode;
+}> = ({ header, children }) => {
   const maplibregl = React.useContext(MapLibreGLContext).maplibregl;
   if (!maplibregl) {
     throw new Error(
@@ -109,6 +113,14 @@ export const Map: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       }
     }
     map.addControl(new MapControls({ visualizePitch: false }), "top-right");
+    // Show (and follow) where you are (apps/web/README.md#current-location). The position stays in the browser.
+    map.addControl(
+      new maplibregl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true,
+      }),
+      "top-right",
+    );
     map.addControl(
       new maplibregl.ScaleControl({ unit: "metric" }),
       "bottom-left",
@@ -152,14 +164,19 @@ export const Map: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   );
   return (
     <MapContext.Provider value={value}>
-      <div id="map" className="w-screen h-dvh"></div>
-      {controlGroup ?
-        createPortal(
-          <ThemeToggle className="text-base leading-none dark:text-gray-100" />,
-          controlGroup,
-        )
-      : null}
-      {children}
+      {/* One box for the map and its chrome, so the chrome reaches the map's edges (src/index.css). */}
+      <div className="relative h-dvh w-screen">
+        <div id="map" className="h-full w-full"></div>
+        {controlGroup ?
+          createPortal(
+            <ThemeToggle className="text-base leading-none dark:text-gray-100" />,
+            controlGroup,
+          )
+        : null}
+        {header}
+        {/* The map is full-bleed; the chrome over it keeps to the safe area (src/index.css). */}
+        <div className="map-chrome">{children}</div>
+      </div>
     </MapContext.Provider>
   );
 };

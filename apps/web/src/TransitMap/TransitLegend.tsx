@@ -41,7 +41,7 @@ export const TransitLegend: React.FC<{
   return (
     <section
       aria-label="Routes"
-      className="absolute left-5 top-20 z-40 max-h-[calc(100dvh-13rem)] w-64 overflow-y-auto rounded-sm border border-gray-500 bg-white/95 shadow-md lg:top-24 dark:border-gray-600 dark:bg-gray-900/95 dark:text-gray-100">
+      className="absolute left-5 top-3 sm:top-20 z-40 max-h-[calc(100%-13rem)] w-64 overflow-y-auto rounded-sm border border-gray-500 bg-white/95 shadow-md lg:top-24 dark:border-gray-600 dark:bg-gray-900/95 dark:text-gray-100">
       <button
         type="button"
         className="flex h-11 w-full items-center justify-between px-3 text-sm font-semibold"

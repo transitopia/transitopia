@@ -115,7 +115,7 @@ export const AttributionControl: React.FC = () => {
           </p>
         </div>
       : null}
-      <div className="pointer-events-auto flex max-w-full items-center gap-1 rounded-tl-md bg-white/80 pl-2 dark:bg-gray-900/80 dark:text-gray-200">
+      <div className="pointer-events-auto flex max-w-full items-center gap-1 rounded-tl-md bg-white/80 pl-[max(0.5rem,var(--screen-corner-inset))] pr-(--screen-corner-inset) dark:bg-gray-900/80 dark:text-gray-200">
         <span className="truncate">
           {datasets.map((d) => d.credit).join(" · ")}
         </span>
