@@ -20,7 +20,7 @@
     "pmtiles": "^4.5.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "wouter": "^3.11.1",
+    "wouter": "^3.13.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
