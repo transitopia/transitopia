@@ -138,6 +138,19 @@ export const VehicleCard: React.FC<{
   const others = snap.routes.filter((r) => r.key !== route.key);
   const onlyThis = others.every((r) => snap.hidden.has(r.key));
   const actions: CardAction[] = [
+    snap.following ?
+      {
+        id: "follow",
+        label: "Stop following",
+        icon: "follow",
+        onSelect: () => engine.setFollowing(false),
+      }
+    : {
+        id: "follow",
+        label: "Follow on map",
+        icon: "follow",
+        onSelect: () => engine.setFollowing(true),
+      },
     {
       id: "centre",
       label: "Centre on map",

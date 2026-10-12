@@ -1,6 +1,6 @@
 // Screenshot the running app with the locally installed Chrome, for visual checks.
 //
-//   tsx pipelines/screenshot.ts <out.png> [path-and-query] [--mobile] [--dark] [--wait ms] [--click x,y[;x,y…]]
+//   tsx pipelines/screenshot.ts <out.png> [path-and-query] [--mobile] [--dark] [--wait ms] [--click x,y[;x,y…]] [--after ms]
 //
 // Example: tsx pipelines/screenshot.ts /tmp/a.png "/transit?date=2026-09-28&t=08:00:00&paused=1#map=13/49.28/-123.11"
 // Requires `npm run dev` (http://localhost:5173). Browser console errors are printed.
@@ -16,7 +16,7 @@ const opt = (name: string) => {
 const positional = args.filter(
   (a, i) =>
     !a.startsWith("--")
-    && !["--wait", "--click", "--base", "--pick"].includes(args[i - 1] ?? ""),
+    && !["--wait", "--click", "--base", "--pick", "--after"].includes(args[i - 1] ?? ""),
 );
 const [out = "screenshot.png", path = "/"] = positional;
 const base = opt("--base") ?? "http://localhost:5173";
@@ -105,6 +105,9 @@ if (click) {
     await page.waitForTimeout(500);
   }
 }
+// Let things play out after the clicks (e.g. camera follow).
+const after = opt("--after");
+if (after) await page.waitForTimeout(Number(after));
 await page.screenshot({ path: out });
 for (const [msg, n] of seen)
   if (n > 1) console.log(`(repeated ${n}×) ${msg.split("\n")[0]}`);

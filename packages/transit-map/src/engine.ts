@@ -108,6 +108,8 @@ export interface TransitSnapshot {
   showStops: boolean;
   /** Only vehicles with real positions are drawn (estimates hidden). */
   liveOnly: boolean;
+  /** The camera keeps the selected vehicle in view. */
+  following: boolean;
   selected: SelectedVehicle | undefined;
   /** Registry ids (@transitopia/shared/datasets.ts) of the data drawn right now. */
   datasets: string[];
@@ -139,6 +141,14 @@ const RT_BADGE: Record<RtMode, [string, string]> = {
  * Safari throws after ~100 history.replaceState calls in 10 s.
  */
 const URL_WRITE_THROTTLE_MS = 300;
+/**
+ * Tapping a vehicle follows it only at this speed or slower (|rate|): constant panning at 60×+ is
+ * disorienting (docs: apps/web/README.md#follow; the 10× cutoff is a guess).
+ */
+const FOLLOW_MAX_RATE = 10;
+/** Pan when the followed vehicle comes within this fraction of the visible area's edge. */
+const FOLLOW_EDGE_FRACTION = 0.15;
+const FOLLOW_PAN_MS = 600;
 /** Snapshot refresh while playing (discrete changes publish immediately). */
 const SNAPSHOT_INTERVAL_MS = 200;
 /** Sources the engine adds to the host's map (removed on dispose). */
@@ -166,6 +176,9 @@ export class TransitEngine {
   private showStops: boolean;
   private liveOnly: boolean;
   private selectedId: string | undefined;
+  private following = false;
+  /** Screen edges covered by the host's chrome (cards, time bar), px: follow keeps clear of them. */
+  private viewPadding = { top: 0, right: 0, bottom: 0, left: 0 };
   private tracks: InfraCollection | undefined;
   private shownFeed: PreparedPlan | undefined;
   /** False from a style swap until 'style.load': our layers are gone until then. */
@@ -255,7 +268,15 @@ export class TransitEngine {
     };
     const onClick = (e: { point: { x: number; y: number } }) => {
       const v = this.vehicles.pickAt(e.point.x, e.point.y);
-      this.select(v?.id);
+      this.select(v?.id, {
+        follow: Math.abs(this.clock.rate) <= FOLLOW_MAX_RATE,
+      });
+    };
+    // Dragging the map takes the camera back; zooming doesn't.
+    const onDragStart = () => {
+      if (!this.following) return;
+      this.following = false;
+      this.publish();
     };
     const onMouseMove = (e: { point: { x: number; y: number } }) => {
       map.getCanvas().style.cursor =
@@ -265,7 +286,9 @@ export class TransitEngine {
     map.on("styledata", onStyleData);
     map.on("click", onClick);
     map.on("mousemove", onMouseMove);
+    map.on("dragstart", onDragStart);
     this.cleanups.push(() => {
+      map.off("dragstart", onDragStart);
       map.off("style.load", onStyleLoad);
       map.off("styledata", onStyleData);
       map.off("click", onClick);
@@ -356,20 +379,83 @@ export class TransitEngine {
     this.publish();
   }
 
-  select(id: string | undefined): void {
+  /**
+   * Select a vehicle (or none). A new selection follows it only when asked; closing or choosing
+   * another vehicle stops following.
+   */
+  select(id: string | undefined, opts?: { follow?: boolean }): void {
+    if (id !== this.selectedId)
+      this.following = id !== undefined && (opts?.follow ?? false);
     this.selectedId = this.vehicles.selectedId = id;
     this.writeUrl();
     this.publish();
   }
 
-  /** Centre the map on the selected vehicle. */
+  /** Centre the map on the selected vehicle, in the part of the map the host's chrome leaves clear. */
   locateSelected(): void {
     const v = this.lastVehicles.find((x) => x.id === this.selectedId);
     if (v)
       this.map.easeTo({
         center: [v.lon, v.lat],
         zoom: Math.max(this.map.getZoom(), 15),
+        offset: this.paddingOffset(),
         duration: 600,
+      });
+  }
+
+  /**
+   * Where the middle of the visible area is, relative to the map's centre. An offset rather than
+   * MapLibre's `padding`, which would persist and shift the centre written to the URL.
+   */
+  private paddingOffset(): [number, number] {
+    const p = this.viewPadding;
+    return [(p.left - p.right) / 2, (p.top - p.bottom) / 2];
+  }
+
+  /** Keep the selected vehicle in view (or stop). */
+  setFollowing(on: boolean): void {
+    this.following = on && this.selectedId !== undefined;
+    if (this.following) this.locateSelected();
+    this.publish();
+  }
+
+  /** The screen edges the host's chrome covers (px), so follow and centre keep clear of them. */
+  setViewPadding(p: {
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+  }): void {
+    this.viewPadding = p;
+  }
+
+  /**
+   * Follow: pan when the vehicle nears the edge of the visible area, rather than locking it to the
+   * centre. Not while the map is already moving (an ease, or the user zooming).
+   */
+  private keepInView(): void {
+    const { map } = this;
+    if (map.isMoving()) return;
+    const v = this.lastVehicles.find((x) => x.id === this.selectedId);
+    if (!v) return; // between trips or out of service: wait for it
+    const { width, height } = map.getCanvas().getBoundingClientRect();
+    const p = this.viewPadding;
+    const w = width - p.left - p.right;
+    const h = height - p.top - p.bottom;
+    if (w <= 0 || h <= 0) return;
+    const pt = map.project([v.lon, v.lat]);
+    const mx = w * FOLLOW_EDGE_FRACTION;
+    const my = h * FOLLOW_EDGE_FRACTION;
+    if (
+      pt.x < p.left + mx
+      || pt.x > width - p.right - mx
+      || pt.y < p.top + my
+      || pt.y > height - p.bottom - my
+    )
+      map.easeTo({
+        center: [v.lon, v.lat],
+        offset: this.paddingOffset(),
+        duration: FOLLOW_PAN_MS,
       });
   }
 
@@ -503,6 +589,7 @@ export class TransitEngine {
       hidden: this.hidden,
       showStops: this.showStops,
       liveOnly: this.liveOnly,
+      following: this.following,
       selected,
       datasets:
         prev && prev.datasets.join() === this.datasets.join() ?
@@ -661,6 +748,7 @@ export class TransitEngine {
         this.theme === "dark",
       );
     this.syncStatic();
+    if (this.following && this.styleReady) this.keepInView();
 
     const now = performance.now();
     if (

@@ -130,6 +130,7 @@ function subLine(snap: TransitSnapshot, withService: boolean): string {
 const FullBar: React.FC<Props> = ({ engine, snap }) => (
   <section
     aria-label="Time controls"
+    data-map-overlay
     className={`absolute bottom-8 left-1/2 z-40 flex w-[min(860px,calc(100%-2.5rem))] -translate-x-1/2 flex-col gap-1 rounded-2xl bg-(--card-bg) px-4 pt-3 pb-2.5 text-(--card-text) shadow-[0_6px_24px_rgb(17_24_39/0.14)] ${snap.live ? "border border-(--card-border)" : "border-2 border-(--notlive-border)"}`}>
     <div className="flex items-center gap-3">
       <PlayButton engine={engine} snap={snap} />
@@ -152,6 +153,7 @@ const PhoneBar: React.FC<
   return (
     <section
       aria-label="Time controls"
+      data-map-overlay
       className={`absolute inset-x-2.5 z-40 flex flex-col gap-3 rounded-[18px] bg-(--card-bg) px-3 py-2.5 text-(--card-text) shadow-[0_6px_20px_rgb(17_24_39/0.16)] ${atTop ? "top-2.5 z-[55]" : "bottom-[26px]"} ${snap.live ? "border border-(--card-border)" : "border-2 border-(--notlive-border)"}`}>
       <div className="flex items-center gap-3">
         <PlayButton engine={engine} snap={snap} />
@@ -201,6 +203,7 @@ const TimePill: React.FC<Props & { onOpen: () => void }> = ({
   const { when } = timeState(snap);
   return (
     <div
+      data-map-overlay
       className={`absolute top-2.5 left-2.5 z-[55] flex h-11 items-center gap-2 rounded-full pr-3.5 pl-1.5 shadow-[0_4px_14px_rgb(17_24_39/0.25)] ${snap.live ? "border border-(--card-border) bg-(--card-bg) text-(--card-text)" : "bg-(--notlive-border) text-[#3b2300]"}`}>
       <button
         type="button"

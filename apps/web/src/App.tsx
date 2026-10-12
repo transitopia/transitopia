@@ -51,7 +51,9 @@ function MapApp() {
           }>
           <Map
             header={
-              <header className="map-header z-50 flex items-center border-gray-300 bg-(--header-background) shadow-md dark:border-gray-700 dark:text-gray-100">
+              <header
+                data-map-overlay
+                className="map-header z-50 flex items-center border-gray-300 bg-(--header-background) shadow-md dark:border-gray-700 dark:text-gray-100">
                 <Logo className="h-7 lg:h-[30px] mr-2" />
                 <div className="flex-auto"></div>
                 <ModeSwitch />

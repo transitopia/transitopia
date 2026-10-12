@@ -14,6 +14,8 @@ import { useDatasets } from "../Attribution/Attribution.tsx";
 import { TimeBar } from "./TimeBar.tsx";
 import { TransitLayers } from "./TransitLayers.tsx";
 import { VehicleCard } from "./VehicleCard.tsx";
+import { FollowPill } from "./FollowPill.tsx";
+import { useOverlayPadding } from "./overlayPadding.ts";
 
 const [w, s, e, n] = region.initialBounds;
 const INITIAL_BOUNDS: [[number, number], [number, number]] = [
@@ -147,8 +149,10 @@ const EngineControls: React.FC<{ engine: TransitEngine }> = ({ engine }) => {
     engine.getSnapshot,
   );
   useDatasets(snap.datasets);
+  useOverlayPadding(engine);
   return (
     <>
+      <FollowPill engine={engine} snap={snap} />
       <TransitLayers engine={engine} snap={snap} />
       <VehicleCard engine={engine} snap={snap} />
       <TimeBar engine={engine} snap={snap} cardOpen={!!snap.selected} />
