@@ -1,5 +1,5 @@
 {
-  "$comment": "Routes shown on the map. Matched against GTFS routes.txt by name (never route_id, which changes between feeds). 'kind' drives how vehicles are modelled: 'skytrain' = track-level (packages/transit-core/DESIGN.md#track-graph–4.4), 'shape' = interpolated along GTFS shapes, 'bus' = GTFS-RT with schedule fallback. 'color' is optional; when omitted the GTFS route_color is used. GTFS has no colours for buses, so each gets a distinct colour for legibility.",
+  "$comment": "Routes shown on the map. Matched against GTFS routes.txt by name (never route_id, which changes between feeds). 'kind' drives how vehicles are modelled: 'skytrain' = track-level (packages/transit-core/DESIGN.md#track-graph–4.4), 'shape' = interpolated along GTFS shapes, 'bus' = GTFS-RT with schedule fallback. 'color' is optional; when omitted the GTFS route_color is used. GTFS has no colours for buses, so each gets a distinct colour for legibility. 'category' is the layer the route belongs to in the site's layers panel: 'rapid' (SkyTrain, SeaBus, West Coast Express and RapidBus, including the 99 B-Line), 'frequent' (Frequent Transit Network buses) or 'regular'.",
   "routes": [
     {
       "key": "expo",
@@ -8,7 +8,8 @@
         "route_long_name": "Expo Line"
       },
       "kind": "skytrain",
-      "mode": "skytrain"
+      "mode": "skytrain",
+      "category": "rapid"
     },
     {
       "key": "millennium",
@@ -17,7 +18,8 @@
         "route_long_name": "Millennium Line"
       },
       "kind": "skytrain",
-      "mode": "skytrain"
+      "mode": "skytrain",
+      "category": "rapid"
     },
     {
       "key": "canada",
@@ -26,7 +28,8 @@
         "route_long_name": "Canada Line"
       },
       "kind": "skytrain",
-      "mode": "skytrain"
+      "mode": "skytrain",
+      "category": "rapid"
     },
     {
       "key": "seabus",
@@ -35,7 +38,8 @@
         "route_long_name": "SeaBus"
       },
       "kind": "shape",
-      "mode": "ferry"
+      "mode": "ferry",
+      "category": "rapid"
     },
     {
       "key": "wce",
@@ -44,7 +48,8 @@
         "route_short_name": "WCE"
       },
       "kind": "shape",
-      "mode": "rail"
+      "mode": "rail",
+      "category": "rapid"
     },
     {
       "key": "99",
@@ -54,6 +59,7 @@
       },
       "kind": "bus",
       "mode": "bus",
+      "category": "rapid",
       "color": "#f76707"
     },
     {
@@ -64,6 +70,7 @@
       },
       "kind": "bus",
       "mode": "bus",
+      "category": "rapid",
       "color": "#2b8a3e"
     },
     {
@@ -74,6 +81,7 @@
       },
       "kind": "bus",
       "mode": "bus",
+      "category": "rapid",
       "color": "#e64980"
     },
     {
@@ -84,6 +92,7 @@
       },
       "kind": "bus",
       "mode": "bus",
+      "category": "rapid",
       "color": "#a0522d"
     },
     {
@@ -94,6 +103,7 @@
       },
       "kind": "bus",
       "mode": "bus",
+      "category": "rapid",
       "color": "#74b816"
     },
     {
@@ -104,6 +114,7 @@
       },
       "kind": "bus",
       "mode": "bus",
+      "category": "rapid",
       "color": "#c92a2a"
     },
     {
@@ -114,6 +125,7 @@
       },
       "kind": "bus",
       "mode": "bus",
+      "category": "rapid",
       "color": "#5c7cfa"
     }
   ]

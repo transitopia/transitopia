@@ -24,17 +24,25 @@ Locally the site reads the pipelines' output from `var/public/`, served at `/dev
 | `src/Attribution/` | The attribution control |
 | `src/Admin/` | `/admin`, without the map |
 | `src/Theme/` | Light, dark, or the system's |
+| `src/components/` | Shared chrome: the logo, icons, the header's mode switch and the layers panel |
 
 ## Modes and URL state
 
 The path is the mode (`/transit`, `/cycling`). The map position is in the hash, `#map=z/lat/lng`, and is shared by every mode: switching modes keeps it (`ModeLink`), and old `?z=&lat=&lng=` links are converted. The query string holds the current mode's own state, so switching modes drops it. The layer and panel design should allow two active modes later (e.g. cycling plus stations).
+
+## Header and layers
+
+The header holds the logo and the mode switch (`ModeSwitch.tsx`): a segmented control with each mode's icon (and its name from tablet width up). Other modes are links; the active mode's pill carries a chevron and opens that mode's layers panel (`LayersPanel.tsx`). The panel drops down from the header: a popover under it on desktop, a full-width panel over a dimmed map on phones (never a bottom sheet, which is for feature cards). Escape, a press outside it, Done (phones) or switching modes closes it. The header owns the panel's open state and a portal host inside the header element; the active mode renders its own rows into it, because only the mode knows its layers. Choices are remembered per browser.
+
+- **Transit** (`TransitLayers.tsx`): one switch per route category with routes in it (`category` in `regions/metro-vancouver/config/routes.json`, baked into `plan.json`: Rapid Transit, Frequent Bus, Regular Bus; today every route is rapid transit, so the bus categories stay hidden until the all-buses work), Vehicles: All or Live only (estimates hidden; the selected vehicle stays), Stations & stops, and the key (live and estimated vehicle shapes, dashed limited service). The engine keeps these preferences (`setRoutesHidden`, `setLiveOnly`, `setStopsShown`).
+- **Cycling** (`CyclingLayers.tsx`): protected lanes and paths, painted lanes (including shared lanes on busy streets), local street bikeways, bike parking, under construction, and "All ages & abilities only" (hides painted and busy shared lanes). The categories follow the tiles' comfort levels; `cyclingFilters()` in `cycling-map-layers.ts` turns the choices into layer filters, applied in place.
 
 ## Transit mode
 
 `TransitMap` creates the engine on mount (`TransitEngine.create(map, { dataBase, apiBase, theme })`) and disposes it on unmount. The engine and `transit-core` are their own chunk, loaded only on `/transit`, as is MapLibre itself. The per-frame path (clock → playback → WebGL) never goes through React: components read the engine's snapshot with `useSyncExternalStore` and call its methods ([packages/transit-map](../../packages/transit-map/README.md)).
 
 - **Time bar** (`TimeBar.tsx`): play and pause, the time and date (bounded to the published timetables, with the service type, e.g. "Weekday (Mon–Thu)"), speed (−300× to 300×), Live, and a slider across the service day (from 03:00), shaded where real bus positions exist. A badge says whether buses are live, recorded (or loading) or estimated, and the bar warns when it's showing a preview of unconfirmed corrections. Keyboard: space plays and pauses, ←/→ move a minute (shift: ten), L goes live, [ and ] change speed. On phones it's a compact bottom bar.
-- **Legend** (`TransitLegend.tsx`): each line and route, which can be hidden; collapsible.
+- **Layers** (`TransitLayers.tsx`): see [Header and layers](#header-and-layers).
 - **Vehicle card** (`VehicleCard.tsx`): tap or click a vehicle to follow it (and centre the map on it): its trip, next stop and schedule, what it's doing between trips (leaving the yard, turning back, layover, to the yard), consist or vessel name, speed, notes (service changes, detours, shifted GPS), and its provenance in plain words: an observed position with the time of the last fix, or "Estimated from schedule". SkyTrain runs are labelled "Train (inferred)". TransLink's legend is shown for TransLink vehicles.
 - Outside the region, `/transit` says transit data isn't available there.
 

@@ -505,3 +505,15 @@ export function applyRouteFilter(map: MlMap, hidden: Set<string>): void {
     map.setFilter(VEHICLES_BEFORE_LAYER, stopVisible);
   if (map.getLayer("bus-stops")) map.setFilter("bus-stops", visible);
 }
+
+/** Station and bus stop markers and their labels (the layers panel's "Stations & stops"). */
+export function applyStopsVisibility(map: MlMap, shown: boolean): void {
+  for (const id of [
+    "stations",
+    "stations-label",
+    "bus-stops",
+    VEHICLES_BEFORE_LAYER,
+  ])
+    if (map.getLayer(id))
+      map.setLayoutProperty(id, "visibility", shown ? "visible" : "none");
+}

@@ -12,7 +12,7 @@ import { MapOverlayWindow } from "../Map/MapOverlayWindow.tsx";
 import { useTheme } from "../Theme/Theme.tsx";
 import { useDatasets } from "../Attribution/Attribution.tsx";
 import { TimeBar } from "./TimeBar.tsx";
-import { TransitLegend } from "./TransitLegend.tsx";
+import { TransitLayers } from "./TransitLayers.tsx";
 import { VehicleCard } from "./VehicleCard.tsx";
 
 const [w, s, e, n] = region.initialBounds;
@@ -149,7 +149,7 @@ const EngineControls: React.FC<{ engine: TransitEngine }> = ({ engine }) => {
   useDatasets(snap.datasets);
   return (
     <>
-      <TransitLegend engine={engine} snap={snap} />
+      <TransitLayers engine={engine} snap={snap} />
       <VehicleCard engine={engine} snap={snap} />
       <TimeBar engine={engine} snap={snap} />
     </>

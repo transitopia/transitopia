@@ -2,6 +2,7 @@ import React from "react";
 import type * as MapLibreGL from "maplibre-gl";
 
 import {
+  cyclingFilters,
   cyclingLayers,
   mapSource,
   otherLayerIds,
@@ -20,6 +21,7 @@ import {
 } from "../Map/MapData.ts";
 import { MapOverlayWindow } from "../Map/MapOverlayWindow.tsx";
 import { InfoboxBikeParking } from "./InfoboxBikeParking.tsx";
+import { CyclingLayers, useCyclingShow } from "./CyclingLayers.tsx";
 
 export const CyclingMap: React.FC = () => {
   const map = useMap();
@@ -27,11 +29,14 @@ export const CyclingMap: React.FC = () => {
   const styleGeneration = useStyleGeneration();
   // The cycling layer is derived from OpenStreetMap by our Planetiler profile (map-layers/).
   useDatasets(["osm", "transitopia"]);
+  const [show, setShow] = useCyclingShow();
+  const showRef = React.useRef(show);
+  showRef.current = show;
 
   // Add the cycling layers to the map, again after a theme switch replaces the style:
   React.useEffect(() => {
     if (!map) return;
-    const layers = cyclingLayers(theme);
+    const layers = cyclingLayers(theme, showRef.current);
     for (const layer of layers) {
       if (!map.getLayer(layer.id)) map.addLayer(layer);
     }
@@ -49,6 +54,13 @@ export const CyclingMap: React.FC = () => {
       }
     };
   }, [map, theme, styleGeneration]);
+
+  // What the layers panel shows: filter the layers in place.
+  React.useEffect(() => {
+    if (!map) return;
+    for (const [id, filter] of Object.entries(cyclingFilters(show)))
+      if (map.getLayer(id)) map.setFilter(id, filter);
+  }, [map, show]);
 
   const [selectedFeature, setSelectedFeature] = React.useState<
     MapCyclingElement | MapParkingElement
@@ -191,6 +203,7 @@ export const CyclingMap: React.FC = () => {
 
   return (
     <>
+      <CyclingLayers show={show} onChange={setShow} />
       {selectedFeature?.type === "cycling_way" ?
         <MapOverlayWindow className="top-5 sm:top-24">
           <div className="flex">

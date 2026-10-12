@@ -39,6 +39,7 @@ import {
   STATIONS_SOURCE,
   addStaticLayers,
   applyRouteFilter,
+  applyStopsVisibility,
   setFerryPair,
 } from "./layers/static.ts";
 import { VehicleLayer } from "./layers/vehicles.ts";
@@ -103,6 +104,10 @@ export interface TransitSnapshot {
   preview: string[];
   routes: PlanRoute[];
   hidden: ReadonlySet<string>;
+  /** Station and bus stop markers and labels are drawn. */
+  showStops: boolean;
+  /** Only vehicles with real positions are drawn (estimates hidden). */
+  liveOnly: boolean;
   selected: SelectedVehicle | undefined;
   /** Registry ids (@transitopia/shared/datasets.ts) of the data drawn right now. */
   datasets: string[];
@@ -158,6 +163,8 @@ export class TransitEngine {
   private readonly debug: boolean;
   private theme: Theme;
   private hidden: Set<string>;
+  private showStops: boolean;
+  private liveOnly: boolean;
   private selectedId: string | undefined;
   private tracks: InfraCollection | undefined;
   private shownFeed: PreparedPlan | undefined;
@@ -216,6 +223,8 @@ export class TransitEngine {
     if (url.paused) this.clock.pause();
     this.selectedId = url.vehicle;
     this.hidden = new Set(loadPref<string[]>("hiddenRoutes", []));
+    this.showStops = loadPref("showStops", true);
+    this.liveOnly = loadPref("liveOnly", false);
 
     this.vehicles = new VehicleLayer(map, kinematics.sizing);
     this.vehicles.selectedId = this.selectedId;
@@ -316,14 +325,34 @@ export class TransitEngine {
   }
 
   setRouteHidden(key: string, hidden: boolean): void {
-    if (hidden) this.hidden.add(key);
-    else this.hidden.delete(key);
+    this.setRoutesHidden([key], hidden);
+  }
+
+  setRoutesHidden(keys: readonly string[], hidden: boolean): void {
     this.hidden = new Set(this.hidden); // a new identity for the snapshot
+    for (const key of keys) {
+      if (hidden) this.hidden.add(key);
+      else this.hidden.delete(key);
+    }
     savePref("hiddenRoutes", [...this.hidden]);
     if (this.styleReady) {
       applyRouteFilter(this.map, this.hidden);
       applyTrackFilter(this.map, this.hidden);
     }
+    this.publish();
+  }
+
+  setStopsShown(shown: boolean): void {
+    this.showStops = shown;
+    savePref("showStops", shown);
+    if (this.styleReady) applyStopsVisibility(this.map, shown);
+    this.publish();
+  }
+
+  /** Draw only vehicles with real positions (observed or interpolated), or every vehicle. */
+  setLiveOnly(liveOnly: boolean): void {
+    this.liveOnly = liveOnly;
+    savePref("liveOnly", liveOnly);
     this.publish();
   }
 
@@ -472,6 +501,8 @@ export class TransitEngine {
       // Stable identities, so React skips re-rendering the legend.
       routes: prev && sameRoutes(prev.routes, routes) ? prev.routes : routes,
       hidden: this.hidden,
+      showStops: this.showStops,
+      liveOnly: this.liveOnly,
       selected,
       datasets:
         prev && prev.datasets.join() === this.datasets.join() ?
@@ -495,6 +526,7 @@ export class TransitEngine {
     if (pp === this.shownFeed && !force) return;
     this.shownFeed = pp;
     addStaticLayers(map, pp.plan, this.theme, this.hidden);
+    applyStopsVisibility(map, this.showStops);
     this.ferryPair = undefined;
     if (this.tracks) {
       addTrackLayers(map, this.tracks, pp.plan, this.theme, this.debug);
@@ -619,7 +651,15 @@ export class TransitEngine {
     this.datasets = this.datasetsDrawn(live.vehicles?.length ?? 0, aisUsed);
 
     if (this.styleReady)
-      this.vehicles.update(this.lastVehicles, this.theme === "dark");
+      this.vehicles.update(
+        this.liveOnly ?
+          // The selected vehicle stays, so its card still points at something.
+          this.lastVehicles.filter(
+            (v) => v.provenance !== "estimated" || v.id === this.selectedId,
+          )
+        : this.lastVehicles,
+        this.theme === "dark",
+      );
     this.syncStatic();
 
     const now = performance.now();
