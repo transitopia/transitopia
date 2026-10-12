@@ -7,6 +7,7 @@ import { AsyncMapLibreGLLoader, Map } from "./Map/Map.tsx";
 import { CyclingMap } from "./CyclingMap/CyclingMap.tsx";
 import { ModeLink } from "./components/ModeLink.tsx";
 import { Icon } from "./components/Icon.tsx";
+import { Logo } from "./components/Logo.tsx";
 import { ThemeProvider } from "./Theme/Theme.tsx";
 import {
   AttributionControl,
@@ -50,11 +51,7 @@ function MapApp() {
         <Map
           header={
             <header className="map-header z-50 flex items-center border-gray-500 bg-(--header-background) shadow-md dark:border-gray-600 dark:text-gray-100">
-              <img
-                src="/transitopia-logo-h.svg"
-                alt="Transitopia"
-                className="block h-7 lg:h-10 mr-2 lg:mr-4 dark:rounded-sm dark:bg-white dark:px-1"
-              />
+              <Logo className="h-7 lg:h-10 mr-2 lg:mr-4" />
               <div className="flex-auto"></div>
               <ModeLink
                 href="/transit"
