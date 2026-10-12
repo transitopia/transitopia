@@ -135,8 +135,11 @@ export const InfoCard: React.FC<{
   status?: { tone: StatusTone; text: string } | undefined;
   chips?: CardChip[] | undefined;
   actions?: CardAction[] | undefined;
-  /** Above the header, e.g. the "not live" banner. */
-  banner?: React.ReactNode;
+  /**
+   * Time-dependent cards when the map isn't live: an amber banner with the time shown and Go live
+   * (apps/web/README.md#time-and-not-live). Bike cards ignore the map's time and never get one.
+   */
+  notLive?: { future: boolean; when: string; onGoLive: () => void } | undefined;
   footer?: React.ReactNode;
   onClose: () => void;
   children?: React.ReactNode;
@@ -148,7 +151,7 @@ export const InfoCard: React.FC<{
   status,
   chips,
   actions,
-  banner,
+  notLive,
   footer,
   onClose,
   children,
@@ -163,12 +166,45 @@ export const InfoCard: React.FC<{
     <article
       aria-label={title}
       aria-live="polite"
-      className="info-card absolute z-50 flex flex-col overflow-hidden border-(--card-border) bg-(--card-bg) text-(--card-text) shadow-[0_8px_28px_rgb(17_24_39/0.16)] max-sm:inset-x-0 max-sm:bottom-0 max-sm:max-h-[60dvh] max-sm:rounded-t-[20px] max-sm:border-t sm:top-5 sm:right-[3.25rem] sm:max-h-[calc(100%-11rem)] sm:w-[360px] sm:rounded-2xl sm:border dark:shadow-[0_10px_32px_rgb(0_0_0/0.5)]">
+      className={`info-card absolute z-50 flex flex-col overflow-hidden bg-(--card-bg) text-(--card-text) shadow-[0_8px_28px_rgb(17_24_39/0.16)] max-sm:inset-x-0 max-sm:bottom-0 max-sm:max-h-[60dvh] max-sm:rounded-t-[20px] max-sm:border-t sm:top-5 sm:right-[3.25rem] sm:max-h-[calc(100%-11rem)] sm:w-[360px] sm:rounded-2xl sm:border dark:shadow-[0_10px_32px_rgb(0_0_0/0.5)] ${notLive ? "border-(--notlive-border) max-sm:border-t-2 sm:border-2" : "border-(--card-border)"}`}>
       <div className="overflow-y-auto pb-[env(safe-area-inset-bottom)] sm:pb-0">
         <div aria-hidden="true" className="flex justify-center pt-2 sm:hidden">
           <span className="h-[5px] w-10 rounded-full bg-(--card-handle)" />
         </div>
-        {banner}
+        {notLive ?
+          <div
+            role="status"
+            className="flex items-center gap-2.5 border-b border-(--notlive-border) bg-(--notlive-bg) py-2.5 pr-2.5 pl-3.5 text-(--notlive-fg) max-sm:mt-2">
+            <svg
+              aria-hidden="true"
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.25"
+              strokeLinecap="round"
+              strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v5l3 2" />
+            </svg>
+            <div className="flex min-w-0 flex-1 flex-col leading-tight">
+              <span className="text-[13px] font-extrabold tracking-wider uppercase">
+                {notLive.future ? "Not live · projected" : "Not live"}
+              </span>
+              <span className="text-sm font-semibold">
+                {notLive.future ? "Projected for " : "Showing "}
+                {notLive.when}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={notLive.onGoLive}
+              className="h-9 flex-none rounded-[9px] border-[1.5px] border-current px-3 text-[13.5px] font-extrabold">
+              Go live
+            </button>
+          </div>
+        : null}
         <header className="relative flex items-start gap-3 pt-3.5 pr-2 pb-2.5 pl-4 sm:pt-3.5">
           <div
             aria-hidden="true"

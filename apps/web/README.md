@@ -41,7 +41,7 @@ The header holds the logo and the mode switch (`ModeSwitch.tsx`): a segmented co
 
 `TransitMap` creates the engine on mount (`TransitEngine.create(map, { dataBase, apiBase, theme })`) and disposes it on unmount. The engine and `transit-core` are their own chunk, loaded only on `/transit`, as is MapLibre itself. The per-frame path (clock → playback → WebGL) never goes through React: components read the engine's snapshot with `useSyncExternalStore` and call its methods ([packages/transit-map](../../packages/transit-map/README.md)).
 
-- **Time bar** (`TimeBar.tsx`): play and pause, the time and date (bounded to the published timetables, with the service type, e.g. "Weekday (Mon–Thu)"), speed (−300× to 300×), Live, and a slider across the service day (from 03:00), shaded where real bus positions exist. A badge says whether buses are live, recorded (or loading) or estimated, and the bar warns when it's showing a preview of unconfirmed corrections. Keyboard: space plays and pauses, ←/→ move a minute (shift: ten), L goes live, [ and ] change speed. On phones it's a compact bottom bar.
+- **Time bar** (`TimeBar.tsx`): play and pause, the time and date (a button opening the date picker, bounded to the published timetables), a speed stepper (−300× to 300×), Live or Go live, and a slider across the service day (from 03:00), shaded where real bus positions exist. Badges say whether buses are live, recorded (or loading) or estimated, flag service changes, and warn when it's showing a preview of unconfirmed corrections. Keyboard: space plays and pauses, ←/→ move a minute (shift: ten), L goes live, [ and ] change speed. Its states are in [Time and not-live](#time-and-not-live).
 - **Layers** (`TransitLayers.tsx`): see [Header and layers](#header-and-layers).
 - **Vehicle card** (`VehicleCard.tsx`, a [feature card](#feature-cards)): tap or click a vehicle to select it: its route and destination, its provenance in plain words with the map's marks (live with the age of the last fix, recorded, or estimated from the schedule), lateness and speed, what it's doing (next stop, at a stop, leaving the yard, turning back, layover, to the yard), notes (service changes, detours, shifted GPS), trip, inferred run, vehicle, consist or vessel name, and the data's source. The ⋯ menu centres the map on it, shares a link (the URL names the vehicle and time), or shows only its route. TransLink's legend is shown for TransLink vehicles.
 - Outside the region, `/transit` says transit data isn't available there.
@@ -49,6 +49,14 @@ The header holds the logo and the mode switch (`ModeSwitch.tsx`): a segmented co
 ## Cycling mode
 
 The cycling and micromobility layer for British Columbia, built by our Planetiler profile ([map-layers](../../map-layers/README.md)) and served as `transitopia-cycling-british-columbia.pmtiles`. Clicking a feature shows its details, loaded on demand from the OSM API.
+
+## Time and not-live
+
+Every transit card follows the map's time, date and speed, so the past, live and the future stay in step; bike cards ignore it (OpenStreetMap has no history). Amber means "not live" and nothing else; green "Live" appears only when live (`clock.isLive()`: playing at 1× within seconds of now, so pausing leaves live).
+
+- Not live, the time bar gets an amber border and an amber status line ("Paused", "Replaying at 10×", or "Projected at 60×" for the future, with the date), a "Not live" badge, and Go live in place of the Live pill.
+- Every time-dependent card opens with an amber banner: "Not live · Showing Tue 6 Oct, 08:00" (or "projected" for the future) and Go live, inside an amber border (`notLive` on `InfoCard`; `timeState()` in `src/TransitMap/format.ts`). There's no amber frame or tag over the map itself.
+- Phones: the bar is compact (pause, time, Live) only while live; any other state expands it (slider, date, speed), and Go live collapses it. With a card open, the time shrinks to a pill at the top (amber "Showing Tue 6 Oct · 08:00" when not live); its play button plays and pauses, and the rest opens the full controls there.
 
 ## Feature cards
 

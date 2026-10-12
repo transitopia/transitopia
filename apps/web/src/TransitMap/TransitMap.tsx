@@ -151,7 +151,7 @@ const EngineControls: React.FC<{ engine: TransitEngine }> = ({ engine }) => {
     <>
       <TransitLayers engine={engine} snap={snap} />
       <VehicleCard engine={engine} snap={snap} />
-      <TimeBar engine={engine} snap={snap} />
+      <TimeBar engine={engine} snap={snap} cardOpen={!!snap.selected} />
     </>
   );
 };

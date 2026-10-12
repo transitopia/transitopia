@@ -36,6 +36,17 @@
   --mark-estimated: #6b7280;
   --mark-neutral-bg: #f1f1ee;
   --mark-neutral-fg: #374151;
+  /* Amber means "not live" and nothing else (time bar, card banners). */
+  --notlive-bg: #fef3c7;
+  --notlive-fg: #78350f;
+  --notlive-text: #92400e;
+  --notlive-border: #f59e0b;
+  --golive-border: #c2410c;
+  --golive-fg: #b42318;
+  /* The time bar's slider: track, recorded bus data, elapsed. */
+  --slider-track: #e7e5e0;
+  --slider-recorded: #a8e6ec;
+  --slider-fill: #043760;
   /* Phones with a home indicator are the ones with rounded screen corners; elsewhere this is 0. */
   --screen-corner-inset: env(safe-area-inset-bottom);
   /* The header bar on phones, below the status bar (.map-header). */
@@ -69,6 +80,15 @@
   --mark-estimated: #9ca3af;
   --mark-neutral-bg: #232a35;
   --mark-neutral-fg: #d1d5db;
+  --notlive-bg: rgb(245 158 11 / 0.18);
+  --notlive-fg: #fcd34d;
+  --notlive-text: #fcd34d;
+  --notlive-border: #f59e0b;
+  --golive-border: #fb923c;
+  --golive-fg: #fdba74;
+  --slider-track: #2a303a;
+  --slider-recorded: #1d6f78;
+  --slider-fill: #7dd3fc;
   color-scheme: dark;
   --header-background: #101828; /* gray-900 */
   background: #15181c;
@@ -214,4 +234,49 @@
   background: rgb(17 24 39 / 0.8);
   color: #e5e7eb;
   border-color: #e5e7eb;
+}
+
+/* The time slider (src/TransitMap/TimeBar.tsx): the track is drawn behind the input, which only draws its thumb. */
+.time-slider {
+  appearance: none;
+  background: transparent;
+  &::-webkit-slider-runnable-track {
+    height: 1.25rem;
+    background: transparent;
+  }
+  &::-moz-range-track {
+    height: 1.25rem;
+    background: transparent;
+  }
+  &::-webkit-slider-thumb {
+    appearance: none;
+    width: 1.125rem;
+    height: 1.125rem;
+    margin-top: 0.0625rem;
+    border-radius: 50%;
+    background: var(--card-bg);
+    border: 3px solid var(--slider-fill);
+    box-sizing: border-box;
+    cursor: grab;
+  }
+  &::-moz-range-thumb {
+    width: 1.125rem;
+    height: 1.125rem;
+    border-radius: 50%;
+    background: var(--card-bg);
+    border: 3px solid var(--slider-fill);
+    box-sizing: border-box;
+    cursor: grab;
+  }
+  @variant max-sm {
+    &::-webkit-slider-thumb {
+      width: 1.75rem;
+      height: 1.75rem;
+      margin-top: -0.25rem;
+    }
+    &::-moz-range-thumb {
+      width: 1.75rem;
+      height: 1.75rem;
+    }
+  }
 }

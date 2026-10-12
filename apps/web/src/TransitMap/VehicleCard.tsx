@@ -7,6 +7,7 @@ import type { VehicleState } from "@transitopia/transit-core/schedule/engine.ts"
 import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
 import { DATASETS } from "@transitopia/shared/datasets.ts";
 
+import { timeState } from "./format.ts";
 import {
   CardRow,
   CardSection,
@@ -202,6 +203,11 @@ export const VehicleCard: React.FC<{
       status={status(v, snap)}
       chips={chips(v)}
       actions={actions}
+      notLive={
+        snap.live ? undefined : (
+          { ...timeState(snap), onGoLive: () => engine.goLive() }
+        )
+      }
       onClose={close}
       footer={
         <>
