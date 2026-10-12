@@ -112,6 +112,8 @@ Station and stop cards (`src/schedule/departures.ts`) list what leaves a stop af
 
 Departures are grouped by route and destination (`groupDepartures`). How often a group runs is 60 / its departures in the hour from the shown time (`minutesBetween`). Groups whose next stops are the same, in order, for at least two stops share a stretch (`sharedStretches`), which runs to where they split (stations compared by station, not platform): the site shows a combined row for it.
 
+A route's frequency (`src/schedule/frequency.ts`) counts its trips starting in each hour, per direction, and takes the busier direction: 60 / trips is the minutes between them. The route card's day types are the distinct sets of services that run on the coming dates (`dayTypes`), so a feed with Mon–Thu, Friday, Saturday and Sunday/holiday services shows four.
+
 ## Run inference
 
 `src/movement/build.ts`, run by `npm run build:movements`. This is where the "best guess" lives, so it's explicit, configurable (`regions/metro-vancouver/config/operations.json`) and replaceable. For each SkyTrain line and each distinct service-day pattern:

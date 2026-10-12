@@ -154,7 +154,7 @@ export const PlaceCard: React.FC<{
   snap: TransitSnapshot;
 }> = ({ engine, snap }) => {
   const place = snap.place;
-  if (!place) return null;
+  if (!place || place.kind === "route") return null;
   return <PlaceCardBody engine={engine} snap={snap} place={place} />;
 };
 

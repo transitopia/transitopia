@@ -34,6 +34,12 @@ import {
   stopsOf,
   type Departure,
 } from "@transitopia/transit-core/schedule/departures.ts";
+import {
+  DAY_HOURS,
+  dayTypes,
+  hourlyMinutes,
+  routeMinutes,
+} from "@transitopia/transit-core/schedule/frequency.ts";
 import { Clock } from "./clock.ts";
 import {
   PlanStore,
@@ -109,8 +115,30 @@ export interface PlaceGroup {
   minutes: number | undefined;
 }
 
+/** The selected route line: how often it runs now and how many of its vehicles are out. */
+export interface RouteSnapshot {
+  kind: "route";
+  id: string;
+  route: PlanRoute;
+  /** Average minutes between trips in the hour from the shown time (timetable), busier direction. */
+  nextHour: number | undefined;
+  /** Its vehicles drawn now, and how many of them have real positions. */
+  vehicles: number;
+  live: number;
+}
+
+/** A kind of day in the shown feed, with the route's minutes between trips per hour (DAY_HOURS). */
+export interface RouteDay {
+  date: string;
+  label: string;
+  hours: (number | undefined)[];
+}
+
+export { DAY_HOURS };
+
 /** The selected station or bus stop and what leaves it after the shown time. */
 export interface PlaceSnapshot extends Place {
+  kind: "station" | "stop";
   /** As in GTFS: "Stadium-Chinatown Station", "Eastbound E Hastings St @ Main St". */
   name: string;
   lon: number;
@@ -156,8 +184,8 @@ export interface TransitSnapshot {
   /** The camera keeps the selected vehicle in view. */
   following: boolean;
   selected: SelectedVehicle | undefined;
-  /** The selected station or stop (exclusive with a selected vehicle). */
-  place: PlaceSnapshot | undefined;
+  /** The selected station, stop or route line (exclusive with a selected vehicle). */
+  place: PlaceSnapshot | RouteSnapshot | undefined;
   /** Registry ids (@transitopia/shared/datasets.ts) of the data drawn right now. */
   datasets: string[];
   scenario: { name: string; description: string } | undefined;
@@ -235,6 +263,8 @@ export class TransitEngine {
   private place: Place | undefined;
   /** When something was selected: bring it into view once its card is up (performance.now()). */
   private revealAt: number | undefined;
+  /** Per feed and route: its day types and hourly frequencies (they don't change with the time). */
+  private routeDayCache = new WeakMap<PreparedPlan, Map<string, RouteDay[]>>();
   /** The real-time corrections last applied, per service date (for departure times). */
   private lastCorrections: Map<string, ScheduleCorrections> | undefined;
   private following = false;
@@ -501,16 +531,43 @@ export class TransitEngine {
     if (station)
       return { kind: "station", id: String(station.properties["id"]) };
     const stop = hits.find((f) => f.properties["stop"] !== undefined);
-    return stop ?
-        { kind: "stop", id: String(stop.properties["stop"]) }
-      : undefined;
+    if (stop) return { kind: "stop", id: String(stop.properties["stop"]) };
+    return this.routeAt(x, y);
+  }
+
+  /** The route line under a screen point (bus, ferry and rail lines, and SkyTrain track). */
+  private routeAt(x: number, y: number): Place | undefined {
+    const { map } = this;
+    const layers = [
+      "routes-bus",
+      "routes-bus-limited",
+      "routes-shape",
+      "routes-shape-inactive",
+      "routes-skytrain",
+      "tracks-main",
+    ].filter((id) => map.getLayer(id));
+    if (!layers.length) return undefined;
+    const d = PLACE_PICK_PX;
+    const known = this.shownFeed?.routes;
+    for (const f of map.queryRenderedFeatures(
+      [
+        [x - d, y - d],
+        [x + d, y + d],
+      ],
+      { layers },
+    )) {
+      const key = String(f.properties["route"] ?? f.properties["line"] ?? "");
+      if (known?.has(key) && !this.hidden.has(key))
+        return { kind: "route", id: key };
+    }
+    return undefined;
   }
 
   /** Where the selected place is, for its highlight and "Centre on map". */
   private placePoint(): [number, number] | undefined {
     const plan = this.shownFeed?.plan;
     const p = this.place;
-    if (!plan || !p) return undefined;
+    if (!plan || !p || p.kind === "route") return undefined;
     const at =
       p.kind === "station" ?
         plan.stations.find((s) => s.id === p.id)
@@ -525,6 +582,10 @@ export class TransitEngine {
 
   /** Centre the map on the selected vehicle (or station or stop), in the part of the map the host's chrome leaves clear. */
   locateSelected(): void {
+    if (this.place?.kind === "route") {
+      this.fitRoute(this.place.id);
+      return;
+    }
     const v =
       this.lastVehicles.find((x) => x.id === this.selectedId)
       ?? (() => {
@@ -547,6 +608,62 @@ export class TransitEngine {
   private paddingOffset(): [number, number] {
     const p = this.viewPadding;
     return [(p.left - p.right) / 2, (p.top - p.bottom) / 2];
+  }
+
+  /** Fit a route's lines into the area the host's chrome leaves clear. */
+  private fitRoute(key: string): void {
+    const plan = this.shownFeed?.plan;
+    if (!plan) return;
+    let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const p of plan.patterns)
+      if (p.route === key)
+        for (const [lon, lat] of plan.shapes[p.shape] ?? []) {
+          w = Math.min(w, lon);
+          e = Math.max(e, lon);
+          s = Math.min(s, lat);
+          n = Math.max(n, lat);
+        }
+    if (!Number.isFinite(w)) return;
+    const pad = this.viewPadding;
+    const margin = 40;
+    this.map.fitBounds(
+      [
+        [w, s],
+        [e, n],
+      ],
+      {
+        padding: {
+          top: pad.top + margin,
+          right: pad.right + margin,
+          bottom: pad.bottom + margin,
+          left: pad.left + margin,
+        },
+        duration: 600,
+      },
+    );
+  }
+
+  /**
+   * A route's hourly frequency for each kind of day in the shown feed, the shown date's kind first
+   * (cached: it doesn't change with the time).
+   */
+  routeDays(key: string): RouteDay[] {
+    const pp = this.shownFeed;
+    if (!pp) return [];
+    let byRoute = this.routeDayCache.get(pp);
+    if (!byRoute) this.routeDayCache.set(pp, (byRoute = new Map()));
+    const from = displayServiceDate(this.clock.now());
+    const cacheKey = `${key}|${from}`;
+    let days = byRoute.get(cacheKey);
+    if (!days) {
+      days = dayTypes(pp, from).map((d) => ({
+        date: d.date,
+        label: this.describeDate(d.date),
+        hours: hourlyMinutes(pp, key, d.date),
+      }));
+      byRoute.set(cacheKey, days);
+    }
+    return days;
   }
 
   /** Keep the selected vehicle in view (or stop). */
@@ -751,10 +868,25 @@ export class TransitEngine {
    * Departures from the selected place after the shown time, from the timetable shifted by the
    * real-time corrections the vehicles use (packages/transit-core/DESIGN.md#departures).
    */
-  private placeSnapshot(t: number): PlaceSnapshot | undefined {
+  private placeSnapshot(t: number): PlaceSnapshot | RouteSnapshot | undefined {
     const p = this.place;
     const pp = this.shownFeed;
     if (!p || !pp) return undefined;
+    if (p.kind === "route") {
+      const route = pp.routes.get(p.id);
+      if (!route) return undefined;
+      const date = displayServiceDate(t);
+      const sec = (t - serviceDayStart(date)) / 1000;
+      const mine = this.lastVehicles.filter((v) => v.routeKey === p.id);
+      return {
+        kind: "route",
+        id: p.id,
+        route,
+        nextHour: routeMinutes(pp, p.id, date, sec, sec + 3600),
+        vehicles: mine.length,
+        live: mine.filter((v) => v.provenance !== "estimated").length,
+      };
+    }
     const { plan } = pp;
     const where =
       p.kind === "station" ?
@@ -784,6 +916,7 @@ export class TransitEngine {
         ];
     return {
       ...p,
+      kind: p.kind,
       name: where.name,
       lon: where.lon,
       lat: where.lat,

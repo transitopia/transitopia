@@ -14,6 +14,12 @@ import {
 import type { PlanTrip, ServicePlan } from "../src/plan/types.ts";
 import type { KinematicsConfig } from "../src/movement/kinematics.ts";
 import { serviceDayStart } from "../src/time.ts";
+import {
+  DAY_HOURS,
+  dayTypes,
+  hourlyMinutes,
+  routeMinutes,
+} from "../src/schedule/frequency.ts";
 
 const kin: KinematicsConfig = {
   modes: {
@@ -230,5 +236,27 @@ describe("stopsOf", () => {
       ],
     };
     expect([...stopsOf(withStation, "ST")]).toEqual(["ST", "P1"]);
+  });
+});
+
+describe("route frequency", () => {
+  it("averages minutes between trips in an hour, per route", () => {
+    expect(routeMinutes(pp, "A", DATE, H8, H8 + 3600)).toBe(10);
+    expect(routeMinutes(pp, "B", DATE, H8, H8 + 3600)).toBe(15);
+    expect(routeMinutes(pp, "A", DATE, H8 - 3600, H8)).toBeUndefined();
+  });
+
+  it("fills the day strip hour by hour", () => {
+    const hours = hourlyMinutes(pp, "A", DATE);
+    expect(hours).toHaveLength(DAY_HOURS.length);
+    expect(hours[DAY_HOURS.indexOf(8)]).toBe(10);
+    expect(hours[DAY_HOURS.indexOf(10)]).toBeUndefined();
+  });
+
+  it("lists the feed's kinds of day from a date, that date's first", () => {
+    // Only Saturdays have service in the fixture.
+    expect(dayTypes(pp, "20260924")).toEqual([
+      { date: DATE, services: ["sa"] },
+    ]);
   });
 });
