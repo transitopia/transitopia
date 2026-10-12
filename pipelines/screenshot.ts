@@ -16,7 +16,9 @@ const opt = (name: string) => {
 const positional = args.filter(
   (a, i) =>
     !a.startsWith("--")
-    && !["--wait", "--click", "--base", "--pick", "--after"].includes(args[i - 1] ?? ""),
+    && !["--wait", "--click", "--base", "--pick", "--after"].includes(
+      args[i - 1] ?? "",
+    ),
 );
 const [out = "screenshot.png", path = "/"] = positional;
 const base = opt("--base") ?? "http://localhost:5173";
