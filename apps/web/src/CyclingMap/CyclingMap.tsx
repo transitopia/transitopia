@@ -19,8 +19,8 @@ import {
   type MapCyclingElement,
   type MapParkingElement,
 } from "../Map/MapData.ts";
-import { MapOverlayWindow } from "../Map/MapOverlayWindow.tsx";
-import { InfoboxBikeParking } from "./InfoboxBikeParking.tsx";
+import { BikeParkingCard } from "./BikeParkingCard.tsx";
+import { BikeRouteCard } from "./BikeRouteCard.tsx";
 import { CyclingLayers, useCyclingShow } from "./CyclingLayers.tsx";
 
 export const CyclingMap: React.FC = () => {
@@ -65,6 +65,8 @@ export const CyclingMap: React.FC = () => {
   const [selectedFeature, setSelectedFeature] = React.useState<
     MapCyclingElement | MapParkingElement
   >();
+  /** Where the selected feature was clicked, for "Centre on map". */
+  const [selectedAt, setSelectedAt] = React.useState<MapLibreGL.LngLat>();
   const hoveredFeatureIdRef = React.useRef<string | undefined>(undefined);
 
   const handleMouseOver = React.useCallback(
@@ -148,6 +150,7 @@ export const CyclingMap: React.FC = () => {
     (e: MapLibreGL.MapLayerEventType["click"]) => {
       const feature = e.features?.[0];
       if (!map || map.getZoom() < 13 || !feature) return;
+      setSelectedAt(e.lngLat);
       setSelectedFeature({
         id: feature.id as string,
         type: "cycling_way",
@@ -161,6 +164,7 @@ export const CyclingMap: React.FC = () => {
     (e: MapLibreGL.MapLayerEventType["click"]) => {
       const feature = e.features?.[0];
       if (!map || map.getZoom() < 13 || !feature) return;
+      setSelectedAt(e.lngLat);
       setSelectedFeature({
         id: feature.id as string,
         type: "bicycle_parking",
@@ -200,96 +204,35 @@ export const CyclingMap: React.FC = () => {
   const closeInfobox = React.useCallback(() => {
     setSelectedFeature(undefined);
   }, []);
+  const centre = React.useCallback(() => {
+    if (map && selectedAt)
+      map.easeTo({ center: selectedAt, zoom: Math.max(map.getZoom(), 15) });
+  }, [map, selectedAt]);
 
   return (
     <>
       <CyclingLayers show={show} onChange={setShow} />
       {selectedFeature?.type === "cycling_way" ?
-        <MapOverlayWindow className="top-5 sm:top-24">
-          <div className="flex">
-            <div className="flex-1">
-              {selectedFeature.name ?
-                <>
-                  <strong>{selectedFeature.name}</strong> (
-                  {`Cycling ${
-                    selectedFeature.class == "lane" ? "Lane" : "Track"
-                  }`}
-                  )
-                </>
-              : <strong>
-                  {`Cycling ${
-                    selectedFeature.class == "lane" ? "Lane" : "Track"
-                  }`}
-                </strong>
-              }
-            </div>
-            <div className="flex-none">
-              <button
-                type="button"
-                className="hover:bg-gray-200 dark:hover:bg-gray-700 px-2 rounded-lg"
-                onClick={closeInfobox}>
-                x
-              </button>
-            </div>
-          </div>
-          {selectedFeature.construction ?
-            <span className="inline-block m-1 px-1 rounded-md bg-red-600 text-white">
-              Under Construction
-            </span>
-          : null}
-          {selectedFeature.dooring_risk ?
-            <span className="inline-block m-1 px-1 rounded-md bg-red-600 text-white">
-              risk of dooring (adjacent parking)
-            </span>
-          : null}
-          {selectedFeature.shared_with_vehicles ?
-            <span className="inline-block m-1 px-1 rounded-md bg-red-600 text-white">
-              shared with vehicles
-            </span>
-          : null}
-          {selectedFeature.shared_with_pedestrians ?
-            <span className="inline-block m-1 px-1 rounded-md bg-yellow-200">
-              shared with pedestrians
-            </span>
-          : null}
-          {selectedFeature.oneway == 1 || selectedFeature.oneway == -1 ?
-            <span className="inline-block m-1 px-1 rounded-md bg-yellow-200">
-              one way
-            </span>
-          : null}
-          {selectedFeature.class === "track" ?
-            <span className="inline-block m-1 px-1 rounded-md bg-green-800 text-white">
-              track (separated from roadway)
-            </span>
-          : (
-            selectedFeature.class === "lane"
-            && selectedFeature.shared_with_vehicles
-          ) ?
-            <span className="inline-block m-1 px-1 rounded-md bg-red-600 text-white">
-              shared lane
-            </span>
-          : <span className="inline-block m-1 px-1 rounded-md bg-yellow-200">
-              bike lane on roadway
-            </span>
-          }
-        </MapOverlayWindow>
+        <BikeRouteCard
+          feature={selectedFeature}
+          onCentre={centre}
+          onClose={closeInfobox}
+        />
       : selectedFeature?.type === "bicycle_parking" ?
-        <MapOverlayWindow className="top-5 sm:top-24">
-          {selectedFeature.osmNodeId && (
-            <InfoboxBikeParking
-              featureType="node"
-              osmId={parseInt(selectedFeature.osmNodeId, 10)}
-              closeInfobox={closeInfobox}
-            />
-          )}
-          {selectedFeature.osmWayId && (
-            <InfoboxBikeParking
-              featureType="way"
-              osmId={parseInt(selectedFeature.osmWayId, 10)}
-              closeInfobox={closeInfobox}
-            />
-          )}
-        </MapOverlayWindow>
+        (() => {
+          const way = selectedFeature.osmWayId;
+          const node = selectedFeature.osmNodeId;
+          const id = Number.parseInt(way ?? node ?? "", 10);
+          return Number.isFinite(id) ?
+              <BikeParkingCard
+                key={id}
+                featureType={way ? "way" : "node"}
+                osmId={id}
+                onCentre={centre}
+                onClose={closeInfobox}
+              />
+            : null;
+        })()
       : null}
     </>
   );

@@ -43,12 +43,19 @@ The header holds the logo and the mode switch (`ModeSwitch.tsx`): a segmented co
 
 - **Time bar** (`TimeBar.tsx`): play and pause, the time and date (bounded to the published timetables, with the service type, e.g. "Weekday (Mon–Thu)"), speed (−300× to 300×), Live, and a slider across the service day (from 03:00), shaded where real bus positions exist. A badge says whether buses are live, recorded (or loading) or estimated, and the bar warns when it's showing a preview of unconfirmed corrections. Keyboard: space plays and pauses, ←/→ move a minute (shift: ten), L goes live, [ and ] change speed. On phones it's a compact bottom bar.
 - **Layers** (`TransitLayers.tsx`): see [Header and layers](#header-and-layers).
-- **Vehicle card** (`VehicleCard.tsx`): tap or click a vehicle to follow it (and centre the map on it): its trip, next stop and schedule, what it's doing between trips (leaving the yard, turning back, layover, to the yard), consist or vessel name, speed, notes (service changes, detours, shifted GPS), and its provenance in plain words: an observed position with the time of the last fix, or "Estimated from schedule". SkyTrain runs are labelled "Train (inferred)". TransLink's legend is shown for TransLink vehicles.
+- **Vehicle card** (`VehicleCard.tsx`, a [feature card](#feature-cards)): tap or click a vehicle to select it: its route and destination, its provenance in plain words with the map's marks (live with the age of the last fix, recorded, or estimated from the schedule), lateness and speed, what it's doing (next stop, at a stop, leaving the yard, turning back, layover, to the yard), notes (service changes, detours, shifted GPS), trip, inferred run, vehicle, consist or vessel name, and the data's source. The ⋯ menu centres the map on it, shares a link (the URL names the vehicle and time), or shows only its route. TransLink's legend is shown for TransLink vehicles.
 - Outside the region, `/transit` says transit data isn't available there.
 
 ## Cycling mode
 
 The cycling and micromobility layer for British Columbia, built by our Planetiler profile ([map-layers](../../map-layers/README.md)) and served as `transitopia-cycling-british-columbia.pmtiles`. Clicking a feature shows its details, loaded on demand from the OSM API.
+
+## Feature cards
+
+Everything tapped on the map opens the same card (`src/components/InfoCard.tsx`): a header (icon tile in the route's or mode's colours, an eyebrow saying what kind of thing it is, title, subtitle, ⋯ menu, close), an optional status line, chips, sections of rows divided by 1 px rules, and a footer saying where the data comes from. Actions (centre, share, show only this route, and later follow) live only in the ⋯ menu, so the card body is only information. Times and positions carry one set of marks: live is a green dot, recorded a grey dot, estimated a grey "~" before the time; green appears only when live. On desktop the card is a 360 px panel at the top right; on phones it's a bottom sheet. Its colours are the `--card-*` and `--mark-*` properties in `src/index.css`, per theme.
+
+- Vehicles: `src/TransitMap/VehicleCard.tsx`.
+- Bike routes (`src/CyclingMap/BikeRouteCard.tsx`) from the cycling tiles' attributes, and bike parking (`BikeParkingCard.tsx`) loaded from the OSM API, with a link to view or edit it there. Bike cards ignore the map's time: OpenStreetMap has no history. The selected feature is highlighted on the map; bike parking stays a faint dot.
 
 ## Attribution
 
