@@ -22,8 +22,18 @@ import {
 } from "@transitopia/transit-core/plan/types.ts";
 import type {
   PreparedPlan,
+  ScheduleCorrections,
   VehicleState,
 } from "@transitopia/transit-core/schedule/engine.ts";
+import {
+  departuresAt,
+  groupDepartures,
+  minutesBetween,
+  placeName,
+  sharedStretches,
+  stopsOf,
+  type Departure,
+} from "@transitopia/transit-core/schedule/departures.ts";
 import { Clock } from "./clock.ts";
 import {
   PlanStore,
@@ -36,11 +46,14 @@ import {
   BUS_STOPS_SOURCE,
   BUS_TICKS_SOURCE,
   ROUTES_SOURCE,
+  SELECTED_PLACE_SOURCE,
   STATIONS_SOURCE,
+  VEHICLES_BEFORE_LAYER,
   addStaticLayers,
   applyRouteFilter,
   applyStopsVisibility,
   setFerryPair,
+  setSelectedPlace,
 } from "./layers/static.ts";
 import { VehicleLayer } from "./layers/vehicles.ts";
 import {
@@ -52,7 +65,7 @@ import {
   loadTracks,
   setDebugPlatforms,
 } from "./layers/tracks.ts";
-import { readUrl, writeUrl, type UrlState } from "./url.ts";
+import { readUrl, writeUrl, type Place, type UrlState } from "./url.ts";
 import { RtClient, type RtMode } from "./rt.ts";
 import { AisClient } from "./ais.ts";
 import { loadPref, savePref } from "./prefs.ts";
@@ -80,6 +93,38 @@ export interface SelectedVehicle {
   /** Undefined when the vehicle isn't in service at the shown time. */
   vehicle: VehicleState | undefined;
   route: PlanRoute | undefined;
+}
+
+export type { Place };
+export type { Departure };
+
+/** A route + destination leaving a station or stop, with its next departures. */
+export interface PlaceGroup {
+  route: PlanRoute;
+  headsign: string;
+  platforms: string[];
+  /** The next few departures (cancelled ones included, marked). */
+  departures: Departure[];
+  /** Average minutes between departures in the hour from the shown time (timetable). */
+  minutes: number | undefined;
+}
+
+/** The selected station or bus stop and what leaves it after the shown time. */
+export interface PlaceSnapshot extends Place {
+  /** As in GTFS: "Stadium-Chinatown Station", "Eastbound E Hastings St @ Main St". */
+  name: string;
+  lon: number;
+  lat: number;
+  routes: PlanRoute[];
+  groups: PlaceGroup[];
+  /** Groups running the same way from here, to where they split ("R5 or 14, to Renfrew St"). */
+  shared: {
+    routes: PlanRoute[];
+    /** How many route + destination groups share it. */
+    groups: number;
+    to: string;
+    minutes: number | undefined;
+  }[];
 }
 
 export interface TransitSnapshot {
@@ -111,6 +156,8 @@ export interface TransitSnapshot {
   /** The camera keeps the selected vehicle in view. */
   following: boolean;
   selected: SelectedVehicle | undefined;
+  /** The selected station or stop (exclusive with a selected vehicle). */
+  place: PlaceSnapshot | undefined;
   /** Registry ids (@transitopia/shared/datasets.ts) of the data drawn right now. */
   datasets: string[];
   scenario: { name: string; description: string } | undefined;
@@ -154,12 +201,21 @@ const SNAPSHOT_INTERVAL_MS = 200;
 /** Sources the engine adds to the host's map (removed on dispose). */
 const SOURCES = [
   ROUTES_SOURCE,
+  SELECTED_PLACE_SOURCE,
   STATIONS_SOURCE,
   BUS_STOPS_SOURCE,
   BUS_TICKS_SOURCE,
   TRACKS_SOURCE,
   DEBUG_SOURCE,
 ];
+/** Station and stop cards list departures this far ahead of the shown time. */
+const DEPARTURES_AHEAD_MS = 2 * 3600_000;
+/** …showing this many per route and destination. */
+const DEPARTURES_PER_GROUP = 3;
+/** A tapped place is brought into view after this long, once its card is up and measured. */
+const REVEAL_DELAY_MS = 150;
+/** Tap tolerance around stations and stops (px). */
+const PLACE_PICK_PX = 8;
 const SLIDER_START_S = SERVICE_DAY_ROLLOVER_H * 3600;
 const SLIDER_END_S = (24 + SERVICE_DAY_ROLLOVER_H) * 3600;
 
@@ -176,6 +232,11 @@ export class TransitEngine {
   private showStops: boolean;
   private liveOnly: boolean;
   private selectedId: string | undefined;
+  private place: Place | undefined;
+  /** When something was selected: bring it into view once its card is up (performance.now()). */
+  private revealAt: number | undefined;
+  /** The real-time corrections last applied, per service date (for departure times). */
+  private lastCorrections: Map<string, ScheduleCorrections> | undefined;
   private following = false;
   /** Screen edges covered by the host's chrome (cards, time bar), px: follow keeps clear of them. */
   private viewPadding = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -235,6 +296,7 @@ export class TransitEngine {
     if (url.rate !== undefined) this.clock.setRate(url.rate);
     if (url.paused) this.clock.pause();
     this.selectedId = url.vehicle;
+    this.place = url.place;
     this.hidden = new Set(loadPref<string[]>("hiddenRoutes", []));
     this.showStops = loadPref("showStops", true);
     this.liveOnly = loadPref("liveOnly", false);
@@ -268,9 +330,15 @@ export class TransitEngine {
     };
     const onClick = (e: { point: { x: number; y: number } }) => {
       const v = this.vehicles.pickAt(e.point.x, e.point.y);
-      this.select(v?.id, {
-        follow: Math.abs(this.clock.rate) <= FOLLOW_MAX_RATE,
-      });
+      if (v) {
+        this.select(v.id, {
+          follow: Math.abs(this.clock.rate) <= FOLLOW_MAX_RATE,
+        });
+        return;
+      }
+      const place = this.placeAt(e.point.x, e.point.y);
+      if (place) this.selectPlace(place);
+      else this.select(undefined);
     };
     // Dragging the map takes the camera back; zooming doesn't.
     const onDragStart = () => {
@@ -280,7 +348,12 @@ export class TransitEngine {
     };
     const onMouseMove = (e: { point: { x: number; y: number } }) => {
       map.getCanvas().style.cursor =
-        this.vehicles.pickAt(e.point.x, e.point.y) ? "pointer" : "";
+        (
+          this.vehicles.pickAt(e.point.x, e.point.y)
+          || this.placeAt(e.point.x, e.point.y)
+        ) ?
+          "pointer"
+        : "";
     };
     map.on("style.load", onStyleLoad);
     map.on("styledata", onStyleData);
@@ -386,14 +459,78 @@ export class TransitEngine {
   select(id: string | undefined, opts?: { follow?: boolean }): void {
     if (id !== this.selectedId)
       this.following = id !== undefined && (opts?.follow ?? false);
+    if (id !== undefined && id !== this.selectedId && !this.following)
+      this.revealAt = performance.now() + REVEAL_DELAY_MS;
     this.selectedId = this.vehicles.selectedId = id;
+    this.place = undefined;
+    this.syncPlaceHighlight();
     this.writeUrl();
     this.publish();
   }
 
-  /** Centre the map on the selected vehicle, in the part of the map the host's chrome leaves clear. */
+  /** Open a station's or stop's card (closing any vehicle's). */
+  selectPlace(place: Place): void {
+    this.selectedId = this.vehicles.selectedId = undefined;
+    this.following = false;
+    this.place = place;
+    this.revealAt = performance.now() + REVEAL_DELAY_MS;
+    this.syncPlaceHighlight();
+    this.writeUrl();
+    this.publish();
+  }
+
+  /** The station or stop drawn under a screen point, if any (stations win). */
+  private placeAt(x: number, y: number): Place | undefined {
+    const { map } = this;
+    const layers = [
+      "stations",
+      "stations-label",
+      "bus-stops",
+      VEHICLES_BEFORE_LAYER,
+    ].filter((id) => map.getLayer(id));
+    if (!layers.length) return undefined;
+    const d = PLACE_PICK_PX;
+    const hits = map.queryRenderedFeatures(
+      [
+        [x - d, y - d],
+        [x + d, y + d],
+      ],
+      { layers },
+    );
+    const station = hits.find((f) => f.layer.id.startsWith("stations"));
+    if (station)
+      return { kind: "station", id: String(station.properties["id"]) };
+    const stop = hits.find((f) => f.properties["stop"] !== undefined);
+    return stop ?
+        { kind: "stop", id: String(stop.properties["stop"]) }
+      : undefined;
+  }
+
+  /** Where the selected place is, for its highlight and "Centre on map". */
+  private placePoint(): [number, number] | undefined {
+    const plan = this.shownFeed?.plan;
+    const p = this.place;
+    if (!plan || !p) return undefined;
+    const at =
+      p.kind === "station" ?
+        plan.stations.find((s) => s.id === p.id)
+      : plan.stops.find((s) => s.id === p.id);
+    return at ? [at.lon, at.lat] : undefined;
+  }
+
+  private syncPlaceHighlight(): void {
+    if (this.styleReady && !this.disposed)
+      setSelectedPlace(this.map, this.placePoint());
+  }
+
+  /** Centre the map on the selected vehicle (or station or stop), in the part of the map the host's chrome leaves clear. */
   locateSelected(): void {
-    const v = this.lastVehicles.find((x) => x.id === this.selectedId);
+    const v =
+      this.lastVehicles.find((x) => x.id === this.selectedId)
+      ?? (() => {
+        const at = this.placePoint();
+        return at && { lon: at[0], lat: at[1] };
+      })();
     if (v)
       this.map.easeTo({
         center: [v.lon, v.lat],
@@ -434,10 +571,14 @@ export class TransitEngine {
    * centre. Not while the map is already moving (an ease, or the user zooming).
    */
   private keepInView(): void {
+    const v = this.lastVehicles.find((x) => x.id === this.selectedId);
+    if (v) this.keepPointInView(v); // else between trips or out of service: wait for it
+  }
+
+  /** Pan so a point is clear of the host's chrome, if it's near or under it. */
+  private keepPointInView(v: { lon: number; lat: number }): void {
     const { map } = this;
     if (map.isMoving()) return;
-    const v = this.lastVehicles.find((x) => x.id === this.selectedId);
-    if (!v) return; // between trips or out of service: wait for it
     const { width, height } = map.getCanvas().getBoundingClientRect();
     const p = this.viewPadding;
     const w = width - p.left - p.right;
@@ -503,7 +644,7 @@ export class TransitEngine {
   }
 
   private writeUrl(): void {
-    if (!this.disposed) writeUrl(this.clock, this.selectedId);
+    if (!this.disposed) writeUrl(this.clock, this.selectedId, this.place);
   }
 
   /** Writes the URL once a burst of clock changes settles (URL_WRITE_THROTTLE_MS). */
@@ -591,6 +732,7 @@ export class TransitEngine {
       liveOnly: this.liveOnly,
       following: this.following,
       selected,
+      place: this.placeSnapshot(t),
       datasets:
         prev && prev.datasets.join() === this.datasets.join() ?
           prev.datasets
@@ -605,6 +747,63 @@ export class TransitEngine {
     };
   }
 
+  /**
+   * Departures from the selected place after the shown time, from the timetable shifted by the
+   * real-time corrections the vehicles use (packages/transit-core/DESIGN.md#departures).
+   */
+  private placeSnapshot(t: number): PlaceSnapshot | undefined {
+    const p = this.place;
+    const pp = this.shownFeed;
+    if (!p || !pp) return undefined;
+    const { plan } = pp;
+    const where =
+      p.kind === "station" ?
+        plan.stations.find((s) => s.id === p.id)
+      : plan.stops.find((s) => s.id === p.id);
+    if (!where) return undefined;
+    const date = displayServiceDate(t);
+    const deps = departuresAt(
+      pp,
+      stopsOf(plan, p.id),
+      t,
+      t + DEPARTURES_AHEAD_MS,
+      [addDays(date, -1), date],
+      (d) => this.lastCorrections?.get(d),
+    ).filter((d) => !this.hidden.has(d.routeKey));
+    const groups = groupDepartures(deps);
+    const routeOf = (k: string) => pp.routes.get(k)!;
+    const routeKeys =
+      p.kind === "station" ?
+        (where as { routes: string[] }).routes
+      : [
+          ...new Set(
+            plan.patterns
+              .filter((pt) => pt.stops.some((i) => plan.stops[i]!.id === p.id))
+              .map((pt) => pt.route),
+          ),
+        ];
+    return {
+      ...p,
+      name: where.name,
+      lon: where.lon,
+      lat: where.lat,
+      routes: routeKeys.map(routeOf).filter(Boolean),
+      groups: groups.map((g) => ({
+        route: routeOf(g.routeKey),
+        headsign: g.headsign,
+        platforms: g.platforms,
+        departures: g.departures.slice(0, DEPARTURES_PER_GROUP),
+        minutes: minutesBetween(g.departures, t),
+      })),
+      shared: sharedStretches(plan, groups).map((s) => ({
+        routes: [...new Set(s.groups.map((g) => g.routeKey))].map(routeOf),
+        groups: s.groups.length,
+        to: placeName(plan, s.toStopId),
+        minutes: minutesBetween(s.departures, t),
+      })),
+    };
+  }
+
   /** Static layers follow the feed of the displayed date. */
   private syncStatic(force = false): void {
     const { map, store } = this;
@@ -614,6 +813,7 @@ export class TransitEngine {
     this.shownFeed = pp;
     addStaticLayers(map, pp.plan, this.theme, this.hidden);
     applyStopsVisibility(map, this.showStops);
+    this.syncPlaceHighlight();
     this.ferryPair = undefined;
     if (this.tracks) {
       addTrackLayers(map, this.tracks, pp.plan, this.theme, this.debug);
@@ -709,6 +909,7 @@ export class TransitEngine {
         ...carried,
       ];
     } else this.lastVehicles = scheduled;
+    this.lastCorrections = byDate;
     store.setLiveDispatch(rt.dispatchPointer());
 
     const notices = store.scenario ? [] : store.noticesAt(t);
@@ -749,6 +950,15 @@ export class TransitEngine {
       );
     this.syncStatic();
     if (this.following && this.styleReady) this.keepInView();
+    if (this.revealAt !== undefined && performance.now() > this.revealAt) {
+      this.revealAt = undefined;
+      const at = this.placePoint();
+      const v = this.lastVehicles.find((x) => x.id === this.selectedId);
+      if (this.styleReady) {
+        if (at) this.keepPointInView({ lon: at[0], lat: at[1] });
+        else if (v) this.keepPointInView(v);
+      }
+    }
 
     const now = performance.now();
     if (

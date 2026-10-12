@@ -43,6 +43,12 @@
   --notlive-border: #f59e0b;
   --golive-border: #c2410c;
   --golive-fg: #b42318;
+  /* Service frequency bands (regions/metro-vancouver/config/frequency.json): blue → red, never green or amber. */
+  --band-good: #1d5aa6;
+  --band-ok: #3f97e8;
+  --band-poor: #ec6a80;
+  --band-bad: #b0213a;
+  --card-combined-bg: #f4f7fb;
   /* The time bar's slider: track, recorded bus data, elapsed. */
   --slider-track: #e7e5e0;
   --slider-recorded: #a8e6ec;
@@ -86,6 +92,11 @@
   --notlive-border: #f59e0b;
   --golive-border: #fb923c;
   --golive-fg: #fdba74;
+  --band-good: #5470e6;
+  --band-ok: #2a9fd0;
+  --band-poor: #dc6488;
+  --band-bad: #d4333f;
+  --card-combined-bg: #1c2433;
   --slider-track: #2a303a;
   --slider-recorded: #1d6f78;
   --slider-fill: #7dd3fc;

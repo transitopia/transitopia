@@ -22,6 +22,8 @@ export interface BusStopMarker {
   bearing: number;
   /** Route keys serving the stop. */
   routes: string[];
+  /** GTFS stop_id of that tick's stop (what tapping the label opens). */
+  stop: string;
 }
 
 /** Same-named street stops whose ticks are within this distance (a "+") share a label (m). */
@@ -45,6 +47,8 @@ export function busStopLabel(name: string): string | undefined {
 
 export interface BusStopTick {
   route: string;
+  /** GTFS stop_id. */
+  stop: string;
   /** Label (cross street or exchange); undefined at stations. */
   name?: string;
   /** An exchange or loop bay rather than a street stop. */
@@ -111,6 +115,7 @@ export function busStopTicks(plan: ServicePlan): BusStopTick[] {
       const exchange = /@\s*(Bay\b|Unload)|@\s*$/i.test(s.name);
       out.push({
         route: p.route,
+        stop: s.id,
         ...(name ? { name } : {}),
         ...(exchange ? { exchange } : {}),
         lon: q.lon,
@@ -147,5 +152,6 @@ export function busStopMarkers(plan: ServicePlan): BusStopMarker[] {
     lat: g.ticks[0]!.lat,
     bearing: g.ticks[0]!.bearing,
     routes: [...g.routes].sort(),
+    stop: g.ticks[0]!.stop,
   }));
 }

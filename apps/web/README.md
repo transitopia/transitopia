@@ -62,11 +62,19 @@ Every transit card follows the map's time, date and speed, so the past, live and
 
 Tapping a vehicle follows it with the camera when playback is at 10× or slower (live, 1×, 10×), not faster: constant panning at 60×+ is disorienting (the 10× cutoff is a guess). The camera keeps the vehicle in view rather than locked to the centre: the engine pans when it nears the edge of the part of the map the chrome leaves clear (`setViewPadding`, measured from every element marked `data-map-overlay` by `src/TransitMap/overlayPadding.ts`; each counts against whichever edge gives up the least of the map). Dragging the map, closing the card or selecting something else stops it; zooming doesn't, and neither does the end of a trip (the selection is the vehicle, which carries on through turnbacks and its next trips). A "Following <vehicle> · Stop" pill shows meanwhile (`FollowPill.tsx`: top centre on desktop, under the time pill on phones), and the card's menu item reads "Stop following". "Centre on map" uses the same clear area.
 
+## Station and stop cards
+
+Tapping a station (its marker or name) or a bus stop (its tick or label) opens its card (`src/TransitMap/PlaceCard.tsx`); the engine picks vehicles first, then stations, then stops, and the URL keeps the choice (`?place=station:<id>` or `stop:<id>`). The map rings the selected place and brings it clear of the card. Departures (from the engine's snapshot, [packages/transit-core/DESIGN.md → Departures](../../packages/transit-core/DESIGN.md#departures)) are grouped by route and destination, one row per group ordered by the soonest: the next time large ("3 min"), the next two smaller below ("9m 15m"), each with its mark; clock times when not live, never countdowns. Each row has the platform where known, cancelled trips, and a [frequency](#service-frequency) line for the hour after the map's time. Routes that share a stretch from here get a combined row on top ("R5 or 14, to Renfrew St", "Either branch, to Columbia", or "Any of these" for more than two groups of one route), with their combined frequency. Live predictions appear only where the browser already has them (bus delays carried from GTFS-realtime); everything else is the timetable, marked "~". Recorded arrivals in past cards need the server's observed stop times and aren't shown yet.
+
+## Service frequency
+
+How often something runs is shown in bands: Good, OK, Poor, Bad, with thresholds in `regions/metro-vancouver/config/frequency.json` (≤6, ≤12, ≤20 and over 20 minutes between departures) and colours per theme (`--band-*` in `src/index.css`), blue to red, never green (live) or amber (not live). The band's name always shows next to its colour. Helpers: `src/TransitMap/frequency.ts`.
+
 ## Feature cards
 
 Everything tapped on the map opens the same card (`src/components/InfoCard.tsx`): a header (icon tile in the route's or mode's colours, an eyebrow saying what kind of thing it is, title, subtitle, ⋯ menu, close), an optional status line, chips, sections of rows divided by 1 px rules, and a footer saying where the data comes from. Actions (centre, share, show only this route, and later follow) live only in the ⋯ menu, so the card body is only information. Times and positions carry one set of marks: live is a green dot, recorded a grey dot, estimated a grey "~" before the time; green appears only when live. On desktop the card is a 360 px panel at the top right; on phones it's a bottom sheet. Its colours are the `--card-*` and `--mark-*` properties in `src/index.css`, per theme.
 
-- Vehicles: `src/TransitMap/VehicleCard.tsx`.
+- Vehicles: `src/TransitMap/VehicleCard.tsx`; stations and stops: `PlaceCard.tsx` ([above](#station-and-stop-cards)).
 - Bike routes (`src/CyclingMap/BikeRouteCard.tsx`) from the cycling tiles' attributes, and bike parking (`BikeParkingCard.tsx`) loaded from the OSM API, with a link to view or edit it there. Bike cards ignore the map's time: OpenStreetMap has no history. The selected feature is highlighted on the map; bike parking stays a faint dot.
 
 ## Attribution

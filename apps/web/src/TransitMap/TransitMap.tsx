@@ -14,6 +14,7 @@ import { useDatasets } from "../Attribution/Attribution.tsx";
 import { TimeBar } from "./TimeBar.tsx";
 import { TransitLayers } from "./TransitLayers.tsx";
 import { VehicleCard } from "./VehicleCard.tsx";
+import { PlaceCard } from "./PlaceCard.tsx";
 import { FollowPill } from "./FollowPill.tsx";
 import { useOverlayPadding } from "./overlayPadding.ts";
 
@@ -155,7 +156,12 @@ const EngineControls: React.FC<{ engine: TransitEngine }> = ({ engine }) => {
       <FollowPill engine={engine} snap={snap} />
       <TransitLayers engine={engine} snap={snap} />
       <VehicleCard engine={engine} snap={snap} />
-      <TimeBar engine={engine} snap={snap} cardOpen={!!snap.selected} />
+      <PlaceCard engine={engine} snap={snap} />
+      <TimeBar
+        engine={engine}
+        snap={snap}
+        cardOpen={!!snap.selected || !!snap.place}
+      />
     </>
   );
 };

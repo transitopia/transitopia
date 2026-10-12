@@ -106,6 +106,12 @@ The heart of the engine. It lives as versioned data in `regions/metro-vancouver/
 - **Service-day resolver**: `activeServices(date)` applies calendar ranges, weekday flags, and add/remove exceptions. Trips after 24:00 belong to the previous service day. Local times come from the runtime's tzdata.
 - **Re-timing**: SkyTrain, WCE and SeaBus trips are re-timed within ±45 s of GTFS (which rounds to the minute) in proportion to each hop's physical minimum time (`retime` in `src/schedule/engine.ts`). Without this, some hops are impossibly fast.
 
+## Departures
+
+Station and stop cards (`src/schedule/departures.ts`) list what leaves a stop after a given time: every trip whose pattern serves the stop (a station's platforms included), on the given service dates (the previous day too, for its trips after midnight), at the trip's effective departure time (re-timed rail, modelled dwell; `PreparedTrip.dep`). A trip ending at the stop isn't a departure, and neither is a stop where nobody can board. Where real-time corrections know a trip's delay (the anchors the browser already applies to bus positions, `ScheduleCorrections`), the time is shifted and marked `predicted` (a projected delay) or `observed`; cancelled trips stay in the list, marked. SkyTrain departures come from the timetable, not the dispatched movement plan, so trains drawn on the map can differ by a minute or two.
+
+Departures are grouped by route and destination (`groupDepartures`). How often a group runs is 60 / its departures in the hour from the shown time (`minutesBetween`). Groups whose next stops are the same, in order, for at least two stops share a stretch (`sharedStretches`), which runs to where they split (stations compared by station, not platform): the site shows a combined row for it.
+
 ## Run inference
 
 `src/movement/build.ts`, run by `npm run build:movements`. This is where the "best guess" lives, so it's explicit, configurable (`regions/metro-vancouver/config/operations.json`) and replaceable. For each SkyTrain line and each distinct service-day pattern:
