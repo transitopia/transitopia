@@ -1,7 +1,7 @@
 // Animated vehicles. Each is a pointed rectangle at true scale, enlarged to a minimum pixel size
-// when zoomed out (packages/transit-map/README.md#rendering), drawn by GlPolygonLayer. Estimated positions have a pale tint of
-// the route colour with a route-coloured outline; observed ones are solid with a halo outline (§4.6),
-// so both stand out against their own route line. Picking is done on the CPU.
+// when zoomed out (packages/transit-map/README.md#rendering), drawn by GlPolygonLayer. Observed and
+// interpolated positions are solid route colour with a thin darker edge; estimated ones are translucent
+// with a white edge, so an estimate never looks observed. Picking is done on the CPU.
 
 import type { Map as MlMap } from "maplibre-gl";
 import type { VehicleState } from "@transitopia/transit-core/schedule/engine.ts";
@@ -14,8 +14,15 @@ type RGBA = [number, number, number, number];
 const LAYER_ID = "vehicles";
 const EARTH_CIRCUMFERENCE = 40_075_016.686;
 const SELECTED: RGBA = [255, 64, 129, 255];
-/** Estimated vehicles are filled with the route colour mixed this far toward the halo colour. */
-const ESTIMATED_TINT = 0.55;
+/** Estimated vehicles are filled with the route colour at this opacity. */
+const ESTIMATED_OPACITY = 0.62;
+const ESTIMATED_EDGE: RGBA = [255, 255, 255, 255];
+/** Observed vehicles' edge: the route colour darkened by this factor (light theme)… */
+const OBSERVED_EDGE_SHADE = 0.65;
+/** …or a near-black edge (dark theme). */
+const OBSERVED_EDGE_DARK: RGBA = [11, 18, 32, 255];
+/** Edge widths in pixels. */
+const EDGE_PX = { observed: 1.25, estimated: 2, selected: 3 };
 const PICK_TOLERANCE_PX = 5;
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -139,6 +146,23 @@ function ribbon(
   return { left, right };
 }
 
+/** A copy of a polyline with its first and last points moved outward by d along the end segments. */
+function extendEnds(line: Float64Array, d: number): Float64Array {
+  const out = line.slice();
+  const n = line.length / 2;
+  if (n < 2) return out;
+  const push = (end: number, from: number) => {
+    const dx = line[end * 2]! - line[from * 2]!;
+    const dy = line[end * 2 + 1]! - line[from * 2 + 1]!;
+    const len = Math.hypot(dx, dy) || 1;
+    out[end * 2] = line[end * 2]! + (dx / len) * d;
+    out[end * 2 + 1] = line[end * 2 + 1]! + (dy / len) * d;
+  };
+  push(0, 1);
+  push(n - 1, n - 2);
+  return out;
+}
+
 function distToPolyline(line: Float64Array, x: number, y: number): number {
   let best = Infinity;
   for (let i = 0; i + 3 < line.length; i += 2) {
@@ -220,8 +244,6 @@ export class VehicleLayer {
     this.mercPerPx = 1 / (512 * 2 ** zoom);
     const minL = this.sizing.minPixelLength * mPerPx;
     const minW = this.sizing.minPixelWidth * mPerPx;
-    const outlineRgb: [number, number, number] =
-      dark ? [17, 20, 24] : [255, 255, 255];
     const ox = mercX(center.lng);
     const oy = mercY(center.lat);
 
@@ -235,10 +257,11 @@ export class VehicleLayer {
       : vehicles;
 
     // Per glyph vehicle: 5-vertex fan = 3 fill triangles + 5 edges × 2 outline triangles. Per ribbon
-    // vehicle: 2 ribbons × 2 triangles per polyline segment.
+    // vehicle: fill + 2 edge strips × 2 triangles per polyline segment, + 2 end caps × 2 triangles.
     let verts = 0;
     for (const v of ordered)
-      verts += v.shape && v.length >= minL ? (v.shape.length - 1) * 12 : 39;
+      verts +=
+        v.shape && v.length >= minL ? (v.shape.length - 1) * 18 + 12 : 39;
     const buf = new ArrayBuffer(verts * VERTEX_BYTES);
     const f32 = new Float32Array(buf);
     const u8 = new Uint8Array(buf);
@@ -270,6 +293,24 @@ export class VehicleLayer {
       const rgb = this.colors.get(v.routeKey) ?? [110, 110, 110];
       const estimated = v.provenance === "estimated";
       const selected = v.id === this.selectedId;
+      const fill: RGBA =
+        estimated ?
+          [...rgb, Math.round(255 * ESTIMATED_OPACITY)]
+        : [...rgb, 255];
+      const edge: RGBA =
+        selected ? SELECTED
+        : estimated ? ESTIMATED_EDGE
+        : dark ? OBSERVED_EDGE_DARK
+        : [
+            rgb[0] * OBSERVED_EDGE_SHADE,
+            rgb[1] * OBSERVED_EDGE_SHADE,
+            rgb[2] * OBSERVED_EDGE_SHADE,
+            255,
+          ];
+      const edgeW =
+        (selected ? EDGE_PX.selected
+        : estimated ? EDGE_PX.estimated
+        : EDGE_PX.observed) * this.mercPerPx;
       if (v.shape && v.length >= minL) {
         // Zoomed in: draw the train along the track.
         const line = new Float64Array(v.shape.length * 2);
@@ -280,26 +321,32 @@ export class VehicleLayer {
         const perM =
           1 / (EARTH_CIRCUMFERENCE * Math.cos((v.lat * Math.PI) / 180));
         const hw = (Math.max(v.width, minW) / 2) * perM;
-        const lineW = (selected ? 3 : 1.75) * this.mercPerPx;
         const nose = Math.max(v.width, minW) * 0.9 * perM;
-        const outer = ribbon(line, hw + lineW, nose);
         const inner = ribbon(line, hw, nose);
-        const fill: RGBA =
-          estimated ?
-            [
-              rgb[0] + (outlineRgb[0] - rgb[0]) * ESTIMATED_TINT,
-              rgb[1] + (outlineRgb[1] - rgb[1]) * ESTIMATED_TINT,
-              rgb[2] + (outlineRgb[2] - rgb[2]) * ESTIMATED_TINT,
-              255,
-            ]
-          : [...rgb, 255];
-        const edge: RGBA =
-          selected ? SELECTED
-          : estimated ? [...rgb, 255]
-          : [...outlineRgb, 255];
-        quadStrip(outer.left, outer.right, edge);
+        // The edge is a ring around the fill (the fill may be translucent): the outer ribbon runs
+        // edgeW past both ends of the train.
+        const outer = ribbon(extendEnds(line, edgeW), hw + edgeW, nose);
+        quadStrip(outer.left, inner.left, edge);
+        quadStrip(inner.right, outer.right, edge);
+        const last = inner.left.length - 2;
+        for (const i of [0, last])
+          quadStrip(
+            Float64Array.of(
+              outer.left[i]!,
+              outer.left[i + 1]!,
+              inner.left[i]!,
+              inner.left[i + 1]!,
+            ),
+            Float64Array.of(
+              outer.right[i]!,
+              outer.right[i + 1]!,
+              inner.right[i]!,
+              inner.right[i + 1]!,
+            ),
+            edge,
+          );
         quadStrip(inner.left, inner.right, fill);
-        this.hits.push({ v, line, hw: hw + lineW });
+        this.hits.push({ v, line, hw: hw + edgeW });
         continue;
       }
       const scale = Math.max(1, minL / v.length);
@@ -308,20 +355,7 @@ export class VehicleLayer {
         v.length * scale,
         Math.max(v.width * Math.min(scale, 3), minW),
       );
-      const inner = inset(outer, (selected ? 3 : 1.75) * this.mercPerPx);
-      const fill: RGBA =
-        estimated ?
-          [
-            rgb[0] + (outlineRgb[0] - rgb[0]) * ESTIMATED_TINT,
-            rgb[1] + (outlineRgb[1] - rgb[1]) * ESTIMATED_TINT,
-            rgb[2] + (outlineRgb[2] - rgb[2]) * ESTIMATED_TINT,
-            255,
-          ]
-        : [...rgb, 255];
-      const line: RGBA =
-        selected ? SELECTED
-        : estimated ? [...rgb, 255]
-        : [...outlineRgb, 255];
+      const inner = inset(outer, edgeW);
       for (let i = 1; i < 4; i++) {
         put(inner[0]!, inner[1]!, fill);
         put(inner[i * 2]!, inner[i * 2 + 1]!, fill);
@@ -329,12 +363,12 @@ export class VehicleLayer {
       }
       for (let i = 0; i < 5; i++) {
         const j = (i + 1) % 5;
-        put(outer[i * 2]!, outer[i * 2 + 1]!, line);
-        put(outer[j * 2]!, outer[j * 2 + 1]!, line);
-        put(inner[j * 2]!, inner[j * 2 + 1]!, line);
-        put(outer[i * 2]!, outer[i * 2 + 1]!, line);
-        put(inner[j * 2]!, inner[j * 2 + 1]!, line);
-        put(inner[i * 2]!, inner[i * 2 + 1]!, line);
+        put(outer[i * 2]!, outer[i * 2 + 1]!, edge);
+        put(outer[j * 2]!, outer[j * 2 + 1]!, edge);
+        put(inner[j * 2]!, inner[j * 2 + 1]!, edge);
+        put(outer[i * 2]!, outer[i * 2 + 1]!, edge);
+        put(inner[j * 2]!, inner[j * 2 + 1]!, edge);
+        put(inner[i * 2]!, inner[i * 2 + 1]!, edge);
       }
       this.hits.push({ v, poly: outer });
     }

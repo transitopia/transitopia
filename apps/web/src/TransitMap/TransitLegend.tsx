@@ -82,9 +82,13 @@ export const TransitLegend: React.FC<{
             );
           })}
           <p className="mt-2 text-xs text-gray-600 dark:text-gray-300">
-            <ProvenanceSwatch estimated /> estimated from schedule{" "}
-            <ProvenanceSwatch estimated={false} /> observed
-            <br />
+            <span className="flex items-center">
+              <ProvenanceSwatch estimated={false} /> live position (GPS, AIS or
+              a sighting)
+            </span>
+            <span className="flex items-center">
+              <ProvenanceSwatch estimated /> estimated from the schedule
+            </span>
             <span
               aria-hidden="true"
               className="mr-1 inline-block h-[3px] w-6 align-[2px] bg-[repeating-linear-gradient(90deg,currentColor_0_3px,transparent_3px_7px)]"
