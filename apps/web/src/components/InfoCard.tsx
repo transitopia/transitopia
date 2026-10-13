@@ -107,13 +107,10 @@ export const InfoCard: React.FC<{
       data-map-overlay
       className={`info-card absolute z-50 flex flex-col overflow-hidden bg-(--card-bg) text-(--card-text) shadow-[0_8px_28px_rgb(17_24_39/0.16)] max-sm:inset-x-0 max-sm:bottom-0 max-sm:max-h-[60dvh] max-sm:rounded-t-[20px] max-sm:border-t sm:top-5 sm:right-[3.25rem] sm:max-h-[calc(100%-11rem)] sm:w-[360px] sm:rounded-2xl sm:border dark:shadow-[0_10px_32px_rgb(0_0_0/0.5)] ${notLive ? "border-(--notlive-border) max-sm:border-t-2 sm:border-2" : "border-(--card-border)"}`}>
       <div className="overflow-y-auto pb-[env(safe-area-inset-bottom)] sm:pb-0">
-        <div aria-hidden="true" className="flex justify-center pt-2 sm:hidden">
-          <span className="h-[5px] w-10 rounded-full bg-(--card-handle)" />
-        </div>
         {notLive ?
           <div
             role="status"
-            className="flex items-center gap-2.5 border-b border-(--notlive-border) bg-(--notlive-bg) py-2.5 pr-2.5 pl-3.5 text-(--notlive-fg) max-sm:mt-2">
+            className="flex items-center gap-2.5 border-b border-(--notlive-border) bg-(--notlive-bg) py-2.5 pr-2.5 pl-3.5 text-(--notlive-fg)">
             <Icon icon="clock" size={22} />
             <div className="flex min-w-0 flex-1 flex-col leading-tight">
               <span className="text-[13px] font-extrabold tracking-wider uppercase">
