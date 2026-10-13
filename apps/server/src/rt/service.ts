@@ -199,9 +199,8 @@ export class RtService {
   private onLead: (() => void) | undefined;
 
   constructor(opts: RtServiceOptions = {}) {
-    this.recorder = new Recorder(
-      opts.historyDir ?? RT_HISTORY_DIR,
-      CADENCE.coverageGapMs,
+    this.recorder = new Recorder(opts.historyDir ?? RT_HISTORY_DIR, (t) =>
+      CADENCE.coverageGapMs(t),
     );
     this.log = opts.log ?? ((m) => console.log(`[rt] ${m}`));
     this.record = opts.record ?? true;
