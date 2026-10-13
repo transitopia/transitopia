@@ -1,15 +1,12 @@
 import React from "react";
 
-/**
- * An icon's drawing. Bootstrap icons (https://icons.getbootstrap.com/) are filled on a 16-unit grid;
- * line icons, drawn for the site's UI concepts canvas, are stroked on a 24-unit grid.
- */
+/** An icon's drawing on a 16-unit grid: filled, or stroked (line icons). */
 type IconDef =
   | { kind: "fill"; body: React.ReactElement }
   | {
       kind: "line";
       body: React.ReactElement;
-      /** Stroke width in grid units (default 2). */
+      /** Stroke width in grid units (default 4/3). */
       weight?: number;
     };
 
@@ -29,13 +26,19 @@ const icons = {
   "bus-front-fill": fill(
     <path d="M16 7a1 1 0 0 1-1 1v3.5c0 .818-.393 1.544-1 2v2a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5V14H5v1.5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5v-2a2.496 2.496 0 0 1-1-2V8a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1V2.64C1 1.452 1.845.408 3.064.268A43.608 43.608 0 0 1 8 0c2.1 0 3.792.136 4.936.268C14.155.408 15 1.452 15 2.64V4a1 1 0 0 1 1 1zM3.552 3.22A43.306 43.306 0 0 1 8 3c1.837 0 3.353.107 4.448.22a.5.5 0 0 0 .104-.994A44.304 44.304 0 0 0 8 2c-1.876 0-3.426.109-4.552.226a.5.5 0 1 0 .104.994ZM8 4c-1.876 0-3.426.109-4.552.226A.5.5 0 0 0 3 4.723v3.554a.5.5 0 0 0 .448.497C4.574 8.891 6.124 9 8 9c1.876 0 3.426-.109 4.552-.226A.5.5 0 0 0 13 8.277V4.723a.5.5 0 0 0-.448-.497A44.304 44.304 0 0 0 8 4m-3 7a1 1 0 1 0-2 0 1 1 0 0 0 2 0m8 0a1 1 0 1 0-2 0 1 1 0 0 0 2 0m-7 0a1 1 0 0 0 1 1h2a1 1 0 1 0 0-2H7a1 1 0 0 0-1 1" />,
   ),
-  // Line icons from the UI concepts canvas:
-  "chevron-down": line(<path d="M6 9l6 6 6-6" />, 2.5),
-  "chevron-up": line(<path d="M6 15l6-6 6 6" />, 2.5),
+  // Our own icons:
+  "chevron-down": line(<path d="M4 6l4 4 4-4" />, 1.667),
+  "chevron-up": line(<path d="M4 10l4-4 4 4" />, 1.667),
   /** Slower / faster (the speed stepper). */
-  "chevrons-left": line(<path d="M11 7l-5 5 5 5M18 7l-5 5 5 5" />, 2.25),
-  "chevrons-right": line(<path d="M6 7l5 5-5 5M13 7l5 5-5 5" />, 2.25),
-  close: line(<path d="M6 6l12 12M18 6L6 18" />, 2.25),
+  "chevrons-left": line(
+    <path d="M7.333 4.667l-3.333 3.333 3.333 3.333M12 4.667l-3.333 3.333 3.333 3.333" />,
+    1.5,
+  ),
+  "chevrons-right": line(
+    <path d="M4 4.667l3.333 3.333-3.333 3.333M8.667 4.667l3.333 3.333-3.333 3.333" />,
+    1.5,
+  ),
+  close: line(<path d="M4 4l8 8M12 4L4 12" />, 1.5),
   "three-dots": fill(
     <>
       <circle cx="3" cy="8" r="1.4" />
@@ -52,60 +55,60 @@ const icons = {
   ),
   clock: line(
     <>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 7v5l3 2" />
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 4.667v3.333l2 1.333" />
     </>,
-    2.25,
+    1.5,
   ),
   calendar: line(
     <>
-      <rect x="3" y="5" width="18" height="16" rx="2" />
-      <path d="M3 10h18M8 3v4M16 3v4" />
+      <rect x="2" y="3.333" width="12" height="10.667" rx="1.333" />
+      <path d="M2 6.667h12M5.333 2v2.667M10.667 2v2.667" />
     </>,
   ),
   warning: line(
     <>
-      <path d="M12 3L2 21h20z" />
-      <path d="M12 10v5M12 18v.5" />
+      <path d="M8 2L1.333 14h13.333z" />
+      <path d="M8 6.667v3.333M8 12v0.333" />
     </>,
-    2.5,
+    1.667,
   ),
   /** Follow on map. */
-  navigation: line(<path d="M12 2.5l7 18-7-4-7 4z" />),
+  navigation: line(<path d="M8 1.667l4.667 12-4.667-2.667-4.667 2.667z" />),
   "navigation-fill": fill(<path d="M8 1.7l4.7 12-4.7-2.7-4.7 2.7z" />),
   /** Centre on map. */
   crosshair: line(
     <>
-      <circle cx="12" cy="12" r="7" />
-      <circle cx="12" cy="12" r="1.5" fill="currentColor" />
-      <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+      <circle cx="8" cy="8" r="4.667" />
+      <circle cx="8" cy="8" r="1" fill="currentColor" />
+      <path d="M8 1.333v2M8 12.667v2M1.333 8h2M12.667 8h2" />
     </>,
   ),
   share: line(
-    <path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" />,
+    <path d="M8 2v8M4.667 5.333l3.333-3.333 3.333 3.333M3.333 8.667v4a1.333 1.333 0 0 0 1.333 1.333h6.667a1.333 1.333 0 0 0 1.333-1.333v-4" />,
   ),
-  filter: line(<path d="M3 5h18l-7 8v6l-4-2v-4z" />),
+  filter: line(<path d="M2 3.333h12l-4.667 5.333v4l-2.667-1.333v-2.667z" />),
   /** Card tiles. */
-  station: line(<circle cx="12" cy="12" r="7" />, 3),
+  station: line(<circle cx="8" cy="8" r="4.667" />, 2),
   train: line(
     <>
-      <rect x="5" y="3" width="14" height="14" rx="3" />
-      <path d="M5 10h14M9 21l-1.5-4M15 21l1.5-4" />
-      <circle cx="9" cy="13.5" r="0.6" fill="currentColor" />
-      <circle cx="15" cy="13.5" r="0.6" fill="currentColor" />
+      <rect x="3.333" y="2" width="9.333" height="9.333" rx="2" />
+      <path d="M3.333 6.667h9.333M6 14l-1-2.667M10 14l1-2.667" />
+      <circle cx="6" cy="9" r="0.4" fill="currentColor" />
+      <circle cx="10" cy="9" r="0.4" fill="currentColor" />
     </>,
   ),
   "bus-stop": line(
     <>
-      <path d="M12 22V12" />
-      <rect x="5" y="2.5" width="14" height="9.5" rx="2" />
-      <path d="M9 7.5h6" />
+      <path d="M8 14.667V8" />
+      <rect x="3.333" y="1.667" width="9.333" height="6.333" rx="1.333" />
+      <path d="M6 5h4" />
     </>,
   ),
   ferry: line(
     <>
-      <path d="M3 15l2 5h14l2-5z" />
-      <path d="M6 15V9h12v6M9 9V5h6v4" />
+      <path d="M2 10l1.333 3.333h9.333l1.333-3.333z" />
+      <path d="M4 10V6h8v4M6 6V3.333h4v2.667" />
     </>,
   ),
 } satisfies { [iconId: string]: IconDef };
@@ -135,14 +138,14 @@ export const Icon: React.FunctionComponent<Props> = (props: Props) => {
     <svg
       xmlns="http://www.w3.org/2000/svg"
       {...sizing}
-      viewBox={def.kind === "fill" ? "0 0 16 16" : "0 0 24 24"}
+      viewBox="0 0 16 16"
       className={`${props.size ? "" : "w-[1em] h-[1em] align-[-.125em]"} inline-block flex-none ${props.className ?? ""}`}
       {...(def.kind === "fill" ?
         { fill: "currentColor" }
       : {
           fill: "none",
           stroke: "currentColor",
-          strokeWidth: def.weight ?? 2,
+          strokeWidth: def.weight ?? 4 / 3,
           strokeLinecap: "round" as const,
           strokeLinejoin: "round" as const,
         })}
