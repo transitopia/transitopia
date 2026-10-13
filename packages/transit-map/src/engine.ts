@@ -20,6 +20,7 @@ import {
   feedForDate,
   type PlanRoute,
 } from "@transitopia/transit-core/plan/types.ts";
+import { bayLabel } from "@transitopia/transit-core/plan/exchanges.ts";
 import type {
   PreparedPlan,
   ScheduleCorrections,
@@ -45,12 +46,14 @@ import {
   PlanStore,
   SERVICE_DAY_ROLLOVER_H,
   displayServiceDate,
+  hubsOf,
   kinematics,
   mergeCorrections,
 } from "./plans.ts";
 import {
   BUS_STOPS_SOURCE,
   BUS_TICKS_SOURCE,
+  EXCHANGES_SOURCE,
   ROUTES_SOURCE,
   SELECTED_PLACE_SOURCE,
   STATIONS_SOURCE,
@@ -136,15 +139,20 @@ export interface RouteDay {
 
 export { DAY_HOURS };
 
-/** The selected station or bus stop and what leaves it after the shown time. */
+/** The selected station, bus exchange or bus stop and what leaves it after the shown time. */
 export interface PlaceSnapshot extends Place {
-  kind: "station" | "stop";
+  kind: "station" | "exchange" | "stop";
   /** As in GTFS: "Stadium-Chinatown Station", "Eastbound E Hastings St @ Main St". */
   name: string;
   lon: number;
   lat: number;
   routes: PlanRoute[];
   groups: PlaceGroup[];
+  /** A station's or exchange's bus bays, by number: each has its own stop card. */
+  bays: { id: string; label: string }[];
+  /** The station or exchange a bay belongs to. */
+  partOf?:
+    { kind: "station" | "exchange"; id: string; name: string } | undefined;
   /** Groups running the same way from here, to where they split ("R5 or 14, to Renfrew St"). */
   shared: {
     routes: PlanRoute[];
@@ -233,6 +241,7 @@ const SOURCES = [
   ROUTES_SOURCE,
   SELECTED_PLACE_SOURCE,
   STATIONS_SOURCE,
+  EXCHANGES_SOURCE,
   BUS_STOPS_SOURCE,
   BUS_TICKS_SOURCE,
   TRACKS_SOURCE,
@@ -520,12 +529,14 @@ export class TransitEngine {
     this.publish();
   }
 
-  /** The station or stop drawn under a screen point, if any (stations win). */
+  /** The station, exchange or stop drawn under a screen point, if any (stations win, then exchanges). */
   private placeAt(x: number, y: number): Place | undefined {
     const { map } = this;
     const layers = [
       "stations",
       "stations-label",
+      "exchanges",
+      "exchanges-label",
       "bus-stops",
       VEHICLES_BEFORE_LAYER,
     ].filter((id) => map.getLayer(id));
@@ -541,6 +552,9 @@ export class TransitEngine {
     const station = hits.find((f) => f.layer.id.startsWith("stations"));
     if (station)
       return { kind: "station", id: String(station.properties["id"]) };
+    const exchange = hits.find((f) => f.layer.id.startsWith("exchanges"));
+    if (exchange)
+      return { kind: "exchange", id: String(exchange.properties["id"]) };
     const stop = hits.find((f) => f.properties["stop"] !== undefined);
     if (stop) return { kind: "stop", id: String(stop.properties["stop"]) };
     return this.routeAt(x, y);
@@ -580,8 +594,8 @@ export class TransitEngine {
     const p = this.place;
     if (!plan || !p || p.kind === "route") return undefined;
     const at =
-      p.kind === "station" ?
-        plan.stations.find((s) => s.id === p.id)
+      p.kind === "station" ? plan.stations.find((s) => s.id === p.id)
+      : p.kind === "exchange" ? hubsOf(plan).find((h) => h.id === p.id)
       : plan.stops.find((s) => s.id === p.id);
     return at ? [at.lon, at.lat] : undefined;
   }
@@ -982,15 +996,23 @@ export class TransitEngine {
       };
     }
     const { plan } = pp;
+    const hubs = hubsOf(plan);
+    // A station's bus bays, or the exchange itself.
+    const hub =
+      p.kind === "station" ? hubs.find((h) => h.station === p.id)
+      : p.kind === "exchange" ? hubs.find((h) => h.id === p.id)
+      : undefined;
     const where =
-      p.kind === "station" ?
-        plan.stations.find((s) => s.id === p.id)
+      p.kind === "station" ? plan.stations.find((s) => s.id === p.id)
+      : p.kind === "exchange" ? hub
       : plan.stops.find((s) => s.id === p.id);
     if (!where) return undefined;
     const date = displayServiceDate(t);
     const deps = departuresAt(
       pp,
-      stopsOf(plan, p.id),
+      p.kind === "exchange" ?
+        new Set(hub!.bays)
+      : stopsOf(plan, p.id, hub?.bays),
       t,
       t + DEPARTURES_AHEAD_MS,
       [addDays(date, -1), date],
@@ -999,8 +1021,13 @@ export class TransitEngine {
     const groups = groupDepartures(deps);
     const routeOf = (k: string) => pp.routes.get(k)!;
     const routeKeys =
-      p.kind === "station" ?
-        (where as { routes: string[] }).routes
+      p.kind === "station" || p.kind === "exchange" ?
+        [
+          ...new Set([
+            ...(where as { routes: string[] }).routes,
+            ...(hub?.routes ?? []),
+          ]),
+        ]
       : [
           ...new Set(
             plan.patterns
@@ -1008,10 +1035,29 @@ export class TransitEngine {
               .map((pt) => pt.route),
           ),
         ];
+    const stopName = (id: string) =>
+      plan.stops.find((s) => s.id === id)?.name ?? id;
+    const parent =
+      p.kind === "stop" ? hubs.find((h) => h.bays.includes(p.id)) : undefined;
     return {
       ...p,
       kind: p.kind,
       name: where.name,
+      bays: (hub?.bays ?? []).map((id) => ({
+        id,
+        label: bayLabel(stopName(id)),
+      })),
+      partOf:
+        parent
+        && (parent.station ?
+          {
+            kind: "station",
+            id: parent.station,
+            name:
+              plan.stations.find((s) => s.id === parent.station)?.name
+              ?? parent.name,
+          }
+        : { kind: "exchange", id: parent.id, name: parent.name }),
       lon: where.lon,
       lat: where.lat,
       routes: routeKeys.map(routeOf).filter(Boolean),

@@ -25,6 +25,10 @@ import type {
   ObservationFile,
   ObservationIndex,
 } from "@transitopia/transit-core/corrections/types.ts";
+import {
+  busHubs,
+  type BusHub,
+} from "@transitopia/transit-core/plan/exchanges.ts";
 import type { ScenarioManifest } from "@transitopia/transit-core/scenario/types.ts";
 import {
   preparePlan,
@@ -507,6 +511,14 @@ export function mergeCorrections(
 export const SERVICE_DAY_ROLLOVER_H = 3;
 export function displayServiceDate(t: number): string {
   return localDate(t - SERVICE_DAY_ROLLOVER_H * 3600_000);
+}
+
+const hubCache = new WeakMap<ServicePlan, BusHub[]>();
+/** The plan's bus exchanges and stations' bus bays (computed once per plan). */
+export function hubsOf(plan: ServicePlan): BusHub[] {
+  let h = hubCache.get(plan);
+  if (!h) hubCache.set(plan, (h = busHubs(plan)));
+  return h;
 }
 
 const railServiceCache = new WeakMap<PreparedPlan, Set<string>>();

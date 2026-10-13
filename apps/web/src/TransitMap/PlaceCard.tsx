@@ -6,7 +6,9 @@ import type {
   TransitEngine,
   TransitSnapshot,
 } from "@transitopia/transit-map/engine.ts";
+import type { Place } from "@transitopia/transit-map/url.ts";
 import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
+import { bayLabel } from "@transitopia/transit-core/plan/exchanges.ts";
 import { DATASETS } from "@transitopia/shared/datasets.ts";
 
 import {
@@ -57,10 +59,11 @@ function sharedLabel(routes: PlanRoute[], to: string): string {
     : `${routes.map(badge).join(" or ")}, to ${to}`;
 }
 
-/** "Platform 2", "Platforms 1, 2", or "" where unknown. */
-function platformsText(platforms: readonly string[]): string {
+/** "Platform 2", "Platforms 1, 2" (or "Bay 5" for buses), or "" where unknown. */
+function platformsText(platforms: readonly string[], bus: boolean): string {
+  const noun = bus ? "Bay" : "Platform";
   return platforms.length ?
-      `Platform${platforms.length > 1 ? "s" : ""} ${platforms.join(", ")}`
+      `${noun}${platforms.length > 1 ? "s" : ""} ${platforms.join(", ")}`
     : "";
 }
 
@@ -103,7 +106,7 @@ const GroupRow: React.FC<{
   const [first, ...rest] = group.departures;
   const cancelled = group.departures.filter((d) => d.cancelled);
   const note = [
-    platformsText(group.platforms),
+    platformsText(group.platforms, group.route.mode === "bus"),
     cancelled.length ?
       `${cancelled.map((d) => clockMinutes(d.sched)).join(", ")} cancelled`
     : "",
@@ -153,9 +156,10 @@ const GroupRow: React.FC<{
 };
 
 /**
- * A station or bus stop (apps/web/README.md#station-and-stop-cards): what leaves after the map's
- * time, one row per route and destination ordered by the soonest, with how often each runs in the
- * next hour, and a combined row for routes that share a stretch from here.
+ * A station, bus exchange or bus stop (apps/web/README.md#station-and-stop-cards): what leaves after
+ * the map's time, one row per route and destination ordered by the soonest, with how often each runs
+ * in the next hour, and a combined row for routes that share a stretch from here. A station lists its
+ * trains, then the buses from its bays.
  */
 export const PlaceCard: React.FC<{
   engine: TransitEngine;
@@ -166,6 +170,56 @@ export const PlaceCard: React.FC<{
   return <PlaceCardBody engine={engine} snap={snap} place={place} />;
 };
 
+type Shared = PlaceSnapshot["shared"][number];
+
+const SharedRow: React.FC<{ shared: Shared }> = ({ shared: s }) => (
+  <div className="my-1 flex items-center gap-2.5 rounded-[10px] border-0! bg-(--card-combined-bg) px-3 py-2.5">
+    <span className="flex">
+      {s.routes.map((r) => (
+        <RouteBadge key={r.key} route={r} ring />
+      ))}
+    </span>
+    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <span className="text-sm leading-snug font-bold">
+        {sharedLabel(s.routes, s.to)}
+      </span>
+      {s.platforms.length ?
+        <span className="text-[12.5px] leading-snug text-(--card-muted)">
+          {platformsText(s.platforms, s.routes[0]?.mode === "bus")}
+        </span>
+      : null}
+      {s.minutes !== undefined ?
+        <Frequency minutes={s.minutes} approx />
+      : null}
+    </div>
+  </div>
+);
+
+/** One kind of departure (trains, or buses): shared stretches on top, then a row per group. */
+const DepartureList: React.FC<{
+  title: string;
+  groups: PlaceGroup[];
+  shared: Shared[];
+  empty: string;
+  snap: TransitSnapshot;
+}> = ({ title, groups, shared, empty, snap }) => (
+  <CardSection title={title}>
+    {shared.map((s) => (
+      <SharedRow key={s.routes.map((r) => r.key).join() + s.to} shared={s} />
+    ))}
+    {groups.length ?
+      groups.map((g) => (
+        <GroupRow
+          key={`${g.route.key}|${g.headsign}`}
+          group={g}
+          now={snap.t}
+          live={snap.live}
+        />
+      ))
+    : <p className="py-2 text-sm text-(--card-muted)">{empty}</p>}
+  </CardSection>
+);
+
 const PlaceCardBody: React.FC<{
   engine: TransitEngine;
   snap: TransitSnapshot;
@@ -173,14 +227,27 @@ const PlaceCardBody: React.FC<{
 }> = ({ engine, snap, place }) => {
   const state = timeState(snap);
   const station = place.kind === "station";
-  const rail = place.routes.some((r) => r.mode !== "bus");
+  const exchange = place.kind === "exchange";
+  const isBus = (r: PlanRoute) => r.mode === "bus";
+  const railRoutes = place.routes.filter((r) => !isBus(r));
+  const rail = railRoutes.length > 0;
   const [direction, stopName] = splitDirection(place.name);
-  const title = station ? stationName(place.name) : stopName;
-  const mainRoute = place.routes[0];
+  const title =
+    station ? stationName(place.name)
+    : exchange ? place.name
+    : place.partOf ? bayLabel(place.name)
+    : stopName;
+  const mainRoute = railRoutes[0];
   const realtime = place.groups.some((g) =>
     g.departures.some((d) => d.source !== "schedule"),
   );
-  const noun = station && rail ? "trains" : "departures";
+  // A station lists its trains first, then the buses from its bays.
+  const railGroups = place.groups.filter((g) => !isBus(g.route));
+  const busGroups = place.groups.filter((g) => isBus(g.route));
+  const railShared = place.shared.filter((s) => !isBus(s.routes[0]!));
+  const busShared = place.shared.filter((s) => isBus(s.routes[0]!));
+  const buses = busGroups.length > 0 || place.bays.length > 0;
+  const go = (p: Place) => () => engine.selectPlace(p);
   const actions: CardAction[] = [
     {
       id: "centre",
@@ -188,6 +255,22 @@ const PlaceCardBody: React.FC<{
       icon: "crosshair",
       onSelect: () => engine.locateSelected(),
     },
+    ...(place.partOf ?
+      [
+        {
+          id: "part-of",
+          label: `All of ${stationName(place.partOf.name)}`,
+          icon: place.partOf.kind === "station" ? "station" : "bus-stop",
+          onSelect: go(place.partOf),
+        } satisfies CardAction,
+      ]
+    : []),
+    ...place.bays.map((b): CardAction => ({
+      id: `bay-${b.id}`,
+      label: `Only ${b.label}`,
+      icon: "bus-stop",
+      onSelect: go({ kind: "stop", id: b.id }),
+    })),
     {
       id: "share",
       label: "Share link",
@@ -196,10 +279,19 @@ const PlaceCardBody: React.FC<{
     },
   ];
   const eyebrow =
-    !station ? `Bus stop${direction ? ` · ${direction}` : ""}`
-    : place.routes.every((r) => r.mode === "skytrain") ? "SkyTrain station"
-    : place.routes.every((r) => r.mode === "ferry") ? "Ferry terminal"
+    exchange ? "Bus exchange"
+    : !station ?
+      place.partOf ?
+        `Bus bay · ${stationName(place.partOf.name)}`
+      : `Bus stop${direction ? ` · ${direction}` : ""}`
+    : railRoutes.every((r) => r.mode === "skytrain") ? "SkyTrain station"
+    : railRoutes.every((r) => r.mode === "ferry") ? "Ferry terminal"
     : "Station";
+  const when = (noun: string) =>
+    snap.live ?
+      `Next ${noun}`
+    : `${noun[0]!.toUpperCase()}${noun.slice(1)} after ${clockMinutes(snap.t)}`;
+  const noneText = "Nothing leaves here in the next two hours.";
   return (
     <InfoCard
       tile={
@@ -214,7 +306,7 @@ const PlaceCardBody: React.FC<{
       eyebrow={eyebrow}
       title={title}
       subtitle={
-        station ? place.routes.map((r) => r.label).join(" · ") : undefined
+        station ? railRoutes.map((r) => r.label).join(" · ") : undefined
       }
       status={
         state.future ?
@@ -224,7 +316,7 @@ const PlaceCardBody: React.FC<{
         : { tone: "estimated", text: "Times estimated from the schedule" }
       }
       chips={place.routes.map((r) => ({
-        label: r.mode === "bus" ? r.key : r.label,
+        label: isBus(r) ? r.key : r.label,
         color: { bg: r.color, fg: r.textColor },
       }))}
       actions={actions}
@@ -234,58 +326,43 @@ const PlaceCardBody: React.FC<{
       onClose={() => engine.select(undefined)}
       footer={
         <>
-          <p>
-            {rail ?
-              "From the TransLink timetable. Trains on the map follow our inferred runs, which can differ by a minute or two."
-            : "Live where the bus reports GPS; otherwise from the timetable."}
-          </p>
+          {rail ?
+            <p>
+              From the TransLink timetable. Trains on the map follow our
+              inferred runs, which can differ by a minute or two.
+            </p>
+          : null}
+          {buses ?
+            <p className={rail ? "mt-1" : undefined}>
+              Buses: live where the bus reports GPS; otherwise from the
+              timetable.
+            </p>
+          : null}
           <p className="mt-1">{DATASETS["translink-gtfs"].legend}</p>
         </>
       }>
-      <CardSection
-        title={
-          snap.live ?
-            `Next ${noun}`
-          : `${noun[0]!.toUpperCase()}${noun.slice(1)} after ${clockMinutes(snap.t)}`
-        }>
-        {place.shared.map((s) => (
-          <div
-            key={s.routes.map((r) => r.key).join() + s.to}
-            className="my-1 flex items-center gap-2.5 rounded-[10px] border-0! bg-(--card-combined-bg) px-3 py-2.5">
-            <span className="flex">
-              {s.routes.map((r) => (
-                <RouteBadge key={r.key} route={r} ring />
-              ))}
-            </span>
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="text-sm leading-snug font-bold">
-                {sharedLabel(s.routes, s.to)}
-              </span>
-              {s.platforms.length ?
-                <span className="text-[12.5px] leading-snug text-(--card-muted)">
-                  {platformsText(s.platforms)}
-                </span>
-              : null}
-              {s.minutes !== undefined ?
-                <Frequency minutes={s.minutes} approx />
-              : null}
-            </div>
-          </div>
-        ))}
-        {place.groups.length ?
-          place.groups.map((g) => (
-            <GroupRow
-              key={`${g.route.key}|${g.headsign}`}
-              group={g}
-              now={snap.t}
-              live={snap.live}
-            />
-          ))
-        : <p className="py-2 text-sm text-(--card-muted)">
-            Nothing leaves here in the next two hours.
-          </p>
-        }
-      </CardSection>
+      {rail ?
+        <DepartureList
+          title={when(
+            !station ? "departures"
+            : railRoutes.every((r) => r.mode === "ferry") ? "sailings"
+            : "trains",
+          )}
+          groups={railGroups}
+          shared={railShared}
+          empty={noneText}
+          snap={snap}
+        />
+      : null}
+      {buses || !rail ?
+        <DepartureList
+          title={when(rail ? "buses" : "departures")}
+          groups={busGroups}
+          shared={busShared}
+          empty={rail ? "No buses leave here in the next two hours." : noneText}
+          snap={snap}
+        />
+      : null}
     </InfoCard>
   );
 };
