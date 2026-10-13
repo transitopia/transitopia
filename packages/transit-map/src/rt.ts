@@ -24,6 +24,7 @@ import type {
 } from "@transitopia/transit-core/schedule/engine.ts";
 import {
   delayCorrections,
+  type CarriedBus,
   type TripDelay,
 } from "@transitopia/transit-core/rt/carry.ts";
 import {
@@ -219,7 +220,10 @@ export class RtClient {
     t: number,
     pp: PreparedPlan | undefined,
   ):
-    | { byDate: Map<string, ScheduleCorrections>; carried: Set<string> }
+    | {
+        byDate: Map<string, ScheduleCorrections>;
+        carried: Map<string, CarriedBus>;
+      }
     | undefined {
     if (!this.available || !pp || !this.predictorFor(pp)) return undefined;
     const fromLive = this.live.length > 0 && t >= this.live[0]!.fetchedAt;

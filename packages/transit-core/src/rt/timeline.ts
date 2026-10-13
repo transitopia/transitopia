@@ -253,7 +253,7 @@ export class RtTimeline {
     const delays: TripDelay[] = [];
     const pr = this.opts.prediction;
     if (pr && this.pp) {
-      for (const tr of this.tracks.values()) {
+      for (const [id, tr] of this.tracks) {
         const i = floorIndex(tr.obs, t);
         if (i < 0) continue;
         const o = tr.obs[i]!;
@@ -276,6 +276,7 @@ export class RtTimeline {
           delay,
           schedSec: secOf(ms) - delay,
           fixTs: o.v.ts,
+          vehicle: { id: `rt:${id}`, label: o.v.label },
         });
       }
     }

@@ -1128,24 +1128,38 @@ export class TransitEngine {
       this.ferryPair = pair;
       setFerryPair(map, pair ?? undefined);
     }
+    // An estimate carrying a bus's RT delay stands for that bus: it keeps the RT vehicle's id and
+    // number, so a selection (or follow) carries across the hand-over, and back at the next fix.
+    const shownIds = new Set(live.vehicles?.map((v) => v.id));
+    const asBus = (v: VehicleState): VehicleState => {
+      const bus = v.mode === "bus" ? carry?.carried.get(v.tripId) : undefined;
+      if (!bus || shownIds.has(bus.id)) return v;
+      shownIds.add(bus.id);
+      const est: VehicleState = { ...v, id: bus.id };
+      if (bus.label) est.label = bus.label;
+      return est;
+    };
     if (live.vehicles) {
       // RT buses, plus estimates for buses whose RT prediction has run out (unreported for a while)
       // but whose delay is known, unless the same bus (block) is already shown from RT.
       const shownBlocks = new Set(
         live.vehicles.map((v) => pp?.tripIndex.get(v.tripId)?.vehicleId),
       );
-      const carried = scheduled.filter(
-        (v) =>
-          v.mode === "bus"
-          && carry?.carried.has(v.tripId)
-          && !shownBlocks.has(v.id),
-      );
+      const carried = scheduled
+        .filter(
+          (v) =>
+            v.mode === "bus"
+            && carry?.carried.has(v.tripId)
+            && !shownBlocks.has(v.id),
+        )
+        .map(asBus)
+        .filter((v) => v.id.startsWith("rt:"));
       this.lastVehicles = [
         ...scheduled.filter((v) => v.mode !== "bus"),
         ...live.vehicles,
         ...carried,
       ];
-    } else this.lastVehicles = scheduled;
+    } else this.lastVehicles = scheduled.map(asBus);
     if (this.selectedId)
       this.selectedRoute =
         this.lastVehicles.find((v) => v.id === this.selectedId)?.routeKey
