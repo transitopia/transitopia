@@ -159,7 +159,7 @@ const GroupRow: React.FC<{
  * A station, bus exchange or bus stop (apps/web/README.md#station-and-stop-cards): what leaves after
  * the map's time, one row per route and destination ordered by the soonest, with how often each runs
  * in the next hour, and a combined row for routes that share a stretch from here. A station lists its
- * trains, then the buses from its bays.
+ * trains, then its sailings, then the buses from its bays.
  */
 export const PlaceCard: React.FC<{
   engine: TransitEngine;
@@ -171,6 +171,16 @@ export const PlaceCard: React.FC<{
 };
 
 type Shared = PlaceSnapshot["shared"][number];
+
+/** A station card's sections: trains (SkyTrain and West Coast Express), sailings, buses. */
+type DepartureKind = "train" | "ferry" | "bus";
+const kindOf = (r: PlanRoute): DepartureKind =>
+  r.mode === "bus" || r.mode === "ferry" ? r.mode : "train";
+const NOUNS: Record<DepartureKind, string> = {
+  train: "trains",
+  ferry: "sailings",
+  bus: "buses",
+};
 
 const SharedRow: React.FC<{ shared: Shared }> = ({ shared: s }) => (
   <div className="my-1 flex items-center gap-2.5 rounded-[10px] border-0! bg-(--card-combined-bg) px-3 py-2.5">
@@ -195,7 +205,7 @@ const SharedRow: React.FC<{ shared: Shared }> = ({ shared: s }) => (
   </div>
 );
 
-/** One kind of departure (trains, or buses): shared stretches on top, then a row per group. */
+/** One kind of departure (trains, sailings or buses): shared stretches on top, then a row per group. */
 const DepartureList: React.FC<{
   title: string;
   groups: PlaceGroup[];
@@ -241,12 +251,20 @@ const PlaceCardBody: React.FC<{
   const realtime = place.groups.some((g) =>
     g.departures.some((d) => d.source !== "schedule"),
   );
-  // A station lists its trains first, then the buses from its bays.
-  const railGroups = place.groups.filter((g) => !isBus(g.route));
-  const busGroups = place.groups.filter((g) => isBus(g.route));
-  const railShared = place.shared.filter((s) => !isBus(s.routes[0]!));
-  const busShared = place.shared.filter((s) => isBus(s.routes[0]!));
-  const buses = busGroups.length > 0 || place.bays.length > 0;
+  // A station lists its trains, then its sailings, then the buses from its bays.
+  const sections = (["train", "ferry", "bus"] as const)
+    .map((kind) => ({
+      kind,
+      groups: place.groups.filter((g) => kindOf(g.route) === kind),
+      shared: place.shared.filter((s) => kindOf(s.routes[0]!) === kind),
+    }))
+    .filter(
+      (x) =>
+        x.groups.length
+        || place.routes.some((r) => kindOf(r) === x.kind)
+        || (x.kind === "bus" && place.bays.length),
+    );
+  const has = (kind: DepartureKind) => sections.some((x) => x.kind === kind);
   const go = (p: Place) => () => engine.selectPlace(p);
   const actions: CardAction[] = [
     {
@@ -291,7 +309,6 @@ const PlaceCardBody: React.FC<{
     snap.live ?
       `Next ${noun}`
     : `${noun[0]!.toUpperCase()}${noun.slice(1)} after ${clockMinutes(snap.t)}`;
-  const noneText = "Nothing leaves here in the next two hours.";
   return (
     <InfoCard
       tile={
@@ -328,11 +345,13 @@ const PlaceCardBody: React.FC<{
         <>
           {rail ?
             <p>
-              From the TransLink timetable. Trains on the map follow our
-              inferred runs, which can differ by a minute or two.
+              From the TransLink timetable.
+              {has("train") ?
+                " Trains on the map follow our inferred runs, which can differ by a minute or two."
+              : ""}
             </p>
           : null}
-          {buses ?
+          {has("bus") ?
             <p className={rail ? "mt-1" : undefined}>
               Buses: live where the bus reports GPS; otherwise from the
               timetable.
@@ -341,28 +360,22 @@ const PlaceCardBody: React.FC<{
           <p className="mt-1">{DATASETS["translink-gtfs"].legend}</p>
         </>
       }>
-      {rail ?
+      {sections.map((x) => (
         <DepartureList
+          key={x.kind}
           title={when(
-            !station ? "departures"
-            : railRoutes.every((r) => r.mode === "ferry") ? "sailings"
-            : "trains",
+            sections.length > 1 || station ? NOUNS[x.kind] : "departures",
           )}
-          groups={railGroups}
-          shared={railShared}
-          empty={noneText}
+          groups={x.groups}
+          shared={x.shared}
+          empty={
+            sections.length > 1 ?
+              `No ${NOUNS[x.kind]} leave here in the next two hours.`
+            : "Nothing leaves here in the next two hours."
+          }
           snap={snap}
         />
-      : null}
-      {buses || !rail ?
-        <DepartureList
-          title={when(rail ? "buses" : "departures")}
-          groups={busGroups}
-          shared={busShared}
-          empty={rail ? "No buses leave here in the next two hours." : noneText}
-          snap={snap}
-        />
-      : null}
+      ))}
     </InfoCard>
   );
 };
