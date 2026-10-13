@@ -185,21 +185,29 @@ const RouteCardBody: React.FC<{
         </div>
       </CardSection>
       {day ?
-        <CardSection title="Through the day">
+        <CardSection title="Frequency through the day">
           <div>
-            <div className="mb-2.5 flex">
-              <button
-                type="button"
-                title="Next kind of day"
+            <div className="relative mb-2.5 flex w-fit max-w-full">
+              <select
+                aria-label="Kind of day"
+                value={Math.min(dayIndex, days.length - 1)}
                 disabled={days.length < 2}
-                onClick={() => setDayIndex((dayIndex + 1) % days.length)}
-                className="flex h-9 items-center gap-1.5 rounded-[9px] border border-(--card-border) bg-(--card-bg) px-2.5 text-[13px] font-bold hover:bg-(--card-hover) disabled:opacity-60">
-                {day.label}
-                {today ? " (today)" : ""}
-                {days.length > 1 ?
-                  <Icon icon="chevron-down" size={14} />
-                : null}
-              </button>
+                onChange={(e) => setDayIndex(Number(e.target.value))}
+                className="h-9 max-w-full min-w-0 appearance-none truncate rounded-[9px] border border-(--card-border) bg-(--card-bg) pr-7 pl-2.5 text-[13px] font-bold text-(--card-text) hover:bg-(--card-hover) disabled:opacity-60">
+                {days.map((d, i) => (
+                  <option key={i} value={i}>
+                    {d.label}
+                    {i === 0 ? " (today)" : ""}
+                  </option>
+                ))}
+              </select>
+              {days.length > 1 ?
+                <Icon
+                  icon="chevron-down"
+                  size={14}
+                  className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2"
+                />
+              : null}
             </div>
             <div
               className="flex gap-0.5 px-0.5"
