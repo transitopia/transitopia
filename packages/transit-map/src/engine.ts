@@ -148,8 +148,8 @@ export interface PlaceSnapshot extends Place {
   /** Groups running the same way from here, to where they split ("R5 or 14, to Renfrew St"). */
   shared: {
     routes: PlanRoute[];
-    /** How many route + destination groups share it. */
-    groups: number;
+    /** Platforms its trips leave from, where known. */
+    platforms: string[];
     to: string;
     minutes: number | undefined;
   }[];
@@ -936,7 +936,7 @@ export class TransitEngine {
       })),
       shared: sharedStretches(plan, groups).map((s) => ({
         routes: [...new Set(s.groups.map((g) => g.routeKey))].map(routeOf),
-        groups: s.groups.length,
+        platforms: [...new Set(s.groups.flatMap((g) => g.platforms))].sort(),
         to: placeName(plan, s.toStopId),
         minutes: minutesBetween(s.departures, t),
       })),

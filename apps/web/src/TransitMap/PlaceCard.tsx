@@ -50,10 +50,18 @@ function timeText(d: Departure, now: number, live: boolean, first: boolean) {
   return first ? `${m} min` : `${m}m`;
 }
 
-/** "Either branch" (two groups of one route), "Any of these" (more), or "R5 or 14". */
-function sharedLabel(routes: PlanRoute[], groups: number): string {
-  if (routes.length > 1) return routes.map(badge).join(" or ");
-  return groups === 2 ? "Either branch" : "Any of these";
+/** "Any Canada Line to Bridgeport" (one route), or "R5 or 14, to Renfrew St". */
+function sharedLabel(routes: PlanRoute[], to: string): string {
+  return routes.length === 1 ?
+      `Any ${routes[0]!.label} to ${to}`
+    : `${routes.map(badge).join(" or ")}, to ${to}`;
+}
+
+/** "Platform 2", "Platforms 1, 2", or "" where unknown. */
+function platformsText(platforms: readonly string[]): string {
+  return platforms.length ?
+      `Platform${platforms.length > 1 ? "s" : ""} ${platforms.join(", ")}`
+    : "";
 }
 
 const RouteBadge: React.FC<{ route: PlanRoute; ring?: boolean }> = ({
@@ -93,9 +101,7 @@ const GroupRow: React.FC<{
   const [first, ...rest] = group.departures;
   const cancelled = group.departures.filter((d) => d.cancelled);
   const note = [
-    group.platforms.length ?
-      `Platform${group.platforms.length > 1 ? "s" : ""} ${group.platforms.join(", ")}`
-    : "",
+    platformsText(group.platforms),
     cancelled.length ?
       `${cancelled.map((d) => clockMinutes(d.sched)).join(", ")} cancelled`
     : "",
@@ -251,8 +257,13 @@ const PlaceCardBody: React.FC<{
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="text-sm leading-snug font-bold">
-                {sharedLabel(s.routes, s.groups)}, to {s.to}
+                {sharedLabel(s.routes, s.to)}
               </span>
+              {s.platforms.length ?
+                <span className="text-[12.5px] leading-snug text-(--card-muted)">
+                  {platformsText(s.platforms)}
+                </span>
+              : null}
               {s.minutes !== undefined ?
                 <Frequency minutes={s.minutes} approx />
               : null}
