@@ -11,6 +11,7 @@ import {
   LayersPanelProvider,
 } from "./components/LayersPanel.tsx";
 import { Logo } from "./components/Logo.tsx";
+import { PageMeta } from "./components/PageMeta.tsx";
 import { ThemeProvider } from "./Theme/Theme.tsx";
 import {
   AttributionControl,
@@ -64,11 +65,19 @@ function MapApp() {
             }>
             <Switch>
               <Route path="/transit">
+                <PageMeta
+                  path="/transit"
+                  description="Live map of SkyTrain, SeaBus, West Coast Express and rapid buses in Metro Vancouver. Open source and open data."
+                />
                 <React.Suspense fallback={null}>
                   <TransitMap />
                 </React.Suspense>
               </Route>
               <Route path="/cycling">
+                <PageMeta
+                  path="/cycling"
+                  description="Cycling map of Metro Vancouver and British Columbia: protected bike lanes, painted lanes, local street bikeways and bike parking. Open source and open data."
+                />
                 <CyclingMap />
               </Route>
               {/* Walking is disabled for now until it has real content (docs/DESIGN.md#goals-and-scope). */}
