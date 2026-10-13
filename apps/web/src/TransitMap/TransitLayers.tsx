@@ -11,9 +11,9 @@ import type {
 import {
   LayersPanel,
   PanelDivider,
-  Segmented,
   SwitchRow,
 } from "../components/LayersPanel.tsx";
+import { SegmentedChoice } from "../components/SegmentedChoice.tsx";
 import { ProvenanceSwatch } from "./Swatches.tsx";
 
 const CATEGORIES: {
@@ -87,7 +87,7 @@ export const TransitLayers: React.FC<{
       );
     })}
     <PanelDivider />
-    <Segmented
+    <SegmentedChoice
       label="Vehicles"
       value={snap.liveOnly ? "live" : "all"}
       options={[

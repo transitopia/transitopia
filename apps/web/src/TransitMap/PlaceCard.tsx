@@ -183,7 +183,7 @@ const PlaceCardBody: React.FC<{
     {
       id: "centre",
       label: "Centre on map",
-      icon: "centre",
+      icon: "crosshair",
       onSelect: () => engine.locateSelected(),
     },
     {
@@ -207,7 +207,7 @@ const PlaceCardBody: React.FC<{
             bg: mainRoute?.color ?? "#4b5563",
             fg: mainRoute?.textColor ?? "#fff",
           }
-        : { icon: "stop", bg: "#4b5563", fg: "#fff" }
+        : { icon: "bus-stop", bg: "#4b5563", fg: "#fff" }
       }
       eyebrow={eyebrow}
       title={title}

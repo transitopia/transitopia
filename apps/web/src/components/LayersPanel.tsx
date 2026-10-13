@@ -139,42 +139,6 @@ export const SwitchRow: React.FC<{
   </button>
 );
 
-/** A small segmented control ("All / Live only"). */
-export function Segmented<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (value: T) => void;
-}) {
-  return (
-    <div className="flex items-center gap-3 px-4 py-2">
-      <span className="flex-1 text-[15px] font-bold max-sm:text-base">
-        {label}
-      </span>
-      <div
-        role="group"
-        aria-label={label}
-        className="flex rounded-[10px] bg-gray-100 p-[3px] dark:bg-gray-800">
-        {options.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            aria-pressed={o.value === value}
-            onClick={() => onChange(o.value)}
-            className={`h-[34px] rounded-lg px-3 text-[13.5px] font-semibold max-sm:h-[38px] max-sm:px-3.5 max-sm:text-sm ${o.value === value ? "bg-white shadow-sm dark:bg-gray-600" : ""}`}>
-            {o.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export const PanelDivider: React.FC = () => (
   <div className="mx-4 my-1.5 h-px bg-gray-200 dark:bg-gray-700" />
 );

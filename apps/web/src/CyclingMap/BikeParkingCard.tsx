@@ -40,7 +40,7 @@ export const BikeParkingCard: React.FC<{
     {
       id: "centre",
       label: "Centre on map",
-      icon: "centre",
+      icon: "crosshair",
       onSelect: onCentre,
     },
   ];

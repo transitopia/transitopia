@@ -52,14 +52,14 @@ export const BikeRouteCard: React.FC<{
     {
       id: "centre",
       label: "Centre on map",
-      icon: "centre",
+      icon: "crosshair",
       onSelect: onCentre,
     },
   ];
   const type = kind(f);
   return (
     <InfoCard
-      tile={{ icon: "bike", ...BIKE_TILE }}
+      tile={{ icon: "bicycle", ...BIKE_TILE }}
       eyebrow="Bike route"
       title={f.name ?? type}
       subtitle={f.name ? type : undefined}

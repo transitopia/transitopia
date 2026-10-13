@@ -6,6 +6,7 @@ import {
 } from "@transitopia/transit-map/engine.ts";
 import { localDate } from "@transitopia/transit-core/time.ts";
 
+import { Icon } from "../components/Icon.tsx";
 import { TimeMark, type Mark } from "../components/InfoCard.tsx";
 import {
   clockTime,
@@ -168,18 +169,7 @@ const PhoneBar: React.FC<
             aria-label="Hide time controls"
             onClick={onCollapse}
             className="-mr-1 flex h-11 w-11 flex-none items-center justify-center rounded-full hover:bg-(--card-hover)">
-            <svg
-              aria-hidden="true"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round">
-              <path d="M6 15l6-6 6 6" />
-            </svg>
+            <Icon icon="chevron-up" size={18} />
           </button>
         : null}
       </div>
@@ -213,7 +203,7 @@ const TimePill: React.FC<Props & { onOpen: () => void }> = ({
         aria-label={snap.playing ? "Pause" : "Play"}
         onClick={() => engine.toggle()}
         className={`flex h-8 w-8 flex-none items-center justify-center rounded-full ${snap.live ? "bg-transit-blue text-[#06303a]" : "bg-[#3b2300] text-(--notlive-border)"}`}>
-        <PlayIcon playing={snap.playing} size={12} />
+        <Icon icon={snap.playing ? "pause" : "play"} size={14} />
       </button>
       <button
         type="button"
@@ -246,30 +236,13 @@ const TimePill: React.FC<Props & { onOpen: () => void }> = ({
   );
 };
 
-const PlayIcon: React.FC<{ playing: boolean; size: number }> = ({
-  playing,
-  size,
-}) =>
-  playing ?
-    <svg aria-hidden="true" width={size} height={size + 2} viewBox="0 0 14 16">
-      <rect x="1" y="1" width="4" height="14" rx="1" fill="currentColor" />
-      <rect x="9" y="1" width="4" height="14" rx="1" fill="currentColor" />
-    </svg>
-  : <svg
-      aria-hidden="true"
-      width={size + 2}
-      height={size + 4}
-      viewBox="0 0 16 18">
-      <path d="M3 1.5 L15 9 L3 16.5 Z" fill="currentColor" />
-    </svg>;
-
 const PlayButton: React.FC<Props> = ({ engine, snap }) => (
   <button
     type="button"
     aria-label={snap.playing ? "Pause" : "Play"}
     onClick={() => engine.toggle()}
     className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-main-blue text-white hover:bg-[#0a4a80] dark:bg-sky-300 dark:text-gray-900">
-    <PlayIcon playing={snap.playing} size={14} />
+    <Icon icon={snap.playing ? "pause" : "play"} size={16} />
   </button>
 );
 
@@ -322,25 +295,9 @@ const Badges: React.FC<{ snap: TransitSnapshot }> = ({ snap }) => (
 
 const NotLiveBadge: React.FC = () => (
   <span className="flex items-center gap-1.5 rounded-full bg-(--notlive-bg) px-3 py-1.5 text-[13px] font-extrabold tracking-wider whitespace-nowrap text-(--notlive-fg) uppercase">
-    <ClockIcon />
+    <Icon icon="clock" size={16} />
     Not live
   </span>
-);
-
-const ClockIcon: React.FC = () => (
-  <svg
-    aria-hidden="true"
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.5"
-    strokeLinecap="round"
-    strokeLinejoin="round">
-    <circle cx="12" cy="12" r="9" />
-    <path d="M12 7v5l3 2" />
-  </svg>
 );
 
 /** Green "Live" only when live; otherwise the way back to it. */
@@ -390,18 +347,7 @@ const DateButton: React.FC<Props & { wide?: boolean }> = ({
           }
         }}
         className="flex h-10 w-full items-center justify-center gap-2 rounded-[10px] border border-(--card-border) bg-(--card-bg) px-3 text-sm font-semibold whitespace-nowrap hover:bg-(--card-hover) max-sm:h-11 max-sm:text-[14.5px]">
-        <svg
-          aria-hidden="true"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round">
-          <rect x="3" y="5" width="18" height="16" rx="2" />
-          <path d="M3 10h18M8 3v4M16 3v4" />
-        </svg>
+        <Icon icon="calendar" size={16} />
         {shortDate(snap.serviceDate)}
       </button>
       <input
@@ -424,20 +370,6 @@ const DateButton: React.FC<Props & { wide?: boolean }> = ({
 
 const SpeedStepper: React.FC<Props> = ({ engine, snap }) => {
   const i = RATES.indexOf(snap.rate);
-  const arrow = (d: string) => (
-    <svg
-      aria-hidden="true"
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.25"
-      strokeLinecap="round"
-      strokeLinejoin="round">
-      <path d={d} />
-    </svg>
-  );
   const step =
     "flex h-10 w-7 items-center justify-center hover:bg-(--card-hover) disabled:opacity-40 max-sm:h-11 max-sm:w-11";
   return (
@@ -451,7 +383,7 @@ const SpeedStepper: React.FC<Props> = ({ engine, snap }) => {
         disabled={i === 0}
         onClick={() => stepRate(engine, false)}
         className={step}>
-        {arrow("M11 7l-5 5 5 5M18 7l-5 5 5 5")}
+        <Icon icon="chevrons-left" size={18} />
       </button>
       <span
         aria-live="polite"
@@ -464,7 +396,7 @@ const SpeedStepper: React.FC<Props> = ({ engine, snap }) => {
         disabled={i === RATES.length - 1}
         onClick={() => stepRate(engine, true)}
         className={step}>
-        {arrow("M6 7l5 5-5 5M13 7l5 5-5 5")}
+        <Icon icon="chevrons-right" size={18} />
       </button>
     </div>
   );

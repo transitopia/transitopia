@@ -8,6 +8,7 @@ import {
 import { localDate, toWallTime } from "@transitopia/transit-core/time.ts";
 import { DATASETS } from "@transitopia/shared/datasets.ts";
 
+import { Icon } from "../components/Icon.tsx";
 import {
   CardSection,
   InfoCard,
@@ -86,7 +87,7 @@ const RouteCardBody: React.FC<{
     {
       id: "centre",
       label: "Centre on map",
-      icon: "centre",
+      icon: "crosshair",
       onSelect: () => engine.locateSelected(),
     },
     {
@@ -196,18 +197,7 @@ const RouteCardBody: React.FC<{
                 {day.label}
                 {today ? " (today)" : ""}
                 {days.length > 1 ?
-                  <svg
-                    aria-hidden="true"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round">
-                    <path d="M6 9l6 6 6-6" />
-                  </svg>
+                  <Icon icon="chevron-down" size={14} />
                 : null}
               </button>
             </div>

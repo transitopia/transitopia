@@ -16,8 +16,8 @@ import {
   type CardAction,
   type CardChip,
   type Mark,
-  type TileIcon,
 } from "../components/InfoCard.tsx";
+import type { IconId } from "../components/Icon.tsx";
 
 const STATUS: Record<VehicleState["status"], string> = {
   moving: "Next stop",
@@ -31,7 +31,7 @@ const STATUS: Record<VehicleState["status"], string> = {
 
 const MODE: Record<
   PlanRoute["mode"],
-  { eyebrow: (r: PlanRoute) => string; icon?: TileIcon }
+  { eyebrow: (r: PlanRoute) => string; icon?: IconId }
 > = {
   skytrain: { eyebrow: (r) => `SkyTrain · ${r.label}`, icon: "train" },
   rail: { eyebrow: (r) => `Commuter rail · ${r.label}`, icon: "train" },
@@ -142,19 +142,19 @@ export const VehicleCard: React.FC<{
       {
         id: "follow",
         label: "Stop following",
-        icon: "follow",
+        icon: "navigation",
         onSelect: () => engine.setFollowing(false),
       }
     : {
         id: "follow",
         label: "Follow on map",
-        icon: "follow",
+        icon: "navigation",
         onSelect: () => engine.setFollowing(true),
       },
     {
       id: "centre",
       label: "Centre on map",
-      icon: "centre",
+      icon: "crosshair",
       onSelect: () => engine.locateSelected(),
     },
     {

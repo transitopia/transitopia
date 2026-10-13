@@ -24,7 +24,7 @@ Locally the site reads the pipelines' output from `var/public/`, served at `/dev
 | `src/Attribution/` | The attribution control |
 | `src/Admin/` | `/admin`, without the map |
 | `src/Theme/` | Light, dark, or the system's |
-| `src/components/` | Shared chrome: the logo, icons, the header's mode switch and the layers panel |
+| `src/components/` | Shared chrome: the logo, every icon (`Icon.tsx`: Bootstrap's filled icons and the line icons from the UI concepts canvas; no inline SVGs elsewhere), the menu button (`Menu.tsx`), the segmented choice (`SegmentedChoice.tsx`), the feature card, the header's mode switch and the layers panel |
 
 ## Modes and URL state
 

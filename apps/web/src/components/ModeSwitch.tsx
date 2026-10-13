@@ -71,19 +71,7 @@ const ModeItem: React.FC<{
           <Icon icon={mode.icon} />
         </span>
         <span className="max-sm:hidden">{mode.label}</span>
-        <svg
-          aria-hidden="true"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={open ? "rotate-180" : ""}>
-          <path d="M6 9l6 6 6-6" />
-        </svg>
+        <Icon icon={open ? "chevron-up" : "chevron-down"} size={16} />
       </button>
     );
   return (
