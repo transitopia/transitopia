@@ -51,9 +51,11 @@ function MapApp() {
           }>
           <Map
             header={
+              // Above the map's chrome (cards z-50, time and follow pills z-[55]): on phones the layers
+              // panel drops down over them.
               <header
                 data-map-overlay
-                className="map-header z-50 flex items-center border-gray-300 bg-(--header-background) shadow-md dark:border-gray-700 dark:text-gray-100">
+                className="map-header z-[60] flex items-center border-gray-300 bg-(--header-background) shadow-md dark:border-gray-700 dark:text-gray-100">
                 <Logo className="h-7 lg:h-[30px] mr-2" />
                 <div className="flex-auto"></div>
                 <ModeSwitch />
