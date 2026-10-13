@@ -223,6 +223,10 @@
   bottom: 1.75rem;
   left: env(safe-area-inset-left);
 }
+/* Phones: the time bar at the bottom covers the scale bar (src/TransitMap/TimeBar.tsx). */
+body:has([data-covers-scale]) .maplibregl-ctrl-scale {
+  display: none;
+}
 :root[data-theme="dark"] .maplibregl-ctrl-group {
   background: #1f2937;
 }

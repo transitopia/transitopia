@@ -158,7 +158,9 @@ const PhoneBar: React.FC<
     <section
       aria-label="Time controls"
       data-map-overlay
-      className={`absolute inset-x-2.5 z-40 flex flex-col gap-3 rounded-[18px] bg-(--card-bg) px-3 py-2.5 text-(--card-text) shadow-[0_6px_20px_rgb(17_24_39/0.16)] ${atTop ? "top-2.5 z-[55]" : "bottom-[26px]"} ${snap.live ? "border border-(--card-border)" : "border-2 border-(--notlive-border)"}`}>
+      // At the bottom it covers the map's scale bar, which is then hidden (src/index.css).
+      data-covers-scale={atTop ? undefined : true}
+      className={`absolute inset-x-2.5 z-40 flex flex-col gap-3 rounded-[18px] bg-(--card-bg) px-3 py-2.5 text-(--card-text) shadow-[0_6px_20px_rgb(17_24_39/0.16)] ${atTop ? "top-2.5 z-[55]" : "bottom-[34px]"} ${snap.live ? "border border-(--card-border)" : "border-2 border-(--notlive-border)"}`}>
       <div className="flex items-center gap-3">
         <PlayButton engine={engine} snap={snap} />
         <TimeText snap={snap} sub={subLine(snap, false)} />
