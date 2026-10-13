@@ -199,8 +199,9 @@ export class RtService {
   private onLead: (() => void) | undefined;
 
   constructor(opts: RtServiceOptions = {}) {
-    this.recorder = new Recorder(opts.historyDir ?? RT_HISTORY_DIR, (t) =>
-      CADENCE.coverageGapMs(t),
+    this.recorder = new Recorder(
+      opts.historyDir ?? RT_HISTORY_DIR,
+      CADENCE.coverageGapMs,
     );
     this.log = opts.log ?? ((m) => console.log(`[rt] ${m}`));
     this.record = opts.record ?? true;
@@ -393,7 +394,7 @@ export class RtService {
       })
       .catch((e) =>
         this.log(
-          `could not save request ledger (${e instanceof Error ? e.message : e})`,
+          `could not save request ledger (${e instanceof Error ? e.message : String(e)})`,
         ),
       );
     return this.ledgerWrite;
@@ -593,7 +594,7 @@ export class RtService {
       this.routesLoadedFrom = mtime;
     } catch (e) {
       this.log(
-        `Could not read timetable manifest (${e instanceof Error ? e.message : e}); run "npm run data:gtfs".`,
+        `Could not read timetable manifest (${e instanceof Error ? e.message : String(e)}); run "npm run data:gtfs".`,
       );
     }
   }

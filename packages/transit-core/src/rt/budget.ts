@@ -213,17 +213,17 @@ export interface CadenceConfig {
 
 export interface Cadence {
   /** Live data fetched at `fetchedAt` is stale this long after it (ms). */
-  staleAfterMs(fetchedAt: number): number;
+  staleAfterMs: (fetchedAt: number) => number;
   /** Recorder coverage continues across gaps up to this long at t (ms). */
-  coverageGapMs(t: number): number;
+  coverageGapMs: (t: number) => number;
   /** Interpolate between two fixes of a vehicle at most this far apart, around t (s). */
-  maxInterpolateS(t: number): number;
+  maxInterpolateS: (t: number) => number;
   /** Predict a vehicle forward for at most this long after its fix at t (s). */
-  maxExtrapolateS(t: number): number;
+  maxExtrapolateS: (t: number) => number;
   /** The largest maxInterpolateS anywhere in the schedule (s): how much history to load around t. */
   maxInterpolateLimitS: number;
   /** An alert last seen at t still counts this much later (it's polled only this often) (ms). */
-  alertGraceMs(t: number): number;
+  alertGraceMs: (t: number) => number;
 }
 
 export function cadence(cfg: CadenceConfig): Cadence {

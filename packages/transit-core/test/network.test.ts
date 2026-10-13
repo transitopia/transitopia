@@ -50,8 +50,8 @@ describe("buildNetwork", () => {
     expect(p.kind).toBe("crossing");
     const pairs = p.turns.map((t) =>
       t
-        .map((e) => e.split(".")[0])
-        .sort()
+        .map((e) => e.split(".")[0]!)
+        .sort((a, b) => a.localeCompare(b))
         .join("-"),
     );
     // Each turn continues along the same diagonal (way 300 or 400).

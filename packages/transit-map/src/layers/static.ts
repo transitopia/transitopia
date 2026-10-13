@@ -223,16 +223,16 @@ export function addStaticLayers(
     data: stationsGeoJson(plan),
   };
   if (map.getSource(ROUTES_SOURCE)) {
-    (map.getSource(ROUTES_SOURCE) as GeoJSONSource).setData(
+    void (map.getSource(ROUTES_SOURCE) as GeoJSONSource).setData(
       routes.data as FeatureCollection,
     );
-    (map.getSource(STATIONS_SOURCE) as GeoJSONSource).setData(
+    void (map.getSource(STATIONS_SOURCE) as GeoJSONSource).setData(
       stations.data as FeatureCollection,
     );
-    (map.getSource(BUS_STOPS_SOURCE) as GeoJSONSource).setData(
+    void (map.getSource(BUS_STOPS_SOURCE) as GeoJSONSource).setData(
       busStopsGeoJson(plan),
     );
-    (map.getSource(BUS_TICKS_SOURCE) as GeoJSONSource).setData(
+    void (map.getSource(BUS_TICKS_SOURCE) as GeoJSONSource).setData(
       busTicksGeoJson(plan),
     );
     applyRouteFilter(map, hiddenRoutes);
@@ -545,7 +545,7 @@ export function setSelectedPlace(
   };
   const source = map.getSource(SELECTED_PLACE_SOURCE) as
     GeoJSONSource | undefined;
-  if (source) source.setData(data);
+  if (source) void source.setData(data);
   else map.addSource(SELECTED_PLACE_SOURCE, { type: "geojson", data });
   if (!map.getLayer(SELECTED_PLACE_LAYER))
     map.addLayer(

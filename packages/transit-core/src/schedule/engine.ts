@@ -158,7 +158,7 @@ export function preparePlan(
       arr,
       dep,
       visibleUntil: arr[n - 1]!,
-      legs: new Array(n - 1),
+      legs: Array.from({ length: n - 1 }),
     };
     let list = tripsByService.get(trip.service);
     if (!list) tripsByService.set(trip.service, (list = []));

@@ -106,7 +106,7 @@ npm run corrections -- export <dir> | import [<dir>] | pull   # corrections betw
 npm run snapshot:pull -- --from 2026-09-20 --to 2026-09-27 [--db]   # production recordings (+ DB snapshot) into var/ (needs rclone access to the archive)
 npm test                 # vitest, every workspace (database tests need TEST_DATABASE_URL=postgres://transitopia:transitopia@localhost:5433/postgres)
 npm run typecheck        # tsc in every workspace
-npm run lint             # oxlint --type-aware, repo-wide
+npm run lint             # oxlint --type-aware, repo-wide; warnings fail it (and CI)
 npm run format           # prettier (format-check in CI)
 npm run build            # build every workspace that has a build
 npm run data:gtfs        # fetch latest GTFS + build plan.json and manifest
@@ -131,7 +131,7 @@ npx tsx pipelines/screenshot.ts out.png "/transit?date=2026-09-28&t=08:00:00&pau
 
 ## Workflow
 
-- Formatting is prettier (config at the root) and linting is oxlint. Markdown, `regions/` data, `var/` and `map-layers/` aren't prettier-formatted (`.prettierignore`).
+- Formatting is prettier (config at the root) and linting is oxlint (`.oxlintrc.json`); a warning fails `npm run lint`, so fix it or, for a real false positive, disable the rule on that line with a comment saying why. Markdown, `regions/` data, `var/` and `map-layers/` aren't prettier-formatted (`.prettierignore`).
 - CI (`.github/workflows/checks.yml`) runs lint, format-check, typecheck, tests and builds, and both validators against a pinned GTFS snapshot (`FIXTURE_FEED_DATE`).
 - Time zones come from the runtime's tzdata (via ICU), never hard-coded. BC moved to permanent UTC−7 in 2026 (tzdata 2026b), so older data gets every time after 2026-11-01 wrong by an hour: the time tests fail and the server refuses to start (`timezoneChecks` in `regions/metro-vancouver/region.json`). Homebrew's `node` uses Homebrew's icu4c, whose tzdata can lag Node's own builds: use an official Node build, or set `ICU_TIMEZONE_FILES_DIR` to a folder with current `.res` files from https://github.com/unicode-org/icu-data/tree/main/tzdata/icunew/<version>/44/le.
 - Everything under `var/` is gitignored: `var/raw/`, `var/rt-history/`, `var/ais-history/`, `var/dispatch-history/`, `var/public/{data,tiles,basemap-assets}/`.

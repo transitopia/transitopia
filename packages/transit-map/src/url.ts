@@ -67,7 +67,7 @@ export function readUrl(): UrlState {
 export function writeUrl(
   clock: Clock,
   vehicle: string | undefined,
-  place?: Place | undefined,
+  place?: Place,
 ): void {
   const q = new URLSearchParams();
   if (!clock.isLive()) {

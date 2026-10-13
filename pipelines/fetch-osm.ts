@@ -70,7 +70,7 @@ async function main() {
       return;
     } catch (e) {
       lastErr = e;
-      log(`  failed: ${e instanceof Error ? e.message : e}`);
+      log(`  failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   throw lastErr;

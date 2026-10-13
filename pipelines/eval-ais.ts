@@ -92,4 +92,5 @@ for (const f of fixes) {
   seen.set(k, (seen.get(k) ?? 0) + 1);
 }
 console.log("\nStationary fixes:");
-for (const [k, n] of [...seen].sort()) console.log(`  ${k}: ${n}`);
+for (const [k, n] of [...seen].sort(([a], [b]) => a.localeCompare(b)))
+  console.log(`  ${k}: ${n}`);

@@ -141,7 +141,7 @@ describe("departuresAt", () => {
     expect(deps.filter((d) => d.routeKey === "A")).toHaveLength(6);
     expect(deps.filter((d) => d.routeKey === "B")).toHaveLength(4);
     expect(deps.map((d) => d.t)).toEqual(
-      [...deps.map((d) => d.t)].sort((a, b) => a - b),
+      deps.map((d) => d.t).sort((a, b) => a - b),
     );
     expect(deps[0]!.t).toBe(at(H8 + 120));
     expect(deps.every((d) => d.source === "schedule" && !d.cancelled)).toBe(
