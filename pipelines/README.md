@@ -35,5 +35,6 @@ What they check is in [packages/transit-core/DESIGN.md → Validation](../packag
 | `npm run snapshot:pull -- --from <date> --to <date> [--db]` | Pull production recordings (and a database snapshot) into `var/` ([deployment/README.md → Snapshots](../deployment/README.md#snapshots-for-development)) |
 | `npx tsx pipelines/eval-rt.ts` | Replay recorded RT data as the live view would: prediction error and jumps (`--subsample schedule` thins it to the poll schedule) |
 | `npx tsx pipelines/probe-ais.ts` | Record raw aisstream.io messages for the SeaBus fleet and summarise them |
+| `npx tsx pipelines/eval-gpx.ts [<file.gpx> ...]` | GPX ridden on a bus (`regions/metro-vancouver/observations/gpx/*-B<bus>-<trip_id>.gpx`) as ground truth: GTFS-RT fix accuracy and staleness, real dwells vs the profile, live view and playback error |
 | `npx tsx pipelines/eval-ais.ts [YYYYMMDD]` | Recorded SeaBus AIS against the timetable |
 | `npx tsx pipelines/screenshot.ts out.png "<path>"` | Screenshot the running site with the local Chrome (`--mobile`, `--dark`, `--pick <route>`) |
