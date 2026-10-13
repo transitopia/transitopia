@@ -222,8 +222,10 @@ const URL_WRITE_THROTTLE_MS = 300;
  */
 const FOLLOW_MAX_RATE = 10;
 /** Pan when the followed vehicle comes within this fraction of the visible area's edge. */
-const FOLLOW_EDGE_FRACTION = 0.15;
-const FOLLOW_PAN_MS = 600;
+const REVEAL_EDGE_FRACTION = 0.15;
+const REVEAL_PAN_MS = 600;
+/** Starting to follow eases to the vehicle over this long; then it's held at the centre. */
+const FOLLOW_START_MS = 500;
 /** Snapshot refresh while playing (discrete changes publish immediately). */
 const SNAPSHOT_INTERVAL_MS = 200;
 /** Sources the engine adds to the host's map (removed on dispose). */
@@ -270,6 +272,8 @@ export class TransitEngine {
   /** The real-time corrections last applied, per service date (for departure times). */
   private lastCorrections: Map<string, ScheduleCorrections> | undefined;
   private following = false;
+  /** Follow ended: drop the map padding it set, once the map stops moving (a drag may be under way). */
+  private clearPaddingPending = false;
   /** Screen edges covered by the host's chrome (cards, time bar), px: follow keeps clear of them. */
   private viewPadding = { top: 0, right: 0, bottom: 0, left: 0 };
   private tracks: InfraCollection | undefined;
@@ -375,7 +379,7 @@ export class TransitEngine {
     // Dragging the map takes the camera back; zooming doesn't.
     const onDragStart = () => {
       if (!this.following) return;
-      this.following = false;
+      this.setFollow(false);
       this.publish();
     };
     const onMouseMove = (e: { point: { x: number; y: number } }) => {
@@ -489,13 +493,15 @@ export class TransitEngine {
    * another vehicle stops following.
    */
   select(id: string | undefined, opts?: { follow?: boolean }): void {
-    if (id !== this.selectedId)
-      this.following = id !== undefined && (opts?.follow ?? false);
-    if (id !== this.selectedId)
+    const changed = id !== this.selectedId;
+    if (changed)
       this.selectedRoute = this.lastVehicles.find((v) => v.id === id)?.routeKey;
-    if (id !== undefined && id !== this.selectedId && !this.following)
+    const follow =
+      changed ? id !== undefined && (opts?.follow ?? false) : this.following;
+    if (id !== undefined && changed && !follow)
       this.revealAt = performance.now() + REVEAL_DELAY_MS;
     this.selectedId = this.vehicles.selectedId = id;
+    if (changed) this.setFollow(follow);
     this.place = undefined;
     this.syncPlaceHighlight();
     this.writeUrl();
@@ -506,7 +512,7 @@ export class TransitEngine {
   selectPlace(place: Place): void {
     this.selectedId = this.vehicles.selectedId = undefined;
     this.selectedRoute = undefined;
-    this.following = false;
+    this.setFollow(false);
     this.place = place;
     this.revealAt = performance.now() + REVEAL_DELAY_MS;
     this.syncPlaceHighlight();
@@ -601,18 +607,25 @@ export class TransitEngine {
       this.map.easeTo({
         center: [v.lon, v.lat],
         zoom: Math.max(this.map.getZoom(), 15),
-        offset: this.paddingOffset(),
+        ...(this.following ?
+          { padding: this.viewPadding }
+        : { offset: this.paddingOffset() }),
         duration: 600,
       });
   }
 
   /**
-   * Where the middle of the visible area is, relative to the map's centre. An offset rather than
-   * MapLibre's `padding`, which would persist and shift the centre written to the URL.
+   * Where the middle of the visible area is, relative to the map's centre (net of any padding the
+   * map already has). An offset rather than MapLibre's `padding`, which persists and shifts the
+   * centre written to the URL: only follow sets the map's padding, while it lasts.
    */
   private paddingOffset(): [number, number] {
     const p = this.viewPadding;
-    return [(p.left - p.right) / 2, (p.top - p.bottom) / 2];
+    const m = this.mapPadding();
+    return [
+      (p.left - m.left - (p.right - m.right)) / 2,
+      (p.top - m.top - (p.bottom - m.bottom)) / 2,
+    ];
   }
 
   /** Fit a route's lines into the area the host's chrome leaves clear. */
@@ -671,11 +684,69 @@ export class TransitEngine {
     return days;
   }
 
-  /** Keep the selected vehicle in view (or stop). */
+  /** Keep the selected vehicle at the centre of the view (or stop). */
   setFollowing(on: boolean): void {
-    this.following = on && this.selectedId !== undefined;
+    this.setFollow(on && this.selectedId !== undefined);
     if (this.following) this.locateSelected();
     this.publish();
+  }
+
+  /**
+   * Start or stop following (apps/web/README.md#follow). While following, the map's padding is the
+   * area the host's chrome leaves clear, so its centre is the visible centre, where the vehicle is
+   * held; and scroll and pinch zoom go around that centre instead of the pointer, so zooming keeps
+   * the vehicle where it is.
+   */
+  private setFollow(on: boolean): void {
+    if (on === this.following) return;
+    this.following = on;
+    const { map } = this;
+    const around = on ? { around: "center" as const } : undefined;
+    if (map.scrollZoom.isEnabled()) map.scrollZoom.enable(around);
+    if (map.touchZoomRotate.isEnabled()) map.touchZoomRotate.enable(around);
+    if (on) {
+      this.clearPaddingPending = false;
+      const v = this.lastVehicles.find((x) => x.id === this.selectedId);
+      if (v)
+        map.easeTo({
+          center: [v.lon, v.lat],
+          padding: this.viewPadding,
+          duration: FOLLOW_START_MS,
+        });
+    } else this.clearPaddingPending = true;
+  }
+
+  /** The map's current padding, every side defined. */
+  private mapPadding(): {
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+  } {
+    const p = this.map.getPadding();
+    return {
+      top: p.top ?? 0,
+      right: p.right ?? 0,
+      bottom: p.bottom ?? 0,
+      left: p.left ?? 0,
+    };
+  }
+
+  /** Remove the map's padding without moving what's on screen. */
+  private clearMapPadding(): void {
+    const { map } = this;
+    const pad = this.mapPadding();
+    if (pad.top || pad.right || pad.bottom || pad.left) {
+      const canvas = map.getCanvas();
+      map.jumpTo({
+        center: map.unproject([
+          canvas.clientWidth / 2,
+          canvas.clientHeight / 2,
+        ]),
+        padding: { top: 0, right: 0, bottom: 0, left: 0 },
+      });
+    }
+    this.clearPaddingPending = false;
   }
 
   /** The screen edges the host's chrome covers (px), so follow and centre keep clear of them. */
@@ -689,12 +760,27 @@ export class TransitEngine {
   }
 
   /**
-   * Follow: pan when the vehicle nears the edge of the visible area, rather than locking it to the
-   * centre. Not while the map is already moving (an ease, or the user zooming).
+   * Follow: hold the vehicle exactly at the centre of the visible area, every frame. Not while the
+   * map is moving (an ease, or the user zooming: that zooms around the centre, so the vehicle stays
+   * put anyway), because jumpTo would cancel the gesture.
    */
-  private keepInView(): void {
+  private keepCentred(): void {
+    const { map } = this;
     const v = this.lastVehicles.find((x) => x.id === this.selectedId);
-    if (v) this.keepPointInView(v); // else between trips or out of service: wait for it
+    if (!v || map.isMoving()) return; // no vehicle: between trips or out of service, wait for it
+    const want = this.viewPadding;
+    const have = this.mapPadding();
+    const at = map.project([v.lon, v.lat]);
+    const centre = map.project(map.getCenter());
+    if (
+      want.top === have.top
+      && want.right === have.right
+      && want.bottom === have.bottom
+      && want.left === have.left
+      && Math.hypot(at.x - centre.x, at.y - centre.y) < 0.25
+    )
+      return;
+    map.jumpTo({ center: [v.lon, v.lat], padding: want });
   }
 
   /** Pan so a point is clear of the host's chrome, if it's near or under it. */
@@ -707,8 +793,8 @@ export class TransitEngine {
     const h = height - p.top - p.bottom;
     if (w <= 0 || h <= 0) return;
     const pt = map.project([v.lon, v.lat]);
-    const mx = w * FOLLOW_EDGE_FRACTION;
-    const my = h * FOLLOW_EDGE_FRACTION;
+    const mx = w * REVEAL_EDGE_FRACTION;
+    const my = h * REVEAL_EDGE_FRACTION;
     if (
       pt.x < p.left + mx
       || pt.x > width - p.right - mx
@@ -718,7 +804,7 @@ export class TransitEngine {
       map.easeTo({
         center: [v.lon, v.lat],
         offset: this.paddingOffset(),
-        duration: FOLLOW_PAN_MS,
+        duration: REVEAL_PAN_MS,
       });
   }
 
@@ -743,6 +829,8 @@ export class TransitEngine {
     if (this.disposed) return;
     this.disposed = true;
     cancelAnimationFrame(this.raf);
+    this.setFollow(false);
+    this.clearMapPadding();
     clearTimeout(this.urlTimer);
     for (const fn of this.cleanups) fn();
     this.rt.stop();
@@ -1103,7 +1191,9 @@ export class TransitEngine {
         this.theme === "dark",
       );
     this.syncStatic();
-    if (this.following && this.styleReady) this.keepInView();
+    if (this.following && this.styleReady) this.keepCentred();
+    else if (this.clearPaddingPending && !map.isMoving())
+      this.clearMapPadding();
     if (this.revealAt !== undefined && performance.now() > this.revealAt) {
       this.revealAt = undefined;
       const at = this.placePoint();
