@@ -7,7 +7,8 @@ import {
 } from "../src/testing.ts";
 import { migrate } from "../src/migrate.ts";
 import { dropExpiredPartitions, ensurePartitions } from "../src/partitions.ts";
-import { recoverInterrupted, runOnce } from "../src/jobs.ts";
+import { recentRuns, recoverInterrupted, runOnce } from "../src/jobs.ts";
+import { storageSizes } from "../src/storage.ts";
 
 describe.skipIf(!TEST_DATABASE_URL)("database", () => {
   let t: TestDb;
@@ -165,5 +166,21 @@ describe.skipIf(!TEST_DATABASE_URL)("database", () => {
       "done",
     );
     expect(calls).toBe(1);
+  });
+
+  it("reports table sizes with partitions summed into their parent", async () => {
+    const { databaseBytes, tables } = await storageSizes(t.db);
+    const positions = tables.find((x) => x.table === "rt_positions");
+    expect(databaseBytes).toBeGreaterThan(0);
+    expect(positions?.partitions).toBeGreaterThan(1);
+    expect(positions?.bytes).toBeGreaterThan(0);
+    expect(tables.some((x) => x.table.startsWith("rt_positions_"))).toBe(false);
+  });
+
+  it("lists recent runs of one job", async () => {
+    await runOnce(t.db, "only-this", "k1", async () => undefined);
+    await runOnce(t.db, "another", "k1", async () => undefined);
+    const runs = await recentRuns(t.db, 10, "only-this");
+    expect(runs.map((r) => r.job)).toEqual(["only-this"]);
   });
 });

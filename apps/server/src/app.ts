@@ -11,6 +11,7 @@ import { cors } from "hono/cors";
 import { sql } from "kysely";
 import type { Db } from "@transitopia/db/connect.ts";
 import { recentRuns } from "@transitopia/db/jobs.ts";
+import { storageSizes } from "@transitopia/db/storage.ts";
 import type { ReviewState } from "@transitopia/db/schema.ts";
 import type {
   Disruption,
@@ -121,6 +122,9 @@ export function createApp(deps: AppDeps): Hono<Env> {
       ),
       health: await health(deps),
       jobs: db ? await recentRuns(db, 40) : [],
+      // Every daily run within retention: rows and trips per service date, for sizing.
+      daily: db ? await recentRuns(db, 60, "daily") : [],
+      storage: db ? await storageSizes(db) : null,
     }),
   );
 

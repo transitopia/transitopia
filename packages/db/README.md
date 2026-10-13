@@ -9,6 +9,7 @@ PostgreSQL (18, with PostGIS) for the Transitopia server: SQL migrations, [Kysel
 | `src/connect.ts` | `createDb(url)`: a pool and a Kysely instance |
 | `src/partitions.ts` | Daily partitions (UTC) for raw tables, monthly ones for observed stop times; dropping expired daily partitions is how raw data expires |
 | `src/jobs.ts` | `job_runs`: run a job once per key, retry failures, reset runs interrupted by a restart |
+| `src/storage.ts` | Database and per-table sizes (partitions summed), reported at `/admin/api/status` → `storage` |
 | `src/testing.ts` | A scratch database per test file, when `TEST_DATABASE_URL` is set (tests are skipped otherwise) |
 
 ## Tables
