@@ -308,7 +308,7 @@ export class RtClient {
       const entry = e;
       entry.loading = true;
       entry.fetchedAt = now;
-      fetch(`${this.api}rt/changes?date=${date}`)
+      void fetch(`${this.api}rt/changes?date=${date}`)
         .then((r) => (r.ok ? (r.json() as Promise<RtDayChanges>) : undefined))
         .catch(() => undefined)
         .then((data) => {
@@ -337,7 +337,7 @@ export class RtClient {
     this.predictors.set(version, "loading");
     // Scenario plans ("<version>~<name>") share the base feed's profile.
     const base = version.split("~")[0];
-    fetch(`${this.data}data/feeds/${base}/rt-profile.json`)
+    void fetch(`${this.data}data/feeds/${base}/rt-profile.json`)
       .then((r) => (r.ok ? (r.json() as Promise<RtProfileFile>) : undefined))
       .catch(() => undefined)
       .then((profile) => {

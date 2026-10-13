@@ -97,7 +97,9 @@ await flush();
 // Summary.
 const byMmsi = new Map<string, { at: number; msg: Msg }[]>();
 for (const r of received) {
-  const m = String(r.msg.MetaData?.MMSI ?? "?");
+  const mmsi = r.msg.MetaData?.MMSI;
+  const m =
+    typeof mmsi === "number" || typeof mmsi === "string" ? String(mmsi) : "?";
   (byMmsi.get(m) ?? byMmsi.set(m, []).get(m)!).push(r);
 }
 log(`${received.length} messages`);

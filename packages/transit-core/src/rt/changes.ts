@@ -113,17 +113,20 @@ export function mergeAlerts(
 
 /** Lookups over the loaded days' changes, for the timeline, the predictor and carried delays. */
 export interface ChangesView {
-  cancelled(serviceDate: string, tripId: string): boolean;
+  cancelled: (serviceDate: string, tripId: string) => boolean;
   /** Every trip cancelled on a service date. */
-  cancelledTrips(serviceDate: string): string[];
-  skipped(serviceDate: string, tripId: string): ReadonlySet<string> | undefined;
+  cancelledTrips: (serviceDate: string) => string[];
+  skipped: (
+    serviceDate: string,
+    tripId: string,
+  ) => ReadonlySet<string> | undefined;
   /** Detour alerts covering a bus on its trip at t. */
-  detours(
+  detours: (
     routeKey: string,
     directionId: number | undefined,
     tripId: string | undefined,
     t: number,
-  ): RtRouteAlert[];
+  ) => RtRouteAlert[];
 }
 
 /** @param graceMs how long an alert still counts after it was last seen (its poll interval), fixed or at a time. */

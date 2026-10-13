@@ -100,7 +100,7 @@ export function addTrackLayers(
   const data = colored(tracks, plan.routes, yard);
   const before = map.getLayer(VEHICLES_BEFORE_LAYER) ? "bus-stops" : undefined;
   if (map.getSource(TRACKS_SOURCE)) {
-    (map.getSource(TRACKS_SOURCE) as GeoJSONSource).setData(data);
+    void (map.getSource(TRACKS_SOURCE) as GeoJSONSource).setData(data);
     return;
   }
   map.addSource(TRACKS_SOURCE, { type: "geojson", data });
@@ -292,7 +292,7 @@ export function setDebugPlatforms(
       geometry: { type: "Point", coordinates: [at.lon, at.lat] },
     });
   }
-  src.setData({ type: "FeatureCollection", features });
+  void src.setData({ type: "FeatureCollection", features });
 }
 
 /** Hide tracks of hidden lines (yards stay visible). */

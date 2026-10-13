@@ -341,15 +341,16 @@ export function mapPlatforms(
         }),
       );
       total += weight * bc;
-      const chosen: number[] = new Array(layers.length);
+      const chosen: number[] = Array.from({ length: layers.length });
       const lastDir: Dir = bd === 0 ? 1 : -1;
       for (let i = layers.length - 1; i >= 0; i--) {
         chosen[i] = bi;
         const si = stops[i]!;
         if (!pinned.get(pat.id)?.has(i)) {
           const v =
-            votes.get(si) ?? new Array(candidatesFor(si).length).fill(0);
-          v[bi] += weight;
+            votes.get(si)
+            ?? Array.from({ length: candidatesFor(si).length }, () => 0);
+          v[bi]! += weight;
           votes.set(si, v);
         }
         const back = layers[i]![bi]![bd]!.back;

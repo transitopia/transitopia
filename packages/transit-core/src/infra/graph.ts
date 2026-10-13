@@ -150,7 +150,8 @@ export class TrackGraph {
         nd = n;
       }
     }
-    if (!nd) throw new Error(`Turn override: no node within 5 m of ${node}`);
+    if (!nd)
+      throw new Error(`Turn override: no node within 5 m of ${node.join(",")}`);
     const ends: { end: SegmentEnd; seg: Segment }[] = [];
     for (const s of this.segments.values()) {
       if (s.from === nd.id) ends.push({ end: `${s.id}:0`, seg: s });

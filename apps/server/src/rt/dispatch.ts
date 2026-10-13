@@ -98,7 +98,9 @@ export class LiveDispatcher {
 
   /** Current versions, for /rt/live and /rt/dispatch. */
   pointer(): Record<string, string> {
-    return Object.fromEntries([...this.current].sort());
+    return Object.fromEntries(
+      [...this.current].sort(([a], [b]) => a.localeCompare(b)),
+    );
   }
 
   index(): DispatchIndex {
@@ -106,7 +108,7 @@ export class LiveDispatcher {
       schema: 1,
       byDate: Object.fromEntries(
         [...this.current]
-          .sort()
+          .sort(([a], [b]) => a.localeCompare(b))
           .map(([d, v]) => [
             d,
             { version: v, path: `rt/dispatch/${d}/${v}.json` },
@@ -167,9 +169,9 @@ export class LiveDispatcher {
       if (d.status !== "draft")
         for (const x of datesOf(d)) if (x >= lo && x <= hi) dates.add(x);
     // Dates whose inputs went away fall back to the base plan.
-    for (const d of [...this.current.keys()])
+    for (const d of this.current.keys())
       if (!dates.has(d)) this.current.delete(d);
-    for (const date of [...dates].sort()) {
+    for (const date of [...dates].sort((a, b) => a.localeCompare(b))) {
       const inputs: DateInputs = {
         date,
         observations: observations.filter(
@@ -198,7 +200,7 @@ export class LiveDispatcher {
       );
     }
     // Keep only current versions in memory; older ones are on disk.
-    for (const key of [...this.patches.keys()]) {
+    for (const key of this.patches.keys()) {
       const [d, v] = key.split("/");
       if (this.current.get(d!) !== v) this.patches.delete(key);
     }
@@ -257,7 +259,7 @@ export class LiveDispatcher {
       { version: string; summary: DispatchPatch["summary"] }
     > = {};
     const ids = new Set((candidate.disruptions ?? []).map((d) => d.id));
-    for (const date of [...dates].sort()) {
+    for (const date of [...dates].sort((a, b) => a.localeCompare(b))) {
       const ctx = await this.contexts.forDate(date);
       if (!ctx) continue;
       const inputs: DateInputs = {

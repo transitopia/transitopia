@@ -108,7 +108,7 @@ export class PlanStore {
   ): void {
     if (store.has(key) || this.pending.has(key)) return;
     this.pending.add(key);
-    fetch(url)
+    void fetch(url)
       .then(async (r) => (r.ok ? make(await r.json()) : null))
       .catch(() => null)
       .then((v) => {
@@ -122,7 +122,7 @@ export class PlanStore {
   private observationsFor(date: string): Observation[] | undefined {
     if (this.observationIndex === undefined) {
       this.observationIndex = null;
-      fetch(`${this.dataBase}data/observations/index.json`)
+      void fetch(`${this.dataBase}data/observations/index.json`)
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null)
         .then((idx) => {

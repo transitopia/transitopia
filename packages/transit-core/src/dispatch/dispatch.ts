@@ -175,7 +175,7 @@ function finish(
   });
 
   const delay: DispatchSummary["delay"] = {};
-  for (const [line, ds] of [...delays].sort()) {
+  for (const [line, ds] of [...delays].sort(([a], [b]) => a.localeCompare(b))) {
     const sorted = [...ds].sort((a, b) => a - b);
     const q = (f: number) =>
       Math.round(

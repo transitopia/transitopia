@@ -21,7 +21,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "oxlint --type-aware",
+    "lint": "oxlint --type-aware --deny-warnings",
     "format": "prettier --write .",
     "format-check": "prettier --check .",
     "server": "tsx apps/server/src/main.ts",
