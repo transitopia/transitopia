@@ -323,7 +323,10 @@ const PlaceCardBody: React.FC<{
       eyebrow={eyebrow}
       title={title}
       subtitle={
-        station ? railRoutes.map((r) => r.label).join(" · ") : undefined
+        station ? railRoutes.map((r) => r.label).join(" · ")
+        : place.code ?
+          `Stop #${place.code}`
+        : undefined
       }
       status={
         state.future ?

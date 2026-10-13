@@ -148,6 +148,8 @@ export interface PlaceSnapshot extends Place {
   lat: number;
   routes: PlanRoute[];
   groups: PlaceGroup[];
+  /** A bus stop's number on its sign (GTFS stop_code), where the plan has it. */
+  code?: string | undefined;
   /** A station's or exchange's bus bays, by number: each has its own stop card. */
   bays: { id: string; label: string }[];
   /** The station or exchange a bay belongs to. */
@@ -1043,6 +1045,7 @@ export class TransitEngine {
       ...p,
       kind: p.kind,
       name: where.name,
+      code: "code" in where ? where.code : undefined,
       bays: (hub?.bays ?? []).map((id) => ({
         id,
         label: bayLabel(stopName(id)),

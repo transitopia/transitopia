@@ -26,6 +26,8 @@ export interface PlanStop {
   name: string;
   lon: number;
   lat: number;
+  /** GTFS stop_code: the number on the stop's sign ("50123"). Absent in plans built before it. */
+  code?: string;
   /** Parent station stop_id, for platforms. */
   parent?: string;
   /** Platform code/number parsed from the name, e.g. "2" for "… @ Platform 2". */

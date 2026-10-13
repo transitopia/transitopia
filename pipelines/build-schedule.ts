@@ -214,6 +214,7 @@ export async function buildPlan(zipPath: string): Promise<ServicePlan> {
       lon: Number(row.stop_lon),
       lat: Number(row.stop_lat),
     };
+    if (row.stop_code) s.code = row.stop_code;
     if (row.parent_station) s.parent = row.parent_station;
     const platform = /@\s*Platform\s+(\w+)/i.exec(s.name)?.[1];
     if (platform) s.platform = platform;
