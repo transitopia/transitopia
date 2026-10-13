@@ -112,12 +112,9 @@ export async function recoverInterrupted(
     .execute();
 }
 
-/** Latest runs per job, for /status and the admin page. */
-export async function recentRuns(db: Db, limit = 50) {
-  return db
-    .selectFrom("job_runs")
-    .selectAll()
-    .orderBy("started_at", "desc")
-    .limit(limit)
-    .execute();
+/** Latest runs (of one job, or of all), for /status and the admin page. */
+export async function recentRuns(db: Db, limit = 50, job?: string) {
+  let q = db.selectFrom("job_runs").selectAll();
+  if (job) q = q.where("job", "=", job);
+  return q.orderBy("started_at", "desc").limit(limit).execute();
 }

@@ -8,7 +8,7 @@
 //   profile — learned profile (falling back to timetable), adapted to the bus's pace
 //
 //   npx tsx pipelines/eval-rt.ts [--test 2026-09-26T16,2026-09-26T17] [--test-last 3] [--set paceWeight=0.3] [--no-live]
-//                              [--subsample <seconds>|schedule]
+//                              [--subsample <seconds>|schedule] [--train-days weekday|weekend]
 // Default: test on the last 3 complete hours, train on all other complete hours. --subsample replays
 // the live view as if positions had been polled only this often (or on the poll schedule in
 // regions/metro-vancouver/config/rt.json, packages/transit-core/src/rt/budget.ts), still scoring it against every recorded fix.
@@ -47,6 +47,8 @@ import {
 import type { RtSnapshot } from "@transitopia/transit-core/rt/types.ts";
 
 const CADENCE = cadence(rtConfig as unknown as CadenceConfig);
+/** An hour counts as complete when its snapshots span at least this long (two 300 s polls short of an hour). */
+const COMPLETE_HOUR_SPAN_MS = 50 * 60_000;
 
 const args = process.argv.slice(2);
 const opt = (name: string) => {
@@ -115,8 +117,14 @@ const fmt = (a: number[]) =>
   `p50 ${q(a, 0.5).toFixed(0).padStart(4)} m   p75 ${q(a, 0.75).toFixed(0).padStart(4)} m   p90 ${q(a, 0.9).toFixed(0).padStart(4)} m   (n=${a.length})`;
 
 async function main() {
+  // Complete hours: snapshots spanning most of the hour. Not a snapshot count, since the poll
+  // interval varies from 60 s to 300 s through the day (regions/metro-vancouver/config/rt.json → poll).
   const hours = (await loadRecordedHours()).filter(
-    (h) => !h.open && h.snapshots.length > 60,
+    (h) =>
+      !h.open
+      && h.snapshots.length > 1
+      && h.snapshots.at(-1)!.fetchedAt - h.snapshots[0]!.fetchedAt
+        >= COMPLETE_HOUR_SPAN_MS,
   );
   if (hours.length < 2)
     throw new Error(
@@ -126,7 +134,15 @@ async function main() {
     opt("--test")?.split(",")
     ?? hours.slice(-Number(opt("--test-last") ?? 3)).map((h) => h.label);
   const test = hours.filter((h) => testLabels.includes(h.label));
-  const train = hours.filter((h) => !testLabels.includes(h.label));
+  // --train-days weekday|weekend: train only on those days (by the recorded local date).
+  const trainDays = opt("--train-days");
+  const isWeekend = (label: string) =>
+    Temporal.PlainDate.from(label.slice(0, 10)).dayOfWeek >= 6;
+  const train = hours.filter(
+    (h) =>
+      !testLabels.includes(h.label)
+      && (!trainDays || (trainDays === "weekend") === isWeekend(h.label)),
+  );
   const plans = await planLoader();
   const pp = await plans.forTime(test[0]!.snapshots[0]!.fetchedAt);
   if (!pp) throw new Error("No feed for the test hours");

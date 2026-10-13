@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
 import { RtService } from "../src/rt/service.ts";
+import { health, type AppDeps } from "../src/app.ts";
 
 const { FeedMessage } = GtfsRealtimeBindings.transit_realtime;
 
@@ -18,6 +19,49 @@ function emptyFeed(): Uint8Array {
     }),
   ).finish();
 }
+
+/** A positions feed with buses on trips. */
+function positionsFeed(tripIds: string[]): Uint8Array {
+  return FeedMessage.encode(
+    FeedMessage.create({
+      header: {
+        gtfsRealtimeVersion: "2.0",
+        timestamp: Math.floor(Date.now() / 1000),
+      },
+      entity: tripIds.map((tripId, i) => ({
+        id: `v${i}`,
+        vehicle: {
+          trip: { tripId },
+          vehicle: { id: `bus${i}` },
+          position: { latitude: 49.26, longitude: -123.1 },
+          timestamp: Math.floor(Date.now() / 1000),
+        },
+      })),
+    }),
+  ).finish();
+}
+
+/** A trip-updates feed with one stop delay per trip. */
+function tripUpdatesFeed(tripIds: string[]): Uint8Array {
+  return FeedMessage.encode(
+    FeedMessage.create({
+      header: {
+        gtfsRealtimeVersion: "2.0",
+        timestamp: Math.floor(Date.now() / 1000),
+      },
+      entity: tripIds.map((tripId) => ({
+        id: tripId,
+        tripUpdate: {
+          trip: { tripId, routeId: "6641", startDate: "20261012" },
+          stopTimeUpdate: [{ stopSequence: 3, arrival: { delay: 60 } }],
+        },
+      })),
+    }),
+  ).finish();
+}
+
+const feedResponse = (body: Uint8Array) =>
+  new Response(new Blob([body as Uint8Array<ArrayBuffer>]), { status: 200 });
 
 describe("RtService", () => {
   let dir: string | undefined;
@@ -165,5 +209,138 @@ describe("RtService", () => {
     expect(
       (await service.handle("/rt/dispatch", new URLSearchParams())).status,
     ).toBe(404);
+  });
+
+  it("keeps a trip-updates failure visible after positions succeed, and fails health", async () => {
+    dir = await mkdtemp(join(tmpdir(), "rt-test-"));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL) =>
+        /gtfsrealtime/.test(String(url)) ?
+          new Response("upstream broke", { status: 500 })
+        : feedResponse(
+            /gtfsposition/.test(String(url)) ?
+              positionsFeed(["t1", "t2"])
+            : emptyFeed(),
+          ),
+      ),
+    );
+    service = new RtService({
+      historyDir: dir,
+      record: false,
+      log: () => {},
+      apiKey: "test-key",
+      dispatch: false,
+      disruptionsDir: dir,
+    });
+    await service.start(0);
+    const status = async () =>
+      JSON.parse(
+        String(
+          (await service!.handle("/rt/status", new URLSearchParams())).body,
+        ),
+      );
+    await vi.waitFor(async () =>
+      expect((await status()).feeds.tripUpdates.lastError).toMatch(/500/),
+    );
+    await vi.waitFor(async () =>
+      expect((await status()).feeds.positions.lastOkAgeS).not.toBeNull(),
+    );
+    expect((await status()).feeds.tripUpdates.lastError).toMatch(/500/);
+    const h = await health({ service } as unknown as AppDeps);
+    expect(h.ok).toBe(false);
+    expect(h.checks.tripUpdates?.ok).toBe(false);
+    expect(h.checks.tripUpdates?.detail).toMatch(
+      /no successful poll yet; last error/,
+    );
+  });
+
+  it("fails health when trip updates succeed but give no delays for the buses", async () => {
+    dir = await mkdtemp(join(tmpdir(), "rt-test-"));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL) =>
+        feedResponse(
+          /gtfsposition/.test(String(url)) ?
+            positionsFeed(["t1", "t2"])
+          : emptyFeed(),
+        ),
+      ),
+    );
+    service = new RtService({
+      historyDir: dir,
+      record: false,
+      log: () => {},
+      apiKey: "test-key",
+      dispatch: false,
+      disruptionsDir: dir,
+    });
+    await service.start(0);
+    // Positions polled again once trip updates have been read (the first may come back before them).
+    await vi.waitFor(async () => {
+      const st = JSON.parse(
+        String(
+          (await service!.handle("/rt/status", new URLSearchParams())).body,
+        ),
+      );
+      expect(st.feeds.tripUpdates.lastOkAgeS).not.toBeNull();
+    });
+    await (
+      service as unknown as { pollPositions(): Promise<void> }
+    ).pollPositions();
+    const h = await health({ service } as unknown as AppDeps);
+    expect(h.checks.tripUpdates?.ok).toBe(false);
+    expect(h.checks.tripUpdates?.detail).toMatch(
+      /0 % of vehicles have a delay/,
+    );
+  });
+
+  it("summarises each trip-updates poll against the buses, and logs when few match", async () => {
+    dir = await mkdtemp(join(tmpdir(), "rt-test-"));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL) =>
+        feedResponse(
+          /gtfsposition/.test(String(url)) ? positionsFeed(["t1", "t2"])
+          : /gtfsrealtime/.test(String(url)) ? tripUpdatesFeed(["t9"])
+          : emptyFeed(),
+        ),
+      ),
+    );
+    const logs: string[] = [];
+    service = new RtService({
+      historyDir: dir,
+      record: false,
+      log: (m: string) => logs.push(m),
+      apiKey: "test-key",
+      dispatch: false,
+      disruptionsDir: dir,
+    });
+    await service.start(0);
+    await vi.waitFor(() =>
+      expect(service!.liveResponse().snapshot).not.toBeNull(),
+    );
+    // The first trip-updates poll may have come before any positions: poll again now.
+    const internals = service as unknown as {
+      pollTripUpdates(): Promise<number>;
+    };
+    expect(await internals.pollTripUpdates()).toBeGreaterThan(0);
+    const { tripFeed } = JSON.parse(
+      String((await service.handle("/rt/status", new URLSearchParams())).body),
+    );
+    expect(tripFeed).toMatchObject({
+      trips: 1,
+      withStopDelays: 1,
+      matched: 0,
+      busesOnTrips: 2,
+      busesMatched: 0,
+      unmatchedTrips: [
+        { tripId: "t9", routeId: "6641", startDate: "20261012" },
+      ],
+      unmatchedBuses: [{ tripId: "t1" }, { tripId: "t2" }],
+    });
+    expect(logs.join("\n")).toMatch(
+      /trip updates match few buses: 0 of 2 .*Unmatched feed trips: t9 \(route 6641\)/,
+    );
   });
 });

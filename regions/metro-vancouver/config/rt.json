@@ -29,6 +29,8 @@
   "$extrapolateSlackS": "At the live edge, predict a vehicle forward along its route for at most the positions poll interval plus this (fixes are already ~20-60 s old when fetched). Was 90 s at a fixed 20 s interval.",
   "extrapolateSlackS": 70,
   "clientPollS": 10,
+  "$tripUpdatesMinCoverage": "/healthz fails when fewer than this share of the vehicles in a positions poll (those on a trip) have a delay from TransLink's trip updates: the trip-updates feed is empty or no longer matches the positions. Measured 2026-10-01 to 10-11: 75-85 % in service hours, 36-60 % at night; 0 from 04:00 on 2026-10-12 while polls kept succeeding (apps/server/README.md#real-time-service). Guess at the threshold.",
+  "tripUpdatesMinCoverage": 0.2,
   "$detourNearM": "A bus off its route while a TransLink detour alert covers it counts as on detour only within this distance of a stop the alert lists (guess; long-running detours would otherwise switch off shifted-GPS handling route-wide). See regions/metro-vancouver/OPEN-QUESTIONS.md #28.",
   "detourNearM": 3000,
   "$dispatchCheckS": "Live dispatch (apps/server/README.md#live-dispatch-and-previews): how often the RT service checks regions/metro-vancouver/observations and regions/metro-vancouver/disruptions for changes. Only changed inputs re-dispatch a date; client requests never do.",
@@ -61,7 +63,7 @@
     "defaultDwellS": 15,
     "minDwellS": 4,
     "paceWindowS": 180,
-    "$paceWeight": "Tuned on 8 h training / 3 h test (2026-09-26): adapting to the bus's recent pace (any window 180-1200 s) made 30-90 s predictions slightly worse, so it's off; re-test with more history.",
+    "$paceWeight": "Tuned on 8 h training / 3 h test (2026-09-26): adapting to the bus's recent pace (any window 180-1200 s) made 30-90 s predictions slightly worse, so it's off. Re-tested 2026-10-12 on 311 h of production recordings at the real cadence: 0.3 is 3-8 % worse at 150-300 s on a weekday and a Sunday (0.6 worse still), better only on Thanksgiving Monday.",
     "paceWeight": 0,
     "paceClamp": [
       0.7,

@@ -11,6 +11,7 @@ import { cors } from "hono/cors";
 import { sql } from "kysely";
 import type { Db } from "@transitopia/db/connect.ts";
 import { recentRuns } from "@transitopia/db/jobs.ts";
+import { storageSizes } from "@transitopia/db/storage.ts";
 import type { ReviewState } from "@transitopia/db/schema.ts";
 import type {
   Disruption,
@@ -121,6 +122,9 @@ export function createApp(deps: AppDeps): Hono<Env> {
       ),
       health: await health(deps),
       jobs: db ? await recentRuns(db, 40) : [],
+      // Every daily run within retention: rows and trips per service date, for sizing.
+      daily: db ? await recentRuns(db, 60, "daily") : [],
+      storage: db ? await storageSizes(db) : null,
     }),
   );
 
@@ -313,7 +317,16 @@ export async function health({ service, db, jobs }: AppDeps): Promise<Health> {
     leader?: boolean;
     hasKey: boolean;
     lastSnapshotAgeS: number | null;
-    budget?: { intervalsS: { positions: number }; capped: boolean };
+    budget?: {
+      intervalsS: { positions: number; tripUpdates: number };
+      capped: boolean;
+    };
+    feeds?: Record<
+      string,
+      { lastOkAgeS: number | null; lastError: string | null }
+    >;
+    delayCoverage?: number | null;
+    minDelayCoverage?: number;
     ais: { connected: boolean; lastMessageAgeS: number | null } | null;
   };
   if (status.leader && status.hasKey) {
@@ -325,6 +338,30 @@ export async function health({ service, db, jobs }: AppDeps): Promise<Health> {
         age === null ? "no poll yet" : (
           `last poll ${Math.round(age)} s ago (limit ${limit} s)${status.budget?.capped ? ", daily cap reached" : ""}`
         ),
+    };
+  }
+  if (status.leader && status.hasKey && status.feeds?.tripUpdates) {
+    // A failed poll is logged and retried; this catches the feed staying down, or succeeding with
+    // nothing that matches the positions (trip updates also carry cancellations and skipped stops).
+    const { lastOkAgeS, lastError } = status.feeds.tripUpdates;
+    const limit = 3 * (status.budget?.intervalsS.tripUpdates ?? 1800);
+    const coverage = status.delayCoverage;
+    const fresh = lastOkAgeS !== null && lastOkAgeS <= limit;
+    const covered =
+      coverage === null
+      || coverage === undefined
+      || coverage >= (status.minDelayCoverage ?? 0);
+    checks.tripUpdates = {
+      ok: fresh && covered,
+      detail: [
+        lastOkAgeS === null ?
+          "no successful poll yet"
+        : `last successful poll ${lastOkAgeS} s ago (limit ${limit} s)`,
+        ...(lastError ? [`last error: ${lastError}`] : []),
+        ...(typeof coverage === "number" ?
+          [`${Math.round(coverage * 100)} % of vehicles have a delay`]
+        : []),
+      ].join("; "),
     };
   }
   if (status.leader && status.ais) {

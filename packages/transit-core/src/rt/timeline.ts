@@ -9,8 +9,10 @@
 //  - fixes 150 m–1 km off the trip's shape that still progress plausibly along it are treated as
 //    shifted GPS (seen: in-service buses reported ~350–620 m north of their route for 30+ min, on
 //    time, while TransLink's stop matching stalled) and placed on the route at their along-route
-//    position, as interpolated, with a note; when TransLink's next stop is left behind like that, the
-//    next stop and delay are worked out from the position instead;
+//    position, as interpolated, with a note;
+//  - a bus placed on its route gets its next stop and delay from its position, not TransLink's:
+//    TransLink's stop_id is mostly the stop the bus last passed, and its delay comes from trip updates
+//    polled every few minutes (packages/transit-core/DESIGN.md#buses);
 //  - between trips (a fix before its trip's scheduled departure, or a late start still short of
 //    its second stop): at its next trip's first stop (on the route, within BETWEEN_NEAR_START_M)
 //    it's drawn there, as a layover; elsewhere it isn't drawn until it starts the trip. Buses lay over and reposition off their route, or their GPS says so (seen: a 99 whose
@@ -142,8 +144,6 @@ const STILL_M = 30;
 const TRIP_CHANGE_MOVE_M = 15;
 /** Fixes closer than this give no usable heading; the bus faces along its route instead (m). */
 const HEADING_MIN_M = 30;
-/** TransLink's next stop is stuck when the bus is this far past it along the route (m). */
-const STUCK_NEXT_STOP_M = 200;
 /** A prediction this close to its fix still counts as observed (s). */
 const OBSERVED_S = 10;
 /** Nested corrections considered when working out what was shown before a fix arrived. */
@@ -875,7 +875,7 @@ export class RtTimeline {
     provenance: VehicleState["provenance"],
     t: number,
     basis: Obs,
-    /** Where it's shown along its route (and from which obs), to check TransLink's next stop. */
+    /** Where it's shown along its route (and from which obs): its next stop and delay come from this. */
     onRoute?: {
       tr: Track;
       i: number;
@@ -935,26 +935,25 @@ export class RtTimeline {
       notes.push(`GPS appears offset ≈ ${dist} m ${dir}; shown on its route`);
     }
     if (trip && onRoute && this.pp) {
-      // TransLink's next stop left well behind: its stop matching (and so its delay) has stalled.
-      const ids = trip.pattern.stops.map((si) => this.pp!.plan.stops[si]!.id);
-      const next = v.stopId ? ids.indexOf(v.stopId) : -1;
-      const fixAlong = this.alongOf(onRoute.tr, onRoute.i);
-      if (
-        next >= 0
-        && fixAlong > trip.pattern.dist[next]! + STUCK_NEXT_STOP_M
-      ) {
-        const actual = trip.pattern.dist.findIndex((d) => d > onRoute.along);
-        stop =
-          actual >= 0 ?
-            this.pp.plan.stops[trip.pattern.stops[actual]!]
-          : undefined;
-        const pr = this.opts.prediction;
-        if (pr) {
-          const { date, sec } = this.serviceTime(trip, basis.v.ts);
-          delay = Math.round(pr.predictor.delayAt(trip, fixAlong, sec, date));
-        } else delay = undefined;
-        notes.push(
-          `TransLink's next stop is stuck at ${this.pp.stopById.get(v.stopId!)?.name ?? v.stopId}; next stop and delay worked out from the position`,
+      // On its route: next stop and delay from the position. TransLink's stop_id is mostly the stop
+      // already passed (86 % of recorded fixes, 2026-10-01 to 10-12), and its delay is from trip
+      // updates up to a poll interval old. Without a predictor there's no paced schedule to measure
+      // against, so TransLink's delay stays.
+      const actual = trip.pattern.dist.findIndex((d) => d > onRoute.along);
+      stop =
+        actual >= 0 ?
+          this.pp.plan.stops[trip.pattern.stops[actual]!]
+        : undefined;
+      const pr = this.opts.prediction;
+      if (pr) {
+        const { date, sec } = this.serviceTime(trip, basis.v.ts);
+        delay = Math.round(
+          pr.predictor.delayAt(
+            trip,
+            this.alongOf(onRoute.tr, onRoute.i),
+            sec,
+            date,
+          ),
         );
       }
     }

@@ -549,10 +549,26 @@ describe("shifted GPS", () => {
     expect(v.lat).toBeCloseTo(49.25, 5); // on the route, not 500 m north
     expect(v.provenance).toBe("interpolated");
     expect(v.note).toMatch(/offset ≈ 500 m north/);
-    // TransLink's next stop (the first stop, 250 m back) is stuck: use the position instead.
+    // Next stop and delay from the position, as for any bus on its route.
     expect(v.stopName).toBe("End");
-    expect(v.note).toMatch(/stuck at Start/);
     expect(Math.abs(v.delay! - 1800)).toBeGreaterThan(60);
+  });
+
+  it("takes a bus's next stop and delay from its position, not TransLink's", () => {
+    // TransLink says next stop Start (passed: it's the stop the bus last left) and 30 min late.
+    const fixes = [fix(0, pt(100)), fix(30, pt(250))];
+    const v = new RtTimeline(fixes, pp, kin, popts).vehiclesAt(T0 + 30_000)[0]!;
+    expect(v.stopName).toBe("End");
+    // Due at 250 m at ~8:20:50, seen there at 9:00:30: ~40 min late.
+    expect(v.delay).toBeGreaterThan(2300);
+    expect(v.delay).toBeLessThan(2450);
+    expect(v.note).toBeUndefined();
+    // Without a predictor there's no paced schedule: TransLink's delay stays, the stop doesn't.
+    const plain = new RtTimeline(fixes, pp, kin, opts).vehiclesAt(
+      T0 + 30_000,
+    )[0]!;
+    expect(plain.stopName).toBe("End");
+    expect(plain.delay).toBe(1800);
   });
 
   it("leaves a far-off fix alone when it does not fit how the bus is progressing", () => {

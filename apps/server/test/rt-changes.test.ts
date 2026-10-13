@@ -3,7 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
-import { fetchAlerts, fetchTripUpdates } from "../src/rt/upstream.ts";
+import {
+  fetchAlerts,
+  fetchTripUpdates,
+  tripFeedSummary,
+} from "../src/rt/upstream.ts";
 import { ServiceChanges } from "../src/rt/changes.ts";
 import {
   alertActiveAt,
@@ -35,6 +39,56 @@ function serve(entity: unknown[]): void {
 }
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe("trip-updates feed summary", () => {
+  const feed = {
+    trips: [
+      { tripId: "a", routeId: "6641", stopDelays: 4 },
+      { tripId: "b", routeId: "6641", startDate: "20261012", stopDelays: 0 },
+    ],
+    headerTs: 1_000_000,
+    bytes: 2048,
+  };
+
+  it("counts trips matched to buses both ways, with unmatched examples", () => {
+    const buses = new Map([
+      ["a", "6641"],
+      ["c", "6641"],
+      ["d", undefined],
+    ]);
+    expect(tripFeedSummary(feed, buses, 1_030_000)).toEqual({
+      at: 1_030_000,
+      bytes: 2048,
+      headerAgeS: 30,
+      trips: 2,
+      withStopDelays: 1,
+      matched: 1,
+      busesOnTrips: 3,
+      busesMatched: 1,
+      unmatchedTrips: [
+        { tripId: "b", routeId: "6641", startDate: "20261012", stopDelays: 0 },
+      ],
+      unmatchedBuses: [{ tripId: "c", routeId: "6641" }, { tripId: "d" }],
+    });
+  });
+
+  it("keeps at most five examples each way", () => {
+    const many = {
+      ...feed,
+      trips: Array.from({ length: 8 }, (_, i) => ({
+        tripId: `t${i}`,
+        stopDelays: 1,
+      })),
+    };
+    const buses = new Map(
+      Array.from({ length: 8 }, (_, i) => [`b${i}`, undefined] as const),
+    );
+    const s = tripFeedSummary(many, buses, 1_000_000);
+    expect(s.unmatchedTrips).toHaveLength(5);
+    expect(s.unmatchedBuses).toHaveLength(5);
+    expect(s.busesMatched).toBe(0);
+  });
+});
 
 describe("GTFS-RT service changes: decoding", () => {
   it("reads cancelled trips and skipped stops from trip updates, without delays for either", async () => {
@@ -85,8 +139,27 @@ describe("GTFS-RT service changes: decoding", () => {
         },
       },
     ]);
-    const { delays, changes } = await fetchTripUpdates("k");
+    const { delays, changes, trips, headerTs, bytes } =
+      await fetchTripUpdates("k");
     expect(delays.get("15519786")?.bySeq).toEqual([[10, 2768]]);
+    // Every trip as sent, for matching against the buses (cancelled ones too).
+    expect(trips).toEqual([
+      {
+        tripId: "15519786",
+        routeId: "38311",
+        startDate: "20260929",
+        stopDelays: 1,
+      },
+      {
+        tripId: "15519634",
+        routeId: "38311",
+        startDate: "20260929",
+        stopDelays: 0,
+      },
+      { tripId: "x", routeId: "38311", stopDelays: 1 },
+    ]);
+    expect(headerTs).toBe(1790697910_000);
+    expect(bytes).toBeGreaterThan(0);
     expect(delays.has("15519634")).toBe(false);
     expect(changes).toEqual([
       {
