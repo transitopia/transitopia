@@ -146,6 +146,24 @@ disk holds for about a year. Older months need to move to monthly files in objec
 recent months in Postgres ([docs/DESIGN.md → Retention and statistics](../docs/DESIGN.md#retention-and-statistics));
 that export isn't built yet and must be before the disk fills.
 
+Checked against production's first 11 days (2026-10-01 to 10-12), using the job runs at
+`/admin/api/status`, the drawn routes' recordings and the timetable:
+
+- **Polls**: 738 on a weekday, as assumed; ~620 on a weekend day.
+- **Positions**: more buses report than the timetable has in service (1.15–1.21× on the drawn
+  routes, as layovers and deadheads report too), so a weekday has ~725,000 rows rather than 630,000.
+  Weekends have about half the weekday rows, so the 60-day total stays ~7.5 GB at the synthetic
+  bytes per row.
+- **Hourly files**: ~9 MB on a weekday and ~4.5 MB on a weekend day (scaled from the drawn routes'
+  0.9 and 0.4–0.5 MB), ~0.45 GB per copy over 60 days.
+- **Observed stop times**: 493,442 rows on Saturday 10-10 and 445,015 on Sunday 10-11, 90–91 % of
+  the scheduled bus stop events (98 % of scheduled trips had fixes). That makes ~645,000 on a
+  weekday and ~595,000 a day on average: **~70 GB a year** rather than 78, so the 100 GB disk lasts a
+  little over a year.
+- **Not checked yet**: bytes per row in Postgres, which these totals take from the synthetic day.
+  `/admin/api/status` → `storage` now reports the database's size per table, and `daily` the rows
+  per service date.
+
 #### Backups
 
 `pg_dump` nightly at 11:30 UTC to `<ARCHIVE_REMOTE>/backups/db/`, keeping 30 days, from the backup

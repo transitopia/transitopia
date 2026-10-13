@@ -61,7 +61,7 @@
     "defaultDwellS": 15,
     "minDwellS": 4,
     "paceWindowS": 180,
-    "$paceWeight": "Tuned on 8 h training / 3 h test (2026-09-26): adapting to the bus's recent pace (any window 180-1200 s) made 30-90 s predictions slightly worse, so it's off; re-test with more history.",
+    "$paceWeight": "Tuned on 8 h training / 3 h test (2026-09-26): adapting to the bus's recent pace (any window 180-1200 s) made 30-90 s predictions slightly worse, so it's off. Re-tested 2026-10-12 on 311 h of production recordings at the real cadence: 0.3 is 3-8 % worse at 150-300 s on a weekday and a Sunday (0.6 worse still), better only on Thanksgiving Monday.",
     "paceWeight": 0,
     "paceClamp": [
       0.7,
