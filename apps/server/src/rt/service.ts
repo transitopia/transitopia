@@ -158,7 +158,14 @@ export class RtService {
   private routesLoadedFrom: number | undefined;
   private timers: ReturnType<typeof setTimeout>[] = [];
   private running = false;
-  private lastError: string | undefined;
+  /** Per feed: when it last polled successfully and its last error, so one feed's success can't hide another's failure. */
+  private feeds: Record<PollFeed, { lastOkAt?: number; lastError?: string }> = {
+    positions: {},
+    tripUpdates: {},
+    alerts: {},
+  };
+  /** Share of the latest poll's vehicles on a trip that have a TransLink delay (null before a poll). */
+  private delayCoverage: number | null = null;
   private consecutiveErrors: Record<PollFeed, number> = {
     positions: 0,
     tripUpdates: 0,
@@ -505,6 +512,7 @@ export class RtService {
       try {
         await fn();
         this.consecutiveErrors[feed] = 0;
+        this.feeds[feed] = { lastOkAt: now };
         void this.store
           ?.recordRequest({ provider: TRANSLINK, feed, ts: now, status: 200 })
           .catch((e: Error) =>
@@ -512,20 +520,21 @@ export class RtService {
           );
       } catch (e) {
         const n = ++this.consecutiveErrors[feed];
-        this.lastError = e instanceof Error ? e.message : String(e);
+        const error = e instanceof Error ? e.message : String(e);
+        this.feeds[feed] = { ...this.feeds[feed], lastError: error };
         void this.store
           ?.recordRequest({
             provider: TRANSLINK,
             feed,
             ts: now,
-            error: this.lastError,
+            error,
           })
           .catch((e: Error) =>
             this.log(`could not record request (${e.message})`),
           );
         delay = Math.min(Math.max(300_000, delay), delay * 2 ** Math.min(4, n));
         this.log(
-          `${feed} poll failed (${this.lastError}); retrying in ${Math.round(delay / 1000)}s`,
+          `${feed} poll failed (${error}); retrying in ${Math.round(delay / 1000)}s`,
         );
       }
       schedule(now + delay);
@@ -602,6 +611,8 @@ export class RtService {
       AbortSignal.timeout(15_000),
     );
     const vehicles: RtVehicle[] = [];
+    let onTrips = 0;
+    let withDelay = 0;
     for (const p of decoded.positions) {
       const routeKey =
         (p.routeId ? this.routeKeyById.get(p.routeId) : undefined)
@@ -621,11 +632,19 @@ export class RtService {
       if (p.status !== undefined) v.status = p.status;
       const delay = delayFor(this.delays, p.tripId, p.stopSeq);
       if (delay !== undefined) v.delay = delay;
+      if (p.tripId) {
+        onTrips++;
+        if (delay !== undefined) withDelay++;
+      }
       vehicles.push(v);
     }
     const all: RtSnapshot = { fetchedAt, headerTs: decoded.headerTs, vehicles };
     this.latest = trackedOnly(all);
-    this.lastError = undefined;
+    // Not before trip updates have been read at all (positions may come back first after a start).
+    this.delayCoverage =
+      onTrips && this.feeds.tripUpdates.lastOkAt !== undefined ?
+        withDelay / onTrips
+      : null;
     if (this.record) await this.recorder.record(all);
     await this.store?.recordPositions(
       fetchedAt,
@@ -651,7 +670,8 @@ export class RtService {
         || ageS * 1000 > CADENCE.staleAfterMs(this.latest.fetchedAt),
     };
     if (!this.apiKey) r.error = "No TransLink API key configured";
-    else if (this.lastError && r.stale) r.error = this.lastError;
+    else if (this.feeds.positions.lastError && r.stale)
+      r.error = this.feeds.positions.lastError;
     if (this.dispatcher) r.dispatch = this.dispatcher.pointer();
     return r;
   }
@@ -742,7 +762,21 @@ export class RtService {
           lastSnapshotAgeS:
             this.latest ? (Date.now() - this.latest.fetchedAt) / 1000 : null,
           vehicles: this.latest?.vehicles.length ?? 0,
-          lastError: this.lastError ?? null,
+          lastError: this.feeds.positions.lastError ?? null,
+          feeds: Object.fromEntries(
+            POLL_FEEDS.map((f) => [
+              f,
+              {
+                lastOkAgeS:
+                  this.feeds[f].lastOkAt === undefined ?
+                    null
+                  : Math.round((Date.now() - this.feeds[f].lastOkAt!) / 1000),
+                lastError: this.feeds[f].lastError ?? null,
+              },
+            ]),
+          ),
+          delayCoverage: this.delayCoverage,
+          minDelayCoverage: rtConfig.tripUpdatesMinCoverage,
           ais: this.ais?.status() ?? null,
         });
       default:

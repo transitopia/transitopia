@@ -184,7 +184,8 @@ publishing them ([DATA-LICENSES.md](../DATA-LICENSES.md)).
 
 #### Monitoring
 
-`/healthz` returns 503 when positions polls or AIS go stale, the database is unreachable, or a
+`/healthz` returns 503 when positions polls or AIS go stale, trip updates stop arriving or match
+almost none of the buses (`config/rt.json` → `tripUpdatesMinCoverage`), the database is unreachable, or a
 daily job (statistics, data build, backup) failed or hasn't succeeded for 36 hours. An uptime
 monitor watches it ([api-server-setup.md, step 13](api-server-setup.md#13-uptime-monitor)). The
 response body says which check failed; `/admin` shows the same, plus recent jobs.
