@@ -129,6 +129,7 @@ export const InfoCard: React.FC<{
     bg: string;
     fg: string;
   };
+  /** The eyebrow is the line above the title (opposite of subtitle) */
   eyebrow: string;
   title: string;
   subtitle?: string | undefined;
@@ -206,7 +207,11 @@ export const InfoCard: React.FC<{
             </button>
           </div>
         : null}
-        <header className="relative flex items-start gap-3 pt-3.5 pr-2 pb-2.5 pl-4 sm:pt-3.5">
+        {/*
+          A grid, so the subtitle can run under the ⋯ and close buttons: they share the title's
+          height, never the subtitle's.
+        */}
+        <header className="relative grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-start gap-x-3 pt-3.5 pr-2 pb-2.5 pl-4">
           <div
             aria-hidden="true"
             className="flex h-11 w-11 flex-none items-center justify-center rounded-[11px] text-base font-extrabold tracking-tight"
@@ -224,30 +229,34 @@ export const InfoCard: React.FC<{
             <h2 className="text-[19px] leading-tight font-extrabold">
               {title}
             </h2>
-            {subtitle ?
-              <span className="text-sm text-(--card-muted)">{subtitle}</span>
-            : null}
           </div>
-          {actions?.length ?
-            <ActionMenu actions={actions} onNotice={setNotice} />
+          <div className="flex items-start">
+            {actions?.length ?
+              <ActionMenu actions={actions} onNotice={setNotice} />
+            : null}
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={onClose}
+              className="-mt-1 flex h-11 w-11 flex-none items-center justify-center rounded-full hover:bg-(--card-hover)">
+              <svg
+                aria-hidden="true"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.25"
+                strokeLinecap="round">
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          </div>
+          {subtitle ?
+            <span className="col-span-2 col-start-2 pr-2 text-sm text-(--card-muted)">
+              {subtitle}
+            </span>
           : null}
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={onClose}
-            className="-mt-1 flex h-11 w-11 flex-none items-center justify-center rounded-full hover:bg-(--card-hover)">
-            <svg
-              aria-hidden="true"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.25"
-              strokeLinecap="round">
-              <path d="M6 6l12 12M18 6L6 18" />
-            </svg>
-          </button>
         </header>
         {notice ?
           <p
