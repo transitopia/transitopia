@@ -82,13 +82,15 @@ const Frequency: React.FC<{ minutes: number; approx?: boolean }> = ({
   const band = bandOf(minutes);
   return (
     <span className="mt-0.5 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-(--card-muted)">
-      <span
-        aria-hidden="true"
-        className="h-2.5 w-2.5 flex-none rounded-[3px]"
-        style={{ background: band.color }}
-      />
-      {everyText(minutes, approx)} ·{" "}
-      <strong className="text-(--card-text)">{band.name}</strong>
+      {everyText(minutes, approx)} ·
+      <span className="inline-flex items-center gap-1">
+        <span
+          aria-hidden="true"
+          className="h-2.5 w-2.5 flex-none rounded-[3px]"
+          style={{ background: band.color }}
+        />
+        <strong className="text-(--card-text)">{band.name}</strong>
+      </span>
     </span>
   );
 };
