@@ -260,6 +260,8 @@ export class TransitEngine {
   private showStops: boolean;
   private liveOnly: boolean;
   private selectedId: string | undefined;
+  /** The selected vehicle's route, once seen: computed even while its route is hidden. */
+  private selectedRoute: string | undefined;
   private place: Place | undefined;
   /** When something was selected: bring it into view once its card is up (performance.now()). */
   private revealAt: number | undefined;
@@ -489,6 +491,8 @@ export class TransitEngine {
   select(id: string | undefined, opts?: { follow?: boolean }): void {
     if (id !== this.selectedId)
       this.following = id !== undefined && (opts?.follow ?? false);
+    if (id !== this.selectedId)
+      this.selectedRoute = this.lastVehicles.find((v) => v.id === id)?.routeKey;
     if (id !== undefined && id !== this.selectedId && !this.following)
       this.revealAt = performance.now() + REVEAL_DELAY_MS;
     this.selectedId = this.vehicles.selectedId = id;
@@ -501,6 +505,7 @@ export class TransitEngine {
   /** Open a station's or stop's card (closing any vehicle's). */
   selectPlace(place: Place): void {
     this.selectedId = this.vehicles.selectedId = undefined;
+    this.selectedRoute = undefined;
     this.following = false;
     this.place = place;
     this.revealAt = performance.now() + REVEAL_DELAY_MS;
@@ -901,7 +906,7 @@ export class TransitEngine {
       t + DEPARTURES_AHEAD_MS,
       [addDays(date, -1), date],
       (d) => this.lastCorrections?.get(d),
-    ).filter((d) => !this.hidden.has(d.routeKey));
+    );
     const groups = groupDepartures(deps);
     const routeOf = (k: string) => pp.routes.get(k)!;
     const routeKeys =
@@ -979,10 +984,20 @@ export class TransitEngine {
     if (this.disposed) return;
     const { store, rt, ais, clock, map } = this;
     const t = clock.now();
+    // Hidden routes aren't computed, except the selected vehicle's and the open route card's:
+    // hiding a layer hides it from the map, but its cards stay true. Until the selected vehicle
+    // has been seen, compute everything to find it.
+    const keep = new Set<string>();
+    if (this.selectedRoute) keep.add(this.selectedRoute);
+    if (this.place?.kind === "route") keep.add(this.place.id);
     const visible =
-      this.hidden.size ?
-        new Set(routeKeys(this.shownFeed).filter((k) => !this.hidden.has(k)))
-      : undefined;
+      !this.hidden.size || (this.selectedId && !this.selectedRoute) ?
+        undefined
+      : new Set(
+          routeKeys(this.shownFeed).filter(
+            (k) => !this.hidden.has(k) || keep.has(k),
+          ),
+        );
     // Scenarios are hypothetical: never mix in real bus positions.
     if (!store.scenario) rt.update(t);
     const pp = store.planFor(displayServiceDate(t));
@@ -1042,6 +1057,10 @@ export class TransitEngine {
         ...carried,
       ];
     } else this.lastVehicles = scheduled;
+    if (this.selectedId)
+      this.selectedRoute =
+        this.lastVehicles.find((v) => v.id === this.selectedId)?.routeKey
+        ?? this.selectedRoute;
     this.lastCorrections = byDate;
     store.setLiveDispatch(rt.dispatchPointer());
 
@@ -1073,12 +1092,13 @@ export class TransitEngine {
 
     if (this.styleReady)
       this.vehicles.update(
-        this.liveOnly ?
-          // The selected vehicle stays, so its card still points at something.
-          this.lastVehicles.filter(
-            (v) => v.provenance !== "estimated" || v.id === this.selectedId,
-          )
-        : this.lastVehicles,
+        // The selected vehicle stays, so its card (and follow) still point at something.
+        this.lastVehicles.filter(
+          (v) =>
+            v.id === this.selectedId
+            || (!this.hidden.has(v.routeKey)
+              && !(this.liveOnly && v.provenance === "estimated")),
+        ),
         this.theme === "dark",
       );
     this.syncStatic();
