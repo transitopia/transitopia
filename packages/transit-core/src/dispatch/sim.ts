@@ -481,6 +481,20 @@ function* simulation(
           conflictWith = f;
           return "track occupied";
         }
+        // Nor through a junction another train has set its route over and can no longer stop short
+        // of (one that still can stops for this reservation instead, and gives the junction back).
+        const holder = nodeLocks.get(node);
+        if (
+          holder
+          && holder !== tr
+          && committedTo(holder, node)
+          && !want.some((w) =>
+            (reservations.get(w.seg) ?? []).some((x) => x.tr === holder),
+          )
+        ) {
+          conflictWith = holder;
+          return "junction";
+        }
       }
       routeNodes = [...nodes].filter(
         ([node, x]) => lockable(node) && x > tr.G - tr.half,
@@ -536,6 +550,14 @@ function* simulation(
     }
     routeNodes = [];
     return "";
+  };
+  /** Whether a train holding a junction lock can no longer stop clear of the junction. */
+  const committedTo = (h: Train, node: string): boolean => {
+    const l = h.locks.find((x) => x.node === node);
+    if (!l) return true;
+    const it = h.m.items[h.i];
+    const k = it?.k === "move" ? kinOf(h, it) : h.kin;
+    return h.G + stopDist(h.v, k) > l.x - F - CLEAR_M - h.half + EPS;
   };
   /** The soonest a reservation's holder could reach it: remaining dwell, then line speed all the way. */
   const earliestArrival = (o: Reservation): number => {
