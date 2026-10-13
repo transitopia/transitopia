@@ -881,13 +881,14 @@ export class TransitEngine {
       const route = pp.routes.get(p.id);
       if (!route) return undefined;
       const date = displayServiceDate(t);
-      const sec = (t - serviceDayStart(date)) / 1000;
+      // Whole seconds, so the value only changes when a trip enters or leaves the hour.
+      const sec = Math.floor((t - serviceDayStart(date)) / 1000);
       const mine = this.lastVehicles.filter((v) => v.routeKey === p.id);
       return {
         kind: "route",
         id: p.id,
         route,
-        nextHour: routeMinutes(pp, p.id, date, sec, sec + 3600),
+        nextHour: routeMinutes(pp, p.id, date, sec, 3600),
         vehicles: mine.length,
         live: mine.filter((v) => v.provenance !== "estimated").length,
       };

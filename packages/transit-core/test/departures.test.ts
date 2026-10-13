@@ -241,9 +241,9 @@ describe("stopsOf", () => {
 
 describe("route frequency", () => {
   it("averages minutes between trips in an hour, per route", () => {
-    expect(routeMinutes(pp, "A", DATE, H8, H8 + 3600)).toBe(10);
-    expect(routeMinutes(pp, "B", DATE, H8, H8 + 3600)).toBe(15);
-    expect(routeMinutes(pp, "A", DATE, H8 - 3600, H8)).toBeUndefined();
+    expect(routeMinutes(pp, "A", DATE, H8, 3600)).toBe(10);
+    expect(routeMinutes(pp, "B", DATE, H8, 3600)).toBe(15);
+    expect(routeMinutes(pp, "A", DATE, H8 - 3600, 3600)).toBeUndefined();
   });
 
   it("fills the day strip hour by hour", () => {

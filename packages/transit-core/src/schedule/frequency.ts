@@ -12,17 +12,20 @@ export const DAY_HOURS: readonly number[] = Array.from(
 );
 
 /**
- * Average minutes between a route's trips starting in [from, to) service seconds on a date: 60 per
- * hour over the trips in its busier direction (each direction is a passenger's choice; a branching
- * line's trips in one direction all serve its trunk). Undefined when nothing runs.
+ * Average minutes between a route's trips starting in the `seconds` from `from` (service seconds)
+ * on a date: per hour over the trips in its busier direction (each direction is a passenger's
+ * choice; a branching line's trips in one direction all serve its trunk). Undefined when nothing
+ * runs. The window is a length, not an end, so the result doesn't pick up floating-point error
+ * from a fractional `from` (it would flicker across rounding and band edges).
  */
 export function routeMinutes(
   pp: PreparedPlan,
   routeKey: string,
   date: string,
   from: number,
-  to: number,
+  seconds: number,
 ): number | undefined {
+  const to = from + seconds;
   const perDirection = new Map<number, number>();
   for (const service of pp.servicesOn(date)) {
     for (const pt of pp.tripsByService.get(service) ?? []) {
@@ -33,7 +36,7 @@ export function routeMinutes(
     }
   }
   const n = Math.max(0, ...perDirection.values());
-  return n ? (to - from) / 60 / n : undefined;
+  return n ? seconds / 60 / n : undefined;
 }
 
 /** Minutes between trips for each hour of DAY_HOURS on a date. */
@@ -42,9 +45,7 @@ export function hourlyMinutes(
   routeKey: string,
   date: string,
 ): (number | undefined)[] {
-  return DAY_HOURS.map((h) =>
-    routeMinutes(pp, routeKey, date, h * 3600, (h + 1) * 3600),
-  );
+  return DAY_HOURS.map((h) => routeMinutes(pp, routeKey, date, h * 3600, 3600));
 }
 
 export interface DayType {
