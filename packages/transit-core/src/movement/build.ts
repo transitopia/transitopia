@@ -539,13 +539,23 @@ export function buildMovements({
     let sawCandidate = false;
     let lastReason = "no departure within max layover";
     // 1. The GTFS block's own next trip, if it leaves from here: the timetable planners made that
-    //    turn work, so it's trusted even with a short layover.
+    //    turn work, so it's trusted even with a short layover. Not when an earlier departure from
+    //    the same platform track is still unserved: this train would stand in its way, and whichever
+    //    train runs it couldn't get past.
     const bn = blockNext.get(a);
     if (
       bn
       && !hasPrev.has(bn)
       && bn.station0 === a.station1
       && bn.fleet === a.fleet
+      && !list.some(
+        (d) =>
+          d !== bn
+          && !hasPrev.has(d)
+          && d.dep > a.arr
+          && d.dep < bn.dep
+          && d.pos0.seg === bn.pos0.seg,
+      )
     ) {
       const gap = bn.dep - a.arr;
       if (gap >= BLOCK_MIN_LAYOVER_S && gap <= ops.turnback.maxLayoverS)

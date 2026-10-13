@@ -51,7 +51,7 @@ npm workspaces ([docs/DESIGN.md → Repository layout](docs/DESIGN.md#repository
 ## Run inference notes (`packages/transit-core/src/movement/build.ts`)
 
 - Trip times: SkyTrain/WCE/SeaBus trips are re-timed within ±45 s of GTFS (minute-rounded) in proportion to each hop's physical minimum time (`retime` in `schedule/engine.ts`). Without this, some hops are impossibly fast.
-- Chaining: GTFS block successor first (only when it starts where the last trip ended), else FIFO earliest feasible departure. Turnbacks choose between the GTFS departure platform (via tail/pocket/main reversals) and reversing in place, by cost.
+- Chaining: GTFS block successor first (only when it starts where the last trip ended and no earlier departure from that platform track is still unserved), else FIFO earliest feasible departure. Turnbacks choose between the GTFS departure platform (via tail/pocket/main reversals) and reversing in place, by cost.
 - In-place turnbacks get stub berths by occupancy (`berth`/`arrive` overrides on trip events), pulled up to the buffer.
 - Surplus trains at stub termini (would wait > `turnback.stubMaxLayoverS`, or every dead-ended berth is taken) pull in to the yard instead of queueing. Timing pull-ins into gaps between scheduled trains was tried and made no measurable difference, so it isn't implemented.
 - Pull-outs/pull-ins avoid running against the normal direction of traffic (`yard.againstTrafficPenalty`); turnbacks have their own speed (`turnback.speedFactor`).
