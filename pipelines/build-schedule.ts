@@ -46,6 +46,7 @@ import type {
   PlanStop,
   PlanTrip,
   RouteKind,
+  RouteCategory,
   RouteMode,
   ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
@@ -60,6 +61,7 @@ interface RouteConfig {
   match: Partial<Record<"route_long_name" | "route_short_name", string>>;
   kind: RouteKind;
   mode: RouteMode;
+  category: RouteCategory;
   color?: string;
 }
 
@@ -124,6 +126,7 @@ export async function buildPlan(zipPath: string): Promise<ServicePlan> {
       label: cfg.label,
       kind: cfg.kind,
       mode: cfg.mode,
+      category: cfg.category,
       color: cfg.color ?? hexColor(row.route_color, "#666666"),
       textColor: hexColor(row.route_text_color, "#ffffff"),
       gtfsRouteId: row.route_id!,

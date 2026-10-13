@@ -6,12 +6,16 @@ import type { LonLat } from "../geo.ts";
 
 export type RouteKind = "skytrain" | "shape" | "bus";
 export type RouteMode = "skytrain" | "ferry" | "rail" | "bus";
+/** The route's layer in the site's layers panel (config/routes.json → category). */
+export type RouteCategory = "rapid" | "frequent" | "regular";
 
 export interface PlanRoute {
   key: string;
   label: string;
   kind: RouteKind;
   mode: RouteMode;
+  /** Missing in plans built before categories existed: treat as "rapid". */
+  category?: RouteCategory | undefined;
   color: string;
   textColor: string;
   gtfsRouteId: string;

@@ -1,5 +1,6 @@
 // Shareable view state in the query string: ?date=2026-09-28&t=08:15:00&rate=10&paused=1&select=<vehicle>
-// (apps/web/README.md#modes-and-url-state; `v` is the older name for `select`).
+// or &place=station:<id> / stop:<id> / route:<key> (apps/web/README.md#modes-and-url-state; `v` is the older name
+// for `select`).
 // No time parameters means "live". The map position lives in the hash (MapLibre's hash option).
 // `t` is service-day time, so it may exceed 24:00 for after-midnight trips.
 
@@ -12,11 +13,19 @@ import {
 import { displayServiceDate } from "./plans.ts";
 import type { Clock } from "./clock.ts";
 
+/** A tapped station, bus stop or route line (its card). */
+export interface Place {
+  kind: "station" | "stop" | "route";
+  /** Station (parent stop_id), GTFS stop_id, or route key. */
+  id: string;
+}
+
 export interface UrlState {
   t?: number;
   rate?: number;
   paused?: boolean;
   vehicle?: string;
+  place?: Place;
   /** Dispatch versions to preview, service date (YYYYMMDD) → version (?preview=20260927:15egjb9,…). */
   preview?: Record<string, string>;
 }
@@ -41,6 +50,9 @@ export function readUrl(): UrlState {
   if (q.get("paused") === "1") out.paused = true;
   const v = q.get("select") ?? q.get("v");
   if (v) out.vehicle = v;
+  const place = /^(station|stop|route):(.+)$/.exec(q.get("place") ?? "");
+  if (place && !v)
+    out.place = { kind: place[1] as Place["kind"], id: place[2]! };
   const preview = Object.fromEntries(
     (q.get("preview") ?? "")
       .split(",")
@@ -52,7 +64,11 @@ export function readUrl(): UrlState {
   return out;
 }
 
-export function writeUrl(clock: Clock, vehicle: string | undefined): void {
+export function writeUrl(
+  clock: Clock,
+  vehicle: string | undefined,
+  place?: Place | undefined,
+): void {
   const q = new URLSearchParams();
   if (!clock.isLive()) {
     const t = clock.now();
@@ -63,6 +79,7 @@ export function writeUrl(clock: Clock, vehicle: string | undefined): void {
     if (!clock.playing) q.set("paused", "1");
   }
   if (vehicle) q.set("select", vehicle);
+  else if (place) q.set("place", `${place.kind}:${place.id}`);
   const kept = new URLSearchParams(location.search);
   for (const k of ["scenario", "preview"]) {
     const v = kept.get(k);

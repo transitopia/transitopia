@@ -1,4 +1,4 @@
-import { toWallTime } from "@transitopia/transit-core/time.ts";
+import { localDate, toWallTime } from "@transitopia/transit-core/time.ts";
 
 /** "20260929" → "2026-09-29" (the date input's format). */
 export function isoDate(d: string): string {
@@ -21,4 +21,45 @@ export function clockTime(t: number): string {
 
 export function rateLabel(r: number): string {
   return `${r < 0 ? "−" : ""}${Math.abs(r)}×`;
+}
+
+/** "20261006" → "Tue 6 Oct". */
+export function shortDate(d: string): string {
+  return new Date(
+    Date.UTC(
+      Number(d.slice(0, 4)),
+      Number(d.slice(4, 6)) - 1,
+      Number(d.slice(6, 8)),
+    ),
+  ).toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
+/** Wall-clock time in the region's timezone, "HH:MM". */
+export function clockMinutes(t: number): string {
+  return clockTime(t).slice(0, 5);
+}
+
+/**
+ * How the map's time stands against now (apps/web/README.md#time-and-not-live): live, or not
+ * live showing the past (recorded or replayed) or the future (projected from the timetable).
+ */
+export interface TimeState {
+  live: boolean;
+  future: boolean;
+  /** "Tue 6 Oct, 08:00". */
+  when: string;
+}
+
+export function timeState(snap: { t: number; live: boolean }): TimeState {
+  return {
+    live: snap.live,
+    future: !snap.live && snap.t > Date.now(),
+    // The calendar date (after midnight the service day is still the previous one).
+    when: `${shortDate(localDate(snap.t))}, ${clockMinutes(snap.t)}`,
+  };
 }

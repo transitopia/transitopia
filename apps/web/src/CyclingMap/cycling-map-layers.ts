@@ -25,6 +25,116 @@ export const pathLayerIds = [
 export const otherLayerIds = ["bike_parking_point"];
 
 /**
+ * What the cycling layers panel shows (CyclingLayers.tsx). The categories follow the tiles' comfort
+ * levels (map-layers/src/main/java/org/transitopia/layers/Cycling.java): protected = separated
+ * tracks and paths (comfort 4, or 3 when shared with pedestrians), local = traffic-calmed shared
+ * streets (comfort 3 on the road), painted = lanes on the roadway, including shared lanes on busy
+ * streets (comfort 1–2). "All ages & abilities only" hides comfort 1–2 whatever `painted` says.
+ */
+export interface CyclingShow {
+  protected: boolean;
+  painted: boolean;
+  local: boolean;
+  parking: boolean;
+  construction: boolean;
+  aaaOnly: boolean;
+}
+
+export const DEFAULT_SHOW: CyclingShow = {
+  protected: true,
+  painted: true,
+  local: true,
+  parking: true,
+  construction: true,
+  aaaOnly: false,
+};
+
+const comfort: ExpressionSpecification = ["to-number", ["get", "comfort"]];
+const isLine: ExpressionSpecification = ["==", ["geometry-type"], "LineString"];
+const notConstruction: ExpressionSpecification = [
+  "!=",
+  ["get", "construction"],
+  true,
+];
+
+/** Paths (not under construction) in a category the panel shows. */
+function shownPaths(show: CyclingShow): ExpressionSpecification {
+  const any: ExpressionSpecification[] = [];
+  if (show.protected)
+    any.push([
+      "any",
+      ["==", comfort, 4],
+      ["all", ["==", comfort, 3], ["==", ["get", "class"], "track"]],
+    ]);
+  if (show.local)
+    any.push(["all", ["==", comfort, 3], ["!=", ["get", "class"], "track"]]);
+  if (show.painted && !show.aaaOnly) any.push(["<=", comfort, 2]);
+  return ["any", ...any];
+}
+
+/** Each layer's filter for what the panel shows. */
+export function cyclingFilters(
+  show: CyclingShow,
+): Record<string, ExpressionSpecification> {
+  const paths = shownPaths(show);
+  const level = (n: number): ExpressionSpecification => [
+    "all",
+    isLine,
+    ["==", comfort, n],
+    notConstruction,
+    paths,
+  ];
+  const oneway: ExpressionSpecification = [
+    "any",
+    ["==", ["get", "oneway"], 1],
+    ["==", ["get", "oneway"], -1],
+  ];
+  return {
+    cycling_path_construction: [
+      "all",
+      isLine,
+      ["==", ["get", "construction"], true],
+      show.construction,
+    ],
+    cycling_path_4: level(4),
+    cycling_path_3: level(3),
+    cycling_path_3_inner: level(3),
+    cycling_path_2: level(2),
+    cycling_path_1: level(1),
+    cycling_path_oneway_arrows_white: [
+      "all",
+      isLine,
+      oneway,
+      [">=", comfort, 3],
+      notConstruction,
+      paths,
+    ],
+    cycling_path_oneway_arrows_green: [
+      "all",
+      isLine,
+      oneway,
+      ["<=", comfort, 2],
+      notConstruction,
+      paths,
+    ],
+    cycling_path_name: [
+      "all",
+      isLine,
+      ["in", ["get", "class"], ["literal", ["track", "lane"]]],
+      ["has", "name"],
+      [">=", comfort, 2],
+      paths,
+    ],
+    bike_parking_point: [
+      "all",
+      ["==", ["geometry-type"], "Point"],
+      ["==", ["get", "amenity"], "bicycle_parking"],
+      show.parking,
+    ],
+  };
+}
+
+/**
  * Helper: the resulting color should normally be 'color',
  * but make it salmon colored when hovered or selected.
  */
@@ -60,19 +170,18 @@ const PALETTE = {
   },
 } satisfies Record<Theme, Record<string, string>>;
 
-export function cyclingLayers(theme: Theme): LayerSpecification[] {
+export function cyclingLayers(
+  theme: Theme,
+  show: CyclingShow,
+): LayerSpecification[] {
   const c = PALETTE[theme];
-  return [
+  const filters = cyclingFilters(show);
+  const layers: LayerSpecification[] = [
     {
       id: "cycling_path_construction",
       type: "line",
       source: mapSource,
       "source-layer": "transitopia_cycling",
-      filter: [
-        "all",
-        ["==", "$type", "LineString"],
-        ["==", "construction", true],
-      ],
       layout: {
         "line-cap": "butt",
         "line-join": "bevel",
@@ -89,12 +198,6 @@ export function cyclingLayers(theme: Theme): LayerSpecification[] {
       type: "line",
       source: mapSource,
       "source-layer": "transitopia_cycling",
-      filter: [
-        "all",
-        ["==", "$type", "LineString"],
-        ["==", "comfort", 4],
-        ["!=", "construction", true],
-      ],
       layout: defaultLineLayout,
       paint: {
         "line-color": colorWithHoverAndSelectionStates(c.path),
@@ -106,12 +209,6 @@ export function cyclingLayers(theme: Theme): LayerSpecification[] {
       type: "line",
       source: mapSource,
       "source-layer": "transitopia_cycling",
-      filter: [
-        "all",
-        ["==", "$type", "LineString"],
-        ["==", "comfort", 3],
-        ["!=", "construction", true],
-      ],
       layout: defaultLineLayout,
       paint: {
         "line-color": colorWithHoverAndSelectionStates(c.path),
@@ -125,12 +222,6 @@ export function cyclingLayers(theme: Theme): LayerSpecification[] {
       source: mapSource,
       "source-layer": "transitopia_cycling",
       minzoom: 13,
-      filter: [
-        "all",
-        ["==", "$type", "LineString"],
-        ["==", "comfort", 3],
-        ["!=", "construction", true],
-      ],
       layout: defaultLineLayout,
       paint: {
         "line-color": c.pathInner,
@@ -143,12 +234,6 @@ export function cyclingLayers(theme: Theme): LayerSpecification[] {
       type: "line",
       source: mapSource,
       "source-layer": "transitopia_cycling",
-      filter: [
-        "all",
-        ["==", "$type", "LineString"],
-        ["==", "comfort", 2],
-        ["!=", "construction", true],
-      ],
       layout: defaultLineLayout,
       paint: {
         "line-color": colorWithHoverAndSelectionStates(c.path),
@@ -169,12 +254,6 @@ export function cyclingLayers(theme: Theme): LayerSpecification[] {
       source: mapSource,
       "source-layer": "transitopia_cycling",
       minzoom: 8,
-      filter: [
-        "all",
-        ["==", "$type", "LineString"],
-        ["==", "comfort", 1],
-        ["!=", "construction", true],
-      ],
       layout: defaultLineLayout,
       paint: {
         "line-color": colorWithHoverAndSelectionStates(c.pathLeastComfortable),
@@ -188,13 +267,6 @@ export function cyclingLayers(theme: Theme): LayerSpecification[] {
       source: mapSource,
       "source-layer": "transitopia_cycling",
       minzoom: 8,
-      filter: [
-        "all",
-        ["==", "$type", "LineString"],
-        ["any", ["==", "oneway", 1], ["==", "oneway", -1]],
-        [">=", "comfort", 3],
-        ["!=", "construction", true],
-      ],
       paint: {
         "icon-opacity": interpolateZoom({ z1: 0, z14: 0, z15: 0.9 }),
       },
@@ -214,13 +286,6 @@ export function cyclingLayers(theme: Theme): LayerSpecification[] {
       source: mapSource,
       "source-layer": "transitopia_cycling",
       minzoom: 8,
-      filter: [
-        "all",
-        ["==", "$type", "LineString"],
-        ["any", ["==", "oneway", 1], ["==", "oneway", -1]],
-        ["<=", "comfort", 2],
-        ["!=", "construction", true],
-      ],
       paint: {
         "icon-opacity": interpolateZoom({ z1: 0, z14: 0, z15: 0.9 }),
       },
@@ -241,13 +306,6 @@ export function cyclingLayers(theme: Theme): LayerSpecification[] {
       type: "symbol",
       source: mapSource,
       "source-layer": "transitopia_cycling",
-      filter: [
-        "all",
-        ["==", "$type", "LineString"],
-        ["any", ["==", "class", "track"], ["==", "class", "lane"]],
-        ["has", "name"],
-        [">=", "comfort", 2],
-      ],
       layout: {
         "symbol-placement": "line",
         "symbol-spacing": 350,
@@ -274,11 +332,6 @@ export function cyclingLayers(theme: Theme): LayerSpecification[] {
       type: "circle",
       source: mapSource,
       "source-layer": "transitopia_cycling",
-      filter: [
-        "all",
-        ["==", "$type", "Point"],
-        ["==", "amenity", "bicycle_parking"],
-      ],
       layout: {
         visibility: "visible",
         "circle-sort-key": 1,
@@ -296,4 +349,8 @@ export function cyclingLayers(theme: Theme): LayerSpecification[] {
       },
     },
   ];
+  // Every layer here is a vector layer with an entry in cyclingFilters.
+  return layers.map(
+    (l) => ({ ...l, filter: filters[l.id]! }) as LayerSpecification,
+  );
 }

@@ -472,7 +472,9 @@ describe("carrying RT delays into schedule estimates", () => {
 
   it("carries lateness into the next trip, less the layover slack", () => {
     // 300 s late; layover 200 s, of which 200 - 120 = 80 s is slack: trip2 leaves 220 s late.
-    expect(carry.carried).toEqual(new Set(["trip1", "trip2"]));
+    expect([...carry.carried.keys()]).toEqual(["trip1", "trip2"]);
+    // Both are the same bus, which the estimates stand in for.
+    expect(carry.carried.get("trip2")).toEqual({ id: "rt:bus1" });
     expect(
       carry.byDate.get(date)!.trips.get("trip2")!.anchors[0]!.shift,
     ).toBeCloseTo(220, 0);
@@ -482,7 +484,7 @@ describe("carrying RT delays into schedule estimates", () => {
       [{ ...delays[0]!, delay: -120 }],
       rtConfig.carry,
     );
-    expect([...early.carried]).toEqual(["trip1"]);
+    expect([...early.carried.keys()]).toEqual(["trip1"]);
   });
 
   it("carries nothing into or through a cancelled trip", () => {
@@ -492,7 +494,7 @@ describe("carrying RT delays into schedule estimates", () => {
       rtConfig.carry,
       (d, trip) => d === date && trip === "trip2",
     );
-    expect([...next.carried]).toEqual(["trip1"]);
+    expect([...next.carried.keys()]).toEqual(["trip1"]);
     const own = delayCorrections(
       pp2,
       delays,

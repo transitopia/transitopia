@@ -23,6 +23,16 @@ export interface TripDelay {
   schedSec: number;
   /** Epoch ms of the fix. */
   fixTs: number;
+  /** The bus that reported it. */
+  vehicle: CarriedBus;
+}
+
+/** The bus a carried estimate stands for, so it keeps the RT vehicle's id and number. */
+export interface CarriedBus {
+  /** The RT vehicle's id (`rt:<id>`). */
+  id: string;
+  /** Its fleet number. */
+  label?: string | undefined;
 }
 
 export interface CarryConfig {
@@ -37,15 +47,18 @@ const hhmm = (ms: number) => {
   return `${String(w.hour).padStart(2, "0")}:${String(w.minute).padStart(2, "0")}`;
 };
 
-/** Schedule corrections per service date from RT delays; `carried` = every trip they affect. */
+/** Schedule corrections per service date from RT delays; `carried` = every trip they affect, and the bus running it. */
 export function delayCorrections(
   pp: PreparedPlan,
   delays: TripDelay[],
   cfg: CarryConfig,
   cancelled?: (serviceDate: string, tripId: string) => boolean,
-): { byDate: Map<string, ScheduleCorrections>; carried: Set<string> } {
+): {
+  byDate: Map<string, ScheduleCorrections>;
+  carried: Map<string, CarriedBus>;
+} {
   const byDate = new Map<string, ScheduleCorrections>();
-  const carried = new Set<string>();
+  const carried = new Map<string, CarriedBus>();
   const observed = new Set(delays.map((d) => d.tripId));
   for (const d of delays) {
     const first = pp.tripIndex.get(d.tripId);
@@ -68,7 +81,7 @@ export function delayCorrections(
       observed: [],
       estimate: label,
     });
-    carried.add(d.tripId);
+    carried.set(d.tripId, d.vehicle);
     let late = d.delay;
     for (let k = 0; k < cfg.maxTrips && late > 0 && trip.next; k++) {
       const next: PreparedTrip = trip.next;
@@ -84,7 +97,7 @@ export function delayCorrections(
           observed: [],
           estimate: `${label}, carried over layover`,
         });
-        carried.add(next.trip.id);
+        carried.set(next.trip.id, d.vehicle);
       }
       trip = next;
     }

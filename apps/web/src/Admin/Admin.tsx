@@ -5,6 +5,7 @@
 
 import React from "react";
 import { transitApi } from "../config.ts";
+import { Logo } from "../components/Logo.tsx";
 import region from "@transitopia/region-metro-vancouver/region.json";
 import type { Disruption } from "@transitopia/transit-core/disruption/types.ts";
 import type { ObservationFile } from "@transitopia/transit-core/corrections/types.ts";
@@ -139,11 +140,7 @@ export default function Admin() {
     <div className="min-h-dvh bg-gray-100 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <header className="flex items-center gap-3 border-b border-gray-300 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-900">
         <a href="/transit">
-          <img
-            src="/transitopia-logo-h.svg"
-            alt="Transitopia"
-            className="h-7 dark:rounded-sm dark:bg-white dark:px-1"
-          />
+          <Logo className="h-7" />
         </a>
         <h1 className="text-lg font-semibold">Admin</h1>
         <div className="flex-1" />

@@ -4,23 +4,84 @@ import {
   type TransitEngine,
   type TransitSnapshot,
 } from "@transitopia/transit-map/engine.ts";
-import { clockTime, fromIsoDate, isoDate, rateLabel } from "./format.ts";
+import { localDate } from "@transitopia/transit-core/time.ts";
 
-/** Hour ticks under the slider, which spans 03:00 → 27:00 of the service day. */
-const TICKS = Array.from({ length: 12 }, (_, i) => 4 + i * 2);
+import { Icon } from "../components/Icon.tsx";
+import { TimeMark, type Mark } from "../components/InfoCard.tsx";
+import {
+  clockTime,
+  fromIsoDate,
+  isoDate,
+  rateLabel,
+  shortDate,
+  timeState,
+} from "./format.ts";
+
+/** The slider spans 03:00 → 27:00 of the service day; tick labels every few hours. */
+const TICKS_DESKTOP = Array.from({ length: 9 }, (_, i) => 3 + i * 3);
+const TICKS_PHONE = Array.from({ length: 7 }, (_, i) => 3 + i * 4);
+
+const RT_MARK: Record<TransitSnapshot["rt"]["mode"], Mark> = {
+  live: "live",
+  recorded: "recorded",
+  loading: "recorded",
+  estimated: "estimated",
+  unavailable: "estimated",
+};
+
+type Props = { engine: TransitEngine; snap: TransitSnapshot };
 
 /**
- * Time controls (apps/web/README.md#transit-mode): play/pause, time, date, speed, Live, and a slider across the
- * service day, shaded where real bus positions were recorded.
+ * Time controls (apps/web/README.md#time-and-not-live): play/pause, time, date, speed, Live, and a
+ * slider across the service day, shaded where real bus positions were recorded. Amber means "not
+ * live" and nothing else. On phones the bar is compact (pause, time, Live) only while live; any
+ * other state shows it expanded, and Go live collapses it. With a card open on a phone, the time
+ * shrinks to a pill at the top.
  */
-export const TimeBar: React.FC<{
-  engine: TransitEngine;
-  snap: TransitSnapshot;
-}> = ({ engine, snap }) => {
-  const [scrub, setScrub] = React.useState<number>();
-  const [lo, hi] = snap.sliderRange;
+export const TimeBar: React.FC<Props & { cardOpen: boolean }> = ({
+  engine,
+  snap,
+  cardOpen,
+}) => {
+  useTimeKeys(engine);
+  const phone = usePhone();
+  const [pillOpen, setPillOpen] = React.useState(false);
+  // The pill's controls close with the card.
+  React.useEffect(() => {
+    if (!cardOpen) setPillOpen(false);
+  }, [cardOpen]);
 
-  // Keyboard: space play/pause, ←/→ one minute (shift: ten), L live, [ ] slower/faster.
+  if (!phone) return <FullBar engine={engine} snap={snap} />;
+  if (cardOpen && !pillOpen)
+    return (
+      <TimePill engine={engine} snap={snap} onOpen={() => setPillOpen(true)} />
+    );
+  return (
+    <PhoneBar
+      engine={engine}
+      snap={snap}
+      atTop={cardOpen}
+      onCollapse={cardOpen ? () => setPillOpen(false) : undefined}
+    />
+  );
+};
+
+function usePhone(): boolean {
+  const query = "(max-width: 639px)";
+  const [phone, setPhone] = React.useState(
+    () => window.matchMedia(query).matches,
+  );
+  React.useEffect(() => {
+    const m = window.matchMedia(query);
+    const onChange = () => setPhone(m.matches);
+    m.addEventListener("change", onChange);
+    return () => m.removeEventListener("change", onChange);
+  }, []);
+  return phone;
+}
+
+/** Keyboard: space play/pause, ←/→ one minute (shift: ten), L live, [ ] slower/faster. */
+function useTimeKeys(engine: TransitEngine): void {
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -39,152 +100,372 @@ export const TimeBar: React.FC<{
       } else if (e.key === "ArrowRight") engine.seek(clock.now() + step);
       else if (e.key === "ArrowLeft") engine.seek(clock.now() - step);
       else if (e.key === "l" || e.key === "L") engine.goLive();
-      else if (e.key === "]" || e.key === "[") {
-        const i = RATES.indexOf(clock.rate);
-        const next = Math.min(
-          RATES.length - 1,
-          Math.max(
-            0,
-            (i < 0 ? RATES.indexOf(1) : i) + (e.key === "]" ? 1 : -1),
-          ),
-        );
-        engine.setRate(RATES[next]!);
-      }
+      else if (e.key === "]" || e.key === "[") stepRate(engine, e.key === "]");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [engine]);
+}
 
-  const value = scrub ?? Math.round(snap.t / 1000);
-  const coverage = snap.coverage
-    .map(([a, b]) => [Math.max(a, lo), Math.min(b, hi)] as const)
-    .filter(([a, b]) => b > a);
-  const pct = (x: number) => ((x - lo) / (hi - lo)) * 100;
+function stepRate(engine: TransitEngine, faster: boolean): void {
+  const i = RATES.indexOf(engine.clock.rate);
+  const next = Math.min(
+    RATES.length - 1,
+    Math.max(0, (i < 0 ? RATES.indexOf(1) : i) + (faster ? 1 : -1)),
+  );
+  engine.setRate(RATES[next]!);
+}
 
-  const button =
-    "h-11 rounded-full px-3 hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-2";
+/** "Live · Wed 7 Oct · Weekday", or (amber) "Paused · Tue 6 Oct", "Replaying at 10× · …", "Projected at 60× · …". */
+function subLine(snap: TransitSnapshot, withService: boolean): string {
+  const date = shortDate(localDate(snap.t));
+  if (snap.live)
+    return `Live · ${date}${withService ? ` · ${snap.serviceLabel}` : ""}`;
+  const state =
+    !snap.playing ? "Paused" : (
+      `${timeState(snap).future ? "Projected" : "Replaying"} at ${rateLabel(snap.rate)}`
+    );
+  return `${state} · ${date}`;
+}
+
+const FullBar: React.FC<Props> = ({ engine, snap }) => (
+  <section
+    aria-label="Time controls"
+    data-map-overlay
+    className={`absolute bottom-8 left-1/2 z-40 flex w-[min(860px,calc(100%-2.5rem))] -translate-x-1/2 flex-col gap-1 rounded-2xl bg-(--card-bg) px-4 pt-3 pb-2.5 text-(--card-text) shadow-[0_6px_24px_rgb(17_24_39/0.14)] ${snap.live ? "border border-(--card-border)" : "border-2 border-(--notlive-border)"}`}>
+    <div className="flex items-center gap-3">
+      <PlayButton engine={engine} snap={snap} />
+      {/* Takes the spare width; its status line truncates before the controls overflow. */}
+      <TimeText snap={snap} sub={subLine(snap, true)} />
+      {/* Narrow screens drop these: the amber border and status line still say "not live". */}
+      <div className="flex items-center gap-3 max-md:hidden">
+        <Badges snap={snap} />
+        {snap.live ? null : <NotLiveBadge />}
+      </div>
+      <DateButton engine={engine} snap={snap} />
+      <SpeedStepper engine={engine} snap={snap} />
+      <LiveOrGoLive engine={engine} snap={snap} />
+    </div>
+    <Slider engine={engine} snap={snap} ticks={TICKS_DESKTOP} />
+  </section>
+);
+
+const PhoneBar: React.FC<
+  Props & { atTop: boolean; onCollapse: (() => void) | undefined }
+> = ({ engine, snap, atTop, onCollapse }) => {
+  const expanded = !snap.live || atTop;
   return (
     <section
       aria-label="Time controls"
-      className="absolute bottom-7 left-2 right-2 z-40 mx-auto max-w-3xl rounded-lg border border-gray-300 bg-white/95 px-3 pb-2 pt-1 shadow-md sm:left-5 sm:right-5 dark:border-gray-600 dark:bg-gray-900/95 dark:text-gray-100">
-      <div className="flex flex-wrap items-center gap-x-2">
-        <button
-          type="button"
-          className="h-11 w-11 shrink-0 rounded-full bg-blue-700 text-lg text-white hover:bg-blue-800"
-          aria-label={snap.playing ? "Pause" : "Play"}
-          onClick={() => engine.toggle()}>
-          {snap.playing ? "❚❚" : "▶"}
-        </button>
-        <div className="min-w-0 flex-1 leading-tight">
-          <div className="text-xl font-semibold tabular-nums">
-            {clockTime(snap.t)}
+      data-map-overlay
+      // At the bottom it covers the map's scale bar, which is then hidden (src/index.css).
+      data-covers-scale={atTop ? undefined : true}
+      className={`absolute inset-x-2.5 z-40 flex flex-col gap-3 rounded-[18px] bg-(--card-bg) px-3 py-2.5 text-(--card-text) shadow-[0_6px_20px_rgb(17_24_39/0.16)] ${atTop ? "top-2.5 z-[55]" : "bottom-[34px]"} ${snap.live ? "border border-(--card-border)" : "border-2 border-(--notlive-border)"}`}>
+      <div className="flex items-center gap-3">
+        <PlayButton engine={engine} snap={snap} />
+        <TimeText snap={snap} sub={subLine(snap, false)} />
+        <LiveOrGoLive engine={engine} snap={snap} />
+        {onCollapse ?
+          <button
+            type="button"
+            aria-label="Hide time controls"
+            onClick={onCollapse}
+            className="-mr-1 flex h-11 w-11 flex-none items-center justify-center rounded-full hover:bg-(--card-hover)">
+            <Icon icon="chevron-up" size={18} />
+          </button>
+        : null}
+      </div>
+      {expanded ?
+        <>
+          <Slider engine={engine} snap={snap} ticks={TICKS_PHONE} />
+          <div className="flex items-center gap-2">
+            <DateButton engine={engine} snap={snap} wide />
+            <SpeedStepper engine={engine} snap={snap} />
           </div>
-          <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-gray-600 dark:text-gray-300">
-            <span>{snap.serviceLabel}</span>
-            <span
-              className={`whitespace-nowrap rounded px-1 ${
-                snap.rt.mode === "live" ? "bg-red-600 text-white"
-                : snap.rt.mode === "recorded" ?
-                  "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100"
-                : "bg-gray-100 dark:bg-gray-800"
-              }`}
-              title={snap.rt.title}>
-              {snap.rt.label}
+          <Badges snap={snap} />
+        </>
+      : null}
+    </section>
+  );
+};
+
+/** Phones with a card open: the time as a pill at the top (amber when not live). */
+const TimePill: React.FC<Props & { onOpen: () => void }> = ({
+  engine,
+  snap,
+  onOpen,
+}) => {
+  const { when } = timeState(snap);
+  return (
+    <div
+      data-map-overlay
+      className={`absolute top-2.5 left-2.5 z-[55] flex h-11 items-center gap-2 rounded-full pr-3.5 pl-1.5 shadow-[0_4px_14px_rgb(17_24_39/0.25)] ${snap.live ? "border border-(--card-border) bg-(--card-bg) text-(--card-text)" : "bg-(--notlive-border) text-[#3b2300]"}`}>
+      <button
+        type="button"
+        aria-label={snap.playing ? "Pause" : "Play"}
+        onClick={() => engine.toggle()}
+        className={`flex h-8 w-8 flex-none items-center justify-center rounded-full ${snap.live ? "bg-transit-blue text-[#06303a]" : "bg-[#3b2300] text-(--notlive-border)"}`}>
+        <Icon icon={snap.playing ? "pause" : "play"} size={14} />
+      </button>
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={
+          snap.live ?
+            `Time: ${clockTime(snap.t).slice(0, 5)}, live. Open time controls`
+          : `Not live: showing ${when}${snap.playing ? "" : ", paused"}. Open time controls`
+        }
+        className="flex h-full items-center gap-2">
+        {snap.live ?
+          <>
+            <span className="text-[17px] font-extrabold tabular-nums">
+              {clockTime(snap.t).slice(0, 5)}
             </span>
-            {snap.notices.length ?
-              <span
-                className="whitespace-nowrap rounded bg-amber-100 px-1 text-amber-900 dark:bg-amber-900 dark:text-amber-100"
-                title={snap.notices.join("\n")}>
-                Service change
-              </span>
-            : null}
-            {snap.preview.length ?
-              <span
-                className="whitespace-nowrap rounded bg-purple-700 px-1 text-white"
-                title={`Showing unconfirmed corrections for ${snap.preview.map(isoDate).join(", ")}: not what visitors see`}>
-                Preview
-              </span>
-            : null}
-          </div>
-        </div>
-        <div className="order-last flex w-full gap-2 pt-1 sm:order-none sm:w-auto sm:pt-0">
-          <input
-            type="date"
-            aria-label="Date"
-            className="h-9 flex-1 rounded border border-gray-300 bg-transparent px-1 text-sm sm:flex-none dark:border-gray-600"
-            value={isoDate(snap.serviceDate)}
-            min={snap.dateRange ? isoDate(snap.dateRange[0]) : undefined}
-            max={snap.dateRange ? isoDate(snap.dateRange[1]) : undefined}
-            onChange={(e) => {
-              const d = fromIsoDate(e.target.value);
-              if (d) engine.seekDate(d);
+            <span className="flex items-center gap-1.5 text-[13px] font-bold text-(--mark-live-fg)">
+              <TimeMark mark="live" />
+              Live
+            </span>
+          </>
+        : <>
+            <span className="text-sm font-semibold">Showing</span>
+            <span className="text-[15px] font-bold whitespace-nowrap tabular-nums">
+              {when.replace(", ", " · ")}
+            </span>
+          </>
+        }
+      </button>
+    </div>
+  );
+};
+
+const PlayButton: React.FC<Props> = ({ engine, snap }) => (
+  <button
+    type="button"
+    aria-label={snap.playing ? "Pause" : "Play"}
+    onClick={() => engine.toggle()}
+    className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-main-blue text-white hover:bg-[#0a4a80] dark:bg-sky-300 dark:text-gray-900">
+    <Icon icon={snap.playing ? "pause" : "play"} size={16} />
+  </button>
+);
+
+const TimeText: React.FC<{ snap: TransitSnapshot; sub: string }> = ({
+  snap,
+  sub,
+}) => {
+  const time = clockTime(snap.t);
+  return (
+    <div className="flex min-w-30 flex-1 flex-col">
+      <span className="text-[22px] leading-none font-extrabold tracking-tight tabular-nums sm:text-[26px]">
+        {time.slice(0, 5)}
+        <span className="text-[15px] font-bold text-(--card-muted) sm:text-base">
+          {time.slice(5)}
+        </span>
+      </span>
+      <span
+        className={`mt-[3px] truncate text-[12.5px] sm:text-[13px] ${snap.live ? "text-(--card-muted)" : "font-bold text-(--notlive-text)"}`}>
+        {sub}
+      </span>
+    </div>
+  );
+};
+
+/** Where bus positions come from at the shown time, service changes, and preview mode. */
+const Badges: React.FC<{ snap: TransitSnapshot }> = ({ snap }) => (
+  <div className="flex flex-wrap items-center gap-1.5 empty:hidden">
+    <span
+      title={snap.rt.title}
+      className="flex items-center gap-1.5 rounded-full bg-(--mark-neutral-bg) px-2.5 py-1.5 text-[12.5px] whitespace-nowrap text-(--mark-neutral-fg)">
+      <TimeMark mark={RT_MARK[snap.rt.mode]} />
+      {snap.rt.label.replace("Buses: ", "Buses ")}
+    </span>
+    {snap.notices.length ?
+      <span
+        className="rounded-full bg-(--card-warn-bg) px-2.5 py-1.5 text-[12.5px] font-semibold whitespace-nowrap text-(--card-warn-fg)"
+        title={snap.notices.join("\n")}>
+        Service change
+      </span>
+    : null}
+    {snap.preview.length ?
+      <span
+        className="rounded-full bg-purple-700 px-2.5 py-1.5 text-[12.5px] font-semibold whitespace-nowrap text-white"
+        title={`Showing unconfirmed corrections for ${snap.preview.map(isoDate).join(", ")}: not what visitors see`}>
+        Preview
+      </span>
+    : null}
+  </div>
+);
+
+const NotLiveBadge: React.FC = () => (
+  <span className="flex items-center gap-1.5 rounded-full bg-(--notlive-bg) px-3 py-1.5 text-[13px] font-extrabold tracking-wider whitespace-nowrap text-(--notlive-fg) uppercase">
+    <Icon icon="clock" size={16} />
+    Not live
+  </span>
+);
+
+/** Green "Live" only when live; otherwise the way back to it. */
+const LiveOrGoLive: React.FC<Props> = ({ engine, snap }) =>
+  snap.live ?
+    <span className="flex h-10 flex-none items-center gap-1.5 rounded-[10px] bg-(--mark-live-bg) px-3 text-sm font-bold text-(--mark-live-fg)">
+      <TimeMark mark="live" />
+      Live
+    </span>
+  : <GoLiveButton onClick={() => engine.goLive()} />;
+
+export const GoLiveButton: React.FC<{
+  onClick: () => void;
+  className?: string;
+}> = ({ onClick, className }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`flex h-10 flex-none items-center gap-1.5 rounded-[10px] border-[1.5px] border-(--golive-border) bg-(--card-bg) px-3 text-sm font-bold whitespace-nowrap text-(--golive-fg) hover:bg-(--card-hover) ${className ?? ""}`}>
+    <span
+      aria-hidden="true"
+      className="h-[9px] w-[9px] rounded-full border-2 border-current"
+    />
+    Go live
+  </button>
+);
+
+/** The date as "Wed 7 Oct", opening the browser's date picker (bounded to the published timetables). */
+const DateButton: React.FC<Props & { wide?: boolean }> = ({
+  engine,
+  snap,
+  wide,
+}) => {
+  const input = React.useRef<HTMLInputElement>(null);
+  return (
+    <div className={`relative ${wide ? "flex-1" : ""}`}>
+      <button
+        type="button"
+        aria-label={`Date: ${shortDate(snap.serviceDate)}. Change date`}
+        onClick={() => {
+          const el = input.current;
+          if (!el) return;
+          try {
+            el.showPicker();
+          } catch {
+            el.focus();
+          }
+        }}
+        className="flex h-10 w-full items-center justify-center gap-2 rounded-[10px] border border-(--card-border) bg-(--card-bg) px-3 text-sm font-semibold whitespace-nowrap hover:bg-(--card-hover) max-sm:h-11 max-sm:text-[14.5px]">
+        <Icon icon="calendar" size={16} />
+        {shortDate(snap.serviceDate)}
+      </button>
+      <input
+        ref={input}
+        type="date"
+        tabIndex={-1}
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 opacity-0"
+        value={isoDate(snap.serviceDate)}
+        min={snap.dateRange ? isoDate(snap.dateRange[0]) : undefined}
+        max={snap.dateRange ? isoDate(snap.dateRange[1]) : undefined}
+        onChange={(e) => {
+          const d = fromIsoDate(e.target.value);
+          if (d) engine.seekDate(d);
+        }}
+      />
+    </div>
+  );
+};
+
+const SpeedStepper: React.FC<Props> = ({ engine, snap }) => {
+  const i = RATES.indexOf(snap.rate);
+  const step =
+    "flex h-10 w-7 items-center justify-center hover:bg-(--card-hover) disabled:opacity-40 max-sm:h-11 max-sm:w-11";
+  return (
+    <div
+      role="group"
+      aria-label="Playback speed"
+      className="flex flex-none items-center overflow-hidden rounded-[10px] border border-(--card-border)">
+      <button
+        type="button"
+        aria-label="Slower"
+        disabled={i === 0}
+        onClick={() => stepRate(engine, false)}
+        className={step}>
+        <Icon icon="chevrons-left" size={18} />
+      </button>
+      <span
+        aria-live="polite"
+        className="min-w-9 text-center text-sm font-bold tabular-nums max-sm:min-w-[52px] max-sm:text-[15px]">
+        {rateLabel(snap.rate)}
+      </span>
+      <button
+        type="button"
+        aria-label="Faster"
+        disabled={i === RATES.length - 1}
+        onClick={() => stepRate(engine, true)}
+        className={step}>
+        <Icon icon="chevrons-right" size={18} />
+      </button>
+    </div>
+  );
+};
+
+const Slider: React.FC<Props & { ticks: number[] }> = ({
+  engine,
+  snap,
+  ticks,
+}) => {
+  const [scrub, setScrub] = React.useState<number>();
+  const [lo, hi] = snap.sliderRange;
+  const value = scrub ?? Math.round(snap.t / 1000);
+  const pct = (x: number) => ((x - lo) / (hi - lo)) * 100;
+  const coverage = snap.coverage
+    .map(([a, b]) => [Math.max(a, lo), Math.min(b, hi)] as const)
+    .filter(([a, b]) => b > a);
+  return (
+    <div className="relative">
+      <div
+        aria-hidden="true"
+        className="absolute inset-x-0 top-[7px] h-1.5 overflow-hidden rounded-full bg-(--slider-track)"
+        title="Shaded: real bus positions recorded">
+        {coverage.map(([a, b]) => (
+          <span
+            key={a}
+            className="absolute inset-y-0 bg-(--slider-recorded)"
+            style={{
+              left: `${pct(a)}%`,
+              width: `max(2px, ${pct(b) - pct(a)}%)`,
             }}
           />
-          <select
-            aria-label="Playback speed"
-            className="h-9 rounded border border-gray-300 bg-transparent px-1 text-sm dark:border-gray-600 dark:bg-gray-900"
-            value={snap.rate}
-            onChange={(e) => engine.setRate(Number(e.target.value))}>
-            {RATES.map((r) => (
-              <option key={r} value={r}>
-                {rateLabel(r)}
-              </option>
-            ))}
-          </select>
-        </div>
-        <button
-          type="button"
-          aria-pressed={snap.live}
-          className={`${button} text-sm font-medium ${snap.live ? "text-red-600" : ""}`}
-          onClick={() => engine.goLive()}>
-          <span aria-hidden="true">{snap.live ? "● " : "○ "}</span>Live
-        </button>
-      </div>
-      <div className="relative mt-1">
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 h-1"
-          title="Shaded: real bus positions recorded">
-          {coverage.map(([a, b]) => (
-            <span
-              key={a}
-              className="absolute top-0 h-1 bg-red-500/70"
-              style={{
-                left: `${pct(a)}%`,
-                width: `max(2px, ${pct(b) - pct(a)}%)`,
-              }}
-            />
-          ))}
-        </div>
-        <input
-          type="range"
-          aria-label="Time of day"
-          className="block h-7 w-full cursor-pointer accent-blue-700"
-          min={Math.round(lo / 1000)}
-          max={Math.round(hi / 1000)}
-          step={1}
-          value={value}
-          onPointerDown={() => setScrub(value)}
-          onPointerUp={() => setScrub(undefined)}
-          onBlur={() => setScrub(undefined)}
-          onChange={(e) => {
-            const s = Number(e.target.value);
-            if (scrub !== undefined) setScrub(s);
-            engine.seek(s * 1000);
-          }}
+        ))}
+        <span
+          className="absolute inset-y-0 left-0 bg-(--slider-fill)"
+          style={{ width: `${Math.max(0, Math.min(100, pct(value * 1000)))}%` }}
         />
-        <div
-          className="relative h-3 text-[10px] text-gray-500 dark:text-gray-400"
-          aria-hidden="true">
-          {TICKS.map((h) => (
-            <span
-              key={h}
-              className="absolute -translate-x-1/2"
-              style={{ left: `${((h - 3) / 24) * 100}%` }}>
-              {String(h % 24).padStart(2, "0")}
-            </span>
-          ))}
-        </div>
       </div>
-    </section>
+      <input
+        type="range"
+        aria-label="Time of day"
+        className="time-slider relative block h-5 w-full cursor-pointer"
+        min={Math.round(lo / 1000)}
+        max={Math.round(hi / 1000)}
+        step={1}
+        value={value}
+        onPointerDown={() => setScrub(value)}
+        onPointerUp={() => setScrub(undefined)}
+        onBlur={() => setScrub(undefined)}
+        onChange={(e) => {
+          const s = Number(e.target.value);
+          if (scrub !== undefined) setScrub(s);
+          engine.seek(s * 1000);
+        }}
+      />
+      <div
+        aria-hidden="true"
+        className="relative mt-0.5 h-4 text-[11px] text-(--card-faint) tabular-nums">
+        {ticks.map((h) => (
+          <span
+            key={h}
+            className="absolute -translate-x-1/2 first:translate-x-0 last:-translate-x-full"
+            style={{ left: `${((h - 3) / 24) * 100}%` }}>
+            {String(h % 24).padStart(2, "0")}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 };

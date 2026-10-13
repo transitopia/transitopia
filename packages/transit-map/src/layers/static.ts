@@ -33,6 +33,8 @@ const ANCHORS = [
 ];
 /** Vehicles are inserted beneath this layer, so stop and station labels stay readable above them. */
 export const VEHICLES_BEFORE_LAYER = "bus-stops-label";
+export const SELECTED_PLACE_SOURCE = "transit-selected-place";
+const SELECTED_PLACE_LAYER = "selected-place";
 
 const KIND_ORDER: Record<string, number> = { bus: 0, shape: 1, skytrain: 2 };
 const BUS_FREQUENT: ExpressionSpecification = [
@@ -129,6 +131,7 @@ function busStopsGeoJson(plan: ServicePlan): FeatureCollection {
       type: "Feature" as const,
       properties: {
         name: s.name,
+        stop: s.stop,
         // ",99,R4," so filters can test membership with a substring match.
         routes: `,${s.routes.join(",")},`,
         n: s.routes.length,
@@ -147,6 +150,7 @@ function busTicksGeoJson(plan: ServicePlan): FeatureCollection {
       type: "Feature" as const,
       properties: {
         route: t.route,
+        stop: t.stop,
         bearing: t.bearing,
         color: plan.routes.find((r) => r.key === t.route)?.color ?? "#888",
       },
@@ -504,4 +508,59 @@ export function applyRouteFilter(map: MlMap, hidden: Set<string>): void {
   if (map.getLayer(VEHICLES_BEFORE_LAYER))
     map.setFilter(VEHICLES_BEFORE_LAYER, stopVisible);
   if (map.getLayer("bus-stops")) map.setFilter("bus-stops", visible);
+}
+
+/** Station and bus stop markers and their labels (the layers panel's "Stations & stops"). */
+export function applyStopsVisibility(map: MlMap, shown: boolean): void {
+  for (const id of [
+    "stations",
+    "stations-label",
+    "bus-stops",
+    VEHICLES_BEFORE_LAYER,
+  ])
+    if (map.getLayer(id))
+      map.setLayoutProperty(id, "visibility", shown ? "visible" : "none");
+}
+
+/**
+ * A ring around the selected station or stop (its card is open), or none. Re-call after a style
+ * change: it adds its source and layer when they're missing.
+ */
+export function setSelectedPlace(
+  map: MlMap,
+  at: [number, number] | undefined,
+): void {
+  const data: FeatureCollection = {
+    type: "FeatureCollection",
+    features:
+      at ?
+        [
+          {
+            type: "Feature",
+            properties: {},
+            geometry: { type: "Point", coordinates: at },
+          },
+        ]
+      : [],
+  };
+  const source = map.getSource(SELECTED_PLACE_SOURCE) as
+    GeoJSONSource | undefined;
+  if (source) source.setData(data);
+  else map.addSource(SELECTED_PLACE_SOURCE, { type: "geojson", data });
+  if (!map.getLayer(SELECTED_PLACE_LAYER))
+    map.addLayer(
+      {
+        id: SELECTED_PLACE_LAYER,
+        type: "circle",
+        source: SELECTED_PLACE_SOURCE,
+        paint: {
+          "circle-radius": 20,
+          "circle-color": "#31cddc",
+          "circle-opacity": 0.28,
+          "circle-stroke-color": "#0d98a6",
+          "circle-stroke-width": 2,
+        },
+      },
+      map.getLayer("stations") ? "stations" : undefined,
+    );
 }

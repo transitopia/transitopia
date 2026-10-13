@@ -12,8 +12,12 @@ import { MapOverlayWindow } from "../Map/MapOverlayWindow.tsx";
 import { useTheme } from "../Theme/Theme.tsx";
 import { useDatasets } from "../Attribution/Attribution.tsx";
 import { TimeBar } from "./TimeBar.tsx";
-import { TransitLegend } from "./TransitLegend.tsx";
+import { TransitLayers } from "./TransitLayers.tsx";
 import { VehicleCard } from "./VehicleCard.tsx";
+import { PlaceCard } from "./PlaceCard.tsx";
+import { RouteCard } from "./RouteCard.tsx";
+import { FollowPill } from "./FollowPill.tsx";
+import { useOverlayPadding } from "./overlayPadding.ts";
 
 const [w, s, e, n] = region.initialBounds;
 const INITIAL_BOUNDS: [[number, number], [number, number]] = [
@@ -147,11 +151,19 @@ const EngineControls: React.FC<{ engine: TransitEngine }> = ({ engine }) => {
     engine.getSnapshot,
   );
   useDatasets(snap.datasets);
+  useOverlayPadding(engine);
   return (
     <>
-      <TransitLegend engine={engine} snap={snap} />
+      <FollowPill engine={engine} snap={snap} />
+      <TransitLayers engine={engine} snap={snap} />
       <VehicleCard engine={engine} snap={snap} />
-      <TimeBar engine={engine} snap={snap} />
+      <PlaceCard engine={engine} snap={snap} />
+      <RouteCard engine={engine} snap={snap} />
+      <TimeBar
+        engine={engine}
+        snap={snap}
+        cardOpen={!!snap.selected || !!snap.place}
+      />
     </>
   );
 };
