@@ -5,8 +5,8 @@ The single-page application at https://www.transitopia.org: React 19, TypeScript
 ```sh
 # Serve at http://localhost:5173 (run this from the repo root)
 npm run dev
-# Run with production's live data:
-VITE_TRANSIT_API=https://api.transitopia.org/ npm run dev
+# Run with production's data and live API (both, so buses match transitopia.org):
+VITE_TRANSIT_DATA=https://data.transitopia.org/ VITE_TRANSIT_API=https://api.transitopia.org/ npm run dev
 # Build to apps/web/dist (what Cloudflare Pages builds)
 npm run build -w @transitopia/web
 ```
