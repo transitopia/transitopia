@@ -5,6 +5,7 @@
 
 import type { Map as MlMap } from "maplibre-gl";
 import type { Theme } from "@transitopia/map-style/basemap.ts";
+import { realtimeOf } from "@transitopia/shared/datasets.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
 import type { InfraCollection } from "@transitopia/transit-core/infra/types.ts";
 import {
@@ -95,6 +96,8 @@ export interface TransitEngineOptions {
   debug?: boolean | undefined;
   /** Initial time, rate and selection; defaults to the current URL. */
   initial?: UrlState | undefined;
+  /** Dataset registry id for routes whose plan doesn't name one (plans built before PlanRoute.dataset). */
+  dataset?: string | undefined;
 }
 
 export interface SelectedVehicle {
@@ -102,6 +105,8 @@ export interface SelectedVehicle {
   /** Undefined when the vehicle isn't in service at the shown time. */
   vehicle: VehicleState | undefined;
   route: PlanRoute | undefined;
+  /** Registry ids of the data behind it (@transitopia/shared/datasets.ts), for its card's credits. */
+  datasets: string[];
 }
 
 export type { Place };
@@ -128,6 +133,8 @@ export interface RouteSnapshot {
   /** Its vehicles drawn now, and how many of them have real positions. */
   vehicles: number;
   live: number;
+  /** Registry ids of the data behind it, for its card's credits. */
+  datasets: string[];
 }
 
 /** A kind of day in the shown feed, with the route's minutes between trips per hour (DAY_HOURS). */
@@ -148,6 +155,8 @@ export interface PlaceSnapshot extends Place {
   lat: number;
   routes: PlanRoute[];
   groups: PlaceGroup[];
+  /** Registry ids of the data behind its departures, for its card's credits. */
+  datasets: string[];
   /** A bus stop's number on its sign (GTFS stop_code), where the plan has it. */
   code?: string | undefined;
   /** A station's or exchange's bus bays, by number: each has its own stop card. */
@@ -202,7 +211,7 @@ export interface TransitSnapshot {
 }
 
 const RT_BADGE: Record<RtMode, [string, string]> = {
-  live: ["Buses: live", "Bus positions from TransLink real-time data"],
+  live: ["Buses: live", "Bus positions from real-time data"],
   recorded: [
     "Buses: recorded",
     "Bus positions replayed from recorded real-time data",
@@ -268,6 +277,7 @@ export class TransitEngine {
   private readonly ais: AisClient;
   private readonly vehicles: VehicleLayer;
   private readonly debug: boolean;
+  private readonly defaultDataset: string | undefined;
   private theme: Theme;
   private hidden: Set<string>;
   private showStops: boolean;
@@ -328,6 +338,7 @@ export class TransitEngine {
     this.store = store;
     this.theme = opts.theme;
     this.debug = opts.debug ?? false;
+    this.defaultDataset = opts.dataset;
     const range = store.range();
     if (!range)
       throw new Error(
@@ -921,10 +932,14 @@ export class TransitEngine {
         undefined
       : (() => {
           const v = this.lastVehicles.find((x) => x.id === this.selectedId);
+          const route = v ? this.shownFeed?.routes.get(v.routeKey) : undefined;
           return {
             id: this.selectedId,
             vehicle: v,
-            route: v ? this.shownFeed?.routes.get(v.routeKey) : undefined,
+            route,
+            datasets: this.datasetsOf([
+              [route, v !== undefined && v.provenance !== "estimated"],
+            ]),
           };
         })();
     const prev = this.snapshot as TransitSnapshot | undefined;
@@ -995,6 +1010,9 @@ export class TransitEngine {
         nextHour: routeMinutes(pp, p.id, date, sec, 3600),
         vehicles: mine.length,
         live: mine.filter((v) => v.provenance !== "estimated").length,
+        datasets: this.datasetsOf([
+          [route, mine.some((v) => v.provenance !== "estimated")],
+        ]),
       };
     }
     const { plan } = pp;
@@ -1064,6 +1082,16 @@ export class TransitEngine {
       lon: where.lon,
       lat: where.lat,
       routes: routeKeys.map(routeOf).filter(Boolean),
+      datasets: this.datasetsOf([
+        ...routeKeys.map((k): [PlanRoute | undefined, boolean] => [
+          routeOf(k),
+          false,
+        ]),
+        ...groups.map((g): [PlanRoute | undefined, boolean] => [
+          routeOf(g.routeKey),
+          g.departures.some((d) => d.source !== "schedule"),
+        ]),
+      ]),
       groups: groups.map((g) => ({
         route: routeOf(g.routeKey),
         headsign: g.headsign,
@@ -1240,7 +1268,7 @@ export class TransitEngine {
         this.dirty = true;
       }
     }
-    this.datasets = this.datasetsDrawn(live.vehicles?.length ?? 0, aisUsed);
+    this.datasets = this.datasetsDrawn(live.vehicles ?? [], aisUsed);
 
     if (this.styleReady)
       this.vehicles.update(
@@ -1281,14 +1309,43 @@ export class TransitEngine {
     this.raf = requestAnimationFrame(this.frame);
   };
 
+  /**
+   * The datasets behind routes: each route's schedule (the plan's, else the host's default), and its
+   * provider's real-time data where `realtime` (real positions or predicted times are shown).
+   */
+  private datasetsOf(
+    routes: Iterable<[PlanRoute | undefined, boolean]>,
+  ): string[] {
+    const out = new Set<string>();
+    for (const [route, realtime] of routes) {
+      const schedule = route?.dataset ?? this.defaultDataset;
+      if (!route || !schedule) continue;
+      out.add(schedule);
+      const rt = realtime ? realtimeOf(schedule) : undefined;
+      if (rt) out.add(rt);
+    }
+    return [...out];
+  }
+
   /** What the map shows right now, for the attribution control (docs/DESIGN.md#attribution). */
-  private datasetsDrawn(rtVehicles: number, aisUsed: boolean): string[] {
-    const out: string[] = [];
-    const routesShown = routeKeys(this.shownFeed).some(
-      (k) => !this.hidden.has(k),
-    );
-    if (routesShown || this.lastVehicles.length) out.push("translink-gtfs");
-    if (rtVehicles > 0) out.push("translink-gtfs-rt");
+  private datasetsDrawn(
+    rtVehicles: readonly VehicleState[],
+    aisUsed: boolean,
+  ): string[] {
+    const routes = this.shownFeed?.routes;
+    const out = this.datasetsOf([
+      ...routeKeys(this.shownFeed)
+        .filter((k) => !this.hidden.has(k))
+        .map((k): [PlanRoute | undefined, boolean] => [routes?.get(k), false]),
+      ...this.lastVehicles.map((v): [PlanRoute | undefined, boolean] => [
+        routes?.get(v.routeKey),
+        false,
+      ]),
+      ...rtVehicles.map((v): [PlanRoute | undefined, boolean] => [
+        routes?.get(v.routeKey),
+        true,
+      ]),
+    ]);
     if (aisUsed) out.push("aisstream");
     // The track network is imported from OpenStreetMap plus our overrides; corrections are ours.
     if (this.tracks) out.push("osm", "transitopia");

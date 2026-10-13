@@ -18,6 +18,8 @@ export interface Dataset {
   legend?: string;
   url: string;
   license: { name: string; url?: string };
+  /** A schedule's real-time companion from the same provider (its GTFS-RT). */
+  realtime?: DatasetId;
 }
 
 const TRANSLINK_LEGEND =
@@ -61,6 +63,7 @@ export const DATASETS: Record<DatasetId, Dataset> = {
     id: "translink-gtfs",
     credit: "Schedules: TransLink",
     legend: TRANSLINK_LEGEND,
+    realtime: "translink-gtfs-rt",
     url: "https://www.translink.ca/about-us/doing-business-with-translink/app-developer-resources",
     license: TRANSLINK_TERMS,
   },
@@ -78,6 +81,11 @@ export const DATASETS: Record<DatasetId, Dataset> = {
     license: { name: "aisstream.io terms" },
   },
 };
+
+/** The real-time dataset that goes with a schedule dataset, if its provider has one. */
+export function realtimeOf(id: string): DatasetId | undefined {
+  return (DATASETS as Record<string, Dataset | undefined>)[id]?.realtime;
+}
 
 /** The datasets to credit, deduplicated, in registry order. Unknown ids are ignored. */
 export function creditsFor(ids: Iterable<string>): Dataset[] {

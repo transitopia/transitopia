@@ -148,11 +148,13 @@ Observations (sightings of a train or vessel at a stop at a time, consists, canc
 
 Each dataset has an entry in the registry (`packages/shared/src/datasets.ts`): id, short credit, full legend text, link and license. Every map source, layer and engine component declares which datasets it draws (`useDatasets([...])` in the site), and the site's attribution control (replacing MapLibre's default) credits exactly what's visible: the layers turned on, plus whether the engine is drawing any vehicle from that dataset. On phones it collapses to a short line with an ⓘ button.
 
-TransLink's required legend ("Some of the data used in this product or service is provided by permission of TransLink. …") appears in full whenever TransLink data is visible: in the expanded credits and in the vehicle card.
+Transit data is credited per route, never by naming a provider in UI code: each route in a plan names its feed's dataset (`PlanRoute.dataset`, from `gtfsDataset` in `region.json`; plans built before it fall back to the region's, passed to the engine), and a schedule dataset names its provider's real-time companion (`realtime`). The engine's snapshots say which datasets lie behind what's drawn and behind each card (a vehicle, a route, a place's departures, adding the real-time dataset where real positions or predictions are shown), so with several providers each card credits only its own.
+
+Required legends, such as TransLink's ("Some of the data used in this product or service is provided by permission of TransLink. …"), appear in full whenever that data is visible: in the expanded credits and in the footer of each card showing it.
 
 ## Regions
 
-A **region** (`regions/<id>/region.json`) holds the bbox, time zone, the first view, and time zone checks. Everything about a region is data under `regions/<id>/`:
+A **region** (`regions/<id>/region.json`) holds the bbox, time zone, the first view, its GTFS feed's dataset id, and time zone checks. Everything about a region is data under `regions/<id>/`:
 
 ```
 regions/metro-vancouver/

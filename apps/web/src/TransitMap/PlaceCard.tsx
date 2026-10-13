@@ -9,7 +9,7 @@ import type {
 import type { Place } from "@transitopia/transit-map/url.ts";
 import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
 import { bayLabel } from "@transitopia/transit-core/plan/exchanges.ts";
-import { DATASETS } from "@transitopia/shared/datasets.ts";
+import { creditsFor, legendsFor } from "@transitopia/shared/datasets.ts";
 
 import {
   CardSection,
@@ -348,7 +348,7 @@ const PlaceCardBody: React.FC<{
         <>
           {rail ?
             <p>
-              From the TransLink timetable.
+              From the timetable.
               {has("train") ?
                 " Trains on the map follow our inferred runs, which can differ by a minute or two."
               : ""}
@@ -360,7 +360,11 @@ const PlaceCardBody: React.FC<{
               timetable.
             </p>
           : null}
-          <p className="mt-1">{DATASETS["translink-gtfs"].legend}</p>
+          {legendsFor(creditsFor(place.datasets)).map((l) => (
+            <p key={l} className="mt-1">
+              {l}
+            </p>
+          ))}
         </>
       }>
       {sections.map((x) => (
