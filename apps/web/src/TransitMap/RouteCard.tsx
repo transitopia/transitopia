@@ -6,7 +6,7 @@ import {
   type TransitSnapshot,
 } from "@transitopia/transit-map/engine.ts";
 import { localDate, toWallTime } from "@transitopia/transit-core/time.ts";
-import { DATASETS } from "@transitopia/shared/datasets.ts";
+import { creditsFor, legendsFor } from "@transitopia/shared/datasets.ts";
 
 import { Icon } from "../components/Icon.tsx";
 import {
@@ -144,11 +144,12 @@ const RouteCardBody: React.FC<{
       onClose={() => engine.select(undefined)}
       footer={
         <>
-          <p>
-            From the TransLink timetable: trips per hour in the busier
-            direction.
-          </p>
-          <p className="mt-1">{DATASETS["translink-gtfs"].legend}</p>
+          <p>From the timetable: trips per hour in the busier direction.</p>
+          {legendsFor(creditsFor(place.datasets)).map((l) => (
+            <p key={l} className="mt-1">
+              {l}
+            </p>
+          ))}
         </>
       }>
       <CardSection title="Next hour">

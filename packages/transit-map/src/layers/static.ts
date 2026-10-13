@@ -1,4 +1,5 @@
-// Static transit layers drawn by MapLibre: route lines from GTFS shapes, and stations.
+// Static transit layers drawn by MapLibre: route lines from GTFS shapes, stations, bus exchanges and
+// bus stops.
 // Track-level SkyTrain geometry (packages/transit-core/DESIGN.md#track-graph) will replace the SkyTrain shapes in M3.
 
 import type { FeatureCollection, Feature } from "geojson";
@@ -14,9 +15,11 @@ import {
   busStopTicks,
 } from "@transitopia/transit-core/plan/bus-stops.ts";
 import type { Theme } from "@transitopia/map-style/basemap.ts";
+import { hubsOf } from "../plans.ts";
 
 export const ROUTES_SOURCE = "transit-routes";
 export const STATIONS_SOURCE = "transit-stations";
+export const EXCHANGES_SOURCE = "transit-exchanges";
 export const BUS_STOPS_SOURCE = "transit-bus-stops";
 export const BUS_TICKS_SOURCE = "transit-bus-stop-ticks";
 const TICK_IMAGE = "bus-stop-tick";
@@ -186,6 +189,26 @@ function tickImage(): { width: number; height: number; data: Uint8Array } {
   return { width, height, data };
 }
 
+/** Bus exchanges away from stations (a station's bays are part of its marker). */
+function exchangesGeoJson(plan: ServicePlan): FeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: hubsOf(plan)
+      .filter((h) => !h.station)
+      .map((h) => ({
+        type: "Feature" as const,
+        properties: {
+          id: h.id,
+          name: h.name,
+          // ",99,R4," as for bus stops (applyRouteFilter).
+          routes: `,${h.routes.join(",")},`,
+          n: h.routes.length,
+        },
+        geometry: { type: "Point" as const, coordinates: [h.lon, h.lat] },
+      })),
+  };
+}
+
 function stationsGeoJson(plan: ServicePlan): FeatureCollection {
   return {
     type: "FeatureCollection",
@@ -229,6 +252,9 @@ export function addStaticLayers(
     void (map.getSource(STATIONS_SOURCE) as GeoJSONSource).setData(
       stations.data as FeatureCollection,
     );
+    void (map.getSource(EXCHANGES_SOURCE) as GeoJSONSource).setData(
+      exchangesGeoJson(plan),
+    );
     void (map.getSource(BUS_STOPS_SOURCE) as GeoJSONSource).setData(
       busStopsGeoJson(plan),
     );
@@ -240,6 +266,10 @@ export function addStaticLayers(
   }
   map.addSource(ROUTES_SOURCE, routes);
   map.addSource(STATIONS_SOURCE, stations);
+  map.addSource(EXCHANGES_SOURCE, {
+    type: "geojson",
+    data: exchangesGeoJson(plan),
+  });
   map.addSource(BUS_STOPS_SOURCE, {
     type: "geojson",
     data: busStopsGeoJson(plan),
@@ -381,6 +411,37 @@ export function addStaticLayers(
     },
     paint: { "icon-color": ["get", "color"], "icon-opacity": 0.85 },
   });
+  // Bus exchanges: drawn like stations, in the stop labels' grey, once bus stops show.
+  map.addLayer({
+    id: "exchanges",
+    type: "circle",
+    source: EXCHANGES_SOURCE,
+    minzoom: 11,
+    paint: {
+      "circle-color": casing,
+      "circle-stroke-color": mutedText,
+      "circle-stroke-width": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        11,
+        1,
+        14,
+        2,
+      ],
+      "circle-radius": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        11,
+        2.5,
+        14,
+        6,
+        17,
+        9,
+      ],
+    },
+  });
   map.addLayer({
     id: "stations",
     type: "circle",
@@ -462,6 +523,29 @@ export function addStaticLayers(
     },
     "stations-label",
   );
+  // Beneath station labels, which win where they collide.
+  map.addLayer(
+    {
+      id: "exchanges-label",
+      type: "symbol",
+      source: EXCHANGES_SOURCE,
+      minzoom: 12,
+      layout: {
+        "text-field": ["get", "name"],
+        "text-font": ["Noto Sans Medium"],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 12, 10, 15, 12.5],
+        "text-offset": [0, 1.1],
+        "text-anchor": "top",
+        "text-optional": true,
+      },
+      paint: {
+        "text-color": mutedText,
+        "text-halo-color": halo,
+        "text-halo-width": 1.5,
+      },
+    },
+    "stations-label",
+  );
   applyRouteFilter(map, hiddenRoutes);
 }
 
@@ -485,7 +569,7 @@ export function applyRouteFilter(map: MlMap, hidden: Set<string>): void {
   ] as [string, ExpressionSpecification][]) {
     if (map.getLayer(id)) map.setFilter(id, ["all", base, visible]);
   }
-  // A bus stop shows while any of its routes is visible.
+  // A bus stop or exchange shows while any of its routes is visible.
   const hiddenAtStop: ExpressionSpecification = [
     "+",
     0,
@@ -505,16 +589,18 @@ export function applyRouteFilter(map: MlMap, hidden: Set<string>): void {
     hiddenAtStop,
     ["get", "n"],
   ];
-  if (map.getLayer(VEHICLES_BEFORE_LAYER))
-    map.setFilter(VEHICLES_BEFORE_LAYER, stopVisible);
+  for (const id of [VEHICLES_BEFORE_LAYER, "exchanges", "exchanges-label"])
+    if (map.getLayer(id)) map.setFilter(id, stopVisible);
   if (map.getLayer("bus-stops")) map.setFilter("bus-stops", visible);
 }
 
-/** Station and bus stop markers and their labels (the layers panel's "Stations & stops"). */
+/** Station, exchange and bus stop markers and their labels (the layers panel's "Stations & stops"). */
 export function applyStopsVisibility(map: MlMap, shown: boolean): void {
   for (const id of [
     "stations",
     "stations-label",
+    "exchanges",
+    "exchanges-label",
     "bus-stops",
     VEHICLES_BEFORE_LAYER,
   ])
@@ -523,7 +609,7 @@ export function applyStopsVisibility(map: MlMap, shown: boolean): void {
 }
 
 /**
- * A ring around the selected station or stop (its card is open), or none. Re-call after a style
+ * A ring around the selected station, exchange or stop (its card is open), or none. Re-call after a style
  * change: it adds its source and layer when they're missing.
  */
 export function setSelectedPlace(

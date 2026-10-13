@@ -1,5 +1,5 @@
 // Shareable view state in the query string: ?date=2026-09-28&t=08:15:00&rate=10&paused=1&select=<vehicle>
-// or &place=station:<id> / stop:<id> / route:<key> (apps/web/README.md#modes-and-url-state; `v` is the older name
+// or &place=station:<id> / exchange:<id> / stop:<id> / route:<key> (apps/web/README.md#modes-and-url-state; `v` is the older name
 // for `select`).
 // No time parameters means "live". The map position lives in the hash (MapLibre's hash option).
 // `t` is service-day time, so it may exceed 24:00 for after-midnight trips.
@@ -13,10 +13,10 @@ import {
 import { displayServiceDate } from "./plans.ts";
 import type { Clock } from "./clock.ts";
 
-/** A tapped station, bus stop or route line (its card). */
+/** A tapped station, bus exchange, bus stop or route line (its card). */
 export interface Place {
-  kind: "station" | "stop" | "route";
-  /** Station (parent stop_id), GTFS stop_id, or route key. */
+  kind: "station" | "exchange" | "stop" | "route";
+  /** Station (parent stop_id), exchange id (BusHub), GTFS stop_id, or route key. */
   id: string;
 }
 
@@ -50,7 +50,9 @@ export function readUrl(): UrlState {
   if (q.get("paused") === "1") out.paused = true;
   const v = q.get("select") ?? q.get("v");
   if (v) out.vehicle = v;
-  const place = /^(station|stop|route):(.+)$/.exec(q.get("place") ?? "");
+  const place = /^(station|exchange|stop|route):(.+)$/.exec(
+    q.get("place") ?? "",
+  );
   if (place && !v)
     out.place = { kind: place[1] as Place["kind"], id: place[2]! };
   const preview = Object.fromEntries(

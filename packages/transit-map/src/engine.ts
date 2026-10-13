@@ -5,6 +5,7 @@
 
 import type { Map as MlMap } from "maplibre-gl";
 import type { Theme } from "@transitopia/map-style/basemap.ts";
+import { realtimeOf } from "@transitopia/shared/datasets.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
 import type { InfraCollection } from "@transitopia/transit-core/infra/types.ts";
 import {
@@ -20,6 +21,7 @@ import {
   feedForDate,
   type PlanRoute,
 } from "@transitopia/transit-core/plan/types.ts";
+import { bayLabel } from "@transitopia/transit-core/plan/exchanges.ts";
 import type {
   PreparedPlan,
   ScheduleCorrections,
@@ -45,12 +47,14 @@ import {
   PlanStore,
   SERVICE_DAY_ROLLOVER_H,
   displayServiceDate,
+  hubsOf,
   kinematics,
   mergeCorrections,
 } from "./plans.ts";
 import {
   BUS_STOPS_SOURCE,
   BUS_TICKS_SOURCE,
+  EXCHANGES_SOURCE,
   ROUTES_SOURCE,
   SELECTED_PLACE_SOURCE,
   STATIONS_SOURCE,
@@ -92,6 +96,8 @@ export interface TransitEngineOptions {
   debug?: boolean | undefined;
   /** Initial time, rate and selection; defaults to the current URL. */
   initial?: UrlState | undefined;
+  /** Dataset registry id for routes whose plan doesn't name one (plans built before PlanRoute.dataset). */
+  dataset?: string | undefined;
 }
 
 export interface SelectedVehicle {
@@ -99,6 +105,8 @@ export interface SelectedVehicle {
   /** Undefined when the vehicle isn't in service at the shown time. */
   vehicle: VehicleState | undefined;
   route: PlanRoute | undefined;
+  /** Registry ids of the data behind it (@transitopia/shared/datasets.ts), for its card's credits. */
+  datasets: string[];
 }
 
 export type { Place };
@@ -125,6 +133,8 @@ export interface RouteSnapshot {
   /** Its vehicles drawn now, and how many of them have real positions. */
   vehicles: number;
   live: number;
+  /** Registry ids of the data behind it, for its card's credits. */
+  datasets: string[];
 }
 
 /** A kind of day in the shown feed, with the route's minutes between trips per hour (DAY_HOURS). */
@@ -136,15 +146,24 @@ export interface RouteDay {
 
 export { DAY_HOURS };
 
-/** The selected station or bus stop and what leaves it after the shown time. */
+/** The selected station, bus exchange or bus stop and what leaves it after the shown time. */
 export interface PlaceSnapshot extends Place {
-  kind: "station" | "stop";
+  kind: "station" | "exchange" | "stop";
   /** As in GTFS: "Stadium-Chinatown Station", "Eastbound E Hastings St @ Main St". */
   name: string;
   lon: number;
   lat: number;
   routes: PlanRoute[];
   groups: PlaceGroup[];
+  /** Registry ids of the data behind its departures, for its card's credits. */
+  datasets: string[];
+  /** A bus stop's number on its sign (GTFS stop_code), where the plan has it. */
+  code?: string | undefined;
+  /** A station's or exchange's bus bays, by number: each has its own stop card. */
+  bays: { id: string; label: string }[];
+  /** The station or exchange a bay belongs to. */
+  partOf?:
+    { kind: "station" | "exchange"; id: string; name: string } | undefined;
   /** Groups running the same way from here, to where they split ("R5 or 14, to Renfrew St"). */
   shared: {
     routes: PlanRoute[];
@@ -192,7 +211,7 @@ export interface TransitSnapshot {
 }
 
 const RT_BADGE: Record<RtMode, [string, string]> = {
-  live: ["Buses: live", "Bus positions from TransLink real-time data"],
+  live: ["Buses: live", "Bus positions from real-time data"],
   recorded: [
     "Buses: recorded",
     "Bus positions replayed from recorded real-time data",
@@ -233,6 +252,7 @@ const SOURCES = [
   ROUTES_SOURCE,
   SELECTED_PLACE_SOURCE,
   STATIONS_SOURCE,
+  EXCHANGES_SOURCE,
   BUS_STOPS_SOURCE,
   BUS_TICKS_SOURCE,
   TRACKS_SOURCE,
@@ -257,6 +277,7 @@ export class TransitEngine {
   private readonly ais: AisClient;
   private readonly vehicles: VehicleLayer;
   private readonly debug: boolean;
+  private readonly defaultDataset: string | undefined;
   private theme: Theme;
   private hidden: Set<string>;
   private showStops: boolean;
@@ -317,6 +338,7 @@ export class TransitEngine {
     this.store = store;
     this.theme = opts.theme;
     this.debug = opts.debug ?? false;
+    this.defaultDataset = opts.dataset;
     const range = store.range();
     if (!range)
       throw new Error(
@@ -520,12 +542,14 @@ export class TransitEngine {
     this.publish();
   }
 
-  /** The station or stop drawn under a screen point, if any (stations win). */
+  /** The station, exchange or stop drawn under a screen point, if any (stations win, then exchanges). */
   private placeAt(x: number, y: number): Place | undefined {
     const { map } = this;
     const layers = [
       "stations",
       "stations-label",
+      "exchanges",
+      "exchanges-label",
       "bus-stops",
       VEHICLES_BEFORE_LAYER,
     ].filter((id) => map.getLayer(id));
@@ -541,6 +565,9 @@ export class TransitEngine {
     const station = hits.find((f) => f.layer.id.startsWith("stations"));
     if (station)
       return { kind: "station", id: String(station.properties["id"]) };
+    const exchange = hits.find((f) => f.layer.id.startsWith("exchanges"));
+    if (exchange)
+      return { kind: "exchange", id: String(exchange.properties["id"]) };
     const stop = hits.find((f) => f.properties["stop"] !== undefined);
     if (stop) return { kind: "stop", id: String(stop.properties["stop"]) };
     return this.routeAt(x, y);
@@ -580,8 +607,8 @@ export class TransitEngine {
     const p = this.place;
     if (!plan || !p || p.kind === "route") return undefined;
     const at =
-      p.kind === "station" ?
-        plan.stations.find((s) => s.id === p.id)
+      p.kind === "station" ? plan.stations.find((s) => s.id === p.id)
+      : p.kind === "exchange" ? hubsOf(plan).find((h) => h.id === p.id)
       : plan.stops.find((s) => s.id === p.id);
     return at ? [at.lon, at.lat] : undefined;
   }
@@ -905,10 +932,14 @@ export class TransitEngine {
         undefined
       : (() => {
           const v = this.lastVehicles.find((x) => x.id === this.selectedId);
+          const route = v ? this.shownFeed?.routes.get(v.routeKey) : undefined;
           return {
             id: this.selectedId,
             vehicle: v,
-            route: v ? this.shownFeed?.routes.get(v.routeKey) : undefined,
+            route,
+            datasets: this.datasetsOf([
+              [route, v !== undefined && v.provenance !== "estimated"],
+            ]),
           };
         })();
     const prev = this.snapshot as TransitSnapshot | undefined;
@@ -979,18 +1010,29 @@ export class TransitEngine {
         nextHour: routeMinutes(pp, p.id, date, sec, 3600),
         vehicles: mine.length,
         live: mine.filter((v) => v.provenance !== "estimated").length,
+        datasets: this.datasetsOf([
+          [route, mine.some((v) => v.provenance !== "estimated")],
+        ]),
       };
     }
     const { plan } = pp;
+    const hubs = hubsOf(plan);
+    // A station's bus bays, or the exchange itself.
+    const hub =
+      p.kind === "station" ? hubs.find((h) => h.station === p.id)
+      : p.kind === "exchange" ? hubs.find((h) => h.id === p.id)
+      : undefined;
     const where =
-      p.kind === "station" ?
-        plan.stations.find((s) => s.id === p.id)
+      p.kind === "station" ? plan.stations.find((s) => s.id === p.id)
+      : p.kind === "exchange" ? hub
       : plan.stops.find((s) => s.id === p.id);
     if (!where) return undefined;
     const date = displayServiceDate(t);
     const deps = departuresAt(
       pp,
-      stopsOf(plan, p.id),
+      p.kind === "exchange" ?
+        new Set(hub!.bays)
+      : stopsOf(plan, p.id, hub?.bays),
       t,
       t + DEPARTURES_AHEAD_MS,
       [addDays(date, -1), date],
@@ -999,8 +1041,13 @@ export class TransitEngine {
     const groups = groupDepartures(deps);
     const routeOf = (k: string) => pp.routes.get(k)!;
     const routeKeys =
-      p.kind === "station" ?
-        (where as { routes: string[] }).routes
+      p.kind === "station" || p.kind === "exchange" ?
+        [
+          ...new Set([
+            ...(where as { routes: string[] }).routes,
+            ...(hub?.routes ?? []),
+          ]),
+        ]
       : [
           ...new Set(
             plan.patterns
@@ -1008,13 +1055,43 @@ export class TransitEngine {
               .map((pt) => pt.route),
           ),
         ];
+    const stopName = (id: string) =>
+      plan.stops.find((s) => s.id === id)?.name ?? id;
+    const parent =
+      p.kind === "stop" ? hubs.find((h) => h.bays.includes(p.id)) : undefined;
     return {
       ...p,
       kind: p.kind,
       name: where.name,
+      code: "code" in where ? where.code : undefined,
+      bays: (hub?.bays ?? []).map((id) => ({
+        id,
+        label: bayLabel(stopName(id)),
+      })),
+      partOf:
+        parent
+        && (parent.station ?
+          {
+            kind: "station",
+            id: parent.station,
+            name:
+              plan.stations.find((s) => s.id === parent.station)?.name
+              ?? parent.name,
+          }
+        : { kind: "exchange", id: parent.id, name: parent.name }),
       lon: where.lon,
       lat: where.lat,
       routes: routeKeys.map(routeOf).filter(Boolean),
+      datasets: this.datasetsOf([
+        ...routeKeys.map((k): [PlanRoute | undefined, boolean] => [
+          routeOf(k),
+          false,
+        ]),
+        ...groups.map((g): [PlanRoute | undefined, boolean] => [
+          routeOf(g.routeKey),
+          g.departures.some((d) => d.source !== "schedule"),
+        ]),
+      ]),
       groups: groups.map((g) => ({
         route: routeOf(g.routeKey),
         headsign: g.headsign,
@@ -1191,7 +1268,7 @@ export class TransitEngine {
         this.dirty = true;
       }
     }
-    this.datasets = this.datasetsDrawn(live.vehicles?.length ?? 0, aisUsed);
+    this.datasets = this.datasetsDrawn(live.vehicles ?? [], aisUsed);
 
     if (this.styleReady)
       this.vehicles.update(
@@ -1232,14 +1309,43 @@ export class TransitEngine {
     this.raf = requestAnimationFrame(this.frame);
   };
 
+  /**
+   * The datasets behind routes: each route's schedule (the plan's, else the host's default), and its
+   * provider's real-time data where `realtime` (real positions or predicted times are shown).
+   */
+  private datasetsOf(
+    routes: Iterable<[PlanRoute | undefined, boolean]>,
+  ): string[] {
+    const out = new Set<string>();
+    for (const [route, realtime] of routes) {
+      const schedule = route?.dataset ?? this.defaultDataset;
+      if (!route || !schedule) continue;
+      out.add(schedule);
+      const rt = realtime ? realtimeOf(schedule) : undefined;
+      if (rt) out.add(rt);
+    }
+    return [...out];
+  }
+
   /** What the map shows right now, for the attribution control (docs/DESIGN.md#attribution). */
-  private datasetsDrawn(rtVehicles: number, aisUsed: boolean): string[] {
-    const out: string[] = [];
-    const routesShown = routeKeys(this.shownFeed).some(
-      (k) => !this.hidden.has(k),
-    );
-    if (routesShown || this.lastVehicles.length) out.push("translink-gtfs");
-    if (rtVehicles > 0) out.push("translink-gtfs-rt");
+  private datasetsDrawn(
+    rtVehicles: readonly VehicleState[],
+    aisUsed: boolean,
+  ): string[] {
+    const routes = this.shownFeed?.routes;
+    const out = this.datasetsOf([
+      ...routeKeys(this.shownFeed)
+        .filter((k) => !this.hidden.has(k))
+        .map((k): [PlanRoute | undefined, boolean] => [routes?.get(k), false]),
+      ...this.lastVehicles.map((v): [PlanRoute | undefined, boolean] => [
+        routes?.get(v.routeKey),
+        false,
+      ]),
+      ...rtVehicles.map((v): [PlanRoute | undefined, boolean] => [
+        routes?.get(v.routeKey),
+        true,
+      ]),
+    ]);
     if (aisUsed) out.push("aisstream");
     // The track network is imported from OpenStreetMap plus our overrides; corrections are ours.
     if (this.tracks) out.push("osm", "transitopia");

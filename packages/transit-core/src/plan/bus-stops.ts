@@ -1,8 +1,8 @@
 // Map markers for express bus stops:
 // - a tick per GTFS stop (one per direction), jutting from the route line toward the side of the
 //   street the stop is on, so opposite stops make a "+";
-// - a label by cross street or exchange name, one per "+" (or per lone tick), except at stations
-//   (the station label covers them).
+// - a label by cross street, one per "+" (or per lone tick), except at stations and exchange bays
+//   (the station's or exchange's own marker labels them: exchanges.ts).
 
 import {
   cumulativeLengths,
@@ -11,6 +11,7 @@ import {
   pointAlong,
   type LonLat,
 } from "../geo.ts";
+import { isBay } from "./exchanges.ts";
 import { isPassengerStop, type ServicePlan } from "./types.ts";
 
 export interface BusStopMarker {
@@ -28,8 +29,6 @@ export interface BusStopMarker {
 
 /** Same-named street stops whose ticks are within this distance (a "+") share a label (m). */
 const MERGE_M = 40;
-/** Bays of the same exchange or loop within this distance share a label (m). */
-const MERGE_EXCHANGE_M = 250;
 /** Stops within this distance of a station aren't shown (m). */
 const STATION_M = 200;
 
@@ -49,10 +48,8 @@ export interface BusStopTick {
   route: string;
   /** GTFS stop_id. */
   stop: string;
-  /** Label (cross street or exchange); undefined at stations. */
+  /** Label (cross street); undefined at stations and exchange bays. */
   name?: string;
-  /** An exchange or loop bay rather than a street stop. */
-  exchange?: boolean;
   /** Point on the route line. */
   lon: number;
   lat: number;
@@ -72,7 +69,7 @@ function shownAt(
   at: LonLat,
   stations: LonLat[],
 ): string | undefined {
-  const label = busStopLabel(name);
+  const label = isBay(name) ? undefined : busStopLabel(name);
   return label && !stations.some((st) => distM(st, at) < STATION_M) ?
       label
     : undefined;
@@ -112,12 +109,10 @@ export function busStopTicks(plan: ServicePlan): BusStopTick[] {
       const ty = Math.cos((q.bearing * Math.PI) / 180);
       const cross = tx * (sy - qy) - ty * (sx - qx); // > 0: stop is left of travel
       const left = Math.hypot(sx - qx, sy - qy) >= ON_LINE_M && cross > 0;
-      const exchange = /@\s*(Bay\b|Unload)|@\s*$/i.test(s.name);
       out.push({
         route: p.route,
         stop: s.id,
         ...(name ? { name } : {}),
-        ...(exchange ? { exchange } : {}),
         lon: q.lon,
         lat: q.lat,
         bearing: (q.bearing + (left ? 270 : 90)) % 360,
@@ -133,11 +128,10 @@ export function busStopMarkers(plan: ServicePlan): BusStopMarker[] {
   for (const t of busStopTicks(plan)) {
     if (!t.name) continue;
     const at: LonLat = [t.lon, t.lat];
-    const within = t.exchange ? MERGE_EXCHANGE_M : MERGE_M;
     const g = groups.find(
       (x) =>
         x.name === t.name
-        && x.ticks.some((q) => distM([q.lon, q.lat], at) < within),
+        && x.ticks.some((q) => distM([q.lon, q.lat], at) < MERGE_M),
     );
     if (g) {
       g.ticks.push(t);

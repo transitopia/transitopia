@@ -3,6 +3,8 @@
   "id": "metro-vancouver",
   "name": "Metro Vancouver",
   "timezone": "America/Vancouver",
+  "$gtfsDataset": "The dataset registry id (packages/shared/src/datasets.ts) of the region's GTFS feed: build-schedule records it on every route, so cards credit each route's provider.",
+  "gtfsDataset": "translink-gtfs",
   "bbox": [
     -123.6,
     48.95,

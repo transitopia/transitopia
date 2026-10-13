@@ -78,6 +78,7 @@ export default function TransitMap() {
       theme: themeRef.current,
       scenario: params.get("scenario") ?? undefined,
       debug: params.has("debug"),
+      dataset: region.gtfsDataset,
     }).then(
       (eng) => {
         if (cancelled) {

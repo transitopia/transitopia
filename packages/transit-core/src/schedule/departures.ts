@@ -5,6 +5,7 @@
 
 import { STOP_NO_PICKUP, type ServicePlan } from "../plan/types.ts";
 import { busStopLabel } from "../plan/bus-stops.ts";
+import { bayNumber } from "../plan/exchanges.ts";
 import { serviceDayStart } from "../time.ts";
 import {
   shiftAt,
@@ -18,6 +19,7 @@ export interface Departure {
   headsign: string;
   /** The stop it leaves from (a platform, at a station). */
   stopId: string;
+  /** Its platform (rail) or bay (an exchange's or station's bus bay), where numbered. */
   platform?: string | undefined;
   pattern: number;
   /** Index of that stop in the pattern. */
@@ -35,9 +37,13 @@ export interface Departure {
   cancelled: boolean;
 }
 
-/** The plan's stops for a station (its platforms) or a single stop. */
-export function stopsOf(plan: ServicePlan, id: string): Set<string> {
-  const out = new Set<string>([id]);
+/** The plan's stops for a station (its platforms, and any bus bays given) or a single stop. */
+export function stopsOf(
+  plan: ServicePlan,
+  id: string,
+  bays: readonly string[] = [],
+): Set<string> {
+  const out = new Set<string>([id, ...bays]);
   for (const s of plan.stops) if (s.parent === id) out.add(s.id);
   return out;
 }
@@ -92,7 +98,7 @@ export function departuresAt(
             routeKey: pt.route.key,
             headsign: pt.trip.headsign,
             stopId: stop.id,
-            platform: stop.platform,
+            platform: stop.platform ?? bayNumber(stop.name),
             pattern: pt.pattern.id,
             index: i,
             serviceDate: date,
@@ -114,7 +120,7 @@ export function departuresAt(
 export interface DepartureGroup {
   routeKey: string;
   headsign: string;
-  /** Platforms it leaves from, where known (a station's). */
+  /** Platforms (or bus bays) it leaves from, where known. */
   platforms: string[];
   departures: Departure[];
 }

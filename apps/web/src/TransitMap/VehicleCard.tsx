@@ -5,7 +5,7 @@ import type {
 } from "@transitopia/transit-map/engine.ts";
 import type { VehicleState } from "@transitopia/transit-core/schedule/engine.ts";
 import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
-import { DATASETS } from "@transitopia/shared/datasets.ts";
+import { creditsFor, legendsFor } from "@transitopia/shared/datasets.ts";
 
 import { timeState } from "./format.ts";
 import {
@@ -226,12 +226,16 @@ export const VehicleCard: React.FC<{
         <>
           {v.mode === "skytrain" && v.provenance === "estimated" ?
             <p className="mb-1">
-              TransLink publishes no live SkyTrain positions, so trains are
-              placed from the timetable and our run inference.
+              There are no live SkyTrain positions, so trains are placed from
+              the timetable and our run inference.
             </p>
           : null}
           <p>Source: {v.source}</p>
-          <p className="mt-1">{DATASETS["translink-gtfs"].legend}</p>
+          {legendsFor(creditsFor(sel.datasets)).map((l) => (
+            <p key={l} className="mt-1">
+              {l}
+            </p>
+          ))}
         </>
       }>
       <CardSection title="Now">

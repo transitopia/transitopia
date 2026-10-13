@@ -16,6 +16,7 @@ import {
   GTFS_RAW_DIR,
   PUBLIC_DATA_DIR,
   FEEDS_OUT_DIR,
+  REGION_DIR,
   log,
   readJson,
   writeJson,
@@ -107,6 +108,9 @@ export async function buildPlan(zipPath: string): Promise<ServicePlan> {
   const { routes: routeCfg } = await readJson<{ routes: RouteConfig[] }>(
     join(CONFIG_DIR, "routes.json"),
   );
+  const { gtfsDataset } = await readJson<{ gtfsDataset: string }>(
+    join(REGION_DIR, "region.json"),
+  );
 
   const [info] = await readCsvAll(zipPath, "feed_info.txt");
   if (!info) throw new Error("feed_info.txt missing");
@@ -130,6 +134,7 @@ export async function buildPlan(zipPath: string): Promise<ServicePlan> {
       color: cfg.color ?? hexColor(row.route_color, "#666666"),
       textColor: hexColor(row.route_text_color, "#ffffff"),
       gtfsRouteId: row.route_id!,
+      dataset: gtfsDataset,
     };
     routes.push(r);
     routeByGtfsId.set(r.gtfsRouteId, r);
@@ -214,6 +219,7 @@ export async function buildPlan(zipPath: string): Promise<ServicePlan> {
       lon: Number(row.stop_lon),
       lat: Number(row.stop_lat),
     };
+    if (row.stop_code) s.code = row.stop_code;
     if (row.parent_station) s.parent = row.parent_station;
     const platform = /@\s*Platform\s+(\w+)/i.exec(s.name)?.[1];
     if (platform) s.platform = platform;
