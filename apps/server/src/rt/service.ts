@@ -64,7 +64,9 @@ import {
   fetchAlerts,
   fetchPositions,
   fetchTripUpdates,
+  tripFeedSummary,
   type TripDelays,
+  type TripFeedSummary,
 } from "./upstream.ts";
 import { ServiceChanges } from "./changes.ts";
 import type { RtRouteAlert } from "@transitopia/transit-core/rt/changes.ts";
@@ -166,6 +168,10 @@ export class RtService {
   };
   /** Share of the latest poll's vehicles on a trip that have a TransLink delay (null before a poll). */
   private delayCoverage: number | null = null;
+  /** Trip id → route id of every bus on a trip in the latest positions poll (every route). */
+  private busTrips = new Map<string, string | undefined>();
+  /** The latest trip-updates poll, matched against busTrips (/rt/status → tripFeed). */
+  private tripFeed: TripFeedSummary | null = null;
   private consecutiveErrors: Record<PollFeed, number> = {
     positions: 0,
     tripUpdates: 0,
@@ -485,7 +491,11 @@ export class RtService {
    * never beyond the daily cap (every attempt counts, failed or not). The first poll continues the
    * schedule from the last recorded request, so a restart doesn't poll everything at once.
    */
-  private loop(feed: PollFeed, fn: () => Promise<void>): void {
+  private loop(
+    feed: PollFeed,
+    /** Resolves to the response size (bytes), where known. */
+    fn: () => Promise<number | void>,
+  ): void {
     const schedule = (at: number) => {
       this.nextPollAt[feed] = at;
       if (this.running)
@@ -510,11 +520,17 @@ export class RtService {
       void this.saveLedger();
       let delay = pollIntervalS(SCHEDULE, feed, now) * 1000;
       try {
-        await fn();
+        const bytes = await fn();
         this.consecutiveErrors[feed] = 0;
         this.feeds[feed] = { lastOkAt: now };
         void this.store
-          ?.recordRequest({ provider: TRANSLINK, feed, ts: now, status: 200 })
+          ?.recordRequest({
+            provider: TRANSLINK,
+            feed,
+            ts: now,
+            status: 200,
+            bytes: typeof bytes === "number" ? bytes : undefined,
+          })
           .catch((e: Error) =>
             this.log(`could not record request (${e.message})`),
           );
@@ -583,12 +599,15 @@ export class RtService {
     }
   }
 
-  private async pollTripUpdates(): Promise<void> {
-    const { delays, changes } = await fetchTripUpdates(
+  private async pollTripUpdates(): Promise<number> {
+    const { delays, changes, trips, headerTs, bytes } = await fetchTripUpdates(
       this.apiKey!,
       AbortSignal.timeout(15_000),
     );
     this.delays = delays;
+    this.reportTripFeed(
+      tripFeedSummary({ trips, headerTs, bytes }, this.busTrips, Date.now()),
+    );
     const today = localDate(Date.now());
     const rows = changes.map((c) => ({
       tripId: c.tripId,
@@ -601,9 +620,38 @@ export class RtService {
     await this.changes.updateTrips(
       rows.filter((c) => c.routeId && this.routeKeyById.has(c.routeId)),
     );
+    return bytes;
   }
 
-  private async pollPositions(): Promise<void> {
+  /**
+   * Keeps the latest trip-updates summary, and logs it while few buses' trips are in the feed (and
+   * once when that recovers), so an empty feed and trip ids that no longer match tell themselves apart.
+   */
+  private reportTripFeed(t: TripFeedSummary): void {
+    const wasLow = this.tripFeed !== null && this.tripFeedLow(this.tripFeed);
+    this.tripFeed = t;
+    const low = this.tripFeedLow(t);
+    if (!low && !wasLow) return;
+    const age =
+      t.headerAgeS === null ? "no timestamp" : `${t.headerAgeS} s old`;
+    const sample = (a: { tripId: string; routeId?: string }[]) =>
+      a.map((x) => `${x.tripId} (route ${x.routeId ?? "?"})`).join(", ")
+      || "none";
+    this.log(
+      low ?
+        `trip updates match few buses: ${t.busesMatched} of ${t.busesOnTrips} buses' trips are in the feed; feed has ${t.trips} trips (${t.withStopDelays} with stop delays, ${t.matched} matched), ${Math.round(t.bytes / 1024)} KB, ${age}. Unmatched feed trips: ${sample(t.unmatchedTrips)}. Unmatched bus trips: ${sample(t.unmatchedBuses)}`
+      : `trip updates match buses again: ${t.busesMatched} of ${t.busesOnTrips}`,
+    );
+  }
+
+  private tripFeedLow(t: TripFeedSummary): boolean {
+    return (
+      t.busesOnTrips > 0
+      && t.busesMatched / t.busesOnTrips < rtConfig.tripUpdatesMinCoverage
+    );
+  }
+
+  private async pollPositions(): Promise<number> {
     await this.loadRoutes();
     const fetchedAt = Date.now();
     const decoded = await fetchPositions(
@@ -613,6 +661,7 @@ export class RtService {
     const vehicles: RtVehicle[] = [];
     let onTrips = 0;
     let withDelay = 0;
+    const busTrips = new Map<string, string | undefined>();
     for (const p of decoded.positions) {
       const routeKey =
         (p.routeId ? this.routeKeyById.get(p.routeId) : undefined)
@@ -633,6 +682,7 @@ export class RtService {
       const delay = delayFor(this.delays, p.tripId, p.stopSeq);
       if (delay !== undefined) v.delay = delay;
       if (p.tripId) {
+        busTrips.set(p.tripId, p.routeId);
         onTrips++;
         if (delay !== undefined) withDelay++;
       }
@@ -640,6 +690,7 @@ export class RtService {
     }
     const all: RtSnapshot = { fetchedAt, headerTs: decoded.headerTs, vehicles };
     this.latest = trackedOnly(all);
+    this.busTrips = busTrips;
     // Not before trip updates have been read at all (positions may come back first after a start).
     this.delayCoverage =
       onTrips && this.feeds.tripUpdates.lastOkAt !== undefined ?
@@ -657,6 +708,7 @@ export class RtService {
         delay: vehicles[i]!.delay,
       })),
     );
+    return decoded.bytes;
   }
 
   liveResponse(now = Date.now()): RtLiveResponse {
@@ -776,6 +828,7 @@ export class RtService {
             ]),
           ),
           delayCoverage: this.delayCoverage,
+          tripFeed: this.tripFeed,
           minDelayCoverage: rtConfig.tripUpdatesMinCoverage,
           ais: this.ais?.status() ?? null,
         });

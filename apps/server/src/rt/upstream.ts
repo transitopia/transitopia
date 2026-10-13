@@ -21,6 +21,8 @@ export interface DecodedPosition {
 export interface DecodedPositions {
   headerTs: number;
   positions: DecodedPosition[];
+  /** Response size (bytes). */
+  bytes: number;
 }
 
 /** tripId → per-stop-sequence delays (seconds), plus a trip-level fallback. */
@@ -28,6 +30,16 @@ export type TripDelays = Map<
   string,
   { bySeq: [number, number][]; trip?: number | undefined }
 >;
+
+/** A trip in the trip-updates feed, as sent. */
+export interface TripRef {
+  tripId: string;
+  routeId?: string;
+  /** Service date, YYYYMMDD. */
+  startDate?: string;
+  /** Stop time updates with a stop sequence and a delay (what delays are read from). */
+  stopDelays: number;
+}
 
 /** A trip TransLink reports as cancelled, or running with stops skipped. */
 export interface TripChange {
@@ -117,7 +129,7 @@ export async function fetchAlerts(
   apiKey: string,
   signal?: AbortSignal,
 ): Promise<DecodedAlert[]> {
-  const feed = await fetchFeed("gtfsalerts", apiKey, signal);
+  const { feed } = await fetchFeed("gtfsalerts", apiKey, signal);
   const out: DecodedAlert[] = [];
   for (const e of feed.entity ?? []) {
     const a = e.alert;
@@ -170,7 +182,7 @@ async function fetchFeed(
   endpoint: string,
   apiKey: string,
   signal?: AbortSignal,
-): Promise<FeedObject> {
+): Promise<{ feed: FeedObject; bytes: number }> {
   const res = await fetch(
     `${BASE}/${endpoint}?apikey=${encodeURIComponent(apiKey)}`,
     {
@@ -183,17 +195,18 @@ async function fetchFeed(
   const buf = new Uint8Array(await res.arrayBuffer());
   const { FeedMessage } = GtfsRealtimeBindings.transit_realtime;
   const msg = FeedMessage.decode(buf);
-  return FeedMessage.toObject(msg, {
+  const feed = FeedMessage.toObject(msg, {
     longs: Number,
     enums: Number,
   }) as FeedObject;
+  return { feed, bytes: buf.byteLength };
 }
 
 export async function fetchPositions(
   apiKey: string,
   signal?: AbortSignal,
 ): Promise<DecodedPositions> {
-  const feed = await fetchFeed("gtfsposition", apiKey, signal);
+  const { feed, bytes } = await fetchFeed("gtfsposition", apiKey, signal);
   const headerTs = (feed.header?.timestamp ?? Date.now() / 1000) * 1000;
   const positions: DecodedPosition[] = [];
   for (const e of feed.entity ?? []) {
@@ -213,17 +226,24 @@ export async function fetchPositions(
     if (v.currentStatus !== undefined) p.status = v.currentStatus;
     positions.push(p);
   }
-  return { headerTs, positions };
+  return { headerTs, positions, bytes };
 }
 
 /** Trip updates: delays per trip, and trips cancelled or skipping stops. */
 export async function fetchTripUpdates(
   apiKey: string,
   signal?: AbortSignal,
-): Promise<{ delays: TripDelays; changes: TripChange[] }> {
-  const feed = await fetchFeed("gtfsrealtime", apiKey, signal);
+): Promise<{
+  delays: TripDelays;
+  changes: TripChange[];
+  trips: TripRef[];
+  headerTs: number | undefined;
+  bytes: number;
+}> {
+  const { feed, bytes } = await fetchFeed("gtfsrealtime", apiKey, signal);
   const delays: TripDelays = new Map();
   const changes: TripChange[] = [];
+  const trips: TripRef[] = [];
   for (const e of feed.entity ?? []) {
     const tu = e.tripUpdate;
     const tripId = tu?.trip?.tripId;
@@ -240,6 +260,10 @@ export async function fetchTripUpdates(
       if (u.stopSequence !== undefined && d !== undefined)
         bySeq.push([u.stopSequence, d]);
     }
+    const ref: TripRef = { tripId, stopDelays: bySeq.length };
+    if (tu.trip?.routeId) ref.routeId = tu.trip.routeId;
+    if (tu.trip?.startDate) ref.startDate = tu.trip.startDate;
+    trips.push(ref);
     if (cancelled || skippedStopIds.length) {
       const c: TripChange = { tripId, cancelled, skippedStopIds };
       if (tu.trip?.routeId) c.routeId = tu.trip.routeId;
@@ -250,7 +274,60 @@ export async function fetchTripUpdates(
     bySeq.sort((a, b) => a[0] - b[0]);
     delays.set(tripId, { bySeq, trip: tu.delay });
   }
-  return { delays, changes };
+  const headerTs =
+    feed.header?.timestamp ? feed.header.timestamp * 1000 : undefined;
+  return { delays, changes, trips, headerTs, bytes };
+}
+
+/** What a trip-updates poll held, and how well it matched the buses in the latest positions poll. */
+export interface TripFeedSummary {
+  /** When it was polled (epoch ms). */
+  at: number;
+  bytes: number;
+  /** Age of the feed's own timestamp when polled (s), if it has one. */
+  headerAgeS: number | null;
+  trips: number;
+  /** Trips with at least one stop delay. */
+  withStopDelays: number;
+  /** Trips that a bus in the latest positions poll is running. */
+  matched: number;
+  /** Buses on a trip in the latest positions poll, and how many of their trips are in the feed. */
+  busesOnTrips: number;
+  busesMatched: number;
+  /** A few trips in the feed no bus reports, and buses' trips missing from it, to compare. */
+  unmatchedTrips: TripRef[];
+  unmatchedBuses: { tripId: string; routeId?: string }[];
+}
+
+/** Unmatched examples kept in a summary. */
+const SUMMARY_SAMPLES = 5;
+
+export function tripFeedSummary(
+  feed: { trips: TripRef[]; headerTs: number | undefined; bytes: number },
+  /** Trip id → route id of each bus on a trip in the latest positions poll. */
+  buses: ReadonlyMap<string, string | undefined>,
+  at: number,
+): TripFeedSummary {
+  const inFeed = new Set(feed.trips.map((t) => t.tripId));
+  const unmatchedTrips = feed.trips.filter((t) => !buses.has(t.tripId));
+  const unmatchedBuses = [...buses].filter(([id]) => !inFeed.has(id));
+  return {
+    at,
+    bytes: feed.bytes,
+    headerAgeS:
+      feed.headerTs === undefined ?
+        null
+      : Math.round((at - feed.headerTs) / 1000),
+    trips: feed.trips.length,
+    withStopDelays: feed.trips.filter((t) => t.stopDelays > 0).length,
+    matched: feed.trips.length - unmatchedTrips.length,
+    busesOnTrips: buses.size,
+    busesMatched: buses.size - unmatchedBuses.length,
+    unmatchedTrips: unmatchedTrips.slice(0, SUMMARY_SAMPLES),
+    unmatchedBuses: unmatchedBuses
+      .slice(0, SUMMARY_SAMPLES)
+      .map(([tripId, routeId]) => (routeId ? { tripId, routeId } : { tripId })),
+  };
 }
 
 /** Delay at the vehicle's current/next stop. */

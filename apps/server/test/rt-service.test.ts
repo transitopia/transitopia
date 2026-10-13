@@ -41,6 +41,25 @@ function positionsFeed(tripIds: string[]): Uint8Array {
   ).finish();
 }
 
+/** A trip-updates feed with one stop delay per trip. */
+function tripUpdatesFeed(tripIds: string[]): Uint8Array {
+  return FeedMessage.encode(
+    FeedMessage.create({
+      header: {
+        gtfsRealtimeVersion: "2.0",
+        timestamp: Math.floor(Date.now() / 1000),
+      },
+      entity: tripIds.map((tripId) => ({
+        id: tripId,
+        tripUpdate: {
+          trip: { tripId, routeId: "6641", startDate: "20261012" },
+          stopTimeUpdate: [{ stopSequence: 3, arrival: { delay: 60 } }],
+        },
+      })),
+    }),
+  ).finish();
+}
+
 const feedResponse = (body: Uint8Array) =>
   new Response(new Blob([body as Uint8Array<ArrayBuffer>]), { status: 200 });
 
@@ -273,6 +292,55 @@ describe("RtService", () => {
     expect(h.checks.tripUpdates?.ok).toBe(false);
     expect(h.checks.tripUpdates?.detail).toMatch(
       /0 % of vehicles have a delay/,
+    );
+  });
+
+  it("summarises each trip-updates poll against the buses, and logs when few match", async () => {
+    dir = await mkdtemp(join(tmpdir(), "rt-test-"));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL) =>
+        feedResponse(
+          /gtfsposition/.test(String(url)) ? positionsFeed(["t1", "t2"])
+          : /gtfsrealtime/.test(String(url)) ? tripUpdatesFeed(["t9"])
+          : emptyFeed(),
+        ),
+      ),
+    );
+    const logs: string[] = [];
+    service = new RtService({
+      historyDir: dir,
+      record: false,
+      log: (m: string) => logs.push(m),
+      apiKey: "test-key",
+      dispatch: false,
+      disruptionsDir: dir,
+    });
+    await service.start(0);
+    await vi.waitFor(() =>
+      expect(service!.liveResponse().snapshot).not.toBeNull(),
+    );
+    // The first trip-updates poll may have come before any positions: poll again now.
+    const internals = service as unknown as {
+      pollTripUpdates(): Promise<number>;
+    };
+    expect(await internals.pollTripUpdates()).toBeGreaterThan(0);
+    const { tripFeed } = JSON.parse(
+      String((await service.handle("/rt/status", new URLSearchParams())).body),
+    );
+    expect(tripFeed).toMatchObject({
+      trips: 1,
+      withStopDelays: 1,
+      matched: 0,
+      busesOnTrips: 2,
+      busesMatched: 0,
+      unmatchedTrips: [
+        { tripId: "t9", routeId: "6641", startDate: "20261012" },
+      ],
+      unmatchedBuses: [{ tripId: "t1" }, { tripId: "t2" }],
+    });
+    expect(logs.join("\n")).toMatch(
+      /trip updates match few buses: 0 of 2 .*Unmatched feed trips: t9 \(route 6641\)/,
     );
   });
 });
