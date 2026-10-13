@@ -33,3 +33,6 @@ export const transitApi: string | undefined = env.VITE_TRANSIT_API || undefined;
 export const needPmTiles = [basemapTiles, cyclingTiles].some((url) =>
   url.startsWith("pmtiles://"),
 );
+
+/** The production site, for canonical URLs: preview builds and local runs point search engines there too. */
+export const siteUrl = "https://www.transitopia.org";
