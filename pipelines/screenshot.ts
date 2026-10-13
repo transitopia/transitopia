@@ -1,6 +1,6 @@
 // Screenshot the running app with the locally installed Chrome, for visual checks.
 //
-//   tsx pipelines/screenshot.ts <out.png> [path-and-query] [--mobile] [--dark] [--wait ms] [--click x,y[;x,y…]] [--after ms]
+//   tsx pipelines/screenshot.ts <out.png> [path-and-query] [--mobile] [--dark] [--wait ms] [--click x,y[;x,y…]] [--after ms] [--size WxH]
 //
 // Example: tsx pipelines/screenshot.ts /tmp/a.png "/transit?date=2026-09-28&t=08:00:00&paused=1#map=13/49.28/-123.11"
 // Requires `npm run dev` (http://localhost:5173). Browser console errors are printed.
@@ -16,7 +16,7 @@ const opt = (name: string) => {
 const positional = args.filter(
   (a, i) =>
     !a.startsWith("--")
-    && !["--wait", "--click", "--base", "--pick", "--after"].includes(
+    && !["--wait", "--click", "--base", "--pick", "--after", "--size"].includes(
       args[i - 1] ?? "",
     ),
 );
@@ -28,10 +28,11 @@ const browser = await chromium.launch({
   headless: true,
   args: ["--use-angle=metal", "--enable-gpu"],
 });
+const size = /^(\d+)x(\d+)$/.exec(opt("--size") ?? "");
 const context = await browser.newContext({
   viewport:
-    flag("--mobile") ?
-      { width: 390, height: 844 }
+    size ? { width: Number(size[1]), height: Number(size[2]) }
+    : flag("--mobile") ? { width: 390, height: 844 }
     : { width: 1440, height: 900 },
   deviceScaleFactor: flag("--mobile") ? 3 : 1,
   isMobile: flag("--mobile"),

@@ -134,10 +134,13 @@ const FullBar: React.FC<Props> = ({ engine, snap }) => (
     className={`absolute bottom-8 left-1/2 z-40 flex w-[min(860px,calc(100%-2.5rem))] -translate-x-1/2 flex-col gap-1 rounded-2xl bg-(--card-bg) px-4 pt-3 pb-2.5 text-(--card-text) shadow-[0_6px_24px_rgb(17_24_39/0.14)] ${snap.live ? "border border-(--card-border)" : "border-2 border-(--notlive-border)"}`}>
     <div className="flex items-center gap-3">
       <PlayButton engine={engine} snap={snap} />
+      {/* Takes the spare width; its status line truncates before the controls overflow. */}
       <TimeText snap={snap} sub={subLine(snap, true)} />
-      <div className="flex-1" />
-      <Badges snap={snap} />
-      {snap.live ? null : <NotLiveBadge />}
+      {/* Narrow screens drop these: the amber border and status line still say "not live". */}
+      <div className="flex items-center gap-3 max-md:hidden">
+        <Badges snap={snap} />
+        {snap.live ? null : <NotLiveBadge />}
+      </div>
       <DateButton engine={engine} snap={snap} />
       <SpeedStepper engine={engine} snap={snap} />
       <LiveOrGoLive engine={engine} snap={snap} />
@@ -276,7 +279,7 @@ const TimeText: React.FC<{ snap: TransitSnapshot; sub: string }> = ({
 }) => {
   const time = clockTime(snap.t);
   return (
-    <div className="flex min-w-0 flex-1 flex-col sm:flex-none">
+    <div className="flex min-w-30 flex-1 flex-col">
       <span className="text-[22px] leading-none font-extrabold tracking-tight tabular-nums sm:text-[26px]">
         {time.slice(0, 5)}
         <span className="text-[15px] font-bold text-(--card-muted) sm:text-base">
@@ -436,7 +439,7 @@ const SpeedStepper: React.FC<Props> = ({ engine, snap }) => {
     </svg>
   );
   const step =
-    "flex h-10 w-10 items-center justify-center hover:bg-(--card-hover) disabled:opacity-40 max-sm:h-11 max-sm:w-11";
+    "flex h-10 w-7 items-center justify-center hover:bg-(--card-hover) disabled:opacity-40 max-sm:h-11 max-sm:w-11";
   return (
     <div
       role="group"
@@ -452,7 +455,7 @@ const SpeedStepper: React.FC<Props> = ({ engine, snap }) => {
       </button>
       <span
         aria-live="polite"
-        className="min-w-[52px] text-center text-[15px] font-bold tabular-nums">
+        className="min-w-9 text-center text-sm font-bold tabular-nums max-sm:min-w-[52px] max-sm:text-[15px]">
         {rateLabel(snap.rate)}
       </span>
       <button
