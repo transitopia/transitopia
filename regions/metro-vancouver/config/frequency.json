@@ -1,9 +1,0 @@
-{
-  "$comment": "How often a route or stop is served, as the site shows it (frequency chips on stop and station cards, the route card's day strip; apps/web/README.md#service-frequency). Average minutes between departures in an hour, banded; a band covers up to and including maxMinutes, and the last band has none. These are a presentation choice made on the UI concepts canvas (2026-10-12), not a TransLink standard. Colours are per theme in apps/web/src/index.css (--band-*).",
-  "bands": [
-    { "id": "good", "name": "Good", "maxMinutes": 6 },
-    { "id": "ok", "name": "OK", "maxMinutes": 12 },
-    { "id": "poor", "name": "Poor", "maxMinutes": 20 },
-    { "id": "bad", "name": "Bad" }
-  ]
-}

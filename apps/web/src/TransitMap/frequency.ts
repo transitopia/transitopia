@@ -1,7 +1,5 @@
-import config from "@transitopia/region-metro-vancouver/config/frequency.json";
-
-// Service frequency as the site shows it (apps/web/README.md#service-frequency): bands from
-// regions/metro-vancouver/config/frequency.json, colours per theme from the --band-* properties.
+// Service frequency as the site shows it (apps/web/README.md#service-frequency), with colours per
+// theme from the --band-* properties.
 
 export interface Band {
   id: string;
@@ -10,7 +8,17 @@ export interface Band {
   color: string;
 }
 
-const BANDS = config.bands;
+/**
+ * Transitopia's frequency bands, the same for every route in every region: average minutes between
+ * departures in an hour, up to and including maxMinutes (the last band has none). A presentation
+ * choice, not an operator's standard.
+ */
+const BANDS: { id: string; name: string; maxMinutes?: number }[] = [
+  { id: "good", name: "Good", maxMinutes: 6 },
+  { id: "ok", name: "OK", maxMinutes: 12 },
+  { id: "poor", name: "Poor", maxMinutes: 20 },
+  { id: "bad", name: "Bad" },
+];
 
 /** The band for an average of `minutes` between departures. */
 export function bandOf(minutes: number): Band {

@@ -42,7 +42,7 @@
   --notlive-border: #f59e0b;
   --golive-border: #c2410c;
   --golive-fg: #b42318;
-  /* Service frequency bands (regions/metro-vancouver/config/frequency.json): blue → red, never green or amber. */
+  /* Service frequency bands (src/TransitMap/frequency.ts): blue → red, never green or amber. */
   --band-good: #1d5aa6;
   --band-ok: #3f97e8;
   --band-poor: #ec6a80;

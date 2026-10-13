@@ -247,7 +247,7 @@ const RouteCardBody: React.FC<{
             </div>
             <div className="mt-2 mb-1.5 flex flex-wrap gap-x-3 gap-y-1.5 text-xs text-(--card-muted)">
               {bandKey().map((b) => (
-                <span key={b.id} className="inline-flex items-center gap-[5px]">
+                <span key={b.id} className="inline-flex items-center gap-[4px]">
                   <span
                     aria-hidden="true"
                     className="h-2.5 w-2.5 flex-none rounded-[3px]"
