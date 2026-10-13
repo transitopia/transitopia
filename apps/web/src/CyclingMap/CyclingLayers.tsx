@@ -59,6 +59,15 @@ export const CyclingLayers: React.FC<{
         onChange={set("protected")}
       />
       <SwitchRow
+        title="Local street bikeways"
+        description="Shared, traffic-calmed streets"
+        swatch={
+          <Line className="h-1 rounded-full bg-[#1a6d23] dark:bg-[#4cc26a]" />
+        }
+        on={show.local}
+        onChange={set("local")}
+      />
+      <SwitchRow
         title="Painted bike lanes"
         description="On the roadway, and shared lanes on busy streets"
         swatch={
@@ -69,15 +78,6 @@ export const CyclingLayers: React.FC<{
           // Showing painted lanes again also lifts "all ages & abilities only".
           onChange({ ...show, painted: on, aaaOnly: on ? false : show.aaaOnly })
         }
-      />
-      <SwitchRow
-        title="Local street bikeways"
-        description="Shared, traffic-calmed streets"
-        swatch={
-          <Line className="h-1 rounded-full bg-[#1a6d23] dark:bg-[#4cc26a]" />
-        }
-        on={show.local}
-        onChange={set("local")}
       />
       <SwitchRow
         title="Bike parking"
