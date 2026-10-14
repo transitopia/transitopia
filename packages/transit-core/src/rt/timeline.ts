@@ -562,10 +562,7 @@ export class RtTimeline {
     const end = s.cum[s.cum.length - 1]!;
     const a = pointAlong(s.coords, s.cum, Math.max(0, along - 10));
     const b = pointAlong(s.coords, s.cum, Math.min(end, along + 10));
-    return headingOf(
-      { lon: a.lon, lat: a.lat } as RtVehicle,
-      { lon: b.lon, lat: b.lat } as RtVehicle,
-    );
+    return headingOf([a.lon, a.lat], [b.lon, b.lat]);
   }
 
   /** Distance (m) of a fix from its trip's route, if it has one. */
@@ -712,17 +709,13 @@ export class RtTimeline {
     // start of the next): face the way it's moving; neither route's direction describes it.
     const moved = distM([lon0, lat0], [lon1, lat1]);
     const manoeuvre = !sameTrip && moved >= TRIP_CHANGE_MOVE_M;
-    const along = (a: [number, number]) =>
-      ({ lon: a[0], lat: a[1] }) as RtVehicle;
     const bearing =
       o0.v.bearing
-      ?? (manoeuvre ?
-        headingOf(along([lon0, lat0]), along([lon1, lat1]))
-      : undefined)
+      ?? (manoeuvre ? headingOf([lon0, lat0], [lon1, lat1]) : undefined)
       ?? (close || backwards || !sameTrip ?
         (this.routeBearing(tr, i) ?? this.routeBearing(tr, i + 1))
       : undefined)
-      ?? headingOf(o0.v, o1.v);
+      ?? headingOf([o0.v.lon, o0.v.lat], [o1.v.lon, o1.v.lat]);
     return this.state({
       id,
       basis: o0,
@@ -869,7 +862,13 @@ export class RtTimeline {
     const bearing =
       o0.v.bearing
       ?? (close ? this.routeBearing(tr, i - 1) : undefined)
-      ?? (prev ? headingOf(prev.v, o0.v) : 0);
+      ?? (prev ?
+        headingOf(
+          [prev.v.lon, prev.v.lat],
+          [o0.v.lon, o0.v.lat],
+          prev.v.bearing,
+        )
+      : 0);
     return this.state({
       id,
       basis: o0,
@@ -1029,10 +1028,14 @@ function plausible(v: RtVehicle, last: RtVehicle | undefined): boolean {
   );
 }
 
-function headingOf(a: RtVehicle, b: RtVehicle): number {
-  const dx = (b.lon - a.lon) * Math.cos((a.lat * Math.PI) / 180);
-  const dy = b.lat - a.lat;
-  if (dx === 0 && dy === 0) return a.bearing ?? 0;
+/**
+ * Heading from a to b (degrees clockwise from north) on a local flat projection, or `fallback` (else
+ * north) when they're the same point.
+ */
+function headingOf(a: LonLat, b: LonLat, fallback?: number): number {
+  const dx = (b[0] - a[0]) * Math.cos((a[1] * Math.PI) / 180);
+  const dy = b[1] - a[1];
+  if (dx === 0 && dy === 0) return fallback ?? 0;
   return ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
 }
 
