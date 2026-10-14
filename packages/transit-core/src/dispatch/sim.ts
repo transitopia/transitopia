@@ -42,6 +42,17 @@ export interface DispatchConfig {
   revenueFirst: boolean;
 }
 
+/**
+ * Debug output, to the console (CLAUDE.md → Dispatcher notes). The pipelines and the server set it
+ * from DISPATCH_DEBUG and DISPATCH_TRACE / _FROM / _TO.
+ */
+export interface DispatchDebug {
+  /** At the first deadlock broken, print the chain of trains waiting for each other. */
+  chains?: boolean | undefined;
+  /** Trace one run: what blocks it, and its authority requests between two service-day times (s). */
+  trace?: { run: string; from: number; to: number } | undefined;
+}
+
 export interface SignalWait {
   /** Route coordinate where the train stood. */
   g: number;
@@ -159,8 +170,9 @@ export function simulate(
   g: TrackGraph,
   cfg: DispatchConfig,
   speeds: SpeedFactors,
+  debug: DispatchDebug = {},
 ): SimResult {
-  const it = simulation(models, g, cfg, speeds);
+  const it = simulation(models, g, cfg, speeds, debug);
   for (;;) {
     const r = it.next();
     if (r.done) return r.value;
@@ -173,8 +185,9 @@ export async function simulateAsync(
   g: TrackGraph,
   cfg: DispatchConfig,
   speeds: SpeedFactors,
+  debug: DispatchDebug = {},
 ): Promise<SimResult> {
-  const it = simulation(models, g, cfg, speeds);
+  const it = simulation(models, g, cfg, speeds, debug);
   for (;;) {
     const r = it.next();
     if (r.done) return r.value;
@@ -187,6 +200,7 @@ function* simulation(
   g: TrackGraph,
   cfg: DispatchConfig,
   speeds: SpeedFactors,
+  debug: DispatchDebug,
 ): Generator<void, SimResult> {
   const dt = cfg.stepS;
   const F = cfg.foulingM;
@@ -793,14 +807,9 @@ function* simulation(
 
   const stopDist = (v: number, k: Kinematics) => (v * v) / (2 * k.decel);
 
-  const traceRun =
-    typeof process !== "undefined" ? process.env?.DISPATCH_TRACE : undefined;
-  const traceFrom = Number(
-    (typeof process !== "undefined" && process.env?.DISPATCH_TRACE_FROM) || 0,
-  );
-  const traceTo = Number(
-    (typeof process !== "undefined" && process.env?.DISPATCH_TRACE_TO) || 0,
-  );
+  const traceRun = debug.trace?.run;
+  const traceFrom = debug.trace?.from ?? 0;
+  const traceTo = debug.trace?.to ?? 0;
   const noteBlocked = (
     tr: Train,
     t: number,
@@ -816,7 +825,7 @@ function* simulation(
     tr.blockedWhy = why;
     tr.blockedBy = by;
     if (t - tr.blockedSince > cfg.maxWaitS) {
-      if (debug && !forced.length) dumpChain(tr, t);
+      if (chains && !forced.length) dumpChain(tr, t);
       const p = tr.m.route[tr.pi]!;
       forced.push({
         run: tr.m.run.id,
@@ -830,8 +839,7 @@ function* simulation(
     }
   };
 
-  const debug =
-    typeof process !== "undefined" && Boolean(process.env?.DISPATCH_DEBUG);
+  const chains = debug.chains ?? false;
   const describe = (tr: Train) => {
     const p = tr.m.route[tr.pi];
     const it = tr.m.items[tr.i];
@@ -987,7 +995,7 @@ function* simulation(
         tr.v = 0;
         if (!tr.open) tr.open = { g: tr.G, t0: tau, t1: tau, why };
         tr.open.why = why || tr.open.why;
-        if (debug && by && !tr.open.why.includes("["))
+        if (chains && by && !tr.open.why.includes("["))
           tr.open.why += ` [${by.m.run.id} ${describe(by)}]`;
         noteBlocked(tr, t1, why, item, by);
       } else tr.blockedSince = undefined;

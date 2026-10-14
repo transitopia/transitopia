@@ -31,13 +31,14 @@ import {
   simulate,
   simulateAsync,
   type DispatchConfig,
+  type DispatchDebug,
   type MoveRecord,
   type SignalWait,
   type SimResult,
   type WaitRecord,
 } from "./sim.ts";
 
-export type { DispatchConfig } from "./sim.ts";
+export type { DispatchConfig, DispatchDebug } from "./sim.ts";
 
 export interface DispatchOptions {
   config: DispatchConfig;
@@ -51,6 +52,8 @@ export interface DispatchOptions {
   rail?: RailInputs;
   /** The date's base plan (already dispatched): runs whose times differ from it are marked adjusted. */
   base?: MovementsFile;
+  /** Debug output to the console. */
+  debug?: DispatchDebug | undefined;
 }
 
 /** Stops that moved at least this far from the base plan count as adjusted (s). */
@@ -74,7 +77,7 @@ export function dispatch(
     g,
     opts,
     models,
-    simulate(models, g, opts.config, speedsOf(opts)),
+    simulate(models, g, opts.config, speedsOf(opts), opts.debug),
     started,
   );
 }
@@ -94,7 +97,7 @@ export async function dispatchAsync(
     g,
     opts,
     models,
-    await simulateAsync(models, g, opts.config, speedsOf(opts)),
+    await simulateAsync(models, g, opts.config, speedsOf(opts), opts.debug),
     started,
   );
 }

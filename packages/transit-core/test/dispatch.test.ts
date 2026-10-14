@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { TrackGraph } from "../src/infra/graph.ts";
 import { dispatch, type DispatchConfig } from "../src/dispatch/dispatch.ts";
 import { TrainPlayback } from "../src/movement/playback.ts";
@@ -329,5 +329,30 @@ describe("dispatch", () => {
     expect(strip(dispatch(movements(["up", "down"]), pp, g, opts))).toEqual(
       strip(dispatch(movements(["up", "down"]), pp, g, opts)),
     );
+  });
+
+  it("prints debug output only when asked", () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const quiet = dispatch(movements(["up", "down"]), pp, g, opts);
+      expect(log).not.toHaveBeenCalled();
+      // Tracing a run prints its steps and changes nothing.
+      const traced = dispatch(movements(["up", "down"]), pp, g, {
+        ...opts,
+        debug: { trace: { run: "expo-002", from: 0, to: 30 * 3600 } },
+      });
+      expect(
+        log.mock.calls.some(([l]) => /^\[step \d+\] expo-002/.test(String(l))),
+      ).toBe(true);
+      expect(strip(traced)).toEqual(strip(quiet));
+      // Chains name the train each wait was for, in the wait's reason.
+      const chained = dispatch(movements(["up", "down"]), pp, g, {
+        ...opts,
+        debug: { chains: true },
+      });
+      expect(JSON.stringify(chained.runs)).toMatch(/\[expo-00\d /);
+    } finally {
+      log.mockRestore();
+    }
   });
 });

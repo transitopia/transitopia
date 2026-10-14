@@ -2,6 +2,7 @@
 
 import { join } from "node:path";
 import { log, writeJson } from "./paths.ts";
+import { dispatchDebugFromEnv } from "./dispatch-debug.ts";
 import type {
   TrackGraph,
   TrackPos,
@@ -103,6 +104,7 @@ export async function buildAllMovements(
           kin,
           deadheadSpeedFactor: ops.yard.deadheadSpeedFactor,
           turnbackSpeedFactor: ops.turnback.speedFactor,
+          debug: dispatchDebugFromEnv(),
         })
       : built;
     await writeJson(join(input.outDir, `${key}.json`), file);
