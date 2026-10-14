@@ -70,6 +70,7 @@ describe("RtService", () => {
   afterEach(async () => {
     service?.stop();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     if (dir) await rm(dir, { recursive: true, force: true });
   });
 
@@ -279,11 +280,51 @@ describe("RtService", () => {
       expect((await status()).feeds.positions.lastOkAgeS).not.toBeNull(),
     );
     expect((await status()).feeds.tripUpdates.lastError).toMatch(/500/);
+    // Within the limit of polling starting, the error shows but doesn't fail yet (a retry may succeed).
+    const early = await health({ service } as unknown as AppDeps);
+    expect(early.checks.tripUpdates?.ok).toBe(true);
+    expect(early.checks.tripUpdates?.detail).toMatch(/last error: .*500/);
+    // Three hours later (beyond 3 × any trip-updates interval) with still no success, it fails.
+    const now = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(now + 3 * 3_600_000);
     const h = await health({ service } as unknown as AppDeps);
     expect(h.ok).toBe(false);
     expect(h.checks.tripUpdates?.ok).toBe(false);
     expect(h.checks.tripUpdates?.detail).toMatch(
-      /no successful poll yet; last error/,
+      /no successful poll since polling started \d+ s ago .*; last error/,
+    );
+  });
+
+  it("passes health after a restart until trip updates are due", async () => {
+    dir = await mkdtemp(join(tmpdir(), "rt-test-"));
+    // The previous leader polled everything 10 s ago, so this one continues the schedule from there.
+    const before = Date.now() - 10_000;
+    await writeFile(
+      join(dir, "requests.json"),
+      JSON.stringify({
+        requests: [
+          [before, "tripUpdates"],
+          [before, "positions"],
+          [before, "alerts"],
+        ],
+      }),
+    );
+    const upstream = vi.fn();
+    vi.stubGlobal("fetch", upstream);
+    service = new RtService({
+      historyDir: dir,
+      record: false,
+      log: () => {},
+      apiKey: "test-key",
+      dispatch: false,
+      disruptionsDir: dir,
+    });
+    await service.start(0);
+    const h = await health({ service } as unknown as AppDeps);
+    expect(upstream).not.toHaveBeenCalled();
+    expect(h.checks.tripUpdates?.ok).toBe(true);
+    expect(h.checks.tripUpdates?.detail).toMatch(
+      /no successful poll since polling started \d+ s ago \(limit \d+ s\); next poll in \d+ s/,
     );
   });
 

@@ -329,16 +329,20 @@ export async function health({ service, db, jobs }: AppDeps): Promise<Health> {
   if (status.leader && status.hasKey && status.feeds.tripUpdates) {
     // A failed poll is logged and retried; this catches the feed staying down, or succeeding with
     // nothing that matches the positions (trip updates also carry cancellations and skipped stops).
+    // A restarted leader continues the schedule rather than polling at once, so until the first
+    // success the age counts from when polling started (apps/server/README.md#real-time-service).
     const { lastOkAgeS, lastError } = status.feeds.tripUpdates;
     const limit = 3 * (status.budget.intervalsS.tripUpdates ?? 1800);
+    const age = lastOkAgeS ?? status.pollingForS;
+    const nextInS = status.budget.nextPollInS.tripUpdates;
     const coverage = status.delayCoverage;
-    const fresh = lastOkAgeS !== null && lastOkAgeS <= limit;
+    const fresh = age !== null && age <= limit;
     const covered = coverage === null || coverage >= status.minDelayCoverage;
     checks.tripUpdates = {
       ok: fresh && covered,
       detail: [
         lastOkAgeS === null ?
-          "no successful poll yet"
+          `no successful poll since polling started ${age ?? 0} s ago (limit ${limit} s)${nextInS === undefined ? "" : `; next poll in ${nextInS} s`}`
         : `last successful poll ${lastOkAgeS} s ago (limit ${limit} s)`,
         ...(lastError ? [`last error: ${lastError}`] : []),
         ...(typeof coverage === "number" ?

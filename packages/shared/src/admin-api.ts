@@ -72,7 +72,10 @@ export const rtStatus = z.looseObject({
     used24h: z.number(),
     capped: z.boolean(),
     intervalsS: z.record(z.string(), z.number()),
+    nextPollInS: z.record(z.string(), z.number()),
   }),
+  /** Seconds since this leader started polling (null before it has). */
+  pollingForS: z.number().nullable(),
   feeds: z.record(z.string(), feedStatus),
   delayCoverage: z.number().nullable(),
   minDelayCoverage: z.number(),
