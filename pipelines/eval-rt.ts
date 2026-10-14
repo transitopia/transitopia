@@ -39,7 +39,7 @@ import {
   planLoader,
   type RecordedHour,
 } from "./lib/rt-history.ts";
-import { log } from "./lib/paths.ts";
+import { log } from "@transitopia/data/paths.ts";
 import { cadence, pollIntervalS } from "@transitopia/transit-core/rt/budget.ts";
 import type { RtSnapshot } from "@transitopia/transit-core/rt/types.ts";
 

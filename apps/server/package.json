@@ -12,8 +12,8 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.4",
+    "@transitopia/data": "*",
     "@transitopia/db": "*",
-    "@transitopia/pipelines": "*",
     "@transitopia/region-metro-vancouver": "*",
     "@transitopia/shared": "*",
     "@transitopia/transit-core": "*",

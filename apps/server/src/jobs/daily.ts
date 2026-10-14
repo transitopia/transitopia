@@ -9,7 +9,7 @@ import {
   feedZipFor,
   loadDayTimetable,
   type DayTrip,
-} from "@transitopia/pipelines/lib/gtfs-day.ts";
+} from "@transitopia/data/gtfs-day.ts";
 import { cadence } from "@transitopia/transit-core/rt/budget.ts";
 import { extendCoverage } from "@transitopia/transit-core/rt/types.ts";
 import {

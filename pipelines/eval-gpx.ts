@@ -34,7 +34,7 @@ import {
 import { RtTimeline } from "@transitopia/transit-core/rt/timeline.ts";
 import type { RtSnapshot } from "@transitopia/transit-core/rt/types.ts";
 import { loadRecordedHours, planLoader } from "./lib/rt-history.ts";
-import { log, ROOT } from "./lib/paths.ts";
+import { log, ROOT } from "@transitopia/data/paths.ts";
 
 const rtConfig = parseConfig("rt", rtJson);
 const CADENCE = cadence(rtConfig);

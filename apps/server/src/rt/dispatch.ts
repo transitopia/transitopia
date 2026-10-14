@@ -17,9 +17,9 @@ import { rtConfig } from "../config.ts";
 import {
   DISPATCH_HISTORY_DIR,
   PUBLIC_DATA_DIR,
-} from "@transitopia/pipelines/lib/paths.ts";
-import { DispatchContexts } from "@transitopia/pipelines/lib/dispatch-context.ts";
-import { datesOf } from "@transitopia/pipelines/lib/disruptions.ts";
+} from "@transitopia/data/paths.ts";
+import { DispatchContexts } from "@transitopia/data/dispatch-context.ts";
+import { datesOf } from "@transitopia/data/disruptions.ts";
 import {
   activeDisruptions,
   dateVersion,

@@ -12,7 +12,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { recordingConfig as recording } from "../config.ts";
-import { PUBLIC_DATA_DIR } from "@transitopia/pipelines/lib/paths.ts";
+import { PUBLIC_DATA_DIR } from "@transitopia/data/paths.ts";
 import type { Db } from "@transitopia/db/connect.ts";
 import type { Health } from "@transitopia/shared/admin-api.ts";
 import { recoverInterrupted, runOnce } from "@transitopia/db/jobs.ts";

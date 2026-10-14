@@ -7,7 +7,12 @@ import {
   type ConfigName,
 } from "@transitopia/transit-core/config.ts";
 
-export const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+export const ROOT = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "..",
+);
 
 // Committed, curated inputs for the region (config, infrastructure, scenarios, corrections).
 export const REGION_DIR = join(ROOT, "regions", "metro-vancouver");

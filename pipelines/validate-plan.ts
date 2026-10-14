@@ -5,8 +5,12 @@
 
 import { join } from "node:path";
 import { readdir } from "node:fs/promises";
-import { FEEDS_OUT_DIR, readConfig, readJson } from "./lib/paths.ts";
-import { loadAllPlans, loadGraph } from "./lib/infra.ts";
+import {
+  FEEDS_OUT_DIR,
+  readConfig,
+  readJson,
+} from "@transitopia/data/paths.ts";
+import { loadAllPlans, loadGraph } from "@transitopia/data/infra.ts";
 import { dispatchSummary } from "./lib/movements.ts";
 import { preparePlan } from "@transitopia/transit-core/schedule/engine.ts";
 import { TrainPlayback } from "@transitopia/transit-core/movement/playback.ts";

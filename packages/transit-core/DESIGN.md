@@ -261,7 +261,7 @@ inputs = { closures, serviceChanges, anchors }      // all optional, each with a
 
 **Run inference changes found through the dispatcher:** turnbacks run at their own speed factor (0.8; at 0.55 the 4-minute Production Way turnaround was infeasible, parking trains on Millennium platforms for 16 minutes), and stub termini send surplus trains to the yard when their berths are full. Pull-outs and pull-ins were first routed by plain shortest path, which ran them against traffic over ~74 km of main line; the penalty brought that to ~5 km.
 
-**Debugging:** `npm run build:movements -- --no-dispatch` writes the timetable-only plan for comparison. `DISPATCH_DEBUG=1` prints the first deadlock's waits-for chain; `DISPATCH_TRACE=<run> DISPATCH_TRACE_FROM=<s> DISPATCH_TRACE_TO=<s>` traces one train's state and authority decisions. The builds and the server read these (`pipelines/lib/dispatch-debug.ts`) and pass them to the engine as `DispatchOptions.debug`: transit-core itself reads no environment.
+**Debugging:** `npm run build:movements -- --no-dispatch` writes the timetable-only plan for comparison. `DISPATCH_DEBUG=1` prints the first deadlock's waits-for chain; `DISPATCH_TRACE=<run> DISPATCH_TRACE_FROM=<s> DISPATCH_TRACE_TO=<s>` traces one train's state and authority decisions. The builds and the server read these (`packages/data/src/dispatch-debug.ts`) and pass them to the engine as `DispatchOptions.debug`: transit-core itself reads no environment.
 
 ## SeaBus AIS
 

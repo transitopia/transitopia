@@ -13,8 +13,8 @@ import {
   log,
   readJson,
   writeJson,
-} from "./lib/paths.ts";
-import { DispatchContexts } from "./lib/dispatch-context.ts";
+} from "@transitopia/data/paths.ts";
+import { DispatchContexts } from "@transitopia/data/dispatch-context.ts";
 import { dispatchDate } from "@transitopia/transit-core/dispatch/date.ts";
 import type { DispatchIndex } from "@transitopia/transit-core/dispatch/patch.ts";
 import type {
@@ -22,7 +22,7 @@ import type {
   ObservationFile,
   ObservationIndex,
 } from "@transitopia/transit-core/corrections/types.ts";
-import { datesOf, loadDisruptions } from "./lib/disruptions.ts";
+import { datesOf, loadDisruptions } from "@transitopia/data/disruptions.ts";
 
 const OUT = join(PUBLIC_DATA_DIR, "dispatch");
 

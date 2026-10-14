@@ -6,8 +6,8 @@
 
 import { join } from "node:path";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { INFRA_DIR, RAW_DIR, log } from "./lib/paths.ts";
-import { loadOverrides } from "./lib/infra.ts";
+import { INFRA_DIR, RAW_DIR, log } from "@transitopia/data/paths.ts";
+import { loadOverrides } from "@transitopia/data/infra.ts";
 import {
   buildNetwork,
   type OsmNode,

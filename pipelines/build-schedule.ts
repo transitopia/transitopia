@@ -13,7 +13,7 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { readCsv, readCsvAll, type Row } from "./lib/gtfs-zip.ts";
+import { readCsv, readCsvAll, type Row } from "@transitopia/data/gtfs-zip.ts";
 import {
   CONFIG_DIR,
   INFRA_DIR,
@@ -25,7 +25,7 @@ import {
   readConfig,
   readJson,
   writeJson,
-} from "./lib/paths.ts";
+} from "@transitopia/data/paths.ts";
 import type { RouteConfig } from "@transitopia/transit-core/config.ts";
 import {
   cumulativeLengths,

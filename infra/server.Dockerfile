@@ -21,6 +21,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
+COPY packages/data/package.json packages/data/
 COPY packages/db/package.json packages/db/
 COPY packages/map-style/package.json packages/map-style/
 COPY packages/shared/package.json packages/shared/

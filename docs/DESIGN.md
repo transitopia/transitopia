@@ -77,9 +77,10 @@ apps/server/               the server: real-time API, leader (pollers, recorder,
 packages/transit-core/     DOM-free engine: GTFS, track graph, run inference, dispatcher, playback, corrections, RT prediction
 packages/transit-map/      the engine on a host MapLibre map: clock, playback, WebGL layers; no UI framework
 packages/map-style/        the Protomaps basemap style (light and dark), zoom helpers
+packages/data/             Node-side data access for pipelines and the server: where data lives (paths.ts), GTFS zips, disruption files, dispatch contexts
 packages/db/               PostgreSQL: SQL migrations, Kysely types, partitions, jobs
 packages/shared/           shared by web and server: the dataset registry
-pipelines/                 build-time pipelines and validators; lib/paths.ts knows where data lives
+pipelines/                 build-time pipelines and validators
 regions/metro-vancouver/   committed, curated inputs: region.json, config/, infrastructure/, scenarios/, observations/, disruptions/
 map-layers/                Planetiler (Java) profile for the cycling layer
 infra/                     production Compose stack, server image, Caddy, backups, firewall; the local database

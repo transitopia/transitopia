@@ -12,8 +12,8 @@ import {
   CORRECTIONS_EXPORT_DIR,
   PUBLIC_DATA_DIR,
   ROOT,
-} from "@transitopia/pipelines/lib/paths.ts";
-import { archivedFeeds } from "@transitopia/pipelines/lib/gtfs-day.ts";
+} from "@transitopia/data/paths.ts";
+import { archivedFeeds } from "@transitopia/data/gtfs-day.ts";
 import type { Db } from "@transitopia/db/connect.ts";
 import type { CorrectionsRepo } from "../corrections.ts";
 import type { ServerEnv } from "../env.ts";

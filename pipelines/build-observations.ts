@@ -11,7 +11,7 @@ import {
   log,
   readJson,
   writeJson,
-} from "./lib/paths.ts";
+} from "@transitopia/data/paths.ts";
 import type {
   Observation,
   ObservationFile,

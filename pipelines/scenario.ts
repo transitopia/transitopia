@@ -15,13 +15,13 @@ import {
   readConfig,
   readJson,
   writeJson,
-} from "./lib/paths.ts";
+} from "@transitopia/data/paths.ts";
 import {
   INFRA_DIR,
   loadLatestPlan,
   loadOverrides,
   loadTracks,
-} from "./lib/infra.ts";
+} from "@transitopia/data/infra.ts";
 import { buildAllMovements } from "./lib/movements.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
 import { mapPlatforms } from "@transitopia/transit-core/infra/platforms.ts";

@@ -24,7 +24,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { promisify } from "node:util";
-import { RAW_DIR, PUBLIC_DIR, log } from "./lib/paths.ts";
+import { RAW_DIR, PUBLIC_DIR, log } from "@transitopia/data/paths.ts";
 
 const run = promisify(execFile);
 

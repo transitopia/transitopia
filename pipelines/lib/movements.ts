@@ -1,8 +1,8 @@
 // Build movement files for every service-day type of a plan (shared by build-movements and scenario).
 
 import { join } from "node:path";
-import { log, writeJson } from "./paths.ts";
-import { dispatchDebugFromEnv } from "./dispatch-debug.ts";
+import { log, writeJson } from "@transitopia/data/paths.ts";
+import { dispatchDebugFromEnv } from "@transitopia/data/dispatch-debug.ts";
 import type {
   TrackGraph,
   TrackPos,
