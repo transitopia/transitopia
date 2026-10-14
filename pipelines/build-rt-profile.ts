@@ -6,7 +6,8 @@
 // timetable. Rebuild as history accumulates. Check the effect with `npx tsx pipelines/eval-rt.ts`.
 
 import { join } from "node:path";
-import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
+import rtJson from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
+import { parseConfig } from "@transitopia/transit-core/config.ts";
 import {
   ProfileBuilder,
   type PredictionConfig,
@@ -16,8 +17,10 @@ import { FEEDS_OUT_DIR, log, writeJson } from "./lib/paths.ts";
 import { eachRecordedHour, planLoader } from "./lib/rt-history.ts";
 import { addDays, localDate } from "@transitopia/transit-core/time.ts";
 
+const rtConfig = parseConfig("rt", rtJson);
+
 async function main() {
-  const cfg = rtConfig.prediction as unknown as PredictionConfig;
+  const cfg: PredictionConfig = rtConfig.prediction;
   const since = addDays(
     localDate(Date.now()),
     -rtConfig.prediction.profileHistoryDays,

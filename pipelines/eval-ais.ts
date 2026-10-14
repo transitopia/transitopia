@@ -5,9 +5,9 @@
 
 import { join } from "node:path";
 import {
-  CONFIG_DIR,
   INFRA_DIR,
   AIS_HISTORY_DIR,
+  readConfig,
   readJson,
 } from "./lib/paths.ts";
 import { loadLatestPlan } from "./lib/infra.ts";
@@ -26,15 +26,11 @@ import {
   TIMEZONE,
 } from "@transitopia/transit-core/time.ts";
 
-const kin = await readJson<any>(join(CONFIG_DIR, "kinematics.json"));
-const seabus = await readJson<any>(join(CONFIG_DIR, "seabus.json"));
+const kin = await readConfig("kinematics");
+const seabus = await readConfig("seabus");
 const infra = await readJson<any>(join(INFRA_DIR, "seabus.json"));
-const cfg = Object.fromEntries(
-  Object.entries(seabus.ais.match).filter(([k]) => !k.startsWith("$")),
-) as unknown as AisMatchConfig;
-const names = new Map<string, string>(
-  seabus.ais.vessels.map((v: any) => [v.mmsi, v.name]),
-);
+const cfg: AisMatchConfig = seabus.ais.match;
+const names = new Map(seabus.ais.vessels.map((v) => [v.mmsi, v.name]));
 
 const now = Temporal.Now.zonedDateTimeISO(TIMEZONE);
 const date =

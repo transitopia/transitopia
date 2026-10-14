@@ -88,6 +88,33 @@ interface Track {
   seenAt: number[];
 }
 
+/** A vehicle as drawn at t from one of its fixes, before its stop, delay and notes are worked out. */
+interface Shown {
+  /** The vehicle id (without the "rt:" prefix). */
+  id: string;
+  /** The fix it's drawn from. */
+  basis: Obs;
+  lon: number;
+  lat: number;
+  bearing: number;
+  speed: number | undefined;
+  provenance: VehicleState["provenance"];
+  t: number;
+  /** Where it's shown along its route (and from which obs): its next stop and delay come from this. */
+  onRoute?:
+    | {
+        tr: Track;
+        i: number;
+        along: number;
+        shifted: { n: number; e: number } | undefined;
+      }
+    | undefined;
+  /** Distance from its trip's route (m) when it couldn't be placed on it. */
+  offRouteM?: number | undefined;
+  /** The fix (with its upcoming trip) when the bus is between trips. */
+  betweenTrips?: RtVehicle | undefined;
+}
+
 /** Upper bound for plausible bus speed when dead-reckoning (m/s). */
 const MAX_SPEED = 25;
 /** A fix implying a faster straight-line move than this since the last one is discarded (m/s). */
@@ -498,20 +525,18 @@ export class RtTimeline {
     if (!s || Number.isNaN(along)) return undefined;
     const p = pointAlong(s.coords, s.cum, along);
     const between = this.isBetween(tr, i) ? o.v : undefined;
-    return this.state(
+    return this.state({
       id,
-      o.v,
-      p.lon,
-      p.lat,
-      this.routeBearing(tr, i) ?? p.bearing,
-      0,
-      "interpolated",
+      basis: o,
+      lon: p.lon,
+      lat: p.lat,
+      bearing: this.routeBearing(tr, i) ?? p.bearing,
+      speed: 0,
+      provenance: "interpolated",
       t,
-      o,
-      between ? undefined : { tr, i, along, shifted: tr.shift[i] },
-      undefined,
-      between,
-    );
+      onRoute: between ? undefined : { tr, i, along, shifted: tr.shift[i] },
+      betweenTrips: between,
+    });
   }
 
   /** Between trips and not at its next trip's first stop: not drawn. */
@@ -655,22 +680,21 @@ export class RtTimeline {
         }
         const p = pointAlong(s.coords, s.cum, along);
         const between = this.isBetween(tr, i) ? o0.v : undefined;
-        return this.state(
+        return this.state({
           id,
-          o0.v,
-          p.lon,
-          p.lat,
-          p.bearing,
+          basis: o0,
+          lon: p.lon,
+          lat: p.lat,
+          bearing: p.bearing,
           speed,
-          "interpolated",
+          provenance: "interpolated",
           t,
-          o0,
-          between ? undefined : (
-            { tr, i, along, shifted: tr.shift[i] ?? tr.shift[i + 1] }
-          ),
-          undefined,
-          between,
-        );
+          onRoute:
+            between ? undefined : (
+              { tr, i, along, shifted: tr.shift[i] ?? tr.shift[i + 1] }
+            ),
+          betweenTrips: between,
+        });
       }
     }
     // Straight line between where each fix is shown (on its route where it can be placed), so e.g.
@@ -699,19 +723,17 @@ export class RtTimeline {
         (this.routeBearing(tr, i) ?? this.routeBearing(tr, i + 1))
       : undefined)
       ?? headingOf(o0.v, o1.v);
-    return this.state(
+    return this.state({
       id,
-      o0.v,
+      basis: o0,
       lon,
       lat,
       bearing,
-      undefined,
-      "interpolated",
+      speed: undefined,
+      provenance: "interpolated",
       t,
-      o0,
-      undefined,
-      this.offRoute(o0.v),
-    );
+      offRouteM: this.offRoute(o0.v),
+    });
   }
 
   /** Predicted along-shape position at t from obs i alone (no correction), with speed. */
@@ -827,20 +849,18 @@ export class RtTimeline {
       const p = pointAlong(s.coords, s.cum, shown.along);
       const shifted = tr.shift[i];
       const between = this.isBetween(tr, i) ? o0.v : undefined;
-      return this.state(
+      return this.state({
         id,
-        o0.v,
-        p.lon,
-        p.lat,
-        p.bearing,
-        shown.speed,
-        shifted ? "interpolated" : provenance,
+        basis: o0,
+        lon: p.lon,
+        lat: p.lat,
+        bearing: p.bearing,
+        speed: shown.speed,
+        provenance: shifted ? "interpolated" : provenance,
         t,
-        o0,
-        between ? undefined : { tr, i, along: shown.along, shifted },
-        undefined,
-        between,
-      );
+        onRoute: between ? undefined : { tr, i, along: shown.along, shifted },
+        betweenTrips: between,
+      });
     }
     const prev = i > 0 ? tr.obs[i - 1] : undefined;
     const close =
@@ -850,43 +870,23 @@ export class RtTimeline {
       o0.v.bearing
       ?? (close ? this.routeBearing(tr, i - 1) : undefined)
       ?? (prev ? headingOf(prev.v, o0.v) : 0);
-    return this.state(
+    return this.state({
       id,
-      o0.v,
-      o0.v.lon,
-      o0.v.lat,
+      basis: o0,
+      lon: o0.v.lon,
+      lat: o0.v.lat,
       bearing,
-      undefined,
+      speed: undefined,
       provenance,
       t,
-      o0,
-      undefined,
-      this.offRoute(o0.v),
-    );
+      offRouteM: this.offRoute(o0.v),
+    });
   }
 
-  private state(
-    id: string,
-    v: RtVehicle,
-    lon: number,
-    lat: number,
-    bearing: number,
-    speed: number | undefined,
-    provenance: VehicleState["provenance"],
-    t: number,
-    basis: Obs,
-    /** Where it's shown along its route (and from which obs): its next stop and delay come from this. */
-    onRoute?: {
-      tr: Track;
-      i: number;
-      along: number;
-      shifted: { n: number; e: number } | undefined;
-    },
-    /** Distance from its trip's route (m) when it couldn't be placed on it. */
-    offRouteM?: number,
-    /** The fix (with its upcoming trip) when the bus is between trips. */
-    betweenTrips?: RtVehicle,
-  ): VehicleState {
+  private state(shown: Shown): VehicleState {
+    const { id, basis, lon, lat, bearing, speed, provenance, t } = shown;
+    const { onRoute, offRouteM, betweenTrips } = shown;
+    const v = basis.v;
     const trip = this.trip(v.tripId);
     const route = this.pp?.routes.get(v.routeKey);
     const kin =

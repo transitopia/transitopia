@@ -13,7 +13,7 @@
 
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
+import { rtConfig } from "../config.ts";
 import {
   DISPATCH_HISTORY_DIR,
   PUBLIC_DATA_DIR,

@@ -4,8 +4,6 @@
 // vessels glide from where they were drawn to their corrected positions (core/ais/glide.ts) instead
 // of jumping; times the fixes already cover use every fix (hindsight), so replays never jump.
 
-import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json";
-import seabusConfig from "@transitopia/region-metro-vancouver/config/seabus.json";
 import {
   decodeFixes,
   serviceDateWindow,
@@ -27,14 +25,11 @@ import type {
   ScheduleCorrections,
 } from "@transitopia/transit-core/schedule/engine.ts";
 import { serviceDayStart } from "@transitopia/transit-core/time.ts";
+import { rtConfig, seabusConfig } from "./config.ts";
 
 const ROUTE = "seabus";
-const MATCH = Object.fromEntries(
-  Object.entries(seabusConfig.ais.match).filter(([k]) => !k.startsWith("$")),
-) as unknown as AisMatchConfig;
-const GLIDE = Object.fromEntries(
-  Object.entries(seabusConfig.ais.glide).filter(([k]) => !k.startsWith("$")),
-) as unknown as GlideConfig;
+const MATCH: AisMatchConfig = seabusConfig.ais.match;
+const GLIDE: GlideConfig = seabusConfig.ais.glide;
 const NAMES = new Map(seabusConfig.ais.vessels.map((v) => [v.mmsi, v.name]));
 const MAX_DATES = 4;
 

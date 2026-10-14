@@ -22,9 +22,11 @@ import {
   FEEDS_OUT_DIR,
   REGION_DIR,
   log,
+  readConfig,
   readJson,
   writeJson,
 } from "./lib/paths.ts";
+import type { RouteConfig } from "@transitopia/transit-core/config.ts";
 import {
   cumulativeLengths,
   distM,
@@ -36,7 +38,6 @@ import {
 import { parseGtfsTime, TIMEZONE } from "@transitopia/transit-core/time.ts";
 import {
   applyFerryBerths,
-  type FerryConfig,
   type FerryInfra,
 } from "@transitopia/transit-core/plan/ferry-berths.ts";
 import type {
@@ -52,8 +53,6 @@ import type {
   PlanStop,
   PlanTrip,
   RouteKind,
-  RouteCategory,
-  RouteMode,
   ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
 import {
@@ -64,16 +63,6 @@ import {
   bayAtPlace,
   busHubs,
 } from "@transitopia/transit-core/plan/exchanges.ts";
-
-interface RouteConfig {
-  key: string;
-  label: string;
-  match: Partial<Record<"route_long_name" | "route_short_name", string>>;
-  kind: RouteKind;
-  mode: RouteMode;
-  category: RouteCategory;
-  color?: string;
-}
 
 /** Shape simplification tolerance (m) by route kind: track-level lines keep more detail. */
 const SIMPLIFY_M: Record<RouteKind, number> = { skytrain: 1, shape: 3, bus: 4 };
@@ -143,9 +132,7 @@ interface StopTimeRow {
 }
 
 export async function buildPlan(zipPath: string): Promise<ServicePlan> {
-  const { routes: routeCfg } = await readJson<{ routes: RouteConfig[] }>(
-    join(CONFIG_DIR, "routes.json"),
-  );
+  const { routes: routeCfg } = await readConfig("routes");
   const { gtfsDataset } = await readJson<{ gtfsDataset: string }>(
     join(REGION_DIR, "region.json"),
   );
@@ -571,7 +558,7 @@ export async function buildPlan(zipPath: string): Promise<ServicePlan> {
   const ferry = applyFerryBerths(
     plan,
     await readJson<FerryInfra>(join(INFRA_DIR, "seabus.json")),
-    await readJson<FerryConfig>(join(CONFIG_DIR, "seabus.json")),
+    await readConfig("seabus"),
   );
   if (ferry.sharedBerthS > 0)
     log(

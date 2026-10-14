@@ -3,7 +3,7 @@
 
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import { CONFIG_DIR, PUBLIC_DIR, PUBLIC_DATA_DIR, readJson } from "./paths.ts";
+import { PUBLIC_DIR, PUBLIC_DATA_DIR, readConfig, readJson } from "./paths.ts";
 import { loadGraph } from "./infra.ts";
 import {
   preparePlan,
@@ -54,9 +54,9 @@ export class DispatchContexts {
 
   private loadConfigs() {
     return (this.configs ??= Promise.all([
-      readJson<KinematicsConfig>(join(CONFIG_DIR, "kinematics.json")),
-      readJson<OperationsConfig>(join(CONFIG_DIR, "operations.json")),
-      readJson<DispatchConfig>(join(CONFIG_DIR, "dispatch.json")),
+      readConfig("kinematics"),
+      readConfig("operations"),
+      readConfig("dispatch"),
     ]).then(([kin, ops, dispatch]) => ({ kin, ops, dispatch })));
   }
 

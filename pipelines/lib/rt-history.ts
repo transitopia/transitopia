@@ -19,13 +19,12 @@ import {
   preparePlan,
   type PreparedPlan,
 } from "@transitopia/transit-core/schedule/engine.ts";
-import type { KinematicsConfig } from "@transitopia/transit-core/movement/kinematics.ts";
 import { localDate } from "@transitopia/transit-core/time.ts";
 import {
-  CONFIG_DIR,
   RT_HISTORY_DIR,
   PUBLIC_DATA_DIR,
   FEEDS_OUT_DIR,
+  readConfig,
   readJson,
 } from "./paths.ts";
 
@@ -80,9 +79,7 @@ export async function planLoader() {
   const manifest = await readJson<FeedManifest>(
     join(PUBLIC_DATA_DIR, "manifest.json"),
   );
-  const kin = await readJson<KinematicsConfig>(
-    join(CONFIG_DIR, "kinematics.json"),
-  );
+  const kin = await readConfig("kinematics");
   const cache = new Map<string, PreparedPlan>();
   return {
     kin,

@@ -262,6 +262,11 @@ const REVEAL_PAN_MS = 600;
 const FOLLOW_START_MS = 500;
 /** Snapshot refresh while playing (discrete changes publish immediately). */
 const SNAPSHOT_INTERVAL_MS = 200;
+/**
+ * With the time, zoom and inputs unchanged (paused), vehicles are recomputed this often anyway:
+ * some inputs age with wall-clock time and announce no change (live data going stale).
+ */
+const IDLE_RECOMPUTE_MS = 1000;
 /** Sources the engine adds to the host's map (removed on dispose). */
 const SOURCES = [
   ROUTES_SOURCE,
@@ -325,7 +330,12 @@ export class TransitEngine {
   private snapshot: TransitSnapshot;
   private listeners = new Set<() => void>();
   private lastPublish = 0;
+  /** Something the snapshot shows changed: publish it this frame. */
   private dirty = true;
+  /** Something vehicles depend on changed since they were last computed (see frame()). */
+  private inputsChanged = true;
+  /** The clock time, zoom and performance.now() vehicles were last computed at. */
+  private computedFor = { t: NaN, zoom: NaN, at: -Infinity };
   private lastCoverageUpdate = 0;
   private coverage: [number, number][] = [];
   private lastUrlWrite = 0;
@@ -444,18 +454,16 @@ export class TransitEngine {
       map.getCanvas().style.cursor = "";
     });
 
-    const invalidate = () => {
-      this.dirty = true;
-    };
+    const invalidate = () => this.invalidate();
     this.cleanups.push(
       this.clock.subscribe(() => {
-        this.dirty = true;
+        this.invalidate();
         this.writeUrlSoon();
       }),
       store.onChange(() => {
         this.syncStatic();
         this.describers.clear();
-        this.dirty = true;
+        this.invalidate();
       }),
       this.rt.onChange(invalidate),
       this.ais.onChange(invalidate),
@@ -931,10 +939,18 @@ export class TransitEngine {
 
   // --- internals ---
 
+  /** Data, the clock or the style changed: recompute vehicles and publish on the next frame. */
+  private invalidate(): void {
+    this.dirty = true;
+    this.inputsChanged = true;
+  }
+
   private publish(): void {
     this.snapshot = this.buildSnapshot(this.clock.now());
     this.lastPublish = performance.now();
     this.dirty = false;
+    // Every control (selection, filters, follow) publishes, and vehicles may depend on it.
+    this.inputsChanged = true;
     for (const fn of this.listeners) fn();
   }
 
@@ -1228,13 +1244,70 @@ export class TransitEngine {
     }
     this.vehicles.attach();
     this.vehicles.setRouteColors(pp.plan.routes);
-    this.dirty = true;
+    this.invalidate();
   }
 
   private frame = (): void => {
     if (this.disposed) return;
-    const { store, rt, ais, clock, map } = this;
+    const { store, rt, clock, map } = this;
     const t = clock.now();
+    // Scenarios are hypothetical: never mix in real bus positions.
+    if (!store.scenario) rt.update(t);
+    // Vehicles (and the map repaint their upload triggers) only when something they depend on
+    // changed: the time, the zoom (minimum drawn sizes), or an input (data, selection, filters).
+    // Paused, that's almost never; IDLE_RECOMPUTE_MS covers what ages with wall-clock time.
+    const zoom = map.getZoom();
+    const at = performance.now();
+    if (
+      this.inputsChanged
+      || t !== this.computedFor.t
+      || zoom !== this.computedFor.zoom
+      || at - this.computedFor.at > IDLE_RECOMPUTE_MS
+    ) {
+      this.inputsChanged = false;
+      this.computedFor = { t, zoom, at };
+      this.computeVehicles(t);
+    }
+    if (performance.now() - this.lastCoverageUpdate > 1000) {
+      this.lastCoverageUpdate = performance.now();
+      const [lo, hi] = this.sliderRange(t);
+      const next = rt.coverageFor(lo, hi);
+      if (JSON.stringify(next) !== JSON.stringify(this.coverage)) {
+        this.coverage = next;
+        this.dirty = true;
+      }
+    }
+    this.syncStatic();
+    if (this.following && this.styleReady) this.keepCentred();
+    else if (this.clearPaddingPending && !map.isMoving())
+      this.clearMapPadding();
+    if (this.revealAt !== undefined && performance.now() > this.revealAt) {
+      this.revealAt = undefined;
+      const at = this.placePoint();
+      const v = this.lastVehicles.find((x) => x.id === this.selectedId);
+      if (this.styleReady) {
+        if (at) this.keepPointInView({ lon: at[0], lat: at[1] });
+        else if (v) this.keepPointInView(v);
+      }
+    }
+
+    const now = performance.now();
+    if (
+      this.dirty
+      || (clock.playing && now - this.lastPublish > SNAPSHOT_INTERVAL_MS)
+    )
+      this.publish();
+    // URL sync: periodically while playing away from live (discrete changes write immediately).
+    if (now - this.lastUrlWrite > 2000 && clock.playing && !clock.isLive()) {
+      this.lastUrlWrite = now;
+      this.writeUrl();
+    }
+    this.raf = requestAnimationFrame(this.frame);
+  };
+
+  /** Every vehicle at t, the corrections and badges that go with them, drawn on the map. */
+  private computeVehicles(t: number): void {
+    const { store, rt, ais, map } = this;
     // Hidden routes aren't computed, except the selected vehicle's and the open route card's:
     // hiding a layer hides it from the map, but its cards stay true. Until the selected vehicle
     // has been seen, compute everything to find it.
@@ -1249,8 +1322,6 @@ export class TransitEngine {
             (k) => !this.hidden.has(k) || keep.has(k),
           ),
         );
-    // Scenarios are hypothetical: never mix in real bus positions.
-    if (!store.scenario) rt.update(t);
     const pp = store.planFor(displayServiceDate(t));
     const live =
       store.scenario ?
@@ -1344,15 +1415,6 @@ export class TransitEngine {
       this.rtState = { mode: live.mode, label, title: fullTitle };
       this.dirty = true;
     }
-    if (performance.now() - this.lastCoverageUpdate > 1000) {
-      this.lastCoverageUpdate = performance.now();
-      const [lo, hi] = this.sliderRange(t);
-      const next = rt.coverageFor(lo, hi);
-      if (JSON.stringify(next) !== JSON.stringify(this.coverage)) {
-        this.coverage = next;
-        this.dirty = true;
-      }
-    }
     this.datasets = this.datasetsDrawn(live.vehicles ?? [], aisUsed);
 
     if (this.styleReady)
@@ -1366,33 +1428,7 @@ export class TransitEngine {
         ),
         this.theme === "dark",
       );
-    this.syncStatic();
-    if (this.following && this.styleReady) this.keepCentred();
-    else if (this.clearPaddingPending && !map.isMoving())
-      this.clearMapPadding();
-    if (this.revealAt !== undefined && performance.now() > this.revealAt) {
-      this.revealAt = undefined;
-      const at = this.placePoint();
-      const v = this.lastVehicles.find((x) => x.id === this.selectedId);
-      if (this.styleReady) {
-        if (at) this.keepPointInView({ lon: at[0], lat: at[1] });
-        else if (v) this.keepPointInView(v);
-      }
-    }
-
-    const now = performance.now();
-    if (
-      this.dirty
-      || (clock.playing && now - this.lastPublish > SNAPSHOT_INTERVAL_MS)
-    )
-      this.publish();
-    // URL sync: periodically while playing away from live (discrete changes write immediately).
-    if (now - this.lastUrlWrite > 2000 && clock.playing && !clock.isLive()) {
-      this.lastUrlWrite = now;
-      this.writeUrl();
-    }
-    this.raf = requestAnimationFrame(this.frame);
-  };
+  }
 
   /**
    * The datasets behind routes: each route's schedule (the plan's, else the host's default), and its

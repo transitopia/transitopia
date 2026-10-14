@@ -23,8 +23,7 @@
 import { readFile, rename, stat, writeFile } from "node:fs/promises";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { join } from "node:path";
-import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
-import seabusConfig from "@transitopia/region-metro-vancouver/config/seabus.json" with { type: "json" };
+import { rtConfig, seabusConfig } from "../config.ts";
 import type {
   FeedManifest,
   ServicePlan,
@@ -48,7 +47,7 @@ import {
   PUBLIC_DATA_DIR,
 } from "@transitopia/pipelines/lib/paths.ts";
 import { aisstreamApiKey, translinkApiKey } from "../secrets.ts";
-import { AisFeed, type AisConfig } from "./ais.ts";
+import { AisFeed } from "./ais.ts";
 import {
   encodeFixes,
   type AisFixesResponse,
@@ -81,12 +80,11 @@ import {
   pollIntervalS,
   POLL_FEEDS,
   RequestLedger,
-  type CadenceConfig,
   type PollFeed,
 } from "@transitopia/transit-core/rt/budget.ts";
 
-const CADENCE = cadence(rtConfig as unknown as CadenceConfig);
-const SCHEDULE = (rtConfig as unknown as CadenceConfig).poll;
+const CADENCE = cadence(rtConfig);
+const SCHEDULE = rtConfig.poll;
 
 export interface HttpResult {
   status: number;
@@ -158,7 +156,8 @@ export class RtService {
   readonly alertDrafts: AlertDrafts;
   readonly changes: ServiceChanges;
   private routesLoadedFrom: number | undefined;
-  private timers: ReturnType<typeof setTimeout>[] = [];
+  /** Each feed's pending poll (one per feed: a tick schedules the next). */
+  private timers: Partial<Record<PollFeed, ReturnType<typeof setTimeout>>> = {};
   private running = false;
   /** Per feed: when it last polled successfully and its last error, so one feed's success can't hide another's failure. */
   private feeds: Record<PollFeed, { lastOkAt?: number; lastError?: string }> = {
@@ -230,7 +229,7 @@ export class RtService {
     if (aisKey) {
       this.ais = new AisFeed({
         apiKey: aisKey,
-        cfg: seabusConfig.ais as unknown as AisConfig,
+        cfg: seabusConfig.ais,
         route: "seabus",
         recorder: new Recorder(
           opts.aisHistoryDir ?? AIS_HISTORY_DIR,
@@ -448,8 +447,8 @@ export class RtService {
     this.isLeader = false;
     this.dispatcher?.stop();
     this.ais?.stop();
-    for (const t of this.timers) clearTimeout(t);
-    this.timers = [];
+    for (const t of Object.values(this.timers)) clearTimeout(t);
+    this.timers = {};
     if (this.leaderRetry) clearTimeout(this.leaderRetry);
     void this.leaderLock?.release();
   }
@@ -498,8 +497,9 @@ export class RtService {
   ): void {
     const schedule = (at: number) => {
       this.nextPollAt[feed] = at;
+      clearTimeout(this.timers[feed]);
       if (this.running)
-        this.timers.push(setTimeout(tick, Math.max(0, at - Date.now())));
+        this.timers[feed] = setTimeout(tick, Math.max(0, at - Date.now()));
     };
     const tick = async () => {
       if (!this.running) return;

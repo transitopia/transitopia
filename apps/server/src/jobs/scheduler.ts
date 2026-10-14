@@ -11,7 +11,7 @@
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import recording from "@transitopia/region-metro-vancouver/config/recording.json" with { type: "json" };
+import { recordingConfig as recording } from "../config.ts";
 import { PUBLIC_DATA_DIR } from "@transitopia/pipelines/lib/paths.ts";
 import type { Db } from "@transitopia/db/connect.ts";
 import { recoverInterrupted, runOnce } from "@transitopia/db/jobs.ts";

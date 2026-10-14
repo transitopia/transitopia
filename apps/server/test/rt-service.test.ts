@@ -155,6 +155,38 @@ describe("RtService", () => {
     expect(status.budget.nextPollInS.positions).toBeGreaterThan(30);
   });
 
+  it("keeps one pending timer per feed however long it polls", async () => {
+    dir = await mkdtemp(join(tmpdir(), "rt-test-"));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      const upstream = vi.fn(async () => feedResponse(emptyFeed()));
+      vi.stubGlobal("fetch", upstream);
+      service = new RtService({
+        historyDir: dir,
+        record: false,
+        log: () => {},
+        apiKey: "test-key",
+        dispatch: false,
+        disruptionsDir: dir,
+      });
+      await service.start(0);
+      // An hour of polling, a minute at a time (each poll awaits real file I/O before it schedules
+      // the next): every feed polls again and again at any time of day.
+      for (let m = 0; m < 60; m++) {
+        await vi.advanceTimersByTimeAsync(60_000);
+        await new Promise((r) => setImmediate(r));
+      }
+      expect(upstream.mock.calls.length).toBeGreaterThan(9);
+      // Private: the handles the service holds (it once kept every poll's, forever).
+      expect(Object.keys(service["timers"])).toHaveLength(3);
+    } finally {
+      vi.useRealTimers();
+      service?.stop();
+      // The last poll's ledger write, before the directory goes.
+      await service?.["ledgerWrite"];
+    }
+  });
+
   it("stops polling at the daily cap", async () => {
     dir = await mkdtemp(join(tmpdir(), "rt-test-"));
     const hourAgo = Date.now() - 3_600_000;

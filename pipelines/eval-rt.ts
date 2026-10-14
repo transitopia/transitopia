@@ -17,7 +17,8 @@
 // first carried it) and measures what's displayed: jumps when a snapshot arrives, error against each
 // fix at the moment it was taken, backward movement, and apparent speed.
 
-import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
+import rtJson from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
+import { parseConfig } from "@transitopia/transit-core/config.ts";
 import {
   cumulativeLengths,
   projectOnto,
@@ -39,14 +40,11 @@ import {
   type RecordedHour,
 } from "./lib/rt-history.ts";
 import { log } from "./lib/paths.ts";
-import {
-  cadence,
-  pollIntervalS,
-  type CadenceConfig,
-} from "@transitopia/transit-core/rt/budget.ts";
+import { cadence, pollIntervalS } from "@transitopia/transit-core/rt/budget.ts";
 import type { RtSnapshot } from "@transitopia/transit-core/rt/types.ts";
 
-const CADENCE = cadence(rtConfig as unknown as CadenceConfig);
+const rtConfig = parseConfig("rt", rtJson);
+const CADENCE = cadence(rtConfig);
 /** An hour counts as complete when its snapshots span at least this long (two 300 s polls short of an hour). */
 const COMPLETE_HOUR_SPAN_MS = 50 * 60_000;
 
@@ -56,7 +54,7 @@ const opt = (name: string) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 // --set key=value[,key=value] overrides prediction settings, for tuning.
-const cfg = { ...(rtConfig.prediction as unknown as PredictionConfig) };
+const cfg: PredictionConfig = { ...rtConfig.prediction };
 for (const kv of opt("--set")?.split(",") ?? []) {
   const [k, v] = kv.split("=");
   (cfg as unknown as Record<string, unknown>)[k!] = JSON.parse(v!);
@@ -252,7 +250,7 @@ function subsample(
   every: string | undefined,
 ): RtSnapshot[] {
   if (!every) return snaps;
-  const schedule = (rtConfig as unknown as CadenceConfig).poll;
+  const schedule = rtConfig.poll;
   const intervalMs = (t: number) =>
     (every === "schedule" ?
       pollIntervalS(schedule, "positions", t)

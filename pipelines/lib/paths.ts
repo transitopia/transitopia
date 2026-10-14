@@ -1,6 +1,11 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
+import {
+  parseConfig,
+  type Config,
+  type ConfigName,
+} from "@transitopia/transit-core/config.ts";
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -37,6 +42,16 @@ export const FEEDS_OUT_DIR = join(PUBLIC_DATA_DIR, "feeds");
 
 export async function readJson<T>(path: string): Promise<T> {
   return JSON.parse(await readFile(path, "utf8")) as T;
+}
+
+/** A region config file (CONFIG_DIR), checked against its schema (packages/transit-core/src/config.ts). */
+export async function readConfig<N extends ConfigName>(
+  name: N,
+): Promise<Config<N>> {
+  return parseConfig(
+    name,
+    await readJson<unknown>(join(CONFIG_DIR, `${name}.json`)),
+  );
 }
 
 /** Write JSON atomically (temp file + rename) so a crashed build never leaves a half-written file. */
