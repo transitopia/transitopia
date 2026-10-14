@@ -4,7 +4,7 @@ How Transitopia turns timetables, OpenStreetMap track and real-time data into th
 
 ## Overview
 
-The engine animates, on a to-scale vector map of Metro Vancouver:
+The engine animates, on a to-scale vector map of Metro Vancouver (and a few BC Transit bus routes in Greater Victoria and Kelowna: [docs/DESIGN.md → Regions and feeds](../../docs/DESIGN.md#regions-and-feeds)):
 
 - **SkyTrain** (Expo, Millennium and Canada Lines): every train on the correct track, through switches, pocket tracks and turnbacks, and moving to and from the operations and maintenance centres (OMCs) and yards as trains enter and leave service. Positions are **inferred from the schedule**, refined by corrections and dispatched through a signalling simulation.
 - **SeaBus** and **West Coast Express**: from the schedule along simpler geometry. SeaBus is anchored by live AIS.
@@ -65,6 +65,18 @@ Verified 2026-09-25 against TransLink GTFS feed `26SEP_20260925` (valid 2026-09-
 - They send **no CORS headers**, so they're proxied by the server, which also keeps the key secret.
 - Trip updates drop a trip once it has run, cancelled or not (seen 2026-09-29), and alerts disappear once they're over, which is why the server records [service changes](../../apps/server/README.md#real-time-service).
 
+### BC Transit GTFS and GTFS-realtime
+
+Verified 2026-10-14 against the Victoria (operator 48) and Kelowna (operator 47) feeds ([bctransit.com/open-data](https://www.bctransit.com/open-data/), `feeds/bc-transit-*/feed.json`).
+
+| Fact | Implication |
+|---|---|
+| Published by Consat (`bct.tmix.se`) with a new `feed_version` such as `202610140/20261013 21:00:00/20261014 04:00:00` on every export (daily), even with the same timetable. | Versions become directory names with `versionDir`; `fetch-gtfs` keeps a download only when its files differ from the newest archived version's (`zipSignature`). |
+| No `calendar.txt`: every service is dated in `calendar_dates.txt`. UTF-8 byte-order marks. `shape_dist_traveled` in metres. | Handled by the generic reader (exceptions alone; `bom: true`); stops are projected onto shapes, never by `shape_dist_traveled`. |
+| Route colours for every route (the 95 Blink is `#FCAF17`). | Drawn routes use the feed's colours (no `color` in `routes.json`). |
+| Exchange bays have no `@`: `Langford Exch (Jacklin Rd) Bay D`, `UBCO Exchange Bay C`, `Legislature Exch`. | `src/plan/exchanges.ts` reads both naming styles. |
+| GTFS-realtime with no key and no stated limit: positions for every bus with its trip, trip updates (delays, `CANCELED` trips, `SKIPPED` stops) and alerts. Fixes were p50 ~8 s old when fetched. Vehicle labels are long ids (`3131357525`), not fleet numbers. | The same GTFS-RT handling as TransLink's, within its own budget. |
+
 ### OpenStreetMap
 
 OSM maps SkyTrain **per track** in detail: 264 `railway=switch` nodes, 45+ crossovers, named pockets (Metrotown, Vanness, Holdom, Moody Centre, Great Northern, "Mainline Pocket", Waterfront Tail), and yard tracks: the **Canada Line OMC** (~50 tracks, east of Bridgeport), **OMC 1** (~75 tracks across two clusters, south of Edmonds), and a **~16-track yard near Inlet Centre/Coquitlam Central**. OSM is our primary source for geometry *and* topology.
@@ -99,19 +111,19 @@ The heart of the engine. It lives as versioned data in `regions/metro-vancouver/
 
 `pipelines/fetch-gtfs.ts` and `pipelines/build-schedule.ts`; types in `src/plan/types.ts`.
 
-- **Feed discovery**: fetch the undated `google_transit.zip` and read `feed_info.txt` (`feed_version`, `feed_start_date`, `feed_end_date`). A new version is archived to `var/raw/gtfs/<feed_version>/` and built. Previously built versions are kept. The server does this daily and archives every feed.
-- **Rebuilds**: a plan records a hash of what built it besides its feed (`inputs`: `PLAN_FORMAT` in `build-schedule` and the config files it reads), and the build redoes any plan whose hash differs, so editing `config/routes.json` or changing the plan's format reaches plans already built (on the server too, whose daily build otherwise only builds new feeds). Bump `PLAN_FORMAT` whenever the script writes something different from the same feed and config.
-- **Manifest**: `var/public/data/manifest.json` lists the feed versions with their validity ranges. `feedForDate(date)` picks the newest feed whose range covers the date, which handles current and future timetables, including a newer feed superseding the tail of an older one. The date picker is bounded by the union of the ranges.
-- **Filter** to the routes in `regions/metro-vancouver/config/routes.json`, **by name**. Route colours, names and categories are baked into the plan from the same file. The feed's other bus routes go in the plan's catalogue ([below](#route-catalogue)).
+- **Feed discovery**, for each feed (`feeds/<feed>/feed.json` → `static.url`): fetch the latest zip and read `feed_info.txt` (`feed_version`, `feed_start_date`, `feed_end_date`). A new version is archived to `var/raw/gtfs/<feed>/<version dir>/` and built, unless its files are the same as the newest archived version's (BC Transit re-exports daily). Previously built versions are kept. The server does this daily and archives every version.
+- **Rebuilds**: a plan records a hash of what built it besides its feed (`inputs`: `PLAN_FORMAT` in `build-schedule` and the files it reads: the feed's `feed.json` and `routes.json`, and SeaBus berths where a region showing it has them), and the build redoes any plan whose hash differs, so editing `routes.json` or changing the plan's format reaches plans already built (on the server too, whose daily build otherwise only builds new feeds). Bump `PLAN_FORMAT` whenever the script writes something different from the same feed and config.
+- **Manifest**: each feed's `var/public/data/feeds/<feed>/manifest.json` lists its versions with their validity ranges. `feedForDate(date)` picks the newest feed whose range covers the date, which handles current and future timetables, including a newer feed superseding the tail of an older one. The date picker is bounded by the union of the ranges.
+- **Filter** to the routes in the feed's `feeds/<feed>/routes.json`, **by name**. Route colours, names and categories are baked into the plan from the same file. The feed's other bus routes go in the plan's catalogue ([below](#route-catalogue)).
 - **Normalize** into a compact service plan per feed version: trips (route, direction, headsign, service_id, block_id, shape_id, and `(stop_id, arr, dep)` in seconds since service-day start), stops with platform→parent mapping, simplified shapes, calendar and calendar_dates. SeaBus shapes are replaced by berth-to-berth lanes ([below](#seabus-and-west-coast-express)).
 - **Service-day resolver**: `activeServices(date)` applies calendar ranges, weekday flags, and add/remove exceptions. Trips after 24:00 belong to the previous service day. Local times come from the runtime's tzdata.
 - **Re-timing**: SkyTrain, WCE and SeaBus trips are re-timed within ±45 s of GTFS (which rounds to the minute) in proportion to each hop's physical minimum time (`retime` in `src/schedule/engine.ts`). Without this, some hops are impossibly fast.
 
 ### Route catalogue
 
-The map draws only the routes in `config/routes.json`, but cards list every bus route in the feed. `build-schedule` keeps each other bus route (GTFS `route_type` 3) in the plan's `catalog` (`CatalogRoute`): its key, name and category ("regular"), a neutral colour (GTFS gives buses none), which of the plan's stops it serves, and its trips' start times (minutes, per service and direction). That is all a stop card needs to list it and a route card needs for its frequency (`routeMinutes` counts catalogue starts the same way as trips), without its stop times or shape: about 0.3 MB more per plan instead of tens of MB. `PreparedPlan.catalog` and `catalogAtStop` index it. So that a station's or exchange's card lists every route at it, the plan also keeps the bays there that only catalogue routes use (`bayAtPlace`: the name of one of its bays, or beside a station, within 400 m); `busHubs` groups them with the rest, but a group of bays no drawn bus uses isn't an exchange of its own, so bays elsewhere wait until their buses are drawn. A catalogue route's key is its short name as riders know it ("025" → "25", "N17"), never the `route_id`, so `?place=route:25` survives feed changes; real-time data still keys vehicles on untracked routes as `gtfs:<route_id>` ([Buses](#buses)).
+The map draws only the routes in the feed's `routes.json`, but cards list every bus route in the feed. `build-schedule` keeps each other bus route (GTFS `route_type` 3) in the plan's `catalog` (`CatalogRoute`): its key, name and category ("regular"), a neutral colour (GTFS gives buses none), which of the plan's stops it serves, and its trips' start times (minutes, per service and direction). That is all a stop card needs to list it and a route card needs for its frequency (`routeMinutes` counts catalogue starts the same way as trips), without its stop times or shape: about 0.3 MB more per plan instead of tens of MB. `PreparedPlan.catalog` and `catalogAtStop` index it. So that a station's or exchange's card lists every route at it, the plan also keeps the bays there that only catalogue routes use (`bayAtPlace`: the name of one of its bays, or beside a station, within 400 m); `busHubs` groups them with the rest, but a group of bays no drawn bus uses isn't an exchange of its own, so bays elsewhere wait until their buses are drawn. A catalogue route's key is its short name as riders know it ("025" → "25", "N17"), never the `route_id`, so `?place=route:25` survives feed changes; real-time data still keys vehicles on untracked routes as `gtfs:<route_id>` ([Buses](#buses)).
 
-Categories, for the layers panel: **rapid** is dedicated right of way (SkyTrain, SeaBus, West Coast Express), **frequent** the 99 B-Line and RapidBus (frequent, but not true BRT), **regular** every other bus. They're set by hand in `config/routes.json` for now; frequent vs regular is meant to be computed from scheduled frequency when the plan is built. When every route is drawn, the catalogue is the part of the plan loaded up front: what routes exist, where they stop and how often they run, with each route's trips loaded when needed.
+Categories, for the layers panel: **rapid** is dedicated right of way (SkyTrain, SeaBus, West Coast Express), **frequent** the 99 B-Line and RapidBus (frequent, but not true BRT), **regular** every other bus. They're set by hand in `routes.json` for now (in Victoria, the 15 and 70 are drawn as regular); frequent vs regular is meant to be computed from scheduled frequency when the plan is built. When every route is drawn, the catalogue is the part of the plan loaded up front: what routes exist, where they stop and how often they run, with each route's trips loaded when needed.
 
 ## Departures
 
@@ -143,7 +155,7 @@ Output: **runs**, each an ordered list of movements (revenue trips and empty mov
 
 - **Routing**: each leg (platform → platform, yard → platform, turnback) is routed on the track graph by shortest path, respecting turns. Legs start and end on the platform's own track. Revenue trains keep to main track.
 - **Timed paths**: each leg becomes a list of `(edgeId, fromOffset, toOffset)` plus a time profile. Per-line kinematics (acceleration, deceleration, top speed, dwell; `config/kinematics.json`) are fitted so run time matches the schedule; slack goes into the dwell.
-- **Movement files**: `var/public/data/feeds/<v>/movements/*.json`, one per service pattern. Trips that run on plan are stored by reference; trips the dispatcher changed carry explicit times. Schema version 1 is timetable positions only, version 2 is dispatched.
+- **Movement files**: `var/public/data/feeds/translink/<v>/movements/*.json`, one per service pattern. Trips that run on plan are stored by reference; trips the dispatcher changed carry explicit times. Schema version 1 is timetable positions only, version 2 is dispatched.
 - **Playback** (`playback.ts`) is pure: (movement file, prepared plan, graph, t) → positions. `positionAt(run, t)` binary-searches the timed path, applies the kinematic interpolation, and maps the edge offset to a position and bearing. Keep it pure.
 
 ## SeaBus and West Coast Express
@@ -164,7 +176,7 @@ Output: **runs**, each an ordered list of movements (revenue trips and empty mov
 
 Fixes arrive 1–5 minutes apart within the [request budget](../../docs/DESIGN.md#upstream-request-budget), so the live view always predicts (`src/rt/profile.ts`, `timeline.ts`; settings in `config/rt.json` → `prediction`, OPEN-QUESTIONS #25):
 
-- **Travel-time profile**, learned from recorded history (`npm run build:rt-profile` → `var/public/data/feeds/<v>/rt-profile.json`): pace per 50 m bin along each trip shape by time-of-day band (congestion, signals), and expected dwell per stop. Slow time within 75 m of a stop (versus the pace nearby) is moved into its dwell, which makes buses visibly stop at a small cost in average accuracy. Gaps fall back to the all-day profile, then the timetable's running times with a default dwell, then a default speed.
+- **Travel-time profile**, learned from recorded history (`npm run build:rt-profile` → `var/public/data/feeds/<feed>/<v>/rt-profile.json`): pace per 50 m bin along each trip shape by time-of-day band (congestion, signals), and expected dwell per stop. Slow time within 75 m of a stop (versus the pace nearby) is moved into its dwell, which makes buses visibly stop at a small cost in average accuracy. Gaps fall back to the all-day profile, then the timetable's running times with a default dwell, then a default speed.
 - **Prediction** walks the bus forward from its last fix with the profile, stopping at each upcoming stop for its expected dwell. A bus whose predicted dwell ends leaves on time even without a new fix (RT reporting gaps are likelier than long dwells). Checked against two GPX rides on the 99 (2026-10-12): expected dwells were within p50 8–11 s of the real ones, with no overall bias.
 - **Corrections glide**: when a new fix becomes known (client receipt live, fetch time when recorded), a bus that turns out further ahead glides forward (≤ 8 m/s faster, ≤ 25 s); one that turns out behind holds still until the prediction catches up, never reversing. Corrections over 600 m snap. Between two known fixes (recorded playback), motion follows the profile scaled to fit both, so stops show there too.
 - **Schedule estimates** for buses (no RT coverage, e.g. fast-forwarding past the live edge) use the same profile between timetable times ≥ 3 minutes apart, scaled to meet them: the bus stops at each stop and holds at those anchor stops until its timetable time.
@@ -203,7 +215,7 @@ A scenario is a directory in `regions/metro-vancouver/scenarios/<name>/` (format
 - `service.json`: either the base GTFS or service operations (e.g. `extend` a line) that produce a modified plan without mutating the base (it's `structuredClone`d).
 - optional config overrides for kinematics, fleet caps and turnback times.
 
-`npm run scenario -- <name>` runs the whole pipeline (apply the diff → validate → generate trips → infer runs → route → dispatch) and writes `var/public/data/scenarios/<name>/` (gitignored); `?scenario=<name>` shows it. Buses in scenarios are schedule-only. There's no editing UI, and recomputes stay central: browsers don't run the pipeline. The demo is `broadway-subway`.
+`npm run scenario -- <name>` runs the whole pipeline (apply the diff → validate → generate trips → infer runs → route → dispatch) and writes `var/public/data/regions/metro-vancouver/scenarios/<name>/` (gitignored); `?scenario=<name>` shows it. Buses in scenarios are schedule-only. There's no editing UI, and recomputes stay central: browsers don't run the pipeline. The demo is `broadway-subway`.
 
 ## Disruptions and alerts
 

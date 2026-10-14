@@ -11,6 +11,7 @@ How Transitopia fits together, and the decisions behind it. Each part has its ow
 | The transit engine on the map (`packages/transit-map`) | [packages/transit-map/README.md](../packages/transit-map/README.md) |
 | Pipelines and validators | [pipelines/README.md](../pipelines/README.md) |
 | Metro Vancouver: what we know about operations, and what we don't | [regions/metro-vancouver/README.md](../regions/metro-vancouver/README.md), [OPEN-QUESTIONS.md](../regions/metro-vancouver/OPEN-QUESTIONS.md) |
+| Greater Victoria and Central Okanagan (BC Transit) | [regions/greater-victoria/README.md](../regions/greater-victoria/README.md), [regions/central-okanagan/README.md](../regions/central-okanagan/README.md) |
 | Hosting, deployment and operations | [deployment/README.md](../deployment/README.md) |
 | Data licenses and sources | [DATA-LICENSES.md](../DATA-LICENSES.md) |
 
@@ -21,7 +22,7 @@ Planned work is tracked in [GitHub issues](https://github.com/transitopia/transi
 Transitopia is one site with **transit** and **cycling** modes, backed by a long-running server in Canada and a PostgreSQL database for everything we collect and curate.
 
 - **Cycling**: the cycling and micromobility map of British Columbia, from our own Planetiler profile (`map-layers/`).
-- **Transit** (Metro Vancouver): Our goal is to show every transit mode in real-time on a single map. Currently we show express buses and SeaBus using accurate real-time data, and we do our best to model SkyTrain and West Coast Express based on their schedule. The web app features a time slider covering past, live and projected future service. Corrections, disruptions, scenarios and a signalling-aware dispatcher refine the schedule where possible.
+- **Transit** (Metro Vancouver, with a few BC Transit routes in Greater Victoria and Kelowna to keep the design [multi-region](#regions-and-feeds)): Our goal is to show every transit mode in real-time on a single map. Currently we show express buses and SeaBus using accurate real-time data, and we do our best to model SkyTrain and West Coast Express based on their schedule. The web app features a time slider covering past, live and projected future service. Corrections, disruptions, scenarios and a signalling-aware dispatcher refine the schedule where possible.
 - **Walking** is planned for the future.
 
 Some upcoming priorities, in order: details panels, the frequency map, submissions and annotations, micromobility, all buses, a mobile app, and trip planning. Data quality and site performance improve continuously alongside all of these. The long-term goal is SkyTrain-level detail in other cities, one city at a time: Vancouver first, Montreal next.
@@ -82,7 +83,8 @@ packages/data/             Node-side data access for pipelines and the server: w
 packages/db/               PostgreSQL: SQL migrations, Kysely types, partitions, jobs
 packages/shared/           shared by web and server: the dataset registry
 pipelines/                 build-time pipelines and validators
-regions/metro-vancouver/   committed, curated inputs: region.json, config/, infrastructure/, scenarios/, observations/, disruptions/
+feeds/                     the feeds regions show: feed.json (sources, request budget), routes.json (what's drawn)
+regions/<id>/              committed, curated inputs: region.json, config/, and in Metro Vancouver infrastructure/, scenarios/, observations/, disruptions/
 map-layers/                Planetiler (Java) profile for the cycling layer
 infra/                     production Compose stack, server image, Caddy, backups, firewall; the local database
 deployment/                setup and operations notes, the tile worker
@@ -119,7 +121,7 @@ Kept in Postgres, observed stop times grow by about 78 GB a year ([deployment/RE
 
 ## Upstream request budget
 
-TransLink's terms give an API key "a maximum of 1,000 requests per day". Until TransLink approves more, the leader stays under that across `gtfsposition`, `gtfsrealtime` (trip updates) and `gtfsalerts`, polling more often at peak and less off-peak. The schedule is config (`regions/metro-vancouver/config/rt.json` → `poll`):
+Every feed is polled within a budget of its own (`feeds/<feed>/feed.json` → `realtime.poll`: a daily cap and a time-of-day schedule), whatever its provider allows. TransLink's terms give an API key "a maximum of 1,000 requests per day". Until TransLink approves more, the leader stays under that across `gtfsposition`, `gtfsrealtime` (trip updates) and `gtfsalerts`, polling more often at peak and less off-peak:
 
 | Weekday band | Positions | Trip updates | Alerts |
 |---|---|---|---|
@@ -127,11 +129,11 @@ TransLink's terms give an API key "a maximum of 1,000 requests per day". Until T
 | Day and evening: 05:00–06:30, 09:30–15:00, 18:30–23:00 | every 150 s | every 10 min | every 30 min |
 | Night: 23:00–05:00 | every 5 min | every 30 min | hourly |
 
-Weekends have their own, flatter schedule with a midday peak. Together they stay at about 970 requests in any 24 hours.
+Weekends have their own, flatter schedule with a midday peak. Together they stay at about 970 requests in any 24 hours. BC Transit's feeds need no key and state no limit; each is polled every 30 s for positions, 2 minutes for trip updates and 5 for alerts while buses run (less overnight), about 3,500 requests a day, with a cap of 4,000.
 
-- **Hard cap**: a ledger (`upstream_requests`, or `var/rt-history/requests.json` without a database) counts every attempt, including failures. The poller stops at the cap, error backoff is long because it spends budget, and a restarted leader resumes each feed's schedule instead of polling at once.
+- **Hard cap**: a ledger per feed (`upstream_requests`, or `var/rt-history/<feed>/requests.json` without a database) counts every attempt, including failures. The poller stops at the cap, error backoff is long because it spends budget, and a restarted leader resumes each feed's schedule instead of polling at once.
 - **One poller**: only the leader polls (a Postgres advisory lock), so there's one counter. Other instances forward `/rt/*` to it.
-- **Only production polls.** The key's budget is shared, so a server polls only with `RT_POLL=1`. Local development forwards to production (`RT_FORWARD_TO=https://api.transitopia.org`), points the site straight at it, or uses snapshots of production data ([deployment/README.md → Snapshots](../deployment/README.md#snapshots-for-development)).
+- **Only production polls.** The key's budget is shared, so a server polls only with `RT_POLL=1`, keyless feeds included. Local development forwards to production (`RT_FORWARD_TO=https://api.transitopia.org`), points the site straight at it, or uses snapshots of production data ([deployment/README.md → Snapshots](../deployment/README.md#snapshots-for-development)).
 - **Effect on quality**: fixes come 1–5 minutes apart instead of ~30 s. Thresholds that depend on the cadence (stale data, coverage gaps, "observed" windows, prediction limits) follow the interval in use (`packages/transit-core/src/rt/budget.ts`). `npx tsx pipelines/eval-rt.ts --subsample schedule` replays recorded history as if polled on the schedule.
 
 Other providers get budgets under their own terms. aisstream.io allows 3 connections per account: production's leader holds one WebSocket, which leaves room for `pipelines/probe-ais.ts` and the occasional local test.
@@ -150,29 +152,35 @@ Observations (sightings of a train or vessel at a stop at a time, consists, canc
 
 Each dataset has an entry in the registry (`packages/shared/src/datasets.ts`): id, short credit, full legend text, link and license. Every map source, layer and engine component declares which datasets it draws (`useDatasets([...])` in the site), and the site's attribution control (replacing MapLibre's default) credits exactly what's visible: the layers turned on, plus whether the engine is drawing any vehicle from that dataset. On phones it collapses to a short line with an ⓘ button.
 
-Transit data is credited per route, never by naming a provider in UI code: each route in a plan names its feed's dataset (`PlanRoute.dataset`, from `gtfsDataset` in `region.json`; plans built before it fall back to the region's, passed to the engine), and a schedule dataset names its provider's real-time companion (`realtime`). The engine's snapshots say which datasets lie behind what's drawn and behind each card (a vehicle, a route, a place's departures, adding the real-time dataset where real positions or predictions are shown), so with several providers each card credits only its own.
+Transit data is credited per route, never by naming a provider in UI code: each route in a plan names its feed's dataset (`PlanRoute.dataset`, from `dataset` in its `feed.json`; plans built before it fall back to the feed's, passed to the engine), and a schedule dataset names its provider's real-time companion (`realtime`). The engine's snapshots say which datasets lie behind what's drawn and behind each card (a vehicle, a route, a place's departures, adding the real-time dataset where real positions or predictions are shown), so with several providers each card credits only its own.
 
 Required legends, such as TransLink's ("Some of the data used in this product or service is provided by permission of TransLink. …"), appear in full whenever that data is visible: in the expanded credits and in the footer of each card showing it.
 
-## Regions
+## Regions and feeds
 
-A **region** (`regions/<id>/region.json`) holds the bbox, time zone, the first view, its GTFS feed's dataset id, and time zone checks. Everything about a region is data under `regions/<id>/`:
+A **region** is a place on the map: `regions/<id>/region.json` holds its bbox, time zone, first view, time zone checks, and the **feeds** it shows. A **feed** is one agency's published data: `feeds/<id>/feed.json` says where its GTFS static and GTFS-realtime are, the request budget and poll schedule, and its dataset for credits; `feeds/<id>/routes.json` which of its routes are drawn (by name). Both have schemas in `packages/transit-core/src/config.ts`, checked by a test over every committed file.
 
-```
-regions/metro-vancouver/
-  region.json                  bbox, time zone, initial view, tzdata checks
-  config/                      kinematics, dwell, turnbacks, dispatch, rt (poll schedule, prediction), seabus, routes, recording
-  infrastructure/              tracks.generated.geojson (from OSM), future.generated.geojson, overrides.json, seabus.json, diagram-checklist.json
-  scenarios/                   scenario specs and custom geometry
-  observations/, disruptions/  corrections in the file format
-  README.md, OPEN-QUESTIONS.md what we know about operations, and what we don't
-```
+| Region | Feeds | Drawn |
+|---|---|---|
+| `metro-vancouver` | `translink` | SkyTrain, SeaBus, West Coast Express, 99, R1–R6 |
+| `greater-victoria` | `bc-transit-victoria` | 95 Blink RapidBus, 15, 70 |
+| `central-okanagan` | `bc-transit-kelowna` | 97 Okanagan RapidBus |
 
-Regions have tiers of detail: (1) track-level rail, the goal everywhere and Vancouver today; (2) shape-level schedules from any GTFS, the starting point for a new city; (3) live buses from any GTFS-RT. Track-level work for a new city reuses the whole OSM import → overrides → platform mapping → run inference → dispatcher pipeline; what's new per city is curation (overrides, operations config, open questions). Agency quirks (TransLink's alert phrasing, GTFS oddities) belong behind per-agency adapters, and generic GTFS handling stays generic. Other signalling systems (fixed block) would need a dispatcher extension.
+Feeds are separate from regions because neither contains the other: a ferry between two regions (Hullo, Vancouver–Victoria) is one feed in both, and a region can show several agencies. Everything that comes from a feed is keyed by the feed, and happens once whichever regions show it:
 
-The basemap is a British Columbia extract of Protomaps' daily build for now. It grows to Canada, then Canada and the US, then the planet as regions are added; only the extract's area changes. Outside the basemap the map has no tiles, and outside a configured region `/transit` says transit data isn't available there yet.
+- **Built** per feed: `var/raw/gtfs/<feed>/<version>/`, published at `data/feeds/<feed>/manifest.json` and `data/feeds/<feed>/<version>/` (plan, movements, platforms, real-time profile). A GTFS `feed_version` becomes a directory name with anything but letters, digits, `.`, `_` and `-` replaced (`versionDir`).
+- **Polled and recorded** per feed: one poller each on the server's leader, within the feed's own budget (`feed.json` → `realtime.poll`); recordings in `var/rt-history/<feed>/`; database rows keyed by `feed_id`.
+- What's the **region's** is published under `data/regions/<id>/`: the track network, observations, dispatch patches and scenarios. Track-level rail (run inference, the dispatcher, corrections) and SeaBus AIS exist only in Metro Vancouver so far (`RAIL_REGION` and `RAIL_FEED` in `packages/data/src/paths.ts`).
 
-Time zones come from the runtime's tzdata, never hard-coded. BC moved to permanent UTC−7 in 2026 (tzdata 2026b); the server refuses to start on older data (`timezoneChecks` in `region.json`).
+The live endpoint is per region (`/regions/<id>/live/transit`), with a section per feed (`<feed>/vehicles`, `<feed>/changes`) and the region's own (`seabus/ais`, `dispatch`).
+
+**On the site**, `/transit` shows one region at a time: the one whose bbox covers most of the view (`apps/web/src/TransitMap/regions.ts`). Panning into another region recreates the engine for it, keeping the time; outside every region a box offers each. The engine draws one feed per region for now (`RegionConfig.feed`): a region with several feeds needs the engine to merge their plans, layers and live sections, which is the next step when one exists.
+
+Regions have tiers of detail: (1) track-level rail, the goal everywhere and Vancouver today; (2) shape-level schedules from any GTFS, the starting point for a new city; (3) live buses from any GTFS-RT, as in Victoria and Kelowna. Track-level work for a new city reuses the whole OSM import → overrides → platform mapping → run inference → dispatcher pipeline; what's new per city is curation (overrides, operations config, open questions). Agency quirks (TransLink's alert phrasing, GTFS oddities) belong behind per-agency adapters, and generic GTFS handling stays generic: BC Transit's feeds needed only generic changes (bay names without `@`, `calendar_dates.txt` without `calendar.txt`, a `feed_version` with slashes). Other signalling systems (fixed block) would need a dispatcher extension.
+
+The basemap is a British Columbia extract of Protomaps' daily build for now. It grows to Canada, then Canada and the US, then the planet as regions are added; only the extract's area changes. Outside the basemap the map has no tiles.
+
+Time zones come from the runtime's tzdata, never hard-coded. BC moved to permanent UTC−7 in 2026 (tzdata 2026b); the server refuses to start on older data (`timezoneChecks` in each `region.json`). Every region and feed so far is in `America/Vancouver`, which `packages/transit-core/src/time.ts` assumes; `build-schedule` refuses a feed in another time zone until regions carry their own.
 
 ## Decisions
 
@@ -202,6 +210,7 @@ Made while planning V2 (2026-09-29 to 2026-10-01). Change them deliberately, and
 | Mobile app | Low priority; mobile web must be good enough for testing and reporting. **Capacitor** is tentatively accepted (our core is MapLibre GL JS plus a custom WebGL layer, which React Native's native MapLibre bindings can't run), to be reviewed before starting. Meanwhile: token auth, bottom-sheet panels, touch targets ≥ 44 px, no dependence on hover. |
 | Trip planning | Wanted after the mobile app. Evaluate reusing an existing system (the Transit app's API, OpenTripPlanner, MOTIS) before building anything. |
 | Next region | Montreal, a long way off. |
+| Regions and feeds | **Feeds are separate from regions** (2026-10-14): a region lists the feeds it shows, and a feed (fetched, built, polled, recorded) can be in several. Greater Victoria and Central Okanagan (a few BC Transit routes) keep the design multi-region and multi-agency before a second big city. The site shows one region at a time, the one in view ([above](#regions-and-feeds)). |
 | Live data | **One poll per map**: `/regions/<id>/live/transit` for transit (later `/regions/<id>/live/cycling` for GBFS), shared by every visitor at the edge, with a section per source (agency or feed) and pointers to immutable per-date files for anything large or slow-changing ([apps/server → Live endpoint](../apps/server/README.md#live-endpoint), issue #177). Polling, not server-sent events or WebSockets: an open connection per visitor would reach the one VM and lose the edge cache. |
 | Environments | Production and local development. A staging environment can be added cheaply later: configuration in env files, hostnames and buckets as config, unattended migrations, a Compose project per environment. Staging would never poll TransLink. |
 

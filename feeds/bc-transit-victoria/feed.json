@@ -6,11 +6,11 @@
   "timezone": "America/Vancouver",
   "dataset": "bc-transit-gtfs",
   "static": {
-    "$comment": "Regenerated daily with a new feed_version (e.g. \"202610140/20261013 21:00:00/20261014 04:00:00\") even when the timetable is unchanged, so fetch-gtfs archives a version only when its files differ from the newest archived one. No dated history. Uses calendar_dates.txt only (no calendar.txt), shape_dist_traveled in metres.",
+    "$comment": "Regenerated daily with a new feed_version (e.g. \"202610140/20261013 21:00:00/20261014 04:00:00\") even when the timetable is unchanged, so fetch-gtfs archives a version only when its files differ from the newest archived one. No dated history. Uses calendar_dates.txt only (no calendar.txt), shape_dist_traveled in metres. How often the timetable really changes: regions/greater-victoria/OPEN-QUESTIONS.md #1.",
     "url": "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=48"
   },
   "realtime": {
-    "$comment": "No API key and no stated request limit. Every bus in the system, with its trip; fixes were p50 ~8 s old when fetched (2026-10-14). Polled within a modest budget all the same: greater-victoria's OPEN-QUESTIONS #2.",
+    "$comment": "No API key and no stated request limit. Every bus in the system, with its trip; fixes were p50 ~8 s old when fetched (2026-10-14). Polled within a modest budget all the same: regions/greater-victoria/OPEN-QUESTIONS.md #2.",
     "urls": {
       "positions": "https://bct.tmix.se/gtfs-realtime/vehicleupdates.pb?operatorIds=48",
       "tripUpdates": "https://bct.tmix.se/gtfs-realtime/tripupdates.pb?operatorIds=48",

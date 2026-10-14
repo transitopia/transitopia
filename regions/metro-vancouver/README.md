@@ -1,11 +1,11 @@
 # Metro Vancouver
 
-Curated inputs for the Metro Vancouver region (design: [docs/DESIGN.md → Regions](../../docs/DESIGN.md#regions)):
+Curated inputs for the Metro Vancouver region (design: [docs/DESIGN.md → Regions and feeds](../../docs/DESIGN.md#regions-and-feeds)):
 
 | Path | What |
 |---|---|
 | `region.json` | bbox, time zone, the first view of `/transit`, and time zone data checks |
-| `config/` | Every operating assumption, each with a source or "guess" and a cross-reference to [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md): routes and colours, kinematics, operations (layovers, turnbacks, yards), dispatch (signalling), rt (the poll schedule, bus prediction), seabus, recording (retention, statistics) |
+| `config/` | Every operating assumption, each with a source or "guess" and a cross-reference to [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md): kinematics, operations (layovers, turnbacks, yards), dispatch (signalling), rt (bus prediction, client polling), seabus, recording (retention, statistics). The routes drawn, their colours and the poll schedule are TransLink's feed's (`feeds/translink/`). |
 | `infrastructure/` | The SkyTrain track network: `tracks.generated.geojson` and `future.generated.geojson` (imported from OSM; don't hand-edit), `overrides.json` (our fixes), `seabus.json` (berths and lanes), `diagram-checklist.json` |
 | `scenarios/` | Alternate track and service ([README](scenarios/README.md)) |
 | `observations/`, `disruptions/` | Corrections in the file format ([observations](observations/README.md), [disruptions](disruptions/README.md)): imported into a new database, and used by local runs without one |

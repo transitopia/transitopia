@@ -62,8 +62,11 @@ avoid that ([#8](https://github.com/transitopia/transitopia/issues/8)).
 
 ### Transit data (data.transitopia.org)
 
-`/transit` reads its published data (`data/manifest.json`, plans, movements, track network, dispatch
-patches) from `https://data.transitopia.org/`. The server builds it daily (its `data` job, at
+`/transit` reads its published data (each feed's `data/feeds/<feed>/manifest.json`, plans, movements,
+and each region's `data/regions/<id>/` track network and dispatch patches;
+[docs/DESIGN.md → Regions and feeds](../docs/DESIGN.md#regions-and-feeds)) from `https://data.transitopia.org/`.
+The top-level `data/manifest.json` and `data/feeds/<version>/` of builds from before feeds had ids
+stay in the bucket (uploads copy, never sync) but are no longer updated. The server builds it daily (its `data` job, at
 `dataBuildAt` in `regions/metro-vancouver/config/recording.json`) and uploads it to the R2 bucket
 `transitopia-data`, so its live dispatch patches fit the published plans.
 `.github/workflows/build_transit_data.yml` is a manual fallback only (see the comment at its top).
@@ -73,7 +76,7 @@ One-time setup (done):
 1. Create the R2 bucket `transitopia-data` and connect the custom domain `data.transitopia.org`.
 2. Add a CORS policy allowing `GET` and `HEAD` from `https://www.transitopia.org` (and
    `https://transitopia.org`, `https://*.transitopia-web.pages.dev`, `http://localhost:5173`).
-3. Cache: `data/manifest.json` should be short-lived (e.g. 5 minutes); everything else can be cached
+3. Cache: the manifests (`data/feeds/*/manifest.json`) should be short-lived (e.g. 5 minutes); everything else can be cached
    for longer (the other paths aren't content-addressed yet, and some are rewritten). The upload stores
    `Cache-Control` on each object when it uploads (5 minutes for the manifest, a day for the rest),
    and a Cache Rule for `data.transitopia.org` makes the edge follow it (Cloudflare doesn't cache
@@ -185,7 +188,7 @@ publishing them ([DATA-LICENSES.md](../DATA-LICENSES.md)).
 #### Monitoring
 
 `/healthz` returns 503 when positions polls or AIS go stale, trip updates stop arriving or match
-almost none of the buses (`config/rt.json` → `tripUpdatesMinCoverage`), the database is unreachable, or a
+almost none of the buses (each polled feed's checks, `<feed>/positions` and `<feed>/tripUpdates`; `feed.json` → `realtime.tripUpdatesMinCoverage`), the database is unreachable, or a
 daily job (statistics, data build, backup) failed or hasn't succeeded for 36 hours. An uptime
 monitor watches it ([api-server-setup.md, step 13](api-server-setup.md#13-uptime-monitor)). The
 response body says which check failed; `/admin` shows the same, plus recent jobs. A deploy doesn't

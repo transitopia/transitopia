@@ -6,7 +6,7 @@ import type { LonLat } from "../geo.ts";
 
 export type RouteKind = "skytrain" | "shape" | "bus";
 export type RouteMode = "skytrain" | "ferry" | "rail" | "bus";
-/** The route's layer in the site's layers panel (config/routes.json → category). */
+/** The route's layer in the site's layers panel (feeds/<feed>/routes.json → category). */
 export type RouteCategory = "rapid" | "frequent" | "regular";
 
 export interface PlanRoute {

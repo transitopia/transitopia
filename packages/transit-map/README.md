@@ -10,7 +10,7 @@ engine.setTheme("dark");   // before the host swaps the basemap style
 engine.dispose();
 ```
 
-`dataBase` is where the published transit data lives (`var/public/` locally, served at `/dev-data/`; `https://data.transitopia.org/` in production). `apiBase` is the server; without it the engine makes no real-time requests at all and shows schedules only. `config` is the region's kinematics, operations, real-time and SeaBus settings (`RegionConfig`), each checked with `parseConfig` (packages/transit-core/src/config.ts): the engine imports no region of its own, so the host chooses (the site's is `apps/web/src/TransitMap/region-config.ts`).
+`dataBase` is where the published transit data lives (`var/public/` locally, served at `/dev-data/`; `https://data.transitopia.org/` in production). `apiBase` is the server; without it the engine makes no real-time requests at all and shows schedules only. `region` is the region's id and `config` its settings and feed (`RegionConfig`: kinematics, real time, the feed, and operations and SeaBus where the region has rail and AIS), each checked with `parseConfig` and `parseFeed` (packages/transit-core/src/config.ts): the engine imports no region of its own, so the host chooses (the site's are in `apps/web/src/TransitMap/regions.ts`). It loads the feed's manifest (`data/feeds/<feed>/manifest.json`), and only in a region with rail its tracks, movements, observations and dispatch patches (`data/regions/<id>/`).
 
 ## How a frame is drawn
 

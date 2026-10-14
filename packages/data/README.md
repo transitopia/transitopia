@@ -2,7 +2,8 @@
 
 Node-side access to the region's data on disk, used by both the [pipelines](../../pipelines/README.md) and the [server](../../apps/server/README.md). Runtime code the server needs lives here rather than in `pipelines/`, so the server doesn't depend on the build scripts. Not for the browser: it reads files.
 
-- `src/paths.ts`: the one place that knows where data lives (`regions/`, `var/`, the published data under `var/public/`), plus JSON helpers and `readConfig` (a region config file, parsed with its schema).
+- `src/paths.ts`: the one place that knows where data lives (`regions/`, `feeds/`, `var/`, the published data under `var/public/`: `feedPaths`, `regionDataDir`), plus JSON helpers and the checked readers `readConfig` (a region config file), `readRegion(s)`, `readFeed(s)`, `readFeedRoutes` and `readManifest`. `RAIL_REGION` and `RAIL_FEED` name the one region with track-level rail and its feed.
+- `src/legacy.ts`: moves TransLink's files from before feeds had ids into its directories, once.
 - `src/gtfs-zip.ts`, `src/gtfs-day.ts`: reading GTFS zips, and the archived feeds and one service day's trips and stops from them.
 - `src/disruptions.ts`: the disruption files and the service dates each one touches.
 - `src/infra.ts`: the track graph, platform mapping and overrides as published.
