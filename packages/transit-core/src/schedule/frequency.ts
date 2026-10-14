@@ -16,7 +16,8 @@ export const DAY_HOURS: readonly number[] = Array.from(
  * on a date: per hour over the trips in its busier direction (each direction is a passenger's
  * choice; a branching line's trips in one direction all serve its trunk). Undefined when nothing
  * runs. The window is a length, not an end, so the result doesn't pick up floating-point error
- * from a fractional `from` (it would flicker across rounding and band edges).
+ * from a fractional `from` (it would flicker across rounding and band edges). Catalogue routes
+ * (not drawn) count their trips' start times the same way.
  */
 export function routeMinutes(
   pp: PreparedPlan,
@@ -26,6 +27,17 @@ export function routeMinutes(
   seconds: number,
 ): number | undefined {
   const to = from + seconds;
+  const cat = pp.catalog.get(routeKey);
+  if (cat) {
+    // A route not drawn: its trips' start times (minutes) from the catalogue.
+    const perDir = [0, 0];
+    for (const service of pp.servicesOn(date))
+      cat.starts[service]?.forEach((list, d) => {
+        for (const m of list) if (m * 60 >= from && m * 60 < to) perDir[d]!++;
+      });
+    const n = Math.max(...perDir);
+    return n ? seconds / 60 / n : undefined;
+  }
   const perDirection = new Map<number, number>();
   for (const service of pp.servicesOn(date)) {
     for (const pt of pp.tripsByService.get(service) ?? []) {

@@ -495,6 +495,12 @@ const PlaceCardBody: React.FC<{
               timetable.
             </p>
           : null}
+          {place.listed.length ?
+            <p className={rail || has("bus") ? "mt-1" : undefined}>
+              Routes in grey aren't on the map yet, so their times aren't listed
+              here.
+            </p>
+          : null}
           {legendsFor(creditsFor(place.datasets)).map((l) => (
             <p key={l} className="mt-1">
               {l}

@@ -101,10 +101,16 @@ The heart of the engine. It lives as versioned data in `regions/metro-vancouver/
 
 - **Feed discovery**: fetch the undated `google_transit.zip` and read `feed_info.txt` (`feed_version`, `feed_start_date`, `feed_end_date`). A new version is archived to `var/raw/gtfs/<feed_version>/` and built. Previously built versions are kept. The server does this daily and archives every feed.
 - **Manifest**: `var/public/data/manifest.json` lists the feed versions with their validity ranges. `feedForDate(date)` picks the newest feed whose range covers the date, which handles current and future timetables, including a newer feed superseding the tail of an older one. The date picker is bounded by the union of the ranges.
-- **Filter** to the routes in `regions/metro-vancouver/config/routes.json`, **by name**. Route colours and names are baked into the plan from the same file.
+- **Filter** to the routes in `regions/metro-vancouver/config/routes.json`, **by name**. Route colours, names and categories are baked into the plan from the same file. The feed's other bus routes go in the plan's catalogue ([below](#route-catalogue)).
 - **Normalize** into a compact service plan per feed version: trips (route, direction, headsign, service_id, block_id, shape_id, and `(stop_id, arr, dep)` in seconds since service-day start), stops with platform→parent mapping, simplified shapes, calendar and calendar_dates. SeaBus shapes are replaced by berth-to-berth lanes ([below](#seabus-and-west-coast-express)).
 - **Service-day resolver**: `activeServices(date)` applies calendar ranges, weekday flags, and add/remove exceptions. Trips after 24:00 belong to the previous service day. Local times come from the runtime's tzdata.
 - **Re-timing**: SkyTrain, WCE and SeaBus trips are re-timed within ±45 s of GTFS (which rounds to the minute) in proportion to each hop's physical minimum time (`retime` in `src/schedule/engine.ts`). Without this, some hops are impossibly fast.
+
+### Route catalogue
+
+The map draws only the routes in `config/routes.json`, but cards list every bus route in the feed. `build-schedule` keeps each other bus route (GTFS `route_type` 3) in the plan's `catalog` (`CatalogRoute`): its key, name and category ("regular"), a neutral colour (GTFS gives buses none), which of the plan's stops it serves, and its trips' start times (minutes, per service and direction). That is all a stop card needs to list it and a route card needs for its frequency (`routeMinutes` counts catalogue starts the same way as trips), without its stop times or shape: about 0.3 MB more per plan instead of tens of MB. `PreparedPlan.catalog` and `catalogAtStop` index it. A catalogue route's key is its short name as riders know it ("025" → "25", "N17"), never the `route_id`, so `?place=route:25` survives feed changes; real-time data still keys vehicles on untracked routes as `gtfs:<route_id>` ([Buses](#buses)).
+
+Categories, for the layers panel: **rapid** is dedicated right of way (SkyTrain, SeaBus, West Coast Express), **frequent** the 99 B-Line and RapidBus (frequent, but not true BRT), **regular** every other bus. They're set by hand in `config/routes.json` for now; frequent vs regular is meant to be computed from scheduled frequency when the plan is built. When every route is drawn, the catalogue is the part of the plan loaded up front: what routes exist, where they stop and how often they run, with each route's trips loaded when needed.
 
 ## Departures
 

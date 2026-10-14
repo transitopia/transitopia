@@ -24,12 +24,12 @@ const CATEGORIES: {
   {
     id: "rapid",
     title: "Rapid Transit",
-    description: "SkyTrain, SeaBus, West Coast Express, RapidBus",
+    description: "SkyTrain, SeaBus, West Coast Express",
   },
   {
     id: "frequent",
     title: "Frequent Bus",
-    description: "Every 15 min or better, all day",
+    description: "99 B-Line and RapidBus",
   },
   { id: "regular", title: "Regular Bus", description: "Every other route" },
 ];

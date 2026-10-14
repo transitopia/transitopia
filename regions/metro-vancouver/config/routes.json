@@ -1,5 +1,5 @@
 {
-  "$comment": "Routes shown on the map. Matched against GTFS routes.txt by name (never route_id, which changes between feeds). 'kind' drives how vehicles are modelled: 'skytrain' = track-level (packages/transit-core/DESIGN.md#track-graph–4.4), 'shape' = interpolated along GTFS shapes, 'bus' = GTFS-RT with schedule fallback. 'color' is optional; when omitted the GTFS route_color is used. GTFS has no colours for buses, so each gets a distinct colour for legibility. 'category' is the layer the route belongs to in the site's layers panel: 'rapid' (SkyTrain, SeaBus, West Coast Express and RapidBus, including the 99 B-Line), 'frequent' (Frequent Transit Network buses) or 'regular'.",
+  "$comment": "Routes shown on the map. Matched against GTFS routes.txt by name (never route_id, which changes between feeds). 'kind' drives how vehicles are modelled: 'skytrain' = track-level (packages/transit-core/DESIGN.md#track-graph–4.4), 'shape' = interpolated along GTFS shapes, 'bus' = GTFS-RT with schedule fallback. 'color' is optional; when omitted the GTFS route_color is used. GTFS has no colours for buses, so each gets a distinct colour for legibility. 'category' is the layer the route belongs to in the site's layers panel: 'rapid' (dedicated right of way: SkyTrain, SeaBus, West Coast Express), 'frequent' (the 99 B-Line and RapidBus R1–R6: frequent, but not true BRT, without dedicated right of way) or 'regular' (every other bus: the feed's other bus routes, listed on cards from the plan's catalogue but not drawn). Set by hand for now (the user's call, 2026-10-14); 'frequent' vs 'regular' should later be computed from scheduled frequency when the plan is built.",
   "routes": [
     {
       "key": "expo",
@@ -59,7 +59,7 @@
       },
       "kind": "bus",
       "mode": "bus",
-      "category": "rapid",
+      "category": "frequent",
       "color": "#f76707"
     },
     {
@@ -70,7 +70,7 @@
       },
       "kind": "bus",
       "mode": "bus",
-      "category": "rapid",
+      "category": "frequent",
       "color": "#2b8a3e"
     },
     {
@@ -81,7 +81,7 @@
       },
       "kind": "bus",
       "mode": "bus",
-      "category": "rapid",
+      "category": "frequent",
       "color": "#e64980"
     },
     {
@@ -92,7 +92,7 @@
       },
       "kind": "bus",
       "mode": "bus",
-      "category": "rapid",
+      "category": "frequent",
       "color": "#a0522d"
     },
     {
@@ -103,7 +103,7 @@
       },
       "kind": "bus",
       "mode": "bus",
-      "category": "rapid",
+      "category": "frequent",
       "color": "#74b816"
     },
     {
@@ -114,7 +114,7 @@
       },
       "kind": "bus",
       "mode": "bus",
-      "category": "rapid",
+      "category": "frequent",
       "color": "#c92a2a"
     },
     {
@@ -125,7 +125,7 @@
       },
       "kind": "bus",
       "mode": "bus",
-      "category": "rapid",
+      "category": "frequent",
       "color": "#5c7cfa"
     }
   ]
