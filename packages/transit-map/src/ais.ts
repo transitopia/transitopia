@@ -1,14 +1,21 @@
-// Browser side of SeaBus AIS (packages/transit-core/DESIGN.md#seabus-ais): fetches a service date's fixes from /rt/ais/fixes
-// (polling for new ones while the date is in progress) and turns them into schedule corrections
-// with the core matcher. The RT service holds the only upstream connection. When new fixes arrive,
-// vessels glide from where they were drawn to their corrected positions (core/ais/glide.ts) instead
-// of jumping; times the fixes already cover use every fix (hindsight), so replays never jump.
+// Browser side of SeaBus AIS (packages/transit-core/DESIGN.md#seabus-ais): a service date's fixes come from its day file
+// (GET /regions/<id>/days/<YYYYMMDD>/seabus/ais, shared by every visitor), then from the live
+// endpoint's trailing window while the clock is near now (acceptLive). Both are by batch time on the
+// server, so a window that starts before what the day file reached continues it; one that doesn't
+// (the tab slept) refetches the day file. Fixes become schedule corrections with the core matcher.
+// When new fixes arrive, vessels glide from where they were drawn to their corrected positions
+// (core/ais/glide.ts) instead of jumping; times the fixes already cover use every fix (hindsight),
+// so replays never jump.
 
 import {
   decodeFixes,
   serviceDateWindow,
-  type AisFixesResponse,
+  type AisDayResponse,
 } from "@transitopia/transit-core/ais/fixes.ts";
+import {
+  sectionsOfKind,
+  type LiveTransitResponse,
+} from "@transitopia/transit-core/rt/live.ts";
 import {
   aisCorrections,
   type AisDay,
@@ -32,12 +39,19 @@ const MAX_DATES = 4;
 
 interface DateFixes {
   fixes: AisFix[];
-  cursor: number;
-  epoch: number;
-  /** Fetched through the end of the date's window: nothing more will arrive. */
+  /** mmsi|ts of each fix, to merge overlapping day files and windows. */
+  keys: Set<string>;
+  /** Server time (epoch ms) through which every recorded batch is in `fixes`. */
+  syncedTo: number;
+  /** The day file says the date is over and all its fixes are in: nothing more will arrive. */
   complete: boolean;
   loading: boolean;
-  nextPollAt: number;
+  /** When the day file was last requested (0: never). */
+  fetchedAt: number;
+  /** A live window didn't reach back to syncedTo: the day file must fill the gap. */
+  gap: boolean;
+  /** The latest live window received while the day file loaded, to continue it once it's in. */
+  held?: { from: number; to: number } | undefined;
   /** Epoch ms when the latest new fixes arrived, until folded into a glide. */
   arrivedAt?: number | undefined;
   /** Corrections from all fixes, and a glide from what was shown to them (service-day seconds). */
@@ -55,27 +69,31 @@ export class AisClient {
   available: boolean;
   /** Why live AIS data is unavailable, for display. */
   error: string | undefined;
-  /** URL prefix of the RT service, or undefined for schedules only. */
-  private readonly api: string | undefined;
+  /** URL prefix of the region on the RT service (…/regions/<id>/), or undefined for schedules only. */
+  private readonly base: string | undefined;
   private readonly match: AisMatchConfig;
   private readonly glide: GlideConfig;
   /** Vessel names by MMSI. */
   private readonly names: Map<string, string>;
-  /** How often to poll for new fixes while a date is in progress (s). */
-  private readonly pollS: number;
+  /** Without live data, how often a date in progress refetches its day file (s). */
+  private readonly refreshS: number;
+  /** Whether the live endpoint is answering (then its windows keep dates current). */
+  private readonly liveFresh: () => boolean;
 
   constructor(
-    api: string | undefined,
+    base: string | undefined,
     config: Pick<RegionConfig, "rt" | "seabus">,
+    liveFresh: () => boolean,
   ) {
-    this.api = api;
+    this.base = base;
     this.match = config.seabus.ais.match;
     this.glide = config.seabus.ais.glide;
     this.names = new Map(
       config.seabus.ais.vessels.map((v) => [v.mmsi, v.name]),
     );
-    this.pollS = config.rt.clientPollS;
-    this.available = api !== undefined;
+    this.refreshS = config.rt.clientPollMaxS;
+    this.liveFresh = liveFresh;
+    this.available = base !== undefined;
   }
 
   onChange(fn: () => void): () => void {
@@ -111,18 +129,26 @@ export class AisClient {
         date,
         (d = {
           fixes: [],
-          cursor: 0,
-          epoch: 0,
+          keys: new Set(),
+          syncedTo: 0,
           complete: false,
           loading: false,
-          nextPollAt: 0,
+          fetchedAt: 0,
+          gap: false,
         }),
       );
       while (this.dates.size > MAX_DATES)
         this.dates.delete(this.dates.keys().next().value!);
     }
-    if (!d.complete && !d.loading && Date.now() >= d.nextPollAt)
-      void this.fetch(date, d);
+    if (
+      !d.complete
+      && !d.loading
+      && (d.fetchedAt === 0
+        || d.gap
+        || (!this.liveFresh()
+          && Date.now() - d.fetchedAt > this.refreshS * 1000))
+    )
+      void this.fetchDay(date, d);
     if (!d.fixes.length) return undefined;
     if (d.memo?.pp !== pp || d.memo.n !== d.fixes.length) {
       const prev = d.memo?.pp === pp ? d.memo : undefined;
@@ -152,45 +178,70 @@ export class AisClient {
     return d.memo.day;
   }
 
-  private async fetch(date: string, d: DateFixes): Promise<void> {
-    d.loading = true;
-    try {
-      const res = await fetch(
-        `${this.api}rt/ais/fixes?date=${date}${d.cursor ? `&after=${d.cursor}` : ""}`,
-        { cache: "no-cache" },
+  /** The SeaBus window of a live response: new fixes for the dates loaded, and how far they reach. */
+  acceptLive(r: LiveTransitResponse): void {
+    if (!this.available) return;
+    const live = sectionsOfKind(r, "ais").find((x) => x.route === ROUTE);
+    if (!live) return;
+    this.error = live.error;
+    if (live.status === "unavailable") return;
+    const fixes = this.named(decodeFixes(live.data));
+    for (const [date, d] of this.dates) {
+      if (d.complete || d.fetchedAt === 0) continue;
+      const [from, to] = serviceDateWindow(date);
+      this.add(
+        d,
+        fixes.filter((f) => f.ts >= from && f.ts < to),
       );
+      if (d.loading) d.held = { from: live.from, to: live.to };
+      else if (live.from <= d.syncedTo)
+        d.syncedTo = Math.max(d.syncedTo, live.to);
+      else d.gap = true;
+    }
+  }
+
+  private named(fixes: AisFix[]): AisFix[] {
+    return fixes.map((f) => ({ ...f, name: this.names.get(f.mmsi) ?? f.name }));
+  }
+
+  /** Merge fixes into a date's, noting when new ones arrived (for the glide). */
+  private add(d: DateFixes, fixes: AisFix[]): void {
+    const fresh = fixes.filter((f) => !d.keys.has(`${f.mmsi}|${f.ts}`));
+    if (!fresh.length) return;
+    for (const f of fresh) d.keys.add(`${f.mmsi}|${f.ts}`);
+    if (d.fixes.length) d.arrivedAt = Date.now();
+    d.fixes = [...d.fixes, ...fresh].sort((a, b) => a.ts - b.ts);
+    for (const fn of this.listeners) fn();
+  }
+
+  private async fetchDay(date: string, d: DateFixes): Promise<void> {
+    d.loading = true;
+    d.fetchedAt = Date.now();
+    d.gap = false;
+    try {
+      // Revalidated with the ETag: an unchanged day file is a 304.
+      const res = await fetch(`${this.base}days/${date}/seabus/ais`, {
+        cache: "no-cache",
+      });
       if (res.status === 404) {
         this.available = false;
         return;
       }
-      const body = (await res.json()) as AisFixesResponse;
+      if (!res.ok) throw new Error(String(res.status));
+      const body = (await res.json()) as AisDayResponse;
       this.error = body.error;
-      const fresh = decodeFixes(body.fixes).map((f) => ({
-        ...f,
-        name: this.names.get(f.mmsi) ?? f.name,
-      }));
-      // A restarted service numbers fixes afresh: start over.
-      if (body.epoch !== d.epoch) {
-        d.fixes = [];
-        d.epoch = body.epoch;
-        if (d.cursor) {
-          d.cursor = 0;
-          d.loading = false;
-          return this.fetch(date, d);
-        }
-      }
-      if (fresh.length) {
-        if (d.fixes.length) d.arrivedAt = Date.now();
-        d.fixes = [...d.fixes, ...fresh].sort((a, b) => a.ts - b.ts);
-        for (const fn of this.listeners) fn();
-      }
-      d.cursor = body.cursor;
-      d.complete = Date.now() > serviceDateWindow(date)[1] + 60_000;
+      this.add(d, this.named(decodeFixes(body.fixes)));
+      d.syncedTo = Math.max(d.syncedTo, body.to);
+      // A live window that arrived meanwhile continues the day file if it reaches back to it.
+      if (d.held && d.held.from <= d.syncedTo)
+        d.syncedTo = Math.max(d.syncedTo, d.held.to);
+      else if (d.held) d.gap = true;
+      d.complete = body.complete;
     } catch {
       this.error = "Real-time service unreachable";
     } finally {
+      d.held = undefined;
       d.loading = false;
-      d.nextPollAt = Date.now() + this.pollS * 1000;
     }
   }
 }

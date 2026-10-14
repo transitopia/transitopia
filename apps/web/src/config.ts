@@ -26,7 +26,7 @@ export const basemapAssets: string = absolute(
 /** Published transit data (…/data/manifest.json), ending in "/". */
 export const transitData: string = env.VITE_TRANSIT_DATA ?? "/dev-data/";
 
-/** The RT service (…/rt/live), ending in "/"; undefined for schedules only. */
+/** The RT service (…/regions/<id>/live/transit), ending in "/"; undefined for schedules only. */
 export const transitApi: string | undefined = env.VITE_TRANSIT_API || undefined;
 
 /** Does any tile source need the pmtiles protocol? */

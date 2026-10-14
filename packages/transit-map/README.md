@@ -21,8 +21,9 @@ clock → playback → WebGL, every animation frame, without React. Positions ar
 | `src/engine.ts` | `TransitEngine`: mounts the layers, owns the clock and stores, exposes controls and the snapshot. `debugHandle()` is `window.transit` on `/transit`. |
 | `src/clock.ts` | The clock: rate, pause, live, and the playback rates offered (−300× to 300×) |
 | `src/plans.ts` | Loads the manifest, the plan for a date's feed, movement files, dispatch patches (static, live and preview versions) and the track network |
-| `src/rt.ts` | Real-time buses in the browser: polls `/rt/live` near now and fetches recorded hours elsewhere, plus service changes and travel-time profiles |
-| `src/ais.ts` | SeaBus AIS: polls `/rt/ais/fixes` for dates in progress and turns fixes into schedule corrections |
+| `src/live.ts` | `LivePoller`: polls the live endpoint near now and hands each new response to `rt.ts`, `ais.ts` and the plan store |
+| `src/rt.ts` | Real-time buses in the browser: live snapshots near now and recorded hours elsewhere, plus service changes and travel-time profiles |
+| `src/ais.ts` | SeaBus AIS: a date's day file continued by the live window, turned into schedule corrections |
 | `src/places.ts` | What a station, exchange, stop or route card shows: `placeSnapshot()`, a function of the place, the shown feed and time, the vehicles and the corrections |
 | `src/config.ts` | `RegionConfig`: the region's config the host passes to `TransitEngine.create()` |
 | `src/url.ts` | Shareable view state in the query string ([below](#url-state)) |
@@ -40,9 +41,10 @@ clock → playback → WebGL, every animation frame, without React. Positions ar
 
 ## Real-time data in the browser
 
-- **Buses**: near "now", `rt.ts` polls `/rt/live` (cached at the edge for 10 s); at other times it fetches recorded hours from `/rt/history` (the most recently used hours are cached, and only two load at once, so scrubbing across the day doesn't fetch every hour it passes). Positions are predicted between fixes with the learned travel-time profiles ([packages/transit-core/DESIGN.md → Buses](../transit-core/DESIGN.md#buses)). The time slider is shaded where real bus positions exist (`/rt/coverage`), and a badge says whether buses are live, recorded, loading (recorded data covers the time but hasn't arrived yet), estimated, or unavailable. Service changes (`/rt/changes`) are refetched every minute for today and yesterday.
-- **SeaBus**: `ais.ts` runs the AIS matcher on the fixes and passes `ScheduleCorrections` to the schedule engine ([→ SeaBus AIS](../transit-core/DESIGN.md#seabus-ais)).
-- **SkyTrain**: the engine never reconciles rail observations itself. It loads the date's dispatch patch: the live version advertised in `/rt/live`, else the static one published with the build, else the base plan.
+- **One live poll**: near "now", `live.ts` polls `/regions/<id>/live/transit` ([apps/server → Live endpoint](../../apps/server/README.md#live-endpoint)) for buses, SeaBus AIS, service changes and live dispatch together (the host passes the region's id as `region`). It waits for the server's `nextAt` plus `clientPollSlackS`, within `clientPollS`–`clientPollMaxS`; the browser revalidates with the ETag, and an unchanged response isn't handed on.
+- **Buses**: near "now", `rt.ts` takes the latest snapshot from each live response; at other times it fetches recorded hours from `/rt/history` (the most recently used hours are cached, and only two load at once, so scrubbing across the day doesn't fetch every hour it passes). Positions are predicted between fixes with the learned travel-time profiles ([packages/transit-core/DESIGN.md → Buses](../transit-core/DESIGN.md#buses)). The time slider is shaded where real bus positions exist (`/rt/coverage`), and a badge says whether buses are live, recorded, loading (recorded data covers the time but hasn't arrived yet), estimated, or unavailable. Service changes: while live, the versions the live endpoint points to (immutable files, fetched when the version changes); otherwise the date's current file (`/regions/<id>/days/<date>/translink/changes`), refetched every minute for today and yesterday.
+- **SeaBus**: `ais.ts` loads each shown date's day file once, then extends it with the live endpoint's AIS window; a window that doesn't reach back to what it has (the tab slept) refetches the day file, as does a date in progress without live data (every `clientPollMaxS`). It runs the AIS matcher on the fixes and passes `ScheduleCorrections` to the schedule engine ([→ SeaBus AIS](../transit-core/DESIGN.md#seabus-ais)).
+- **SkyTrain**: the engine never reconciles rail observations itself. It loads the date's dispatch patch: the live version the live endpoint points to, else the static one published with the build, else the base plan.
 - **Timetable vehicles** with manual observations use `reconcileScheduled()` (merged with AIS corrections; manual ones win).
 - If the server is down or `apiBase` isn't set, everything falls back to the static build, marked *estimated*.
 

@@ -76,6 +76,7 @@ export default function TransitMap() {
     TransitEngine.create(map, {
       dataBase: transitData,
       apiBase: transitApi,
+      region: region.id,
       theme: themeRef.current,
       scenario: params.get("scenario") ?? undefined,
       debug: params.has("debug"),

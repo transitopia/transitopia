@@ -66,6 +66,8 @@ import {
 import { readUrl, writeUrl, type Place, type UrlState } from "./url.ts";
 import { RtClient, type RtMode } from "./rt.ts";
 import { AisClient } from "./ais.ts";
+import { LivePoller } from "./live.ts";
+import { sectionsOfKind } from "@transitopia/transit-core/rt/live.ts";
 import {
   placeLocation,
   placeSnapshot,
@@ -84,8 +86,10 @@ export { RATES } from "./clock.ts";
 export interface TransitEngineOptions {
   /** URL prefix of the published data (…/data/manifest.json), ending in "/". */
   dataBase: string;
-  /** URL prefix of the RT service (…/rt/live), ending in "/"; omit for schedules only. */
+  /** URL prefix of the RT service (…/regions/<id>/live/transit), ending in "/"; omit for schedules only. */
   apiBase?: string | undefined;
+  /** The region's id (region.json): the RT service serves its live data under /regions/<id>/. */
+  region: string;
   theme: Theme;
   /** Build a scenario's plans instead of the real network (?scenario=<name>). */
   scenario?: string | undefined;
@@ -228,6 +232,7 @@ export class TransitEngine {
   private readonly map: MlMap;
   private readonly rt: RtClient;
   private readonly ais: AisClient;
+  private readonly live: LivePoller;
   private readonly vehicles: VehicleLayer;
   private readonly debug: boolean;
   private readonly defaultDataset: string | undefined;
@@ -322,12 +327,28 @@ export class TransitEngine {
 
     this.vehicles = new VehicleLayer(map, opts.config.kinematics.sizing);
     this.vehicles.selectedId = this.selectedId;
+    const regionBase =
+      opts.apiBase ? `${opts.apiBase}regions/${opts.region}/` : undefined;
     this.rt = new RtClient(
-      { data: opts.dataBase, api: opts.apiBase },
+      { data: opts.dataBase, api: opts.apiBase, region: regionBase },
       opts.config,
     );
+    // One poll for every live source: buses, SeaBus AIS, service changes, live dispatch.
+    this.live = new LivePoller(
+      regionBase && `${regionBase}live/transit`,
+      opts.config.rt,
+      {
+        onResponse: (r, receivedAt) => {
+          this.rt.acceptLive(r, receivedAt);
+          this.ais.acceptLive(r);
+          store.setLiveDispatch(sectionsOfKind(r, "dispatch")[0]?.versions);
+        },
+        onError: (error, missing) => this.rt.liveFailed(error, missing),
+        onStop: () => this.rt.liveStopped(),
+      },
+    );
     // SeaBus: AIS fixes anchor the timetable (packages/transit-core/DESIGN.md#seabus-ais).
-    this.ais = new AisClient(opts.apiBase, opts.config);
+    this.ais = new AisClient(regionBase, opts.config, () => this.live.fresh);
     // Schedule estimates for buses stop at stops, using the same travel-time profile as live prediction.
     store.pacerFor = (pp) => this.rt.predictorFor(pp)?.pacer;
     this.snapshot = this.buildSnapshot(this.clock.now());
@@ -857,7 +878,7 @@ export class TransitEngine {
     this.clearMapPadding();
     clearTimeout(this.urlTimer);
     for (const fn of this.cleanups) fn();
-    this.rt.stop();
+    this.live.stop();
     this.vehicles.detach();
     const style = this.map.getStyle();
     for (const layer of style?.layers ?? [])
@@ -1056,7 +1077,10 @@ export class TransitEngine {
     const { store, rt, clock, map } = this;
     const t = clock.now();
     // Scenarios are hypothetical: never mix in real bus positions.
-    if (!store.scenario) rt.update(t);
+    if (!store.scenario) {
+      rt.update(t);
+      this.live.update(t);
+    }
     // Vehicles (and the map repaint their upload triggers) only when something they depend on
     // changed: the time, the zoom (minimum drawn sizes), or an input (data, selection, filters).
     // Paused, that's almost never; IDLE_RECOMPUTE_MS covers what ages with wall-clock time.
@@ -1202,7 +1226,6 @@ export class TransitEngine {
         this.lastVehicles.find((v) => v.id === this.selectedId)?.routeKey
         ?? this.selectedRoute;
     this.lastCorrections = byDate;
-    store.setLiveDispatch(rt.dispatchPointer());
 
     const notices = store.scenario ? [] : store.noticesAt(t);
     if (notices.join("\n") !== this.notices.join("\n")) {

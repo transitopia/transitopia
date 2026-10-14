@@ -1,15 +1,22 @@
-// Browser side of real-time buses (packages/transit-core/DESIGN.md#buses). Near "now" it polls /rt/live; at other times
-// it loads recorded hours from /rt/history. It also tracks recorder coverage, which decides per
-// instant whether buses are shown from RT data (observed/interpolated) or schedule (estimated), and
-// loads TransLink's service changes (cancelled trips, skipped stops, detours) for the days shown.
+// Browser side of real-time buses (packages/transit-core/DESIGN.md#buses). Near "now" it takes snapshots from the live
+// endpoint (acceptLive, polled by live.ts); at other times it loads recorded hours from /rt/history.
+// It also tracks recorder coverage, which decides per instant whether buses are shown from RT data
+// (observed/interpolated) or schedule (estimated), and loads TransLink's service changes (cancelled
+// trips, skipped stops, detours) for the days shown: while live, the version the live endpoint
+// points to; otherwise the current file, refreshed for recent days.
 
 import {
   coverageContains,
   decodeSnapshot,
+  expandSnapshot,
   type RtCoverageResponse,
-  type RtLiveResponse,
   type RtSnapshot,
 } from "@transitopia/transit-core/rt/types.ts";
+import {
+  sectionsOfKind,
+  type LiveTransitResponse,
+  type VersionPointer,
+} from "@transitopia/transit-core/rt/live.ts";
 import { RtTimeline } from "@transitopia/transit-core/rt/timeline.ts";
 import {
   Predictor,
@@ -38,9 +45,8 @@ import {
 } from "@transitopia/transit-core/time.ts";
 import type { RegionConfig } from "./config.ts";
 import { cadence, type Cadence } from "@transitopia/transit-core/rt/budget.ts";
+import { LIVE_WINDOW_MS } from "./live.ts";
 
-/** Live mode applies when the clock is within this of wall-clock time. */
-const LIVE_WINDOW_MS = 10 * 60_000;
 /** How much live history to keep in memory for interpolation. */
 const LIVE_BUFFER_MS = 20 * 60_000;
 const MAX_HOURS_CACHED = 8;
@@ -48,8 +54,10 @@ const MAX_HOURS_CACHED = 8;
 const MAX_HOUR_LOADS = 2;
 /** Timelines kept for recently shown snapshot sets: scrubbing back and forth near hour boundaries switches between them. */
 const MAX_TIMELINES_CACHED = 4;
-/** Service changes for today and yesterday are refetched this often (cheap: they come from our server, which polls TransLink on its own schedule). */
+/** Without the live endpoint, service changes for today and yesterday are refetched this often (cheap: they come from our server, which polls TransLink on its own schedule). */
 const CHANGES_REFRESH_MS = 60_000;
+/** A version the live endpoint points to is retried no sooner than this after a failed fetch. */
+const CHANGES_RETRY_MS = 10_000;
 const MAX_CHANGE_DAYS_CACHED = 6;
 
 export type RtMode =
@@ -62,6 +70,8 @@ export type RtMode =
 
 interface DayChanges {
   data?: RtDayChanges;
+  /** The version loaded, when it came from a live pointer. */
+  version?: string | undefined;
   fetchedAt: number;
   loading: boolean;
 }
@@ -74,8 +84,10 @@ interface HourChunk {
 export class RtClient {
   private live: RtSnapshot[] = [];
   private liveError: string | undefined;
-  private dispatch: Record<string, string> | undefined;
-  private liveTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Service changes versions from the live endpoint, while it's polled (service date → version). */
+  private changesPointer: Record<string, VersionPointer> | undefined;
+  /** Whether the live endpoint answered its last poll (until it fails, recent days wait for its pointer). */
+  private liveOk = true;
   private hours = new Map<string, HourChunk>();
   private coverage: [number, number][] = [];
   private coverageRange: [number, number] | undefined;
@@ -105,17 +117,20 @@ export class RtClient {
   /** URL prefixes of the published data and of the RT service (undefined: schedules only). */
   private readonly data: string;
   private readonly api: string | undefined;
+  /** URL prefix of the region on the RT service (…/regions/<id>/). */
+  private readonly region: string | undefined;
   private readonly config: Pick<RegionConfig, "kinematics" | "rt">;
   /** Thresholds that follow the poll schedule (packages/transit-core/src/rt/budget.ts). */
   private readonly cadence: Cadence;
   private readonly prediction: PredictionConfig;
 
   constructor(
-    urls: { data: string; api: string | undefined },
+    urls: { data: string; api: string | undefined; region: string | undefined },
     config: Pick<RegionConfig, "kinematics" | "rt">,
   ) {
     this.data = urls.data;
     this.api = urls.api;
+    this.region = urls.region;
     this.config = config;
     this.cadence = cadence(config.rt);
     this.prediction = config.rt.prediction;
@@ -137,11 +152,9 @@ export class RtClient {
   update(t: number): void {
     if (!this.api) return;
     const nearNow = Math.abs(t - Date.now()) < LIVE_WINDOW_MS;
-    if (nearNow) this.ensureLivePolling();
-    else this.stopLivePolling();
     if (!nearNow || t < Date.now() - this.cadence.maxInterpolateLimitS * 1000)
       this.ensureHours(t);
-    if (this.available) this.ensureChanges(t);
+    if (this.available) this.ensureChanges(t, nearNow);
   }
 
   /** Coverage intervals within [from, to], fetching if the cached range doesn't cover it. */
@@ -297,30 +310,47 @@ export class RtClient {
   }
 
   /** Loads the service changes for the dates around t, refreshing recent ones. */
-  private ensureChanges(t: number): void {
+  private ensureChanges(t: number, nearNow: boolean): void {
     const now = Date.now();
     const today = localDate(t);
     const recentFrom = addDays(localDate(now), -1);
     for (const date of [addDays(today, -1), today]) {
       let e = this.changes.get(date);
-      if (
-        e
-        && (e.loading
-          || date < recentFrom
-          || now - e.fetchedAt < CHANGES_REFRESH_MS)
+      const pointer = this.changesPointer?.[date];
+      if (pointer) {
+        // Live: the version the live endpoint points to, an immutable file.
+        if (
+          e
+          && (e.loading
+            || e.version === pointer.version
+            || now - e.fetchedAt < CHANGES_RETRY_MS)
+        )
+          continue;
+      } else if (
+        (e
+          && (e.loading
+            || date < recentFrom
+            || now - e.fetchedAt < CHANGES_REFRESH_MS))
+        // Live and the first response not in yet: it will point to the version to load.
+        || (nearNow && this.liveOk && date >= recentFrom)
       )
         continue;
       if (!e) this.changes.set(date, (e = { fetchedAt: 0, loading: false }));
       const entry = e;
       entry.loading = true;
       entry.fetchedAt = now;
-      void fetch(`${this.api}rt/changes?date=${date}`)
+      void fetch(
+        pointer ?
+          `${this.api}${pointer.path}`
+        : `${this.region}days/${date}/translink/changes`,
+      )
         .then((r) => (r.ok ? (r.json() as Promise<RtDayChanges>) : undefined))
         .catch(() => undefined)
         .then((data) => {
           entry.loading = false;
-          if (!data || JSON.stringify(data) === JSON.stringify(entry.data))
-            return;
+          if (!data) return;
+          entry.version = pointer?.version;
+          if (JSON.stringify(data) === JSON.stringify(entry.data)) return;
           entry.data = data;
           this.changesVersion++;
           this.emit();
@@ -359,18 +389,45 @@ export class RtClient {
     return undefined;
   }
 
-  /** Stop polling (the engine is being disposed). */
-  stop(): void {
-    this.stopLivePolling();
-  }
-
   liveStatus(): string | undefined {
     return this.liveError;
   }
 
-  /** Live dispatch versions from the last /rt/live response (service date → version). */
-  dispatchPointer(): Record<string, string> | undefined {
-    return this.dispatch;
+  /** A new response from the live endpoint (live.ts): the latest snapshot and service changes versions. */
+  acceptLive(r: LiveTransitResponse, receivedAt: number): void {
+    if (!this.available) return;
+    // One agency's vehicles today; a region with several would merge their sections here.
+    const v = sectionsOfKind(r, "vehicles")[0];
+    this.liveError = v?.error;
+    this.liveOk = true;
+    this.changesPointer = sectionsOfKind(r, "changes")[0]?.versions;
+    if (v?.status === "ok" && v.data) {
+      const snapshot = expandSnapshot(v.data);
+      const s: RtSnapshot = {
+        ...snapshot,
+        receivedAt: Math.max(receivedAt, snapshot.fetchedAt),
+      };
+      if (!this.live.length || s.fetchedAt > this.live.at(-1)!.fetchedAt) {
+        this.live.push(s);
+        const cutoff = Date.now() - LIVE_BUFFER_MS;
+        while (this.live.length > 2 && this.live[0]!.fetchedAt < cutoff)
+          this.live.shift();
+      }
+    }
+    this.emit();
+  }
+
+  /** The live endpoint failed; `missing` when there is none (no real-time data at all). */
+  liveFailed(error: string, missing: boolean): void {
+    if (missing) this.available = false;
+    this.liveError = error;
+    this.liveOk = false;
+    this.emit();
+  }
+
+  /** The live endpoint is no longer polled: its pointers would go stale. */
+  liveStopped(): void {
+    this.changesPointer = undefined;
   }
 
   // --- live ---
@@ -383,55 +440,6 @@ export class RtClient {
     )
       return undefined;
     return [this.live[0]!.fetchedAt, last.fetchedAt];
-  }
-
-  private ensureLivePolling(): void {
-    if (this.liveTimer !== undefined) return;
-    const poll = async () => {
-      try {
-        const res = await fetch(`${this.api}rt/live`, { cache: "no-cache" });
-        if (res.status === 404) {
-          // No RT service (e.g. a static build without the proxy).
-          this.available = false;
-          this.liveError = "Real-time service not available";
-          this.emit();
-          return;
-        }
-        const body = (await res.json()) as RtLiveResponse;
-        this.liveError = body.error;
-        if (
-          body.dispatch
-          && JSON.stringify(body.dispatch) !== JSON.stringify(this.dispatch)
-        ) {
-          this.dispatch = body.dispatch;
-          this.emit();
-        }
-        if (body.snapshot && !body.stale) {
-          const s: RtSnapshot = {
-            ...body.snapshot,
-            receivedAt: Math.max(Date.now(), body.snapshot.fetchedAt),
-          };
-          if (!this.live.length || s.fetchedAt > this.live.at(-1)!.fetchedAt) {
-            this.live.push(s);
-            const cutoff = Date.now() - LIVE_BUFFER_MS;
-            while (this.live.length > 2 && this.live[0]!.fetchedAt < cutoff)
-              this.live.shift();
-            this.emit();
-          }
-        }
-      } catch {
-        this.liveError = "Real-time service unreachable";
-      }
-      if (this.liveTimer !== undefined)
-        this.liveTimer = setTimeout(poll, this.config.rt.clientPollS * 1000);
-    };
-    this.liveTimer = setTimeout(poll, 0);
-  }
-
-  private stopLivePolling(): void {
-    if (this.liveTimer === undefined) return;
-    clearTimeout(this.liveTimer);
-    this.liveTimer = undefined;
   }
 
   // --- recorded history ---
