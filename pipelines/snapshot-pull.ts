@@ -13,12 +13,10 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
-import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
-import seabus from "@transitopia/region-metro-vancouver/config/seabus.json" with { type: "json" };
-import {
-  cadence,
-  type CadenceConfig,
-} from "@transitopia/transit-core/rt/budget.ts";
+import rtJson from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
+import seabusJson from "@transitopia/region-metro-vancouver/config/seabus.json" with { type: "json" };
+import { parseConfig } from "@transitopia/transit-core/config.ts";
+import { cadence } from "@transitopia/transit-core/rt/budget.ts";
 import { extendCoverage } from "@transitopia/transit-core/rt/types.ts";
 import { join } from "node:path";
 import {
@@ -31,7 +29,8 @@ import {
   writeJson,
 } from "./lib/paths.ts";
 
-const CADENCE = cadence(rtConfig as unknown as CadenceConfig);
+const seabus = parseConfig("seabus", seabusJson);
+const CADENCE = cadence(parseConfig("rt", rtJson));
 
 const args = process.argv.slice(2);
 const opt = (name: string) => {

@@ -16,17 +16,15 @@
 
 import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
+import rtJson from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
+import { parseConfig } from "@transitopia/transit-core/config.ts";
 import {
   cumulativeLengths,
   distM,
   projectOnto,
   type LonLat,
 } from "@transitopia/transit-core/geo.ts";
-import {
-  cadence,
-  type CadenceConfig,
-} from "@transitopia/transit-core/rt/budget.ts";
+import { cadence } from "@transitopia/transit-core/rt/budget.ts";
 import {
   Predictor,
   ProfileBuilder,
@@ -38,7 +36,8 @@ import type { RtSnapshot } from "@transitopia/transit-core/rt/types.ts";
 import { loadRecordedHours, planLoader } from "./lib/rt-history.ts";
 import { log, ROOT } from "./lib/paths.ts";
 
-const CADENCE = cadence(rtConfig as unknown as CadenceConfig);
+const rtConfig = parseConfig("rt", rtJson);
+const CADENCE = cadence(rtConfig);
 const GPX_DIR = join(ROOT, "regions/metro-vancouver/observations/gpx");
 /** The live client keeps at least this much history per timeline (as eval-rt.ts). */
 const HISTORY_MS = 10 * 60_000;
@@ -63,7 +62,7 @@ const opt = (name: string) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 const quiet = args.includes("--quiet");
-const cfg = { ...(rtConfig.prediction as unknown as PredictionConfig) };
+const cfg: PredictionConfig = { ...rtConfig.prediction };
 for (const kv of opt("--set")?.split(",") ?? []) {
   const [k, v] = kv.split("=");
   (cfg as unknown as Record<string, unknown>)[k!] = JSON.parse(v!);

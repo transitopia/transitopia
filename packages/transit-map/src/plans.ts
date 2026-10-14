@@ -2,8 +2,6 @@
 // by querying the service days that can have trips running then (today, and yesterday's after-midnight
 // trips), each against the feed that covers that date.
 
-import kinematicsConfig from "@transitopia/region-metro-vancouver/config/kinematics.json";
-import operationsConfig from "@transitopia/region-metro-vancouver/config/operations.json";
 import type { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
 import { TrainPlayback } from "@transitopia/transit-core/movement/playback.ts";
 import {
@@ -49,9 +47,9 @@ import {
   localDate,
   serviceDayStart,
 } from "@transitopia/transit-core/time.ts";
-import type { KinematicsConfig } from "@transitopia/transit-core/movement/kinematics.ts";
+import { kinematicsConfig, operationsConfig } from "./config.ts";
 
-export const kinematics = kinematicsConfig as unknown as KinematicsConfig;
+export const kinematics = kinematicsConfig;
 
 export class PlanStore {
   private prepared = new Map<string, PreparedPlan>();

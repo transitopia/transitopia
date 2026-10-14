@@ -3,7 +3,6 @@
 // instant whether buses are shown from RT data (observed/interpolated) or schedule (estimated), and
 // loads TransLink's service changes (cancelled trips, skipped stops, detours) for the days shown.
 
-import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json";
 import {
   coverageContains,
   decodeSnapshot,
@@ -38,10 +37,8 @@ import {
   toWallTime,
 } from "@transitopia/transit-core/time.ts";
 import { kinematics } from "./plans.ts";
-import {
-  cadence,
-  type CadenceConfig,
-} from "@transitopia/transit-core/rt/budget.ts";
+import { rtConfig } from "./config.ts";
+import { cadence } from "@transitopia/transit-core/rt/budget.ts";
 
 /** Live mode applies when the clock is within this of wall-clock time. */
 const LIVE_WINDOW_MS = 10 * 60_000;
@@ -52,9 +49,9 @@ const MAX_HOURS_CACHED = 8;
 const MAX_HOUR_LOADS = 2;
 /** Timelines kept for recently shown snapshot sets: scrubbing back and forth near hour boundaries switches between them. */
 const MAX_TIMELINES_CACHED = 4;
-const PREDICTION = rtConfig.prediction as unknown as PredictionConfig;
+const PREDICTION: PredictionConfig = rtConfig.prediction;
 /** Thresholds that follow how often the server polls (packages/transit-core/src/rt/budget.ts). */
-const CADENCE = cadence(rtConfig as unknown as CadenceConfig);
+const CADENCE = cadence(rtConfig);
 /** Service changes for today and yesterday are refetched this often (cheap: they come from our server, which polls TransLink on its own schedule). */
 const CHANGES_REFRESH_MS = 60_000;
 const MAX_CHANGE_DAYS_CACHED = 6;

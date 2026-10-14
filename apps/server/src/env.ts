@@ -2,7 +2,7 @@
 // production). Everything that differs between environments is here; region assumptions stay in
 // regions/metro-vancouver/config/.
 
-import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
+import { rtConfig } from "./config.ts";
 
 const list = (v: string | undefined) =>
   (v ?? "")

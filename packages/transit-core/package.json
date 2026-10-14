@@ -12,5 +12,8 @@
   "devDependencies": {
     "@transitopia/region-metro-vancouver": "*",
     "@types/geojson": "^7946.0.16"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
   }
 }

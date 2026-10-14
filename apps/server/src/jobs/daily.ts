@@ -2,8 +2,7 @@
 // the raw positions (while they exist: 60 days), then per-route statistics from those. Every route
 // TransLink reports, not just the ones we draw.
 
-import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
-import recording from "@transitopia/region-metro-vancouver/config/recording.json" with { type: "json" };
+import { recordingConfig as recording, rtConfig } from "../config.ts";
 import type { Db } from "@transitopia/db/connect.ts";
 import { ensurePartitionsFor } from "@transitopia/db/partitions.ts";
 import {
@@ -11,25 +10,20 @@ import {
   loadDayTimetable,
   type DayTrip,
 } from "@transitopia/pipelines/lib/gtfs-day.ts";
-import {
-  cadence,
-  type CadenceConfig,
-} from "@transitopia/transit-core/rt/budget.ts";
+import { cadence } from "@transitopia/transit-core/rt/budget.ts";
 import { extendCoverage } from "@transitopia/transit-core/rt/types.ts";
 import {
   observeTrip,
-  type ObservedConfig,
   type TripFix,
 } from "@transitopia/transit-core/rt/observed.ts";
 import {
   routeStats,
   STATS_VERSION,
   type ObservedRow,
-  type StatsConfig,
 } from "@transitopia/transit-core/rt/stats.ts";
 import { serviceDayStart } from "@transitopia/transit-core/time.ts";
 
-const CADENCE = cadence(rtConfig as unknown as CadenceConfig);
+const CADENCE = cadence(rtConfig);
 const CHUNK = 2000;
 /** Positions this long after the service day's start can still belong to it (ms). */
 const DAY_SPAN_MS = 32 * 3_600_000;
@@ -111,12 +105,7 @@ export async function dailyStats(
       const shape = tt.shapes.get(t.shapeId);
       if (!f || !shape) continue;
       tripsWithFixes++;
-      for (const o of observeTrip(
-        shape,
-        t.stops,
-        f,
-        recording.observed as ObservedConfig,
-      ))
+      for (const o of observeTrip(shape, t.stops, f, recording.observed))
         observed.push({
           tripId: t.tripId,
           routeId: t.routeId,
@@ -214,7 +203,7 @@ export async function dailyStats(
       // Polls further apart than the schedule's interval already broke the coverage above.
       coverageSlackMs: 0,
     },
-    recording.stats as StatsConfig,
+    recording.stats,
   );
   await db.transaction().execute(async (tx) => {
     await tx

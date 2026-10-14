@@ -23,8 +23,7 @@
 import { readFile, rename, stat, writeFile } from "node:fs/promises";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { join } from "node:path";
-import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
-import seabusConfig from "@transitopia/region-metro-vancouver/config/seabus.json" with { type: "json" };
+import { rtConfig, seabusConfig } from "../config.ts";
 import type {
   FeedManifest,
   ServicePlan,
@@ -48,7 +47,7 @@ import {
   PUBLIC_DATA_DIR,
 } from "@transitopia/pipelines/lib/paths.ts";
 import { aisstreamApiKey, translinkApiKey } from "../secrets.ts";
-import { AisFeed, type AisConfig } from "./ais.ts";
+import { AisFeed } from "./ais.ts";
 import {
   encodeFixes,
   type AisFixesResponse,
@@ -81,12 +80,11 @@ import {
   pollIntervalS,
   POLL_FEEDS,
   RequestLedger,
-  type CadenceConfig,
   type PollFeed,
 } from "@transitopia/transit-core/rt/budget.ts";
 
-const CADENCE = cadence(rtConfig as unknown as CadenceConfig);
-const SCHEDULE = (rtConfig as unknown as CadenceConfig).poll;
+const CADENCE = cadence(rtConfig);
+const SCHEDULE = rtConfig.poll;
 
 export interface HttpResult {
   status: number;
@@ -231,7 +229,7 @@ export class RtService {
     if (aisKey) {
       this.ais = new AisFeed({
         apiKey: aisKey,
-        cfg: seabusConfig.ais as unknown as AisConfig,
+        cfg: seabusConfig.ais,
         route: "seabus",
         recorder: new Recorder(
           opts.aisHistoryDir ?? AIS_HISTORY_DIR,
