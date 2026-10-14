@@ -60,58 +60,66 @@ const RouteCardBody: React.FC<{
 
   const others = snap.routes.filter((r) => r.key !== route.key);
   const onlyThis = others.every((r) => snap.hidden.has(r.key));
-  const actions: CardAction[] = [
-    onlyThis ?
-      {
-        id: "only",
-        label: "Show all routes",
-        icon: "filter",
-        onSelect: () =>
-          engine.setRoutesHidden(
-            others.map((r) => r.key),
-            false,
-          ),
-      }
-    : {
-        id: "only",
-        label: "Show only this route",
-        icon: "filter",
-        onSelect: () => {
-          engine.setRoutesHidden([route.key], false);
-          engine.setRoutesHidden(
-            others.map((r) => r.key),
-            true,
-          );
+  const share: CardAction = {
+    id: "share",
+    label: "Share link",
+    icon: "share",
+    onSelect: () => shareLink(location.href, `${route.label} · Transitopia`),
+  };
+  // A route the map doesn't draw (the catalogue) has no line to filter to or centre on.
+  const actions: CardAction[] =
+    !place.drawn ?
+      [share]
+    : [
+        onlyThis ?
+          {
+            id: "only",
+            label: "Show all routes",
+            icon: "filter",
+            onSelect: () =>
+              engine.setRoutesHidden(
+                others.map((r) => r.key),
+                false,
+              ),
+          }
+        : {
+            id: "only",
+            label: "Show only this route",
+            icon: "filter",
+            onSelect: () => {
+              engine.setRoutesHidden([route.key], false);
+              engine.setRoutesHidden(
+                others.map((r) => r.key),
+                true,
+              );
+            },
+          },
+        {
+          id: "centre",
+          label: "Centre on map",
+          icon: "crosshair",
+          onSelect: () => engine.locateSelected(),
         },
-      },
-    {
-      id: "centre",
-      label: "Centre on map",
-      icon: "crosshair",
-      onSelect: () => engine.locateSelected(),
-    },
-    {
-      id: "share",
-      label: "Share link",
-      icon: "share",
-      onSelect: () => shareLink(location.href, `${route.label} · Transitopia`),
-    },
-  ];
+        share,
+      ];
   const noun =
     route.mode === "bus" ? "buses"
     : route.mode === "ferry" ? "vessels"
     : "trains";
-  const chips: CardChip[] = [
-    { label: `${place.vehicles} ${noun} running` },
-    // Green only when live; real positions in the past are recorded.
-    ...(place.live ?
-      [
-        snap.live ?
-          { label: `${place.live} live`, tone: "good" as const }
-        : { label: `${place.live} recorded` },
-      ]
-    : []),
-  ];
+  const chips: CardChip[] =
+    !place.drawn ?
+      [{ label: "Not on the map yet" }]
+    : [
+        { label: `${place.vehicles} ${noun} running` },
+        // Green only when live; real positions in the past are recorded.
+        ...(place.live ?
+          [
+            snap.live ?
+              { label: `${place.live} live`, tone: "good" as const }
+            : { label: `${place.live} recorded` },
+          ]
+        : []),
+      ];
   const band =
     place.nextHour !== undefined ? bandOf(place.nextHour) : undefined;
   return (

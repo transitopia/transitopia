@@ -119,6 +119,11 @@ export interface ServicePlan {
   feedEnd: string;
   timezone: string;
   builtAt: string;
+  /**
+   * A hash of what built it besides the feed (build-schedule's PLAN_FORMAT and config), so the
+   * build redoes a plan when those change. Absent in plans built before it.
+   */
+  inputs?: string;
   routes: PlanRoute[];
   stops: PlanStop[];
   stations: PlanStation[];
@@ -128,6 +133,26 @@ export interface ServicePlan {
   calendar: ServiceCalendar;
   /** Ferry berth pairs (SeaBus, packages/transit-core/DESIGN.md#seabus-ais); absent for plans built before them. */
   ferry?: FerryBerthPlan;
+  /**
+   * The feed's other bus routes, which the map doesn't draw (yet): enough for their cards and for
+   * stop cards to list them (packages/transit-core/DESIGN.md#route-catalogue). Absent in plans built
+   * before it.
+   */
+  catalog?: CatalogRoute[];
+}
+
+/**
+ * A route in the feed without trips in the plan: what it's called, the plan's stops it serves, and
+ * when its trips start, which is all its frequency needs (`routeMinutes`). Category "regular".
+ */
+export interface CatalogRoute extends PlanRoute {
+  /** Stops it serves among the plan's stops (stop_ids). */
+  stops: string[];
+  /**
+   * Per service_id: its trips' start times, minutes after the service day starts (may exceed
+   * 24 h), sorted, for direction_id 0 and 1.
+   */
+  starts: Record<string, [number[], number[]]>;
 }
 
 /**
