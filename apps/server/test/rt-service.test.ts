@@ -3,7 +3,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
-import { RtService } from "../src/rt/service.ts";
+import { notModified, RtService } from "../src/rt/service.ts";
+import type { LiveTransitResponse } from "@transitopia/transit-core/rt/live.ts";
 import { health, type AppDeps } from "../src/app.ts";
 
 const { FeedMessage } = GtfsRealtimeBindings.transit_realtime;
@@ -113,6 +114,99 @@ describe("RtService", () => {
       // The key must never appear in responses.
       expect(String(r.body)).not.toContain("test-key");
     }
+  });
+
+  it("serves every live source in one response per region, with pointers to immutable files", async () => {
+    dir = await mkdtemp(join(tmpdir(), "rt-test-"));
+    const upstream = vi.fn(async (url: string | URL) =>
+      feedResponse(
+        /gtfsposition/.test(String(url)) ? positionsFeed(["t1"]) : emptyFeed(),
+      ),
+    );
+    vi.stubGlobal("fetch", upstream);
+    service = new RtService({
+      historyDir: dir,
+      record: false,
+      log: () => {},
+      apiKey: "test-key",
+      aisApiKey: null,
+      dispatch: false,
+      disruptionsDir: dir,
+      regionId: "test-region",
+    });
+    await service.start(0);
+    await vi.waitFor(() => expect(upstream.mock.calls.length).toBe(3));
+    await vi.waitFor(() =>
+      expect(service!.liveResponse().snapshot).not.toBeNull(),
+    );
+
+    const get = (path: string) => service!.handle(path, new URLSearchParams());
+    const r = await get("/regions/test-region/live/transit");
+    expect(r.status).toBe(200);
+    expect(r.headers["Access-Control-Allow-Origin"]).toBe("*");
+    expect(r.headers["Cache-Control"]).toMatch(/^public, max-age=\d+$/);
+    expect(String(r.body)).not.toContain("test-key");
+    const body = JSON.parse(String(r.body)) as LiveTransitResponse;
+    expect(body.schema).toBe(1);
+    // The next positions poll, at the latest.
+    expect(body.nextAt).toBeGreaterThan(Date.now());
+    expect(body.sources["translink/vehicles"]).toMatchObject({
+      kind: "vehicles",
+      status: "ok",
+      encoding: "rt-snapshot/1",
+    });
+    expect(body.sources["seabus/ais"]).toMatchObject({
+      kind: "ais",
+      status: "unavailable",
+      data: [],
+    });
+    expect(body.sources["dispatch"]).toBeUndefined();
+
+    // Unchanged data, the same body and ETag: a revalidation is a 304.
+    const again = await get("/regions/test-region/live/transit");
+    expect(again.body).toBe(r.body);
+    const etag = r.headers["ETag"]!;
+    expect(etag).toMatch(/^W\/"[0-9a-f]+"$/);
+    expect(notModified(etag, etag)).toBe(true);
+    expect(notModified(etag.replace(/"$/, '-gzip"'), etag)).toBe(true);
+    expect(notModified('W/"0123"', etag)).toBe(false);
+    expect(notModified(undefined, etag)).toBe(false);
+
+    // Service changes: today's and yesterday's current versions, each at an immutable URL.
+    const changes = body.sources["translink/changes"];
+    if (changes?.kind !== "changes") throw new Error("no changes section");
+    expect(Object.keys(changes.versions)).toHaveLength(2);
+    for (const [date, { version, path }] of Object.entries(changes.versions)) {
+      expect(path).toBe(
+        `regions/test-region/days/${date}/translink/changes/${version}.json`,
+      );
+      const file = await get(`/${path}`);
+      expect(file.status).toBe(200);
+      expect(file.headers["Cache-Control"]).toMatch(/immutable/);
+      expect(JSON.parse(String(file.body)).date).toBe(date);
+      const current = await get(
+        `/regions/test-region/days/${date}/translink/changes`,
+      );
+      expect(current.body).toBe(file.body);
+    }
+    const [date] = Object.keys(changes.versions);
+    expect(
+      (
+        await get(
+          `/regions/test-region/days/${date}/translink/changes/000000000000.json`,
+        )
+      ).status,
+    ).toBe(404);
+
+    // The SeaBus day file says why there are no fixes.
+    const ais = await get(`/regions/test-region/days/${date}/seabus/ais`);
+    expect(JSON.parse(String(ais.body))).toMatchObject({
+      status: "unavailable",
+      fixes: [],
+    });
+    expect((await get("/regions/elsewhere/live/transit")).status).toBe(404);
+    expect((await get("/regions/test-region/nothing")).status).toBe(404);
+    expect(upstream.mock.calls.length).toBe(3);
   });
 
   it("records each request in a ledger and resumes the schedule after a restart", async () => {

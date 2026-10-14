@@ -170,9 +170,10 @@ In the `transitopia.org` zone:
   for `api.transitopia.org`, 15 years. Keep the certificate and private key for step 10 (the key is
   shown only once).
 - **Caching → Cache Rules:** when hostname equals `api.transitopia.org` and URI path starts with
-  `/rt/`: eligible for cache; edge TTL "Use cache-control header if present, bypass cache if not";
-  **browser TTL "Respect origin TTL"**. (`/rt/live` sends 10 s, coverage and service changes 30 s,
-  closed history hours a day, dispatch versions a year; Cloudflare doesn't cache JSON without a
+  `/rt/` or `/regions/`: eligible for cache; edge TTL "Use cache-control header if present, bypass cache if not";
+  **browser TTL "Respect origin TTL"**. (the live endpoint sends up to 10 s, coverage and service changes 30 s,
+  a SeaBus day file in progress 60 s, closed history hours and finished days a day, dispatch and
+  service changes versions a year; Cloudflare doesn't cache JSON without a
   rule.) Without the browser TTL setting, Cloudflare tells browsers to keep every response for its
   default 4 hours, so the site keeps showing hours-old coverage, dispatch versions and AIS fixes.
   Check with `curl -sI https://api.transitopia.org/rt/coverage`: it must say `max-age=30`, not
@@ -253,7 +254,7 @@ server doesn't poll unless `RT_POLL=1`.
    # Mac
    curl https://api.transitopia.org/healthz          # {"ok":true,…}
    curl https://api.transitopia.org/rt/status        # leader: true, budget.used24h counting up
-   curl -sI https://api.transitopia.org/rt/live      # cf-cache-status: HIT within 10 s of a MISS
+   curl -sI https://api.transitopia.org/regions/metro-vancouver/live/transit   # cf-cache-status: HIT within its max-age of a MISS
    curl -m 5 -k https://<VM IP>/healthz              # times out: only Cloudflare gets through
    ```
 

@@ -17,6 +17,8 @@
     "batchS": 10,
     "$coverageGapS": "AIS recorder coverage breaks when consecutive batches are further apart than this (was shared with the bus recorder before its polling slowed; OPEN-QUESTIONS #29).",
     "coverageGapS": 75,
+    "$liveWindowS": "The live endpoint carries the AIS batches of this long before the latest one. It must exceed the day file's edge-cache time (60 s, apps/server/src/rt/service.ts) plus the browser's longest poll interval (rt.json clientPollMaxS), so a browser that loaded the day file and then polls on schedule never misses a batch. Guess.",
+    "liveWindowS": 300,
     "$maxBackoffS": "Reconnect backoff doubles from 5 s up to this.",
     "maxBackoffS": 300,
     "$match": "Matching fixes to trips. 30-minute probe 2026-09-28 evening: per vessel in service, fixes a median ~60 s apart, gaps up to ~4 min; docked positions agree with the berth dock points to ~5 m. Guesses unless noted; OPEN-QUESTIONS #27.",

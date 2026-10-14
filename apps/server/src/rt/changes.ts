@@ -1,7 +1,9 @@
 // Collects GTFS-RT service changes for our bus routes per service date (packages/transit-core/src/rt/changes.ts) and
 // keeps them in var/rt-history/changes/YYYYMMDD.json, since TransLink's feeds drop a trip's
-// cancellation once it has run and an alert once it's over.
+// cancellation once it has run and an alert once it's over. Each state of a day is a version (a
+// content hash): the live endpoint points to the current one, served at an immutable URL.
 
+import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -13,6 +15,8 @@ import { localDate } from "@transitopia/transit-core/time.ts";
 
 /** Days kept in memory; older ones are read from disk when asked for. */
 const MAX_DAYS_CACHED = 4;
+/** Versions kept per day: a client may ask for one the live endpoint advertised a poll or two ago. */
+const VERSIONS_KEPT = 4;
 
 export interface TripChangeInput {
   tripId: string;
@@ -25,6 +29,10 @@ export interface TripChangeInput {
 export class ServiceChanges {
   private days = new Map<string, RtDayChanges>();
   private writing: Promise<void> = Promise.resolve();
+  /** The current version of each day asked for, until it changes. */
+  private current = new Map<string, { version: string; body: string }>();
+  /** Recent versions' bodies per day, oldest first. */
+  private versions = new Map<string, Map<string, string>>();
 
   readonly dir: string;
   private record: boolean;
@@ -54,6 +62,34 @@ export class ServiceChanges {
     while (this.days.size > MAX_DAYS_CACHED)
       this.days.delete(this.days.keys().next().value!);
     return d;
+  }
+
+  /** A service date's changes as JSON, and their version. */
+  async versioned(date: string): Promise<{ version: string; body: string }> {
+    const hit = this.current.get(date);
+    if (hit) return hit;
+    const body = JSON.stringify(await this.get(date));
+    const version = createHash("sha1").update(body).digest("hex").slice(0, 12);
+    const v = { version, body };
+    this.current.set(date, v);
+    let kept = this.versions.get(date);
+    if (!kept) {
+      this.versions.set(date, (kept = new Map()));
+      while (this.versions.size > MAX_DAYS_CACHED * 2) {
+        const oldest = this.versions.keys().next().value!;
+        this.versions.delete(oldest);
+        this.current.delete(oldest);
+      }
+    }
+    kept.delete(version);
+    kept.set(version, body);
+    while (kept.size > VERSIONS_KEPT) kept.delete(kept.keys().next().value!);
+    return v;
+  }
+
+  /** A recent version of a date's changes, if still kept. */
+  version(date: string, version: string): string | undefined {
+    return this.versions.get(date)?.get(version);
   }
 
   /** Trips cancelled or skipping stops in one trip-updates poll (already filtered to our routes). */
@@ -97,6 +133,7 @@ export class ServiceChanges {
   }
 
   private save(date: string): void {
+    this.current.delete(date);
     if (!this.record) return;
     const d = this.days.get(date);
     if (!d) return;

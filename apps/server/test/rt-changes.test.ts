@@ -269,6 +269,38 @@ describe("ServiceChanges", () => {
     expect((await sc.get("20260930")).cancelled).toEqual({});
   });
 
+  it("versions each state of a day, keeping recent versions for their immutable URLs", async () => {
+    const sc = new ServiceChanges("/nonexistent", false);
+    const v1 = await sc.versioned("20260929");
+    expect(await sc.versioned("20260929")).toBe(v1);
+    await sc.updateTrips(
+      [{ tripId: "t1", date: "20260929", cancelled: true, skippedStopIds: [] }],
+      1000,
+    );
+    const v2 = await sc.versioned("20260929");
+    expect(v2.version).not.toBe(v1.version);
+    expect(JSON.parse(v2.body).cancelled).toEqual({ t1: [1000, 1000] });
+    expect(sc.version("20260929", v1.version)).toBe(v1.body);
+    expect(sc.version("20260929", v2.version)).toBe(v2.body);
+    expect(sc.version("20260929", "000000000000")).toBeUndefined();
+    // Only a few are kept.
+    for (let i = 2; i < 8; i++) {
+      await sc.updateTrips(
+        [
+          {
+            tripId: `t${i}`,
+            date: "20260929",
+            cancelled: true,
+            skippedStopIds: [],
+          },
+        ],
+        1000,
+      );
+      await sc.versioned("20260929");
+    }
+    expect(sc.version("20260929", v1.version)).toBeUndefined();
+  });
+
   it("records alerts under the local date, keeping when each was first and last seen", async () => {
     dir = await mkdtemp(join(tmpdir(), "rt-changes-"));
     const sc = new ServiceChanges(dir, false);

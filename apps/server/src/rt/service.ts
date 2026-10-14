@@ -11,6 +11,14 @@
 //   GET /rt/dispatch/<date>/<v>.json    a patch version (immutable)
 //   GET /rt/ais/fixes?date=YYYYMMDD[&after=cursor]   SeaBus AIS fixes for a service date (packages/transit-core/DESIGN.md#seabus-ais)
 //
+// The live endpoint and the per-date files it points to (apps/server/README.md#live-endpoint), which
+// replace /rt/live, /rt/ais/fixes and /rt/changes (issue #178 removes those):
+//
+//   GET /regions/<id>/live/transit                          every live source in one shared, edge-cached response
+//   GET /regions/<id>/days/<YYYYMMDD>/seabus/ais            SeaBus AIS fixes recorded for a service date so far
+//   GET /regions/<id>/days/<YYYYMMDD>/translink/changes     a service date's bus service changes (current)
+//   GET /regions/<id>/days/<YYYYMMDD>/translink/changes/<v>.json   a version of them (immutable)
+//
 // Client requests never trigger upstream calls: the upstream rate is fixed by the poll schedule,
 // which keeps TransLink requests under a daily cap (packages/transit-core/src/rt/budget.ts, OPEN-QUESTIONS #29). A
 // ledger of the last 24 hours' requests (the upstream_requests table, or var/rt-history/requests.json
@@ -22,13 +30,16 @@
 
 import { readFile, rename, stat, writeFile } from "node:fs/promises";
 import { gunzipSync, gzipSync } from "node:zlib";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
+import region from "@transitopia/region-metro-vancouver/region.json" with { type: "json" };
 import { rtConfig, seabusConfig } from "../config.ts";
 import type {
   FeedManifest,
   ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
 import {
+  compactSnapshot,
   decodeSnapshot,
   encodeSnapshot,
   isTracked,
@@ -50,6 +61,7 @@ import { aisstreamApiKey, translinkApiKey } from "../secrets.ts";
 import { AisFeed } from "./ais.ts";
 import {
   encodeFixes,
+  type AisDayResponse,
   type AisFixesResponse,
 } from "@transitopia/transit-core/ais/fixes.ts";
 import type { AisFix } from "@transitopia/transit-core/ais/match.ts";
@@ -70,7 +82,14 @@ import {
 } from "./upstream.ts";
 import { ServiceChanges } from "./changes.ts";
 import type { RtRouteAlert } from "@transitopia/transit-core/rt/changes.ts";
-import { localDate } from "@transitopia/transit-core/time.ts";
+import { addDays, localDate } from "@transitopia/transit-core/time.ts";
+import {
+  LIVE_SCHEMA,
+  type LiveAisSection,
+  type LiveTransitResponse,
+  type LiveVehiclesSection,
+  type VersionPointer,
+} from "@transitopia/transit-core/rt/live.ts";
 import { AlertDrafts } from "./alerts.ts";
 import {
   draftFromAlert,
@@ -114,6 +133,35 @@ function json(
   };
 }
 
+/** A JSON response with a weak ETag of its body, so an unchanged poll can be answered with a 304. */
+function tagged(body: string, cacheControl: string): HttpResult {
+  return {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      ...CORS,
+      "Cache-Control": cacheControl,
+      ETag: `W/"${createHash("sha1").update(body).digest("hex").slice(0, 16)}"`,
+    },
+    body,
+  };
+}
+
+/**
+ * Whether an If-None-Match header names this ETag. Lenient about the form it comes back in: proxies
+ * that compress (Caddy, Cloudflare) may weaken it or add a suffix such as "-gzip".
+ */
+export function notModified(
+  ifNoneMatch: string | undefined,
+  etag: string | undefined,
+): boolean {
+  const hash = etag && /"([^"-]+)/.exec(etag)?.[1];
+  return Boolean(hash && ifNoneMatch?.includes(hash));
+}
+
+/** How long the edge may keep a day file of a date still in progress (s); see seabus.json → ais.liveWindowS. */
+const AIS_DAY_MAX_AGE_S = 60;
+const SEABUS_ROUTE = "seabus";
 export interface RtServiceOptions {
   historyDir?: string;
   /** Record snapshots to disk (default true). */
@@ -137,6 +185,8 @@ export interface RtServiceOptions {
   forwardTo?: string | undefined;
   /** Called when this process becomes the leader (e.g. to start the scheduled jobs). */
   onLead?: (() => void) | undefined;
+  /** The region served under /regions/<id>/ (default: the region.json this server is built for). */
+  regionId?: string | undefined;
   log?: (msg: string) => void;
 }
 
@@ -197,8 +247,10 @@ export class RtService {
   readonly store: Store | undefined;
   private historyCache = new Map<string, Buffer>();
   private onLead: (() => void) | undefined;
+  readonly regionId: string;
 
   constructor(opts: RtServiceOptions = {}) {
+    this.regionId = opts.regionId ?? region.id;
     this.recorder = new Recorder(
       opts.historyDir ?? RT_HISTORY_DIR,
       CADENCE.coverageGapMs,
@@ -231,7 +283,7 @@ export class RtService {
       this.ais = new AisFeed({
         apiKey: aisKey,
         cfg: seabusConfig.ais,
-        route: "seabus",
+        route: SEABUS_ROUTE,
         recorder: new Recorder(
           opts.aisHistoryDir ?? AIS_HISTORY_DIR,
           seabusConfig.ais.coverageGapS * 1000,
@@ -729,8 +781,166 @@ export class RtService {
     return r;
   }
 
+  /**
+   * GET /regions/<id>/live/transit: every live source for the transit map in one response, the same
+   * for every visitor (packages/transit-core/src/rt/live.ts).
+   */
+  async liveTransit(now = Date.now()): Promise<LiveTransitResponse> {
+    const live = this.liveResponse(now);
+    const vehicles: LiveVehiclesSection = {
+      kind: "vehicles",
+      encoding: "rt-snapshot/1",
+      status:
+        !this.latest ? "unavailable"
+        : live.stale ? "stale"
+        : "ok",
+      // A stale snapshot isn't shown (schedule estimates are), so it isn't sent.
+      data: this.latest && !live.stale ? compactSnapshot(this.latest) : null,
+    };
+    if (live.error) vehicles.error = live.error;
+
+    let ais: LiveAisSection;
+    if (this.ais) {
+      const st = this.ais.status();
+      const w = this.ais.liveWindow(seabusConfig.ais.liveWindowS * 1000);
+      ais = {
+        kind: "ais",
+        encoding: "ais-fixes/1",
+        route: SEABUS_ROUTE,
+        status: st.connected ? "ok" : "stale",
+        from: w.from,
+        to: w.to,
+        data: encodeFixes(w.fixes),
+      };
+      if (!st.connected && st.lastError) ais.error = st.lastError;
+    } else
+      ais = {
+        kind: "ais",
+        encoding: "ais-fixes/1",
+        route: SEABUS_ROUTE,
+        status: "unavailable",
+        error: "No aisstream.io API key configured",
+        from: 0,
+        to: 0,
+        data: [],
+      };
+
+    // Service changes for the dates the live view shows: today's and yesterday's (after midnight).
+    const changes: Record<string, VersionPointer> = {};
+    const today = localDate(now);
+    for (const date of [addDays(today, -1), today]) {
+      const { version } = await this.changes.versioned(date);
+      changes[date] = {
+        version,
+        path: `regions/${this.regionId}/days/${date}/translink/changes/${version}.json`,
+      };
+    }
+
+    const r: LiveTransitResponse = {
+      schema: LIVE_SCHEMA,
+      nextAt: this.nextDataAt() ?? null,
+      sources: {
+        "translink/vehicles": vehicles,
+        "seabus/ais": ais,
+        "translink/changes": { kind: "changes", versions: changes },
+      },
+    };
+    if (this.dispatcher)
+      r.sources["dispatch"] = {
+        kind: "dispatch",
+        versions: this.dispatcher.index().byDate,
+      };
+    return r;
+  }
+
+  /** When the next upstream poll or AIS batch with fixes is due, if any. */
+  private nextDataAt(): number | undefined {
+    const due = [
+      ...(this.apiKey ? Object.values(this.nextPollAt) : []),
+      this.ais?.nextBatchAt(),
+    ].filter((t): t is number => t !== undefined);
+    return due.length ? Math.min(...due) : undefined;
+  }
+
+  /** GET /regions/<id>/…: the live endpoint and the per-date files it points to. */
+  private async handleRegion(
+    id: string,
+    rest: string,
+    now = Date.now(),
+  ): Promise<HttpResult> {
+    if (id !== this.regionId) return json(404, { error: "No such region" });
+    if (rest === "/live/transit") {
+      const r = await this.liveTransit(now);
+      // The edge keeps it until new data is due, and never longer than clients poll.
+      const maxAge =
+        r.nextAt === null ?
+          rtConfig.clientPollS
+        : Math.min(
+            rtConfig.clientPollS,
+            Math.max(1, Math.ceil((r.nextAt - now) / 1000)),
+          );
+      return tagged(JSON.stringify(r), `public, max-age=${maxAge}`);
+    }
+    const ais = /^\/days\/(\d{8})\/seabus\/ais$/.exec(rest);
+    if (ais) {
+      const date = ais[1]!;
+      let body: AisDayResponse;
+      if (this.ais) {
+        const st = this.ais.status();
+        const day = await this.ais.dayFile(date, now);
+        body = {
+          status: st.connected ? "ok" : "stale",
+          to: day.to,
+          complete: day.complete,
+          fixes: encodeFixes(day.fixes),
+        };
+        if (!st.connected && st.lastError) body.error = st.lastError;
+      } else
+        body = {
+          status: "unavailable",
+          error: "No aisstream.io API key configured",
+          to: 0,
+          complete: false,
+          fixes: [],
+        };
+      return tagged(
+        JSON.stringify(body),
+        body.complete ?
+          "public, max-age=86400"
+        : `public, max-age=${AIS_DAY_MAX_AGE_S}`,
+      );
+    }
+    const changes =
+      /^\/days\/(\d{8})\/translink\/changes(?:\/([0-9a-f]+)\.json)?$/.exec(
+        rest,
+      );
+    if (changes) {
+      const date = changes[1]!;
+      const version = changes[2];
+      if (version) {
+        // Asked for by a pointer from the live endpoint, so normally still kept.
+        const body = this.changes.version(date, version);
+        return body === undefined ?
+            json(
+              404,
+              { error: "No such version" },
+              { "Cache-Control": "no-store" },
+            )
+          : tagged(body, "public, max-age=31536000, immutable");
+      }
+      const recent = date >= addDays(localDate(now), -1);
+      return tagged(
+        (await this.changes.versioned(date)).body,
+        `public, max-age=${recent ? 30 : 3600}`,
+      );
+    }
+    return json(404, { error: "Not found" });
+  }
+
   async handle(pathname: string, params: URLSearchParams): Promise<HttpResult> {
     if (this.leaderUrl) return this.forward(pathname, params);
+    const inRegion = /^\/regions\/([^/]+)(\/.*)$/.exec(pathname);
+    if (inRegion) return this.handleRegion(inRegion[1]!, inRegion[2]!);
     if (pathname.startsWith("/rt/dispatch"))
       return this.handleDispatch(pathname);
     switch (pathname) {

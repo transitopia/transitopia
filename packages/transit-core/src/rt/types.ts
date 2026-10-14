@@ -71,7 +71,8 @@ export interface RtCoverageResponse {
   intervals: [number, number][];
 }
 
-type Tuple = [
+/** A vehicle in the compact format. */
+export type SnapshotRow = [
   string,
   string | null,
   string | null,
@@ -88,13 +89,20 @@ type Tuple = [
   number?,
 ];
 
-/** Compact line format: {t, h, v: tuples}. Positions rounded to ~1 m. */
-export function encodeSnapshot(s: RtSnapshot): string {
-  return JSON.stringify({
+/** A snapshot in the compact format of history lines and the live endpoint: {t, h, v: tuples}. */
+export interface CompactSnapshot {
+  t: number;
+  h: number;
+  v: SnapshotRow[];
+}
+
+/** The compact format: vehicles as tuples, positions rounded to ~1 m. */
+export function compactSnapshot(s: RtSnapshot): CompactSnapshot {
+  return {
     t: s.fetchedAt,
     h: s.headerTs,
-    v: s.vehicles.map((v): Tuple => {
-      const row: Tuple = [
+    v: s.vehicles.map((v): SnapshotRow => {
+      const row: SnapshotRow = [
         v.id,
         v.label ?? null,
         v.tripId ?? null,
@@ -111,11 +119,10 @@ export function encodeSnapshot(s: RtSnapshot): string {
       if (v.speed !== undefined) row.push(v.speed);
       return row;
     }),
-  });
+  };
 }
 
-export function decodeSnapshot(line: string): RtSnapshot {
-  const o = JSON.parse(line) as { t: number; h: number; v: Tuple[] };
+export function expandSnapshot(o: CompactSnapshot): RtSnapshot {
   return {
     fetchedAt: o.t,
     headerTs: o.h,
@@ -148,6 +155,15 @@ export function decodeSnapshot(line: string): RtSnapshot {
       },
     ),
   };
+}
+
+/** One history line (NDJSON). */
+export function encodeSnapshot(s: RtSnapshot): string {
+  return JSON.stringify(compactSnapshot(s));
+}
+
+export function decodeSnapshot(line: string): RtSnapshot {
+  return expandSnapshot(JSON.parse(line) as CompactSnapshot);
 }
 
 /** Merge a point into sorted, non-overlapping coverage intervals (mutates and returns `intervals`). */
