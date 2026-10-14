@@ -11,6 +11,7 @@ import {
   type ServiceAlert,
 } from "@transitopia/transit-core/disruption/alerts.ts";
 import type { DisruptionFile } from "@transitopia/transit-core/disruption/types.ts";
+import type { UnparsedAlert } from "@transitopia/shared/admin-api.ts";
 import type { CorrectionsRepo } from "../corrections.ts";
 
 export interface AlertDraftsOptions {
@@ -19,13 +20,6 @@ export interface AlertDraftsOptions {
   /** Draft into the database instead of files. */
   repo?: CorrectionsRepo | undefined;
   log: (msg: string) => void;
-}
-
-export interface UnparsedAlert {
-  id: string;
-  lines: string[];
-  header: string;
-  reason: string;
 }
 
 export class AlertDrafts {

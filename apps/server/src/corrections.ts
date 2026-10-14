@@ -16,7 +16,11 @@ import {
   loadDisruptions,
 } from "@transitopia/pipelines/lib/disruptions.ts";
 import type { Db } from "@transitopia/db/connect.ts";
-import type { ReviewState } from "@transitopia/db/schema.ts";
+import type {
+  DisruptionRow as ApiDisruptionRow,
+  ObservationRow,
+  ReviewState,
+} from "@transitopia/shared/admin-api.ts";
 import type {
   Observation,
   ObservationFile,
@@ -110,33 +114,10 @@ export const observationDates = (f: ObservationFile): string[] =>
 export const disruptionDates = (d: Disruption): string[] =>
   datesOf(d).map((date) => Temporal.PlainDate.from(date).toString());
 
-export interface ObservationSetRow {
-  id: string;
-  region_id: string;
-  state: ReviewState;
-  title: string;
-  body: ObservationFile;
-  dates: string[];
-  created_at: Date;
-  updated_at: Date;
-  created_by: string | null;
-  reviewed_by: string | null;
-  reviewed_at: Date | null;
-}
-
-export interface DisruptionRow {
-  id: string;
-  region_id: string;
-  state: ReviewState;
-  body: Disruption;
-  dates: string[];
-  alert_id: string | null;
-  created_at: Date;
-  updated_at: Date;
-  created_by: string | null;
-  reviewed_by: string | null;
-  reviewed_at: Date | null;
-}
+/** A row as the admin API sends it, with the columns it leaves out. */
+type Stored<T> = T & { region_id: string; created_at: Date };
+export type ObservationSetRow = Stored<ObservationRow>;
+export type DisruptionRow = Stored<ApiDisruptionRow>;
 
 /** Corrections in the database: what the dispatcher applies, and the admin's review queue. */
 export class CorrectionsRepo implements Corrections {

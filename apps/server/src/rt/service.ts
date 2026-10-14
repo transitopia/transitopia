@@ -58,6 +58,7 @@ import { LiveDispatcher, type LiveDispatchOptions } from "./dispatch.ts";
 import type { Store } from "../store.ts";
 import { FileLeaderLock, type LeaderLock } from "../leader.ts";
 import type { CorrectionsRepo } from "../corrections.ts";
+import type { RtStatus } from "@transitopia/shared/admin-api.ts";
 import {
   delayFor,
   fetchAlerts,
@@ -831,7 +832,7 @@ export class RtService {
           tripFeed: this.tripFeed,
           minDelayCoverage: rtConfig.tripUpdatesMinCoverage,
           ais: this.ais?.status() ?? null,
-        });
+        } satisfies RtStatus);
       default:
         return json(404, { error: "Not found" });
     }

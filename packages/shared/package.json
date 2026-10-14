@@ -1,12 +1,16 @@
 {
   "name": "@transitopia/shared",
   "private": true,
-  "description": "Shared definitions for the web app, server and (later) mobile app: the dataset registry, and later API schemas.",
+  "description": "Shared definitions for the web app, server and (later) mobile app: the dataset registry and the admin API schemas.",
   "type": "module",
   "exports": {
     "./*": "./src/*"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@transitopia/transit-core": "*",
+    "zod": "^4.4.3"
   }
 }
