@@ -28,6 +28,10 @@ export interface CardChip {
   tone?: ChipTone | undefined;
   /** A route chip: the route's own colours. */
   color?: { bg: string; fg: string } | undefined;
+  /** Opens what the chip names (a route chip → its route card); it looks the same, darkening on hover. */
+  onSelect?: (() => void) | undefined;
+  /** The accessible name when it opens something ("View route: Expo Line"). */
+  action?: string | undefined;
 }
 
 /** The live/recorded/estimated mark before a time or status. */
@@ -99,6 +103,18 @@ export const InfoCard: React.FC<{
   children,
 }) => {
   const [notice, setNotice] = React.useState<string>();
+  // Escape closes the card, unless something on top of it (a menu, the layers panel) handled it,
+  // or it was meant for a field.
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if ((e.target as Element | null)?.closest?.("input, select, textarea"))
+        return;
+      onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
   React.useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(undefined), 2500);
@@ -217,18 +233,27 @@ export const InfoCard: React.FC<{
         : null}
         {chips?.length ?
           <div className="flex flex-wrap gap-1.5 px-4 pb-3">
-            {chips.map((c) => (
-              <span
-                key={c.label}
-                className={`inline-flex h-[26px] items-center rounded-md px-[9px] text-[13px] font-bold ${c.color ? "" : CHIP_STYLE[c.tone ?? "info"]}`}
-                style={
-                  c.color ?
-                    { background: c.color.bg, color: c.color.fg }
-                  : undefined
-                }>
-                {c.label}
-              </span>
-            ))}
+            {chips.map((c) => {
+              const className = `inline-flex h-[26px] items-center rounded-md px-[9px] text-[13px] font-bold ${c.color ? "" : CHIP_STYLE[c.tone ?? "info"]}`;
+              const style =
+                c.color ?
+                  { background: c.color.bg, color: c.color.fg }
+                : undefined;
+              return c.onSelect ?
+                  <button
+                    key={c.label}
+                    type="button"
+                    onClick={c.onSelect}
+                    aria-label={c.action}
+                    title={c.action}
+                    className={`${className} hover:shadow-[inset_0_0_0_100px_rgb(0_0_0/0.12)]`}
+                    style={style}>
+                    {c.label}
+                  </button>
+                : <span key={c.label} className={className} style={style}>
+                    {c.label}
+                  </span>;
+            })}
           </div>
         : null}
         {children}

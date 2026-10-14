@@ -19,6 +19,7 @@ type At = { right: number } & ({ top: number } | { bottom: number });
 /**
  * A menu button: a trigger that opens a list of actions (ARIA menu pattern). Arrow keys move
  * between items, Escape, a press elsewhere or scrolling closes it, and choosing an item closes it.
+ * Escape is caught first and marked handled, so it closes only the menu, not the card it's on.
  * The list is positioned `fixed` under the trigger (above it when there's no room below), so a
  * scrolling container (a card's body) doesn't clip it. The trigger can be an icon (named by `label`)
  * or a whole row whose content names it (`iconTrigger={false}`; departure rows on station cards).
@@ -47,6 +48,8 @@ export const Menu: React.FC<{
   const list = React.useRef<HTMLDivElement>(null);
   const menuId = React.useId();
   const open = at !== undefined;
+  // Every item gets the same leading slot when any has an icon or badge, so the labels line up.
+  const leading = items.some((i) => i.lead !== undefined || i.icon);
 
   React.useEffect(() => {
     if (!open) return;
@@ -55,18 +58,20 @@ export const Menu: React.FC<{
       if (!ref.current?.contains(e.target as Node)) setAt(undefined);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setAt(undefined);
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.preventDefault();
+      setAt(undefined);
     };
     // A fixed list would drift from its trigger when the card scrolls.
     const onScroll = (e: Event) => {
       if (!list.current?.contains(e.target as Node)) setAt(undefined);
     };
     document.addEventListener("pointerdown", onDown);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     document.addEventListener("scroll", onScroll, true);
     return () => {
       document.removeEventListener("pointerdown", onDown);
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
       document.removeEventListener("scroll", onScroll, true);
     };
   }, [open]);
@@ -132,8 +137,12 @@ export const Menu: React.FC<{
                 item.onSelect();
               }}
               className="flex min-h-11 w-full items-center gap-3 rounded-lg px-2.5 py-1 text-left text-[15px] font-semibold hover:bg-(--card-hover) focus:bg-(--card-hover) focus:outline-none">
-              {item.lead
-                ?? (item.icon ? <Icon icon={item.icon} size={20} /> : null)}
+              {leading ?
+                <span className="flex w-8 flex-none items-center justify-center">
+                  {item.lead
+                    ?? (item.icon ? <Icon icon={item.icon} size={20} /> : null)}
+                </span>
+              : null}
               {item.note ?
                 <span className="flex min-w-0 flex-col leading-snug">
                   {item.label}

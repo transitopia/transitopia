@@ -105,8 +105,9 @@ const rowClass = (open: boolean) =>
   `-mx-2 flex min-h-10 w-[calc(100%+1rem)] items-center gap-2.5 rounded-lg px-2 py-2 text-left hover:bg-(--card-hover) ${open ? "bg-(--card-combined-bg)" : ""}`;
 
 /**
- * A departure row opens what it names (apps/web/README.md#cross-references): with one thing to
- * open (its route), straight away; with more (its bus bay, the vehicle on its next trip), a menu.
+ * A departure row opens a menu of what it names (apps/web/README.md#cross-references): its route,
+ * its bus bay, and the vehicle on its next trip when that's on the map. Always a menu, even with only
+ * the route in it, so a row behaves the same whether or not its vehicle is out yet.
  */
 const GroupRow: React.FC<{
   group: PlaceGroup;
@@ -164,17 +165,6 @@ const GroupRow: React.FC<{
       : null}
     </>
   );
-  if (items.length === 1)
-    return (
-      <div>
-        <button
-          type="button"
-          onClick={items[0]!.onSelect}
-          className={rowClass(false)}>
-          {content}
-        </button>
-      </div>
-    );
   return (
     <Menu
       label={`${group.route.label} ${headsign(group.headsign).toLowerCase()}`}
@@ -411,6 +401,8 @@ const PlaceCardBody: React.FC<{
       chips={place.routes.map((r) => ({
         label: isBus(r) ? r.key : r.label,
         color: { bg: r.color, fg: r.textColor },
+        onSelect: go({ kind: "route", id: r.key }),
+        action: `View route: ${r.label}`,
       }))}
       actions={actions}
       notLive={
