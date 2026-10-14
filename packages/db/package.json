@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@transitopia/shared": "*",
     "kysely": "^0.29.6",
     "pg": "^8.23.1"
   },

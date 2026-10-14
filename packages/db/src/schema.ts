@@ -3,6 +3,7 @@
 // Date objects, bigints as numbers.
 
 import type { ColumnType, Generated } from "kysely";
+import type { ReviewState } from "@transitopia/shared/admin-api.ts";
 
 type Timestamp = ColumnType<Date, Date | string, Date | string>;
 /** A timestamp with a database default (`now()`). */
@@ -14,8 +15,6 @@ type DefaultTimestamp = ColumnType<
 /** A `date` column: "YYYY-MM-DD". */
 type DateString = string;
 type Json<T> = ColumnType<T, string, string>;
-
-export type ReviewState = "draft" | "previewing" | "confirmed" | "discarded";
 
 export interface Database {
   regions: { id: string; name: string; timezone: string };

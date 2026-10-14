@@ -28,6 +28,10 @@ import { Auth } from "../src/auth.ts";
 import { createApp } from "../src/app.ts";
 import { readEnv } from "../src/env.ts";
 import type { Disruption } from "@transitopia/transit-core/disruption/types.ts";
+import {
+  correctionsResponse,
+  statusResponse,
+} from "@transitopia/shared/admin-api.ts";
 
 const { FeedMessage } = GtfsRealtimeBindings.transit_realtime;
 const REGION = "metro-vancouver";
@@ -335,13 +339,30 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
       (await call("/admin/api/disruptions/works-1/confirm", { method: "POST" }))
         .status,
     ).toBe(200);
-    const list = (await (await call("/admin/api/corrections")).json()) as {
-      disruptions: { id: string; state: string; reviewed_by: string }[];
-    };
+    // The responses match the shared schemas /admin parses them with.
+    const list = correctionsResponse.parse(
+      await (await call("/admin/api/corrections")).json(),
+    );
     expect(list.disruptions.find((x) => x.id === "works-1")).toMatchObject({
       state: "confirmed",
       reviewed_by: "dev",
     });
+    expect(list.disruptions[0]!.updated_at).toBeInstanceOf(Date);
+    const status = statusResponse.parse(
+      await (await call("/admin/api/status")).json(),
+    );
+    expect(status.rt.leader).toBe(false);
+    expect(status.health.checks.database).toEqual({ ok: true });
+
+    for (const bad of [{ title: "x" }, { file: [] }, "nonsense"])
+      expect(
+        (
+          await call("/admin/api/observations/rider-1", {
+            method: "PUT",
+            body: JSON.stringify(bad),
+          })
+        ).status,
+      ).toBe(400);
     // Editing a confirmed disruption sends it back for review.
     await call("/admin/api/disruptions/works-1", {
       method: "PUT",

@@ -12,13 +12,15 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.4",
+    "@transitopia/db": "*",
     "@transitopia/pipelines": "*",
     "@transitopia/region-metro-vancouver": "*",
+    "@transitopia/shared": "*",
     "@transitopia/transit-core": "*",
     "gtfs-realtime-bindings": "^2.2.0",
     "hono": "^4.13.13",
     "pg": "^8.23.1",
-    "@transitopia/db": "*"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/pg": "^8.23.1"

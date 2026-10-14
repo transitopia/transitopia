@@ -12,7 +12,19 @@ import { sql } from "kysely";
 import type { Db } from "@transitopia/db/connect.ts";
 import { recentRuns } from "@transitopia/db/jobs.ts";
 import { storageSizes } from "@transitopia/db/storage.ts";
-import type { ReviewState } from "@transitopia/db/schema.ts";
+import type * as z from "zod";
+import {
+  disruption,
+  observationSetPut,
+  rtStatus,
+  type AuthMe,
+  type CorrectionsResponse,
+  type Health,
+  type PreviewResponse,
+  type ReviewState,
+  type RtStatus,
+  type StatusResponse,
+} from "@transitopia/shared/admin-api.ts";
 import type {
   Disruption,
   DisruptionFile,
@@ -95,7 +107,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
     return c.json({
       user: user ?? null,
       signIn: auth.enabled || Boolean(env.adminDevToken),
-    });
+    } satisfies AuthMe);
   });
   app.post("/auth/logout", async (c) => {
     await auth.logout(c.req.header("Authorization"));
@@ -115,17 +127,12 @@ export function createApp(deps: AppDeps): Hono<Env> {
 
   app.get("/admin/api/status", async (c) =>
     c.json({
-      rt: JSON.parse(
-        String(
-          (await service.handle("/rt/status", new URLSearchParams())).body,
-        ),
-      ),
+      rt: await rtStatusOf(service),
       health: await health(deps),
       jobs: db ? await recentRuns(db, 40) : [],
-      // Every daily run within retention: rows and trips per service date, for sizing.
       daily: db ? await recentRuns(db, 60, "daily") : [],
       storage: db ? await storageSizes(db) : null,
-    }),
+    } satisfies StatusResponse),
   );
 
   const needRepo = (c: Context<Env>) =>
@@ -144,7 +151,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
       observationSets,
       unparsedAlerts: service.alertDrafts.unparsed,
       liveDispatch: service.dispatcher?.pointer() ?? {},
-    });
+    } satisfies CorrectionsResponse);
   });
 
   // Edit (or create) a disruption. Edits keep the review state, except that a confirmed one goes
@@ -152,7 +159,9 @@ export function createApp(deps: AppDeps): Hono<Env> {
   app.put("/admin/api/disruptions/:id", async (c) => {
     if (!repo) return needRepo(c)!;
     const id = c.req.param("id");
-    const d = (await c.req.json()) as Disruption;
+    const body = await parseBody(c, disruption);
+    if (!body.ok) return body.response;
+    const d = body.value;
     const problems = disruptionProblems(d, id);
     if (problems.length) return c.json({ error: problems.join("; ") }, 400);
     const old = await repo.disruption(id);
@@ -167,14 +176,13 @@ export function createApp(deps: AppDeps): Hono<Env> {
     if (!repo) return needRepo(c)!;
     const id = c.req.param("id");
     if (!ID.test(id)) return c.json({ error: "Bad id" }, 400);
-    const { title, file } = (await c.req.json()) as {
-      title?: string;
-      file: ObservationFile;
-    };
-    const problems = (file?.observations ?? []).flatMap((o, i) =>
+    const body = await parseBody(c, observationSetPut);
+    if (!body.ok) return body.response;
+    const { title, file } = body.value;
+    const problems = (file.observations ?? []).flatMap((o, i) =>
       observationProblems(o).map((p) => `#${i + 1}: ${p}`),
     );
-    if (!Array.isArray(file?.observations) || !file.observations.length)
+    if (!Array.isArray(file.observations) || !file.observations.length)
       problems.push("no observations");
     if (problems.length) return c.json({ error: problems.join("; ") }, 400);
     const old = await repo.observationSet(id);
@@ -216,7 +224,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
         "previewing",
         c.get("user").login,
       );
-      return c.json({ versions });
+      return c.json({ versions } satisfies PreviewResponse);
     },
   );
 
@@ -295,11 +303,6 @@ export function disruptionProblems(
   return p;
 }
 
-export interface Health {
-  ok: boolean;
-  checks: Record<string, { ok: boolean; detail?: string }>;
-}
-
 /** Data freshness (deployment/README.md#monitoring): the poller, AIS, the database and the jobs. */
 export async function health({ service, db, jobs }: AppDeps): Promise<Health> {
   const checks: Health["checks"] = {};
@@ -311,46 +314,26 @@ export async function health({ service, db, jobs }: AppDeps): Promise<Health> {
       checks.database = { ok: false, detail: (e as Error).message };
     }
   }
-  const status = JSON.parse(
-    String((await service.handle("/rt/status", new URLSearchParams())).body),
-  ) as {
-    leader?: boolean;
-    hasKey: boolean;
-    lastSnapshotAgeS: number | null;
-    budget?: {
-      intervalsS: { positions: number; tripUpdates: number };
-      capped: boolean;
-    };
-    feeds?: Record<
-      string,
-      { lastOkAgeS: number | null; lastError: string | null }
-    >;
-    delayCoverage?: number | null;
-    minDelayCoverage?: number;
-    ais: { connected: boolean; lastMessageAgeS: number | null } | null;
-  };
+  const status = await rtStatusOf(service);
   if (status.leader && status.hasKey) {
     const age = status.lastSnapshotAgeS;
-    const limit = 3 * (status.budget?.intervalsS.positions ?? 300);
+    const limit = 3 * (status.budget.intervalsS.positions ?? 300);
     checks.positions = {
       ok: age !== null && age <= limit,
       detail:
         age === null ? "no poll yet" : (
-          `last poll ${Math.round(age)} s ago (limit ${limit} s)${status.budget?.capped ? ", daily cap reached" : ""}`
+          `last poll ${Math.round(age)} s ago (limit ${limit} s)${status.budget.capped ? ", daily cap reached" : ""}`
         ),
     };
   }
-  if (status.leader && status.hasKey && status.feeds?.tripUpdates) {
+  if (status.leader && status.hasKey && status.feeds.tripUpdates) {
     // A failed poll is logged and retried; this catches the feed staying down, or succeeding with
     // nothing that matches the positions (trip updates also carry cancellations and skipped stops).
     const { lastOkAgeS, lastError } = status.feeds.tripUpdates;
-    const limit = 3 * (status.budget?.intervalsS.tripUpdates ?? 1800);
+    const limit = 3 * (status.budget.intervalsS.tripUpdates ?? 1800);
     const coverage = status.delayCoverage;
     const fresh = lastOkAgeS !== null && lastOkAgeS <= limit;
-    const covered =
-      coverage === null
-      || coverage === undefined
-      || coverage >= (status.minDelayCoverage ?? 0);
+    const covered = coverage === null || coverage >= status.minDelayCoverage;
     checks.tripUpdates = {
       ok: fresh && covered,
       detail: [
@@ -374,6 +357,31 @@ export async function health({ service, db, jobs }: AppDeps): Promise<Health> {
   }
   if (jobs) Object.assign(checks, await jobs.health());
   return { ok: Object.values(checks).every((c) => c.ok), checks };
+}
+
+async function rtStatusOf(service: RtService): Promise<RtStatus> {
+  return rtStatus.parse(
+    JSON.parse(
+      String((await service.handle("/rt/status", new URLSearchParams())).body),
+    ),
+  );
+}
+
+/** A request body checked against its schema, or the 400 response to send. */
+async function parseBody<T>(
+  c: Context<Env>,
+  schema: z.ZodType<T>,
+): Promise<{ ok: true; value: T } | { ok: false; response: Response }> {
+  const r = schema.safeParse(await c.req.json().catch(() => undefined));
+  return r.success ?
+      { ok: true, value: r.data }
+    : {
+        ok: false,
+        response: c.json(
+          { error: r.error.issues.map((i) => i.message).join("; ") },
+          400,
+        ),
+      };
 }
 
 /** Epoch ms of an ISO 8601 time with offset (what the disruption format requires), else NaN. */

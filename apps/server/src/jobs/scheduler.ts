@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { recordingConfig as recording } from "../config.ts";
 import { PUBLIC_DATA_DIR } from "@transitopia/pipelines/lib/paths.ts";
 import type { Db } from "@transitopia/db/connect.ts";
+import type { Health } from "@transitopia/shared/admin-api.ts";
 import { recoverInterrupted, runOnce } from "@transitopia/db/jobs.ts";
 import { ensurePartitions } from "@transitopia/db/partitions.ts";
 import {
@@ -184,9 +185,9 @@ export class Jobs {
   }
 
   /** For /healthz: daily jobs that failed lately, or haven't succeeded for a while. */
-  async health(): Promise<Record<string, { ok: boolean; detail?: string }>> {
+  async health(): Promise<Health["checks"]> {
     if (!this.db) return {};
-    const out: Record<string, { ok: boolean; detail?: string }> = {};
+    const out: Health["checks"] = {};
     const failures = await this.db
       .selectFrom("job_runs")
       .select(["job", "key", "error"])

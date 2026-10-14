@@ -97,6 +97,8 @@ Light and dark basemaps come from [packages/map-style](../../packages/map-style/
 
 `/admin` (`src/Admin/Admin.tsx`) is the review queue for corrections: the server's status and health, recent jobs, disruptions drafted from TransLink alerts, observation sets, and alerts the parser couldn't draft. Admins edit, preview, confirm, discard and reopen corrections there. Sign-in is with GitHub through the server; the token comes back in the URL fragment, is removed from the address bar at once, and is kept in local storage ([apps/server → Admin API and sign-in](../server/README.md#admin-api-and-sign-in)).
 
+The page is `Admin.tsx` (sign-in and the queue's sections), with `Status.tsx`, `DisruptionCard.tsx`, `ObservationCard.tsx`, `NewCorrection.tsx`, `JsonEditor.tsx`, and `Review.tsx` for what both cards share (state badge, review buttons, preview links). `api.ts` fetches with react-query, parsing every response with the admin API's zod schemas in [`@transitopia/shared/admin-api.ts`](../../packages/shared/README.md), the same ones the server types its responses with; each card's writes reload the queue.
+
 ## Current location
 
 The location button under the map controls (MapLibre's `GeolocateControl`, in `src/Map/Map.tsx`, so every mode has it) asks for the browser's location. Tapping it centres the map on you and follows as you move. Panning the map, or centring on a vehicle, stops following but keeps your dot, and tapping again turns it off. Outside the map's bounds (BC) the button shows an error instead of moving the map. The position stays in the browser: it is never sent to our server or recorded. Browsers only offer it on HTTPS (and `localhost`).
