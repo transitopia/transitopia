@@ -23,6 +23,8 @@ clock → playback → WebGL, every animation frame, without React. Positions ar
 | `src/plans.ts` | Loads the manifest, the plan for a date's feed, movement files, dispatch patches (static, live and preview versions) and the track network |
 | `src/rt.ts` | Real-time buses in the browser: polls `/rt/live` near now and fetches recorded hours elsewhere, plus service changes and travel-time profiles |
 | `src/ais.ts` | SeaBus AIS: polls `/rt/ais/fixes` for dates in progress and turns fixes into schedule corrections |
+| `src/places.ts` | What a station, exchange, stop or route card shows: `placeSnapshot()`, a function of the place, the shown feed and time, the vehicles and the corrections |
+| `src/config.ts` | `RegionConfig`: the region's config the host passes to `TransitEngine.create()` |
 | `src/url.ts` | Shareable view state in the query string ([below](#url-state)) |
 | `src/prefs.ts` | Per-viewer preferences in local storage (theme, hidden routes, legend state), guarded so they work without it |
 | `src/layers/` | MapLibre layers ([below](#rendering)) |
