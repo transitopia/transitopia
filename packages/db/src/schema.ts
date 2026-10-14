@@ -18,6 +18,7 @@ type Json<T> = ColumnType<T, string, string>;
 
 export interface Database {
   regions: { id: string; name: string; timezone: string };
+  feeds: { id: string; name: string; agency: string; timezone: string };
   service_leader: {
     region_id: string;
     instance: string;
@@ -36,14 +37,14 @@ export interface Database {
     error: string | null;
   };
   rt_polls: {
-    region_id: string;
+    feed_id: string;
     source: "gtfs-rt" | "ais";
     fetched_at: Timestamp;
     header_ts: Timestamp | null;
     vehicles: number;
   };
   rt_positions: {
-    region_id: string;
+    feed_id: string;
     fetched_at: Timestamp;
     vehicle_id: string;
     label: string | null;
@@ -71,7 +72,7 @@ export interface Database {
     cog: number | null;
   };
   trip_changes: {
-    region_id: string;
+    feed_id: string;
     service_date: DateString;
     trip_id: string;
     route_id: string | null;
@@ -81,7 +82,7 @@ export interface Database {
     last_seen: Timestamp;
   };
   alerts: {
-    region_id: string;
+    feed_id: string;
     alert_id: string;
     first_seen: Timestamp;
     last_seen: Timestamp;
@@ -135,7 +136,7 @@ export interface Database {
     created_at: DefaultTimestamp;
   };
   gtfs_feeds: {
-    region_id: string;
+    feed_id: string;
     version: string;
     start_date: DateString;
     end_date: DateString;
@@ -145,7 +146,7 @@ export interface Database {
     object_key: string | null;
   };
   observed_stop_times: {
-    region_id: string;
+    feed_id: string;
     service_date: DateString;
     trip_id: string;
     stop_sequence: number;
@@ -160,7 +161,7 @@ export interface Database {
     stats_version: number;
   };
   route_stats_daily: {
-    region_id: string;
+    feed_id: string;
     service_date: DateString;
     route_id: string;
     route_short_name: string | null;

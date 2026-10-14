@@ -1,14 +1,15 @@
 // Publish the track network and per-feed platform mapping for the browser (packages/transit-core/DESIGN.md#track-graph):
-//   var/public/data/infra/tracks.geojson                 segments, nodes, stop positions
-//   var/public/data/feeds/<version>/platforms.json       GTFS stop_id → track position
+//   var/public/data/regions/<rail region>/infra/tracks.geojson   segments, nodes, stop positions
+//   var/public/data/feeds/<rail feed>/<version>/platforms.json   GTFS stop_id → track position
 //
 //   npm run build:infra
 
 import { join } from "node:path";
 import {
-  PUBLIC_DATA_DIR,
-  FEEDS_OUT_DIR,
+  RAIL_FEED,
+  feedVersionFile,
   log,
+  regionDataDir,
   writeJson,
 } from "@transitopia/data/paths.ts";
 import { loadAllPlans, loadGraph } from "@transitopia/data/infra.ts";
@@ -24,7 +25,7 @@ export interface PlatformsFile {
 
 async function main() {
   const { graph, overrides, tracks } = await loadGraph();
-  await writeJson(join(PUBLIC_DATA_DIR, "infra", "tracks.geojson"), tracks);
+  await writeJson(join(regionDataDir(), "infra", "tracks.geojson"), tracks);
   log(`Wrote infra/tracks.geojson (${graph.segments.size} segments)`);
   for (const plan of await loadAllPlans()) {
     const railKeys = new Set(
@@ -47,7 +48,7 @@ async function main() {
       };
     }
     await writeJson(
-      join(FEEDS_OUT_DIR, plan.feedVersion, "platforms.json"),
+      feedVersionFile(RAIL_FEED, plan.feedVersion, "platforms.json"),
       out,
     );
     log(

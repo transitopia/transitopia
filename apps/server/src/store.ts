@@ -1,5 +1,6 @@
 // What the leader records in PostgreSQL (docs/DESIGN.md#where-data-lives): upstream requests (the budget ledger),
-// raw positions and AIS fixes for every route, service changes and alerts, and dispatch versions.
+// raw positions (per feed) and AIS fixes for every route, service changes and alerts (per feed), and
+// dispatch versions (per region).
 // The hourly NDJSON files (recorder.ts) are written alongside; both expire after the retention period.
 
 import { sql } from "kysely";
@@ -41,8 +42,12 @@ const CHUNK = 2000;
 const isoDate = (yyyymmdd: string) =>
   Temporal.PlainDate.from(yyyymmdd).toString();
 
+/** AIS fixes are of TransLink's SeaBus: their polls are recorded as its feed's. */
+const AIS_FEED = "translink";
+
 export class Store {
   readonly db: Db;
+  /** The rail region: AIS fixes and dispatch versions are its. */
   readonly regionId: string;
 
   constructor(db: Db, regionId: string) {
@@ -50,7 +55,7 @@ export class Store {
     this.regionId = regionId;
   }
 
-  /** TransLink requests in the 24 hours before `now`, oldest first, for the in-memory ledger. */
+  /** A provider's requests (a feed's id) in the 24 hours before `now`, oldest first, for the in-memory ledger. */
   async recentRequests(
     provider: string,
     now = Date.now(),
@@ -104,8 +109,9 @@ export class Store {
     }
   }
 
-  /** One positions poll: every vehicle, every route. */
+  /** One positions poll of a feed: every vehicle, every route. */
   async recordPositions(
+    feedId: string,
     fetchedAt: number,
     headerTs: number,
     vehicles: RecordedVehicle[],
@@ -116,7 +122,7 @@ export class Store {
         await tx
           .insertInto("rt_polls")
           .values({
-            region_id: this.regionId,
+            feed_id: feedId,
             source: "gtfs-rt",
             fetched_at: at,
             header_ts: new Date(headerTs),
@@ -129,7 +135,7 @@ export class Store {
             .insertInto("rt_positions")
             .values(
               vehicles.slice(i, i + CHUNK).map((v) => ({
-                region_id: this.regionId,
+                feed_id: feedId,
                 fetched_at: at,
                 vehicle_id: v.id,
                 label: v.label ?? null,
@@ -159,7 +165,7 @@ export class Store {
         await tx
           .insertInto("rt_polls")
           .values({
-            region_id: this.regionId,
+            feed_id: AIS_FEED,
             source: "ais",
             fetched_at: at,
             header_ts: null,
@@ -188,8 +194,9 @@ export class Store {
     );
   }
 
-  /** Trip changes from one trip-updates poll (every route): first and last sighting per trip. */
+  /** Trip changes from one trip-updates poll of a feed (every route): first and last sighting per trip. */
   async recordTripChanges(
+    feedId: string,
     changes: TripChangeRow[],
     now = Date.now(),
   ): Promise<void> {
@@ -204,7 +211,7 @@ export class Store {
         .insertInto("trip_changes")
         .values(
           rows.slice(i, i + CHUNK).map((c) => ({
-            region_id: this.regionId,
+            feed_id: feedId,
             service_date: isoDate(c.date),
             trip_id: c.tripId,
             route_id: c.routeId ?? null,
@@ -215,7 +222,7 @@ export class Store {
           })),
         )
         .onConflict((oc) =>
-          oc.columns(["region_id", "service_date", "trip_id"]).doUpdateSet({
+          oc.columns(["feed_id", "service_date", "trip_id"]).doUpdateSet({
             last_seen: at,
             cancelled: sql`trip_changes.cancelled or excluded.cancelled`,
             skipped_stop_ids: sql`array(select distinct unnest(trip_changes.skipped_stop_ids || excluded.skipped_stop_ids))`,
@@ -224,15 +231,19 @@ export class Store {
         .execute();
   }
 
-  /** Alerts from one alerts poll (every route and line). The latest wording wins. */
-  async recordAlerts(alerts: DecodedAlert[], now = Date.now()): Promise<void> {
+  /** Alerts from one alerts poll of a feed (every route and line). The latest wording wins. */
+  async recordAlerts(
+    feedId: string,
+    alerts: DecodedAlert[],
+    now = Date.now(),
+  ): Promise<void> {
     if (!alerts.length) return;
     const at = new Date(now);
     await this.db
       .insertInto("alerts")
       .values(
         alerts.map((a) => ({
-          region_id: this.regionId,
+          feed_id: feedId,
           alert_id: a.id,
           first_seen: at,
           last_seen: at,
@@ -248,7 +259,7 @@ export class Store {
         })),
       )
       .onConflict((oc) =>
-        oc.columns(["region_id", "alert_id"]).doUpdateSet((eb) => ({
+        oc.columns(["feed_id", "alert_id"]).doUpdateSet((eb) => ({
           last_seen: at,
           cause: eb.ref("excluded.cause"),
           effect: eb.ref("excluded.effect"),

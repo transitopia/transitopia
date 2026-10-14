@@ -3,7 +3,7 @@ import {
   TransitEngine,
   type TransitSnapshot,
 } from "@transitopia/transit-map/engine.ts";
-import region from "@transitopia/region-metro-vancouver/region.json";
+import { readUrl } from "@transitopia/transit-map/url.ts";
 
 import { transitApi, transitData } from "../config.ts";
 import { openedPath, openedWithPosition } from "../startup.ts";
@@ -18,18 +18,19 @@ import { PlaceCard } from "./PlaceCard.tsx";
 import { RouteCard } from "./RouteCard.tsx";
 import { FollowPill } from "./FollowPill.tsx";
 import { useOverlayPadding } from "./overlayPadding.ts";
-import { regionConfig } from "./region-config.ts";
+import {
+  DEFAULT_REGION,
+  REGIONS,
+  lngLatBounds,
+  regionInView,
+  type SiteRegion,
+} from "./regions.ts";
 
-const [w, s, e, n] = region.initialBounds;
-const INITIAL_BOUNDS: [[number, number], [number, number]] = [
-  [w!, s!],
-  [e!, n!],
-];
 const PADDING = { top: 90, bottom: 150, left: 20, right: 50 };
 
 /**
- * Show the whole network when the site was opened on /transit (or /) without a map position. Only
- * once: switching modes later keeps wherever the map is.
+ * Show the default region's network when the site was opened on /transit (or /) without a map
+ * position. Only once: switching modes later keeps wherever the map is.
  */
 let initialViewDone = false;
 function useInitialView(map: MapType | undefined): void {
@@ -39,20 +40,61 @@ function useInitialView(map: MapType | undefined): void {
     const openedOnTransit =
       openedPath === "/" || openedPath.startsWith("/transit");
     if (openedOnTransit && !openedWithPosition)
-      map.fitBounds(INITIAL_BOUNDS, { padding: PADDING, animate: false });
+      map.fitBounds(lngLatBounds(DEFAULT_REGION.info.initialBounds), {
+        padding: PADDING,
+        animate: false,
+      });
   }, [map]);
 }
 
-/** Does the map view overlap the region's transit data? */
-function viewInRegion(map: MapType): boolean {
+function viewOf(map: MapType): SiteRegion | undefined {
   const b = map.getBounds();
-  const [west, south, east, north] = region.bbox;
-  return !(
-    b.getEast() < west!
-    || b.getWest() > east!
-    || b.getNorth() < south!
-    || b.getSouth() > north!
-  );
+  return regionInView({
+    west: b.getWest(),
+    south: b.getSouth(),
+    east: b.getEast(),
+    north: b.getNorth(),
+  });
+}
+
+interface RegionState {
+  region: SiteRegion;
+  /** Whether any region is in view. */
+  inView: boolean;
+  /** Whether the map has been looked at yet (until then `region` is only the default). */
+  ready: boolean;
+}
+
+/**
+ * The region the engine shows (docs/DESIGN.md#regions-and-feeds): the one in view, or while the
+ * view is outside every region, the last one shown (at first, the default).
+ */
+function useRegion(map: MapType | undefined): RegionState {
+  const [state, setState] = React.useState<RegionState>({
+    region: DEFAULT_REGION,
+    inView: true,
+    ready: false,
+  });
+  React.useEffect(() => {
+    if (!map) return;
+    const update = () => {
+      const r = viewOf(map);
+      setState((prev) =>
+        r ?
+          prev.ready && prev.region === r && prev.inView ?
+            prev
+          : { region: r, inView: true, ready: true }
+        : prev.ready && !prev.inView ? prev
+        : { region: prev.region, inView: false, ready: true },
+      );
+    };
+    update();
+    map.on("moveend", update);
+    return () => {
+      map.off("moveend", update);
+    };
+  }, [map]);
+  return state;
 }
 
 /**
@@ -65,23 +107,33 @@ export default function TransitMap() {
   const themeRef = React.useRef(theme);
   const [engine, setEngine] = React.useState<TransitEngine>();
   const [error, setError] = React.useState<string>();
-  const [inRegion, setInRegion] = React.useState(true);
   useInitialView(map);
+  const { region, inView, ready } = useRegion(map);
+  // The first engine takes its selection from the URL; one for a region panned to later starts
+  // without it (a vehicle or place of another region), at the same time.
+  const shownRegion = React.useRef<string>(undefined);
 
   React.useEffect(() => {
-    if (!map) return;
+    if (!map || !ready) return;
     let cancelled = false;
     let created: TransitEngine | undefined;
     const params = new URLSearchParams(location.search);
+    const { vehicle: _v, place: _p, ...time } = readUrl();
+    const switched =
+      shownRegion.current !== undefined
+      && shownRegion.current !== region.info.id;
+    shownRegion.current = region.info.id;
+    setError(undefined);
     TransitEngine.create(map, {
       dataBase: transitData,
       apiBase: transitApi,
-      region: region.id,
+      region: region.info.id,
       theme: themeRef.current,
       scenario: params.get("scenario") ?? undefined,
       debug: params.has("debug"),
-      dataset: region.gtfsDataset,
-      config: regionConfig,
+      dataset: region.config.feed.dataset,
+      config: region.config,
+      ...(switched ? { initial: time } : {}),
     }).then(
       (eng) => {
         if (cancelled) {
@@ -103,7 +155,7 @@ export default function TransitMap() {
       setEngine(undefined);
       delete (window as { transit?: unknown }).transit;
     };
-  }, [map]);
+  }, [map, region, ready]);
 
   // Runs before the map swaps its style (child effects run first), so the engine re-adds its
   // layers in the new theme's colours when the new style loads.
@@ -112,16 +164,6 @@ export default function TransitMap() {
     engine?.setTheme(theme);
   }, [engine, theme]);
 
-  React.useEffect(() => {
-    if (!map) return;
-    const update = () => setInRegion(viewInRegion(map));
-    update();
-    map.on("moveend", update);
-    return () => {
-      map.off("moveend", update);
-    };
-  }, [map]);
-
   return (
     <>
       {error ?
@@ -129,17 +171,29 @@ export default function TransitMap() {
           <div role="alert">{error}</div>
         </MapOverlayWindow>
       : null}
-      {!inRegion ?
+      {!inView ?
         <MapOverlayWindow className="top-5 sm:top-24">
-          Transit data isn't available here yet.{" "}
-          <button
-            type="button"
-            className="underline"
-            onClick={() =>
-              map?.fitBounds(INITIAL_BOUNDS, { padding: PADDING })
-            }>
-            Go to {region.name}
-          </button>
+          Transit data isn't available here yet. Go to{" "}
+          {REGIONS.map((r, i) => (
+            <React.Fragment key={r.info.id}>
+              {i === 0 ?
+                ""
+              : i === REGIONS.length - 1 ?
+                " or "
+              : ", "}
+              <button
+                type="button"
+                className="underline"
+                onClick={() =>
+                  map?.fitBounds(lngLatBounds(r.info.initialBounds), {
+                    padding: PADDING,
+                  })
+                }>
+                {r.info.name}
+              </button>
+            </React.Fragment>
+          ))}
+          .
         </MapOverlayWindow>
       : null}
       {engine ?

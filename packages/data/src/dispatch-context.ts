@@ -3,7 +3,13 @@
 
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import { PUBLIC_DIR, PUBLIC_DATA_DIR, readConfig, readJson } from "./paths.ts";
+import {
+  PUBLIC_DIR,
+  RAIL_FEED,
+  readConfig,
+  readJson,
+  readManifest,
+} from "./paths.ts";
 import { loadGraph } from "./infra.ts";
 import { dispatchDebugFromEnv } from "./dispatch-debug.ts";
 import {
@@ -11,6 +17,7 @@ import {
   type PreparedPlan,
 } from "@transitopia/transit-core/schedule/engine.ts";
 import {
+  feedDataPath,
   feedForDate,
   type FeedManifest,
   type ServicePlan,
@@ -76,9 +83,7 @@ export class DispatchContexts {
 
   /** The context for a service date (YYYYMMDD), or undefined if no dispatched plan covers it. */
   async forDate(date: string): Promise<DateContext | undefined> {
-    const manifest = await (this.manifest ??= readJson<FeedManifest>(
-      join(PUBLIC_DATA_DIR, "manifest.json"),
-    ));
+    const manifest = await (this.manifest ??= readManifest(RAIL_FEED));
     const feed = feedForDate(manifest, date);
     if (!feed) return undefined;
     const { kin, ops, dispatch } = await this.loadConfigs();
@@ -94,7 +99,8 @@ export class DispatchContexts {
     const index = await readJson<MovementsIndex>(
       join(
         PUBLIC_DIR,
-        feed.movements ?? `data/feeds/${feed.version}/movements/index.json`,
+        feed.movements
+          ?? feedDataPath(RAIL_FEED, feed.version, "movements/index.json"),
       ),
     );
     const rail = new Set(

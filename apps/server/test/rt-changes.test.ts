@@ -3,10 +3,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
+import translinkFeed from "@transitopia/feeds/translink/feed.json" with { type: "json" };
+import { parseFeed } from "@transitopia/transit-core/config.ts";
 import {
   fetchAlerts,
   fetchTripUpdates,
   tripFeedSummary,
+  type Upstream,
 } from "../src/rt/upstream.ts";
 import { ServiceChanges } from "../src/rt/changes.ts";
 import {
@@ -19,6 +22,11 @@ import {
 } from "@transitopia/transit-core/rt/changes.ts";
 
 const { FeedMessage } = GtfsRealtimeBindings.transit_realtime;
+const UPSTREAM: Upstream = {
+  name: "TransLink",
+  rt: parseFeed(translinkFeed).realtime!,
+  apiKey: "k",
+};
 
 function serve(entity: unknown[]): void {
   const buf = FeedMessage.encode(
@@ -140,7 +148,7 @@ describe("GTFS-RT service changes: decoding", () => {
       },
     ]);
     const { delays, changes, trips, headerTs, bytes } =
-      await fetchTripUpdates("k");
+      await fetchTripUpdates(UPSTREAM);
     expect(delays.get("15519786")?.bySeq).toEqual([[10, 2768]]);
     // Every trip as sent, for matching against the buses (cancelled ones too).
     expect(trips).toEqual([
@@ -211,7 +219,7 @@ describe("GTFS-RT service changes: decoding", () => {
         },
       },
     ]);
-    const [a] = await fetchAlerts("k");
+    const [a] = await fetchAlerts(UPSTREAM);
     expect(a!.entities).toEqual([
       { routeId: "38311", directionId: 1 },
       { routeId: "38311", tripId: "15519630" },

@@ -1,8 +1,19 @@
-// Fetch and decode TransLink GTFS-realtime feeds, reduced to the fields we use.
+// Fetch and decode a feed's GTFS-realtime (feeds/<feed>/feed.json → realtime.urls), reduced to the
+// fields we use. The URLs may carry an API key: they never appear in errors or logs.
 
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
+import {
+  realtimeUrl,
+  type FeedRealtime,
+} from "@transitopia/transit-core/config.ts";
 
-const BASE = "https://gtfsapi.translink.ca/v3";
+/** Where and how to fetch a feed's real-time data. */
+export interface Upstream {
+  /** For errors: the feed's name ("TransLink"). */
+  name: string;
+  rt: FeedRealtime;
+  apiKey: string | undefined;
+}
 
 export interface DecodedPosition {
   vehicleId: string;
@@ -126,10 +137,10 @@ const english = (t?: {
 
 /** Service alerts (all routes; callers filter to theirs). */
 export async function fetchAlerts(
-  apiKey: string,
+  up: Upstream,
   signal?: AbortSignal,
 ): Promise<DecodedAlert[]> {
-  const { feed } = await fetchFeed("gtfsalerts", apiKey, signal);
+  const { feed } = await fetchFeed(up, "alerts", signal);
   const out: DecodedAlert[] = [];
   for (const e of feed.entity ?? []) {
     const a = e.alert;
@@ -179,19 +190,16 @@ export async function fetchAlerts(
 }
 
 async function fetchFeed(
-  endpoint: string,
-  apiKey: string,
+  up: Upstream,
+  endpoint: keyof FeedRealtime["urls"],
   signal?: AbortSignal,
 ): Promise<{ feed: FeedObject; bytes: number }> {
-  const res = await fetch(
-    `${BASE}/${endpoint}?apikey=${encodeURIComponent(apiKey)}`,
-    {
-      headers: { "User-Agent": "Transitopia (+https://www.transitopia.org)" },
-      signal: signal ?? null,
-    },
-  );
-  // Never include the URL in errors: it contains the key.
-  if (!res.ok) throw new Error(`TransLink ${endpoint}: HTTP ${res.status}`);
+  const res = await fetch(realtimeUrl(up.rt, endpoint, up.apiKey), {
+    headers: { "User-Agent": "Transitopia (+https://www.transitopia.org)" },
+    signal: signal ?? null,
+  });
+  // Never include the URL in errors: it may contain the key.
+  if (!res.ok) throw new Error(`${up.name} ${endpoint}: HTTP ${res.status}`);
   const buf = new Uint8Array(await res.arrayBuffer());
   const { FeedMessage } = GtfsRealtimeBindings.transit_realtime;
   const msg = FeedMessage.decode(buf);
@@ -203,10 +211,10 @@ async function fetchFeed(
 }
 
 export async function fetchPositions(
-  apiKey: string,
+  up: Upstream,
   signal?: AbortSignal,
 ): Promise<DecodedPositions> {
-  const { feed, bytes } = await fetchFeed("gtfsposition", apiKey, signal);
+  const { feed, bytes } = await fetchFeed(up, "positions", signal);
   const headerTs = (feed.header?.timestamp ?? Date.now() / 1000) * 1000;
   const positions: DecodedPosition[] = [];
   for (const e of feed.entity ?? []) {
@@ -231,7 +239,7 @@ export async function fetchPositions(
 
 /** Trip updates: delays per trip, and trips cancelled or skipping stops. */
 export async function fetchTripUpdates(
-  apiKey: string,
+  up: Upstream,
   signal?: AbortSignal,
 ): Promise<{
   delays: TripDelays;
@@ -240,7 +248,7 @@ export async function fetchTripUpdates(
   headerTs: number | undefined;
   bytes: number;
 }> {
-  const { feed, bytes } = await fetchFeed("gtfsrealtime", apiKey, signal);
+  const { feed, bytes } = await fetchFeed(up, "tripUpdates", signal);
   const delays: TripDelays = new Map();
   const changes: TripChange[] = [];
   const trips: TripRef[] = [];

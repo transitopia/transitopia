@@ -6,7 +6,8 @@
 import { join } from "node:path";
 import { readdir } from "node:fs/promises";
 import {
-  FEEDS_OUT_DIR,
+  RAIL_FEED,
+  feedVersionFile,
   readConfig,
   readJson,
 } from "@transitopia/data/paths.ts";
@@ -34,7 +35,7 @@ async function main() {
   let failures = 0;
   for (const plan of await loadAllPlans()) {
     const pp = preparePlan(plan, kin);
-    const dir = join(FEEDS_OUT_DIR, plan.feedVersion, "movements");
+    const dir = feedVersionFile(RAIL_FEED, plan.feedVersion, "movements");
     const keys = (await readdir(dir))
       .filter((f) => f.endsWith(".json") && f !== "index.json")
       .map((f) => f.replace(/\.json$/, ""));

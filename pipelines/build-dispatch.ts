@@ -1,7 +1,7 @@
 // Publish dispatch patches for dates with inputs (packages/transit-core/DESIGN.md#dispatcher): re-dispatch each date that has
 // observations or disruptions and write what changed against its base plan.
-//   var/public/data/observations/*.json (from build:observations) + regions/metro-vancouver/disruptions/*.json
-//     → var/public/data/dispatch/<date>.json + index.json
+//   var/public/data/regions/<rail region>/observations/*.json (from build:observations) + regions/metro-vancouver/disruptions/*.json
+//     → var/public/data/regions/<rail region>/dispatch/<date>.json + index.json
 //
 //   npm run build:dispatch
 
@@ -9,7 +9,7 @@ import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   PUBLIC_DIR,
-  PUBLIC_DATA_DIR,
+  RAIL_REGION,
   log,
   readJson,
   writeJson,
@@ -23,12 +23,13 @@ import type {
   ObservationIndex,
 } from "@transitopia/transit-core/corrections/types.ts";
 import { datesOf, loadDisruptions } from "@transitopia/data/disruptions.ts";
+import { regionDataPath } from "@transitopia/transit-core/plan/types.ts";
 
-const OUT = join(PUBLIC_DATA_DIR, "dispatch");
+const OUT = join(PUBLIC_DIR, regionDataPath(RAIL_REGION, "dispatch"));
 
 async function main() {
   const obsIndex = await readJson<ObservationIndex>(
-    join(PUBLIC_DATA_DIR, "observations", "index.json"),
+    join(PUBLIC_DIR, regionDataPath(RAIL_REGION, "observations/index.json")),
   ).catch(() => ({ schema: 1, byDate: {} }) as ObservationIndex);
   const contexts = new DispatchContexts();
   await rm(OUT, { recursive: true, force: true });
@@ -55,7 +56,7 @@ async function main() {
       { date, observations, disruptions },
       builtAt,
     );
-    const path = `data/dispatch/${date}.json`;
+    const path = regionDataPath(RAIL_REGION, `dispatch/${date}.json`);
     await writeJson(join(PUBLIC_DIR, path), patch);
     index.byDate[date] = { version: patch.version, path };
     const changed =

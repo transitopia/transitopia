@@ -1,0 +1,13 @@
+{
+  "$comment": "Routes shown on the map, matched against GTFS routes.txt by name (never route_id); format in feeds/translink/routes.json. No 'color': BC Transit's GTFS gives every route its own. The 97 Okanagan is Kelowna's RapidBus (frequent). The feed's other routes are listed on cards from the plan's catalogue.",
+  "routes": [
+    {
+      "key": "97",
+      "label": "97 Okanagan RapidBus",
+      "match": { "route_short_name": "97" },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "frequent"
+    }
+  ]
+}

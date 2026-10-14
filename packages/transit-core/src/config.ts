@@ -1,7 +1,8 @@
-// The region's config files (regions/<region>/config/*.json): one schema each, checked wherever a
-// file is loaded (site, server, pipelines) and by a test over every committed file, so a misspelled
-// or mistyped setting fails loudly instead of reading as undefined. Keys starting with "$" are
-// comments (the files cite their sources there) and are dropped before checking, at any depth.
+// The region's config files (regions/<region>/config/*.json), its record (region.json) and the feeds
+// it shows (feeds/<feed>/feed.json and routes.json; docs/DESIGN.md#regions-and-feeds): one schema each,
+// checked wherever a file is loaded (site, server, pipelines) and by a test over every committed file,
+// so a misspelled or mistyped setting fails loudly instead of reading as undefined. Keys starting with
+// "$" are comments (the files cite their sources there) and are dropped before checking, at any depth.
 // Where the engine already has a type for a section, its schema is checked against that type.
 
 import * as z from "zod";
@@ -9,7 +10,7 @@ import type { Kinematics, KinematicsConfig } from "./movement/kinematics.ts";
 import type { OperationsConfig } from "./movement/build.ts";
 import type { ObservedConfig } from "./rt/observed.ts";
 import type { StatsConfig } from "./rt/stats.ts";
-import type { PollBand, PollSchedule } from "./rt/budget.ts";
+import type { CadenceConfig, PollBand, PollSchedule } from "./rt/budget.ts";
 import type { PredictionConfig } from "./rt/profile.ts";
 import type { CarryConfig } from "./rt/carry.ts";
 import type { AisMatchConfig } from "./ais/match.ts";
@@ -147,7 +148,7 @@ const recording = z.strictObject({
   dataBuildAt: hhmm,
 });
 
-// --- routes.json ---
+// --- feeds/<feed>/routes.json ---
 
 const routeKinds = ["skytrain", "shape", "bus"] as const satisfies RouteKind[];
 const routeModes = [
@@ -261,20 +262,18 @@ const carry: z.ZodType<CarryConfig> = z.strictObject({
   maxTrips: count,
 });
 
+// How a region's map uses real-time data. How often each feed is polled, and the thresholds that
+// follow from it, are the feed's (feed.json → realtime).
 const rt = z.strictObject({
-  poll,
-  staleGraceS: nonNeg,
-  coverageSlackS: nonNeg,
-  interpolateSlackS: nonNeg,
-  extrapolateSlackS: nonNeg,
   clientPollS: pos,
   clientPollMaxS: pos,
   clientPollSlackS: nonNeg,
-  tripUpdatesMinCoverage: share,
   detourNearM: pos,
-  dispatchCheckS: pos,
-  dispatchWindowDays: count,
-  serverPort: z.number().int().min(1).max(65535),
+  /** Live dispatch, in a region with a dispatcher. */
+  dispatchCheckS: pos.exactOptional(),
+  dispatchWindowDays: count.exactOptional(),
+  /** The server's default port: read from the server's home region (apps/server/src/config.ts). */
+  serverPort: z.number().int().min(1).max(65535).exactOptional(),
   prediction,
   carry,
 });
@@ -326,6 +325,134 @@ const seabus = z.strictObject({
   }),
 });
 
+// --- feeds/<feed>/feed.json ---
+
+/** Ids of regions and feeds: they name directories, URL segments and database keys. */
+const slug = z
+  .string()
+  .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "expected a lower-case-slug");
+const httpsUrl = z.url({ protocol: /^https$/ });
+const API_KEY_SLOT = "{apiKey}";
+
+const feedRealtime = z
+  .strictObject({
+    /**
+     * The key's name in the environment or .secrets, when the provider needs one: it replaces
+     * {apiKey} in the URLs. Keys never reach the browser, logs or errors.
+     */
+    apiKey: z
+      .string()
+      .regex(/^[A-Z][A-Z0-9_]*$/, "an environment variable name")
+      .exactOptional(),
+    urls: z.strictObject({
+      positions: z.string().startsWith("https://"),
+      tripUpdates: z.string().startsWith("https://"),
+      alerts: z.string().startsWith("https://"),
+    }),
+    poll,
+    staleGraceS: nonNeg,
+    coverageSlackS: nonNeg,
+    interpolateSlackS: nonNeg,
+    extrapolateSlackS: nonNeg,
+    tripUpdatesMinCoverage: share,
+  })
+  .refine(
+    (r) =>
+      Object.values(r.urls).every(
+        (u) => u.includes(API_KEY_SLOT) === (r.apiKey !== undefined),
+      ),
+    `every URL has ${API_KEY_SLOT} when apiKey is set, and none without it`,
+  ) satisfies z.ZodType<CadenceConfig>;
+
+const feed = z.strictObject({
+  id: slug,
+  /** How the site names the feed, e.g. "BC Transit (Victoria)". */
+  name: z.string().min(1),
+  /** Who runs the service. */
+  agency: z.string().min(1),
+  /** Must match the regions' showing it, and the feed's agency_timezone. */
+  timezone: z.string().min(1),
+  /** The dataset registry id of its schedules (packages/shared/src/datasets.ts); real time is that dataset's `realtime`. */
+  dataset: z.string().min(1),
+  static: z.strictObject({
+    /** The latest GTFS feed. */
+    url: httpsUrl,
+    /** A dated snapshot ({date}: YYYY-MM-DD), where the provider keeps them. */
+    historyUrl: z.string().includes("{date}").exactOptional(),
+  }),
+  /** GTFS-realtime, polled by the server's leader only (docs/DESIGN.md#upstream-request-budget). */
+  realtime: feedRealtime.exactOptional(),
+});
+
+// --- regions/<region>/region.json ---
+
+const lon = num.min(-180).max(180);
+const lat = num.min(-90).max(90);
+/** [west, south, east, north]. */
+const bounds = z
+  .tuple([lon, lat, lon, lat])
+  .refine(([w, s, e, n]) => w < e && s < n, "[west, south, east, north]");
+
+const region = z.strictObject({
+  id: slug,
+  name: z.string().min(1),
+  timezone: z.string().min(1),
+  /**
+   * The feeds whose transit the region shows (feeds/<id>/). A feed can be in several regions (a
+   * ferry between two), and it is fetched, built, polled and recorded once whichever regions show it.
+   */
+  feeds: z
+    .array(slug)
+    .min(1)
+    .refine((fs) => new Set(fs).size === fs.length, "feeds are listed once"),
+  /** Where the region's transit data applies. */
+  bbox: bounds,
+  /** The first view of /transit when the URL has no map position. */
+  initialBounds: bounds,
+  timezoneChecks: z.array(
+    z.strictObject({
+      at: z.iso.datetime(),
+      utcOffsetMinutes: z.number().int(),
+      reason: z.string().min(1),
+    }),
+  ),
+});
+
+export type FeedInfo = z.output<typeof feed>;
+export type FeedRealtime = z.output<typeof feedRealtime>;
+export type RegionInfo = z.output<typeof region>;
+
+function parsed<T>(schema: z.ZodType<T>, file: string, json: unknown): T {
+  const r = schema.safeParse(stripComments(json));
+  if (r.success) return r.data;
+  const problems = r.error.issues.map(
+    (i) => `${i.path.length ? i.path.join(".") : "(top level)"}: ${i.message}`,
+  );
+  throw new Error(`Bad ${file}: ${problems.join("; ")}`);
+}
+
+/** A feed's feed.json, checked. */
+export function parseFeed(json: unknown): FeedInfo {
+  return parsed(feed, "feed.json", json);
+}
+
+/** A region's region.json, checked. */
+export function parseRegion(json: unknown): RegionInfo {
+  return parsed(region, "region.json", json);
+}
+
+/** A feed's real-time URL with its key filled in. Never log or return the result. */
+export function realtimeUrl(
+  rt: FeedRealtime,
+  endpoint: keyof FeedRealtime["urls"],
+  apiKey: string | undefined,
+): string {
+  const url = rt.urls[endpoint];
+  if (rt.apiKey === undefined) return url;
+  if (!apiKey) throw new Error(`no ${rt.apiKey}`);
+  return url.replace(API_KEY_SLOT, encodeURIComponent(apiKey));
+}
+
 // --- the files ---
 
 /** Each config file's schema, by its name without ".json". */
@@ -351,10 +478,9 @@ export function parseConfig<N extends ConfigName>(
   name: N,
   json: unknown,
 ): Config<N> {
-  const r = CONFIG_SCHEMAS[name].safeParse(stripComments(json));
-  if (r.success) return r.data as Config<N>;
-  const problems = r.error.issues.map(
-    (i) => `${i.path.length ? i.path.join(".") : "(top level)"}: ${i.message}`,
+  return parsed(
+    CONFIG_SCHEMAS[name] as z.ZodType<Config<N>>,
+    `config ${name}.json`,
+    json,
   );
-  throw new Error(`Bad config ${name}.json: ${problems.join("; ")}`);
 }

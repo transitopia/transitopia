@@ -1,0 +1,42 @@
+{
+  "$comment": "BC Transit's Kelowna Regional Transit System, published by BC Transit through Consat (tmix.se) as operator 47 (https://www.bctransit.com/open-data/, checked 2026-10-14). Which routes are drawn: routes.json. Regions showing it: central-okanagan. Terms: https://www.bctransit.com/open-data/terms-of-use/ (identify BC Transit as the source; no use of its marks).",
+  "id": "bc-transit-kelowna",
+  "name": "BC Transit (Kelowna)",
+  "agency": "BC Transit",
+  "timezone": "America/Vancouver",
+  "dataset": "bc-transit-gtfs",
+  "static": {
+    "$comment": "Regenerated daily with a new feed_version (e.g. \"202610140/20261013 21:00:00/20261014 04:00:00\") even when the timetable is unchanged, so fetch-gtfs archives a version only when its files differ from the newest archived one. No dated history. Uses calendar_dates.txt only (no calendar.txt), shape_dist_traveled in metres.",
+    "url": "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=47"
+  },
+  "realtime": {
+    "$comment": "No API key and no stated request limit. Every bus in the system, with its trip; fixes were p50 ~8 s old when fetched (2026-10-14). Polled within a modest budget all the same: central-okanagan's OPEN-QUESTIONS #2.",
+    "urls": {
+      "positions": "https://bct.tmix.se/gtfs-realtime/vehicleupdates.pb?operatorIds=47",
+      "tripUpdates": "https://bct.tmix.se/gtfs-realtime/tripupdates.pb?operatorIds=47",
+      "alerts": "https://bct.tmix.se/gtfs-realtime/alerts.pb?operatorIds=47"
+    },
+    "$poll": "Guess, to be polite to a provider that states no limit: positions every 30 s while buses run (05:00-24:00), every 60 s overnight; trip updates (~0.25-0.85 MB each) every 2 minutes, 5 overnight; alerts every 5 minutes, 15 overnight. About 3,460 requests a day; dailyCap is a safety net. OPEN-QUESTIONS #2.",
+    "poll": {
+      "dailyCap": 4000,
+      "weekday": [
+        { "from": "00:00", "positionsS": 60, "tripUpdatesS": 300, "alertsS": 900 },
+        { "from": "05:00", "positionsS": 30, "tripUpdatesS": 120, "alertsS": 300 }
+      ],
+      "weekend": [
+        { "from": "00:00", "positionsS": 60, "tripUpdatesS": 300, "alertsS": 900 },
+        { "from": "05:00", "positionsS": 30, "tripUpdatesS": 120, "alertsS": 300 }
+      ]
+    },
+    "$staleGraceS": "Clients fall back to schedule estimates once live data is this much older than the positions poll interval (guess, OPEN-QUESTIONS #2).",
+    "staleGraceS": 60,
+    "$coverageSlackS": "Recorder coverage breaks when snapshots are further apart than the positions poll interval plus this (guess, OPEN-QUESTIONS #2).",
+    "coverageSlackS": 30,
+    "$interpolateSlackS": "Interpolate between two fixes at most the positions poll interval plus this apart (guess, OPEN-QUESTIONS #2).",
+    "interpolateSlackS": 90,
+    "$extrapolateSlackS": "Predict a bus forward for at most the positions poll interval plus this (fixes are fresher than TransLink's: p50 ~8 s, max ~60 s old when fetched; guess, OPEN-QUESTIONS #2).",
+    "extrapolateSlackS": 45,
+    "$tripUpdatesMinCoverage": "/healthz fails below this share of buses on a trip with a delay from trip updates (guess, as TransLink's; OPEN-QUESTIONS #2).",
+    "tripUpdatesMinCoverage": 0.2
+  }
+}

@@ -4,15 +4,15 @@
 //
 //   partitions:<UTC date>    create tomorrow's partitions
 //   retention:<local date>   drop raw data older than the retention period (DB, files, archive)
-//   daily:<service date>     observed stop times + route statistics, for each finished service date
-//                            still within the retention period (catch-up included)
+//   daily:<feed>:<service date>   a feed's observed stop times + route statistics, for each finished
+//                            service date still within the retention period (catch-up included)
 //   data:<local date>        build and publish the transit data (BUILD_DATA=1), at dataBuildAt
 //   archive:<local hour>     copy closed recordings to the archive (ARCHIVE_REMOTE)
 
 import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { recordingConfig as recording } from "../config.ts";
-import { PUBLIC_DATA_DIR } from "@transitopia/data/paths.ts";
+import { feedPaths } from "@transitopia/data/paths.ts";
+import type { FeedInfo } from "@transitopia/transit-core/config.ts";
 import type { Db } from "@transitopia/db/connect.ts";
 import type { Health } from "@transitopia/shared/admin-api.ts";
 import { recoverInterrupted, runOnce } from "@transitopia/db/jobs.ts";
@@ -26,7 +26,7 @@ import {
 import type { CorrectionsRepo } from "../corrections.ts";
 import type { ServerEnv } from "../env.ts";
 import { archiveRecordings, expireRawData } from "./archive.ts";
-import { dailyStats, hasRecording } from "./daily.ts";
+import { dailyStats, hasRecording, type RealtimeFeed } from "./daily.ts";
 import { buildData } from "./data-build.ts";
 
 const TICK_MS = 5 * 60_000;
@@ -41,20 +41,21 @@ export class Jobs {
   private recovered = false;
 
   private readonly db: Db | undefined;
-  private readonly regionId: string;
+  /** Every feed the regions show: the data build publishes them, statistics are of those with real time. */
+  private readonly feeds: FeedInfo[];
   private readonly repo: CorrectionsRepo | undefined;
   private readonly env: ServerEnv;
   private readonly log: (msg: string) => void;
 
   constructor(opts: {
     db: Db | undefined;
-    regionId: string;
+    feeds: FeedInfo[];
     repo: CorrectionsRepo | undefined;
     env: ServerEnv;
     log?: (msg: string) => void;
   }) {
     this.db = opts.db;
-    this.regionId = opts.regionId;
+    this.feeds = opts.feeds;
     this.repo = opts.repo;
     this.env = opts.env;
     this.log = opts.log ?? ((m) => console.log(`[jobs] ${m}`));
@@ -130,11 +131,14 @@ export class Jobs {
         }),
       );
     }
-    // Build first when there's nothing to serve yet (a fresh server), else at the set time.
+    // Build first when a feed has nothing to serve yet (a fresh server, or a feed just added), else
+    // at the set time.
     if (this.env.buildData) {
       const [h, m] = recording.dataBuildAt.split(":").map(Number);
       const due = wall.hour * 60 + wall.minute >= h! * 60 + m!;
-      const missing = !existsSync(join(PUBLIC_DATA_DIR, "manifest.json"));
+      const missing = this.feeds.some(
+        (f) => !existsSync(feedPaths(f.id).manifest),
+      );
       if (missing || due) {
         const key = missing && !due ? `${today}-initial` : today;
         if (
@@ -148,7 +152,7 @@ export class Jobs {
           await this.job("data", key, async () => {
             const r = await buildData({
               db,
-              regionId: this.regionId,
+              feeds: this.feeds,
               repo: this.repo,
               env: this.env,
               log: this.log,
@@ -160,6 +164,9 @@ export class Jobs {
       }
     }
     if (db) {
+      const realtime = this.feeds.filter((f): f is FeedInfo & RealtimeFeed =>
+        Boolean(f.realtime),
+      );
       // Every finished service date still within the raw data's lifetime, oldest first.
       for (let d = recording.retentionDays - 1; d >= 1; d--) {
         const date = addDays(today, -d);
@@ -168,10 +175,12 @@ export class Jobs {
           < serviceDayStart(date) + recording.afterServiceDayH * 3_600_000
         )
           continue;
-        if (!(await hasRecording(db, this.regionId, date))) continue;
-        await this.job("daily", date, () =>
-          dailyStats(db, this.regionId, date, this.log),
-        );
+        for (const feed of realtime) {
+          if (!(await hasRecording(db, feed.id, date))) continue;
+          await this.job("daily", `${feed.id}:${date}`, () =>
+            dailyStats(db, feed, date, this.log),
+          );
+        }
       }
     }
     if (this.env.archiveRemote) {

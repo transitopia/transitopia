@@ -2,17 +2,20 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { INFRA_DIR, PUBLIC_DIR, PUBLIC_DATA_DIR, readJson } from "./paths.ts";
+import {
+  INFRA_DIR,
+  PUBLIC_DIR,
+  RAIL_FEED,
+  readJson,
+  readManifest,
+} from "./paths.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
 import type { InfraCollection } from "@transitopia/transit-core/infra/types.ts";
 import type {
   PatternPlatformRule,
   PlatformOverride,
 } from "@transitopia/transit-core/infra/platforms.ts";
-import type {
-  FeedManifest,
-  ServicePlan,
-} from "@transitopia/transit-core/plan/types.ts";
+import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
 import type { LonLat } from "@transitopia/transit-core/geo.ts";
 
 export { INFRA_DIR };
@@ -60,11 +63,9 @@ export async function loadGraph(): Promise<{
   return { graph, overrides, tracks };
 }
 
-/** The newest built plan (the feed covering the latest dates). */
+/** The rail feed's newest built plan (the version covering the latest dates). */
 export async function loadLatestPlan(): Promise<ServicePlan> {
-  const manifest = await readJson<FeedManifest>(
-    join(PUBLIC_DATA_DIR, "manifest.json"),
-  );
+  const manifest = await readManifest(RAIL_FEED);
   const feed = [...manifest.feeds].sort((a, b) =>
     a.start < b.start ? 1 : -1,
   )[0];
@@ -72,10 +73,9 @@ export async function loadLatestPlan(): Promise<ServicePlan> {
   return readJson<ServicePlan>(join(PUBLIC_DIR, feed.path));
 }
 
-export async function loadAllPlans(): Promise<ServicePlan[]> {
-  const manifest = await readJson<FeedManifest>(
-    join(PUBLIC_DATA_DIR, "manifest.json"),
-  );
+/** Every built version of a feed's plan (default: the rail feed's). */
+export async function loadAllPlans(feed = RAIL_FEED): Promise<ServicePlan[]> {
+  const manifest = await readManifest(feed);
   return Promise.all(
     manifest.feeds.map((f) => readJson<ServicePlan>(join(PUBLIC_DIR, f.path))),
   );

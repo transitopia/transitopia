@@ -1,5 +1,5 @@
 // Validate and publish observation files (packages/transit-core/DESIGN.md#corrections):
-//   regions/metro-vancouver/observations/*.json → var/public/data/observations/<name>.json + index.json (by service date)
+//   regions/metro-vancouver/observations/*.json → var/public/data/regions/metro-vancouver/observations/<name>.json + index.json (by service date)
 //
 //   npm run build:observations
 
@@ -7,7 +7,8 @@ import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   OBSERVATIONS_DIR,
-  PUBLIC_DATA_DIR,
+  PUBLIC_DIR,
+  RAIL_REGION,
   log,
   readJson,
   writeJson,
@@ -18,9 +19,11 @@ import type {
   ObservationIndex,
 } from "@transitopia/transit-core/corrections/types.ts";
 import { observationProblems } from "@transitopia/transit-core/corrections/validate.ts";
+import { regionDataPath } from "@transitopia/transit-core/plan/types.ts";
 
 const SRC = OBSERVATIONS_DIR;
-const OUT = join(PUBLIC_DATA_DIR, "observations");
+const REL = regionDataPath(RAIL_REGION, "observations");
+const OUT = join(PUBLIC_DIR, REL);
 async function main() {
   let files: string[] = [];
   try {
@@ -44,7 +47,7 @@ async function main() {
     });
     await writeJson(join(OUT, f), { observations: valid });
     for (const d of new Set(valid.map((o) => o.date.replaceAll("-", ""))))
-      (index.byDate[d] ??= []).push(`data/observations/${f}`);
+      (index.byDate[d] ??= []).push(`${REL}/${f}`);
     count += valid.length;
   }
   await writeJson(join(OUT, "index.json"), index, true);

@@ -16,8 +16,9 @@
 
 import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
+import translinkFeed from "@transitopia/feeds/translink/feed.json" with { type: "json" };
 import rtJson from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
-import { parseConfig } from "@transitopia/transit-core/config.ts";
+import { parseConfig, parseFeed } from "@transitopia/transit-core/config.ts";
 import {
   cumulativeLengths,
   distM,
@@ -36,8 +37,10 @@ import type { RtSnapshot } from "@transitopia/transit-core/rt/types.ts";
 import { loadRecordedHours, planLoader } from "./lib/rt-history.ts";
 import { log, ROOT } from "@transitopia/data/paths.ts";
 
+// GPX rides so far are all on TransLink's buses.
+const FEED = "translink";
 const rtConfig = parseConfig("rt", rtJson);
-const CADENCE = cadence(rtConfig);
+const CADENCE = cadence(parseFeed(translinkFeed).realtime!);
 const GPX_DIR = join(ROOT, "regions/metro-vancouver/observations/gpx");
 /** The live client keeps at least this much history per timeline (as eval-rt.ts). */
 const HISTORY_MS = 10 * 60_000;
@@ -507,8 +510,8 @@ async function main() {
         .sort()
         .map((f) => join(GPX_DIR, f));
   if (!files.length) throw new Error(`No GPX files (looked in ${GPX_DIR})`);
-  const hours = await loadRecordedHours();
-  const plans = await planLoader();
+  const hours = await loadRecordedHours(FEED);
+  const plans = await planLoader(FEED);
   const profiles = new Map<string, RtProfileFile>();
   log(`${files.length} GPX file(s), ${hours.length} recorded hours`);
   for (const f of files) await evalFile(f, hours, plans, profiles);

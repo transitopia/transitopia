@@ -71,8 +71,8 @@ export class AisClient {
   error: string | undefined;
   /** URL prefix of the region on the RT service (…/regions/<id>/), or undefined for schedules only. */
   private readonly base: string | undefined;
-  private readonly match: AisMatchConfig;
-  private readonly glide: GlideConfig;
+  private readonly match: AisMatchConfig | undefined;
+  private readonly glide: GlideConfig | undefined;
   /** Vessel names by MMSI. */
   private readonly names: Map<string, string>;
   /** Without live data, how often a date in progress refetches its day file (s). */
@@ -86,14 +86,14 @@ export class AisClient {
     liveFresh: () => boolean,
   ) {
     this.base = base;
-    this.match = config.seabus.ais.match;
-    this.glide = config.seabus.ais.glide;
-    this.names = new Map(
-      config.seabus.ais.vessels.map((v) => [v.mmsi, v.name]),
-    );
+    const ais = config.seabus?.ais;
+    this.match = ais?.match;
+    this.glide = ais?.glide;
+    this.names = new Map(ais?.vessels.map((v) => [v.mmsi, v.name]));
     this.refreshS = config.rt.clientPollMaxS;
     this.liveFresh = liveFresh;
-    this.available = base !== undefined;
+    // A region without SeaBus (config.seabus) has nothing to match.
+    this.available = base !== undefined && ais !== undefined;
   }
 
   onChange(fn: () => void): () => void {
@@ -152,7 +152,7 @@ export class AisClient {
     if (!d.fixes.length) return undefined;
     if (d.memo?.pp !== pp || d.memo.n !== d.fixes.length) {
       const prev = d.memo?.pp === pp ? d.memo : undefined;
-      const day = aisCorrections(pp, date, d.fixes, ROUTE, this.match);
+      const day = aisCorrections(pp, date, d.fixes, ROUTE, this.match!);
       let glide: (Glide & { from: number }) | undefined;
       if (prev && d.arrivedAt !== undefined) {
         // Glide from what was on screen when the fixes arrived (mid-glide, if one was running).
@@ -168,7 +168,7 @@ export class AisClient {
           shown,
           day.corrections,
           k,
-          this.glide,
+          this.glide!,
         );
         if (g.until > k) glide = { ...g, from: k };
       }

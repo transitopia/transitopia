@@ -5,7 +5,6 @@ import { card } from "./styles.ts";
 export function Status() {
   const { data: s } = useStatus();
   if (!s) return null;
-  const b = s.rt.budget;
   return (
     <section className={`${card} flex flex-col gap-2`}>
       <h2 className="text-base font-semibold">
@@ -26,17 +25,24 @@ export function Status() {
             {c.detail ? `: ${c.detail}` : ""}
           </li>
         ))}
+        {Object.entries(s.rt.providers).map(([id, p]) => (
+          <li key={id}>
+            {p.name}:{" "}
+            {p.polling ?
+              <>
+                {p.budget.used24h} of {p.budget.cap} requests in the last 24 h
+                {p.budget.capped ? " (cap reached)" : ""}; positions every{" "}
+                {p.budget.intervalsS.positions} s; {p.vehicles} drawn vehicles
+                in the last poll
+                {p.lastSnapshotAgeS !== null ?
+                  `, ${Math.round(p.lastSnapshotAgeS)} s ago`
+                : ""}
+              </>
+            : "not polling"}
+          </li>
+        ))}
         <li>
-          TransLink requests in the last 24 h: {b.used24h} of {b.cap}
-          {b.capped ? " (cap reached)" : ""}; positions every{" "}
-          {b.intervalsS.positions} s
-        </li>
-        <li>
-          {s.rt.leader ? "Leader" : "Follower"}, {s.rt.vehicles} drawn vehicles
-          in the last poll
-          {s.rt.lastSnapshotAgeS !== null ?
-            `, ${Math.round(s.rt.lastSnapshotAgeS)} s ago`
-          : ""}
+          {s.rt.leader ? "Leader" : "Follower"}
           {s.rt.ais ?
             `; AIS ${s.rt.ais.connected ? "connected" : "disconnected"}`
           : ""}

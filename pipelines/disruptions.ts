@@ -12,7 +12,7 @@
 import { readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
-import { RT_HISTORY_DIR, log } from "@transitopia/data/paths.ts";
+import { RAIL_FEED, feedPaths, log } from "@transitopia/data/paths.ts";
 import {
   DISRUPTIONS_DIR,
   loadDisruptions,
@@ -103,7 +103,7 @@ async function pull() {
   };
   await new AlertDrafts({
     disruptionsDir: DISRUPTIONS_DIR,
-    historyDir: RT_HISTORY_DIR,
+    historyDir: feedPaths(RAIL_FEED).rtHistory,
     log,
   }).update(alerts.map(({ drafted: _d, ...a }) => a));
   await list();

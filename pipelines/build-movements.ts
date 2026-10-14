@@ -1,14 +1,18 @@
 // Infer train runs and build movement files for every service-day type of every built feed
 // (packages/transit-core/DESIGN.md#run-inference):
-//   var/public/data/feeds/<version>/movements/<services>.json
-//   var/public/data/feeds/<version>/movements/index.json
+//   var/public/data/feeds/<rail feed>/<version>/movements/<services>.json
+//   var/public/data/feeds/<rail feed>/<version>/movements/index.json
 //
 //   npm run build:movements [-- --verbose] [--no-dispatch]
 //
 // Movements are dispatched (signalling-aware, packages/transit-core/DESIGN.md#dispatcher) unless --no-dispatch.
 
-import { join } from "node:path";
-import { FEEDS_OUT_DIR, readConfig } from "@transitopia/data/paths.ts";
+import {
+  RAIL_FEED,
+  feedVersionFile,
+  readConfig,
+} from "@transitopia/data/paths.ts";
+import { feedDataPath } from "@transitopia/transit-core/plan/types.ts";
 import { loadAllPlans, loadGraph } from "@transitopia/data/infra.ts";
 import { buildAllMovements } from "./lib/movements.ts";
 import { mapPlatforms } from "@transitopia/transit-core/infra/platforms.ts";
@@ -40,8 +44,8 @@ async function main() {
       kin,
       ops,
       ...(dispatchCfg ? { dispatch: dispatchCfg } : {}),
-      outDir: join(FEEDS_OUT_DIR, plan.feedVersion, "movements"),
-      relDir: `data/feeds/${plan.feedVersion}/movements`,
+      outDir: feedVersionFile(RAIL_FEED, plan.feedVersion, "movements"),
+      relDir: feedDataPath(RAIL_FEED, plan.feedVersion, "movements"),
       verbose: process.argv.includes("--verbose"),
     });
   }

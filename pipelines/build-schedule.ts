@@ -1,32 +1,39 @@
-// Build the compact service plan for each archived GTFS feed version, and the feed manifest.
-// Input:  var/raw/gtfs/<version>/google_transit.zip, regions/metro-vancouver/config/routes.json,
-//         regions/metro-vancouver/infrastructure/seabus.json + regions/metro-vancouver/config/seabus.json (SeaBus berths and lanes)
-// Output: var/public/data/feeds/<version>/plan.json, var/public/data/manifest.json
+// Build the compact service plan for each archived version of each feed, and each feed's manifest.
+// Input:  var/raw/gtfs/<feed>/<version dir>/google_transit.zip, feeds/<feed>/{feed,routes}.json,
+//         and for a region showing the feed with SeaBus berths and lanes:
+//         regions/<region>/infrastructure/seabus.json + regions/<region>/config/seabus.json
+// Output: var/public/data/feeds/<feed>/<version dir>/plan.json, var/public/data/feeds/<feed>/manifest.json
 // See packages/transit-core/DESIGN.md#timetables.
 //
-//   tsx pipelines/build-schedule.ts            # build feeds not yet built, or built from other inputs
-//   tsx pipelines/build-schedule.ts --force    # rebuild all
+//   tsx pipelines/build-schedule.ts                     # build versions not yet built, or built from other inputs
+//   tsx pipelines/build-schedule.ts --force             # rebuild all
+//   tsx pipelines/build-schedule.ts --feed translink    # one feed
 //
-// A plan records what it was built from besides its feed (`inputs`: PLAN_FORMAT and the config
-// files above), so editing routes.json or changing what this writes rebuilds existing plans too.
+// A plan records what it was built from besides its feed (`inputs`: PLAN_FORMAT and the files
+// above), so editing routes.json or changing what this writes rebuilds existing plans too.
 
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { readCsv, readCsvAll, type Row } from "@transitopia/data/gtfs-zip.ts";
 import {
-  CONFIG_DIR,
-  INFRA_DIR,
-  GTFS_RAW_DIR,
-  PUBLIC_DATA_DIR,
-  FEEDS_OUT_DIR,
-  REGION_DIR,
+  REGIONS_DIR,
+  exists,
+  feedPaths,
   log,
   readConfig,
+  readFeed,
+  readFeedRoutes,
+  readFeeds,
   readJson,
+  readRegions,
   writeJson,
 } from "@transitopia/data/paths.ts";
-import type { RouteConfig } from "@transitopia/transit-core/config.ts";
+import { migrateLegacyFiles } from "@transitopia/data/legacy.ts";
+import type {
+  FeedInfo,
+  RouteConfig,
+} from "@transitopia/transit-core/config.ts";
 import {
   cumulativeLengths,
   distM,
@@ -44,16 +51,17 @@ import type {
   CalendarEntry,
   CalendarException,
 } from "@transitopia/transit-core/gtfs/calendar.ts";
-import type {
-  CatalogRoute,
-  FeedManifest,
-  PlanPattern,
-  PlanRoute,
-  PlanStation,
-  PlanStop,
-  PlanTrip,
-  RouteKind,
-  ServicePlan,
+import {
+  feedDataPath,
+  type CatalogRoute,
+  type FeedManifest,
+  type PlanPattern,
+  type PlanRoute,
+  type PlanStation,
+  type PlanStop,
+  type PlanTrip,
+  type RouteKind,
+  type ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
 import {
   STOP_NO_DROPOFF,
@@ -73,19 +81,37 @@ const STATION_MERGE_M = 400;
 /**
  * Bump when this script writes something different from the same feed and config (a new field,
  * different filtering), so plans already built are rebuilt. 2: route catalogue and its bays.
+ * 3: plans record their feed (feeds/<feed>/), and go to its directory.
  */
-const PLAN_FORMAT = 2;
+const PLAN_FORMAT = 3;
 
-/** What a plan is built from besides its feed: PLAN_FORMAT and the config files buildPlan reads. */
-async function inputsHash(): Promise<string> {
+/** Regions showing the feed with SeaBus berths and lanes (infrastructure/seabus.json): build-schedule applies them. */
+async function ferryRegions(feed: string): Promise<string[]> {
+  const out: string[] = [];
+  for (const r of await readRegions())
+    if (
+      r.feeds.includes(feed)
+      && (await exists(
+        join(REGIONS_DIR, r.id, "infrastructure", "seabus.json"),
+      ))
+    )
+      out.push(r.id);
+  return out;
+}
+
+/** What a feed's plans are built from besides the GTFS: PLAN_FORMAT and the files buildPlan reads. */
+async function inputsHash(feed: string): Promise<string> {
   const h = createHash("sha256").update(`plan format ${PLAN_FORMAT}\n`);
-  for (const f of [
-    join(CONFIG_DIR, "routes.json"),
-    join(REGION_DIR, "region.json"),
-    join(INFRA_DIR, "seabus.json"),
-    join(CONFIG_DIR, "seabus.json"),
-  ])
-    h.update(await readFile(f));
+  const files = [
+    join(feedPaths(feed).dir, "feed.json"),
+    join(feedPaths(feed).dir, "routes.json"),
+  ];
+  for (const r of await ferryRegions(feed))
+    files.push(
+      join(REGIONS_DIR, r, "infrastructure", "seabus.json"),
+      join(REGIONS_DIR, r, "config", "seabus.json"),
+    );
+  for (const f of files) h.update(await readFile(f));
   return h.digest("hex").slice(0, 16);
 }
 
@@ -98,15 +124,6 @@ const CATALOG_COLOR = "#4b5563";
 function catalogKey(row: Row): string {
   const short = (row.route_short_name ?? "").trim();
   return short ? short.replace(/^0+(?=\d)/, "") : `gtfs:${row.route_id!}`;
-}
-
-async function exists(p: string): Promise<boolean> {
-  try {
-    await stat(p);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function matchRoute(row: Row, cfg: RouteConfig[]): RouteConfig | undefined {
@@ -131,14 +148,22 @@ interface StopTimeRow {
   access: number;
 }
 
-export async function buildPlan(zipPath: string): Promise<ServicePlan> {
-  const { routes: routeCfg } = await readConfig("routes");
-  const { gtfsDataset } = await readJson<{ gtfsDataset: string }>(
-    join(REGION_DIR, "region.json"),
-  );
+export async function buildPlan(
+  zipPath: string,
+  feed: FeedInfo,
+): Promise<ServicePlan> {
+  const { routes: routeCfg } = await readFeedRoutes(feed.id);
+  const gtfsDataset = feed.dataset;
 
   const [info] = await readCsvAll(zipPath, "feed_info.txt");
   if (!info) throw new Error("feed_info.txt missing");
+  // Service days and times are computed in TIMEZONE (packages/transit-core/src/time.ts), so every
+  // feed has to be in it until regions carry their own (docs/DESIGN.md#regions-and-feeds).
+  for (const a of await readCsvAll(zipPath, "agency.txt"))
+    if (a.agency_timezone !== feed.timezone || feed.timezone !== TIMEZONE)
+      throw new Error(
+        `${feed.id}: agency ${a.agency_name} is in ${a.agency_timezone} and the feed says ${feed.timezone}; only ${TIMEZONE} is supported`,
+      );
 
   // Routes, matched by name.
   const routes: PlanRoute[] = [];
@@ -539,6 +564,7 @@ export async function buildPlan(zipPath: string): Promise<ServicePlan> {
 
   const plan: ServicePlan = {
     schema: 1,
+    feed: feed.id,
     feedVersion: info.feed_version!,
     feedStart: info.feed_start_date!,
     feedEnd: info.feed_end_date!,
@@ -555,19 +581,25 @@ export async function buildPlan(zipPath: string): Promise<ServicePlan> {
   };
 
   // SeaBus: berth-to-berth paths along the keep-right lanes instead of the GTFS shapes.
-  const ferry = applyFerryBerths(
-    plan,
-    await readJson<FerryInfra>(join(INFRA_DIR, "seabus.json")),
-    await readConfig("seabus"),
-  );
-  if (ferry.sharedBerthS > 0)
-    log(
-      `  warn: SeaBus vessels are docked at the same berth for ${ferry.sharedBerthS} s`,
+  for (const region of await ferryRegions(feed.id)) {
+    const infra = await readJson<FerryInfra>(
+      join(REGIONS_DIR, region, "infrastructure", "seabus.json"),
     );
-  else
-    log(
-      `  SeaBus: one berth pair for all vessels; berths free for ≥ ${Math.round(ferry.minBerthGapS / 60)} min between vessels`,
+    if (!plan.routes.some((r) => r.key === infra.route)) continue;
+    const ferry = applyFerryBerths(
+      plan,
+      infra,
+      await readConfig("seabus", region),
     );
+    if (ferry.sharedBerthS > 0)
+      log(
+        `  warn: SeaBus vessels are docked at the same berth for ${ferry.sharedBerthS} s`,
+      );
+    else
+      log(
+        `  SeaBus: one berth pair for all vessels; berths free for ≥ ${Math.round(ferry.minBerthGapS / 60)} min between vessels`,
+      );
+  }
   return plan;
 }
 
@@ -595,19 +627,20 @@ export function interpolateMissing(times: number[], dist: number[]): number[] {
   return out;
 }
 
-export async function buildManifest(): Promise<FeedManifest> {
+/** A feed's manifest: every version built, from its plans. */
+export async function buildManifest(feed: string): Promise<FeedManifest> {
+  const out = feedPaths(feed).out;
   const feeds: FeedManifest["feeds"] = [];
-  const versions =
-    (await exists(FEEDS_OUT_DIR)) ? await readdir(FEEDS_OUT_DIR) : [];
-  for (const v of versions.sort()) {
-    const p = join(FEEDS_OUT_DIR, v, "plan.json");
+  const dirs = (await exists(out)) ? await readdir(out) : [];
+  for (const v of dirs.sort()) {
+    const p = join(out, v, "plan.json");
     if (!(await exists(p))) continue;
     const plan = await readJson<ServicePlan>(p);
     feeds.push({
       version: plan.feedVersion,
       start: plan.feedStart,
       end: plan.feedEnd,
-      path: `data/feeds/${v}/plan.json`,
+      path: feedDataPath(feed, plan.feedVersion, "plan.json"),
       builtAt: plan.builtAt,
     });
   }
@@ -616,44 +649,52 @@ export async function buildManifest(): Promise<FeedManifest> {
     generatedAt: new Date().toISOString(),
     feeds,
   };
-  await writeJson(join(PUBLIC_DATA_DIR, "manifest.json"), manifest, true);
+  await writeJson(feedPaths(feed).manifest, manifest, true);
   return manifest;
 }
 
-async function main() {
-  const force = process.argv.includes("--force");
-  const versions =
-    (await exists(GTFS_RAW_DIR)) ? await readdir(GTFS_RAW_DIR) : [];
-  const inputs = await inputsHash();
+async function buildFeed(feed: FeedInfo, force: boolean): Promise<void> {
+  const raw = feedPaths(feed.id).raw;
+  const versions = (await exists(raw)) ? await readdir(raw) : [];
+  const inputs = await inputsHash(feed.id);
   let built = 0;
   for (const v of versions.sort()) {
-    const zip = join(GTFS_RAW_DIR, v, "google_transit.zip");
+    const zip = join(raw, v, "google_transit.zip");
     if (!(await exists(zip))) continue;
-    const out = join(FEEDS_OUT_DIR, v, "plan.json");
+    const out = join(feedPaths(feed.id).out, v, "plan.json");
     const was =
       (await exists(out)) ?
         ((await readJson<ServicePlan>(out)).inputs ?? "none")
       : undefined;
     if (!force && was === inputs) continue;
     log(
-      `Building plan for feed ${v}${
+      `${feed.id}: building plan for feed ${v}${
         force ? ""
         : was === undefined ? " (new)"
         : " (config or plan format changed)"
       }`,
     );
-    const plan = await buildPlan(zip);
+    const plan = await buildPlan(zip, feed);
     plan.inputs = inputs;
     await writeJson(out, plan);
     const size = (await stat(out)).size;
     log(`Wrote ${out} (${(size / 1e6).toFixed(1)} MB)`);
     built++;
   }
-  const manifest = await buildManifest();
+  const manifest = await buildManifest(feed.id);
   log(
-    `Manifest: ${manifest.feeds.map((f) => `${f.version} [${f.start}–${f.end}]`).join(", ") || "(empty)"}`,
+    `${feed.id} manifest: ${manifest.feeds.map((f) => `${f.version} [${f.start}–${f.end}]`).join(", ") || "(empty)"}`,
   );
-  if (!built) log("Nothing new to build (use --force to rebuild)");
+  if (!built) log(`${feed.id}: nothing new to build (use --force to rebuild)`);
+}
+
+async function main() {
+  await migrateLegacyFiles();
+  const force = process.argv.includes("--force");
+  const i = process.argv.indexOf("--feed");
+  const only = i >= 0 ? process.argv[i + 1] : undefined;
+  for (const feed of only ? [await readFeed(only)] : await readFeeds())
+    await buildFeed(feed, force);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

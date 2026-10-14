@@ -1,7 +1,7 @@
 // Build a scenario (packages/transit-core/DESIGN.md#scenarios): alternate track and/or service defined in
 // regions/metro-vancouver/scenarios/<name>/scenario.json, run through the same pipeline as the base network:
 // compose tracks → modify service → map platforms → infer runs → movements. Output:
-//   var/public/data/scenarios/<name>/{manifest.json, plan.json, tracks.geojson, movements/}
+//   var/public/data/regions/metro-vancouver/scenarios/<name>/{manifest.json, plan.json, tracks.geojson, movements/}
 // View with ?scenario=<name>.
 //
 //   npm run scenario -- <name>
@@ -9,8 +9,9 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  PUBLIC_DIR,
+  RAIL_REGION,
   SCENARIOS_DIR,
-  PUBLIC_DATA_DIR,
   log,
   readConfig,
   readJson,
@@ -23,6 +24,7 @@ import {
   loadTracks,
 } from "@transitopia/data/infra.ts";
 import { buildAllMovements } from "./lib/movements.ts";
+import { regionDataPath } from "@transitopia/transit-core/plan/types.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
 import { mapPlatforms } from "@transitopia/transit-core/infra/platforms.ts";
 import { routePattern } from "@transitopia/transit-core/infra/patterns.ts";
@@ -46,8 +48,8 @@ async function main() {
   const kin = await readConfig("kinematics");
   const ops = await readConfig("operations");
   const overrides = await loadOverrides();
-  const out = join(PUBLIC_DATA_DIR, "scenarios", name);
-  const rel = `data/scenarios/${name}`;
+  const rel = regionDataPath(RAIL_REGION, `scenarios/${name}`);
+  const out = join(PUBLIC_DIR, rel);
 
   // 1. Tracks.
   let tracks = await loadTracks();

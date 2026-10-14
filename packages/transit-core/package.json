@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p test"
   },
   "devDependencies": {
+    "@transitopia/feeds": "*",
     "@transitopia/region-metro-vancouver": "*",
+    "@transitopia/shared": "*",
     "@types/geojson": "^7946.0.16"
   },
   "dependencies": {

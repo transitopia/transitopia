@@ -1,17 +1,18 @@
 // One service date's whole timetable, every route (unlike plan.json, which has only the routes we
-// draw), read from the archived GTFS zips in var/raw/gtfs/. For observed stop times and statistics,
+// draw), read from a feed's archived GTFS zips in var/raw/gtfs/<feed>/. For observed stop times and statistics,
 // which cover every bus route (docs/DESIGN.md#retention-and-statistics).
 
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { readCsv, readCsvAll } from "./gtfs-zip.ts";
-import { GTFS_RAW_DIR } from "./paths.ts";
+import { feedPaths } from "./paths.ts";
 import { activeServices } from "@transitopia/transit-core/gtfs/calendar.ts";
 import { parseGtfsTime } from "@transitopia/transit-core/time.ts";
 import type { LonLat } from "@transitopia/transit-core/geo.ts";
 
 export interface FeedZip {
+  /** The version's directory name (versionDir of its feed_version). */
   version: string;
   /** YYYYMMDD, inclusive. */
   start: string;
@@ -19,8 +20,11 @@ export interface FeedZip {
   path: string;
 }
 
-/** Archived feeds, newest first (by start date, then version). */
-export async function archivedFeeds(dir = GTFS_RAW_DIR): Promise<FeedZip[]> {
+/** A feed's archived versions, newest first (by start date, then version). */
+export async function archivedFeeds(
+  feed: string,
+  dir = feedPaths(feed).raw,
+): Promise<FeedZip[]> {
   if (!existsSync(dir)) return [];
   const out: FeedZip[] = [];
   for (const v of await readdir(dir)) {
@@ -45,12 +49,13 @@ export async function archivedFeeds(dir = GTFS_RAW_DIR): Promise<FeedZip[]> {
   );
 }
 
-/** The newest archived feed covering a service date (YYYYMMDD). */
+/** A feed's newest archived version covering a service date (YYYYMMDD). */
 export async function feedZipFor(
+  feed: string,
   date: string,
-  dir = GTFS_RAW_DIR,
+  dir = feedPaths(feed).raw,
 ): Promise<FeedZip | undefined> {
-  return (await archivedFeeds(dir)).find(
+  return (await archivedFeeds(feed, dir)).find(
     (f) => f.start <= date && date <= f.end,
   );
 }

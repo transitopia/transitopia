@@ -61,9 +61,11 @@ const feedStatus = z.object({
   lastError: z.string().nullable(),
 });
 
-/** The parts of /rt/status the health checks and /admin read; the rest passes through. */
-export const rtStatus = z.looseObject({
-  leader: z.boolean(),
+/** One feed's real-time poller in /rt/status (apps/server/src/rt/feed.ts). */
+export const providerStatus = z.looseObject({
+  name: z.string(),
+  /** Whether it fetches upstream (RT_POLL, and its key where it needs one). */
+  polling: z.boolean(),
   hasKey: z.boolean(),
   vehicles: z.number(),
   lastSnapshotAgeS: z.number().nullable(),
@@ -76,9 +78,18 @@ export const rtStatus = z.looseObject({
   }),
   /** Seconds since this leader started polling (null before it has). */
   pollingForS: z.number().nullable(),
+  /** Per endpoint: positions, trip updates, alerts. */
   feeds: z.record(z.string(), feedStatus),
   delayCoverage: z.number().nullable(),
   minDelayCoverage: z.number(),
+});
+export type ProviderStatus = z.infer<typeof providerStatus>;
+
+/** The parts of /rt/status the health checks and /admin read; the rest passes through. */
+export const rtStatus = z.looseObject({
+  leader: z.boolean(),
+  /** Each real-time feed's poller, by feed id (feeds/<id>/feed.json). */
+  providers: z.record(z.string(), providerStatus),
   ais: z
     .object({
       connected: z.boolean(),

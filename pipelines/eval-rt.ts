@@ -7,18 +7,17 @@
 //   timetable — the timetable's running times with default stop dwells, adapted to the bus's pace
 //   profile — learned profile (falling back to timetable), adapted to the bus's pace
 //
-//   npx tsx pipelines/eval-rt.ts [--test 2026-09-26T16,2026-09-26T17] [--test-last 3] [--set paceWeight=0.3] [--no-live]
-//                              [--subsample <seconds>|schedule] [--train-days weekday|weekend]
-// Default: test on the last 3 complete hours, train on all other complete hours. --subsample replays
-// the live view as if positions had been polled only this often (or on the poll schedule in
-// regions/metro-vancouver/config/rt.json, packages/transit-core/src/rt/budget.ts), still scoring it against every recorded fix.
+//   npx tsx pipelines/eval-rt.ts [--feed translink] [--test 2026-09-26T16,2026-09-26T17] [--test-last 3] [--set paceWeight=0.3]
+//                              [--no-live] [--subsample <seconds>|schedule] [--train-days weekday|weekend]
+// Default: TransLink's recordings; test on the last 3 complete hours, train on all other complete
+// hours. --subsample replays the live view as if positions had been polled only this often (or on
+// the feed's poll schedule, feeds/<feed>/feed.json → realtime.poll, packages/transit-core/src/rt/budget.ts),
+// still scoring it against every recorded fix. Prediction settings: the first region showing the feed.
 //
 // Then replays the test hours as the live view sees them (each fix known only from the snapshot that
 // first carried it) and measures what's displayed: jumps when a snapshot arrives, error against each
 // fix at the moment it was taken, backward movement, and apparent speed.
 
-import rtJson from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
-import { parseConfig } from "@transitopia/transit-core/config.ts";
 import {
   cumulativeLengths,
   projectOnto,
@@ -39,20 +38,31 @@ import {
   planLoader,
   type RecordedHour,
 } from "./lib/rt-history.ts";
-import { log } from "@transitopia/data/paths.ts";
+import {
+  log,
+  readConfig,
+  readFeed,
+  regionOfFeed,
+} from "@transitopia/data/paths.ts";
 import { cadence, pollIntervalS } from "@transitopia/transit-core/rt/budget.ts";
 import type { RtSnapshot } from "@transitopia/transit-core/rt/types.ts";
-
-const rtConfig = parseConfig("rt", rtJson);
-const CADENCE = cadence(rtConfig);
-/** An hour counts as complete when its snapshots span at least this long (two 300 s polls short of an hour). */
-const COMPLETE_HOUR_SPAN_MS = 50 * 60_000;
 
 const args = process.argv.slice(2);
 const opt = (name: string) => {
   const i = args.indexOf(name);
   return i >= 0 ? args[i + 1] : undefined;
 };
+const FEED = opt("--feed") ?? "translink";
+const feedRt =
+  (await readFeed(FEED)).realtime
+  ?? (() => {
+    throw new Error(`Feed ${FEED} has no real-time data`);
+  })();
+const rtConfig = await readConfig("rt", (await regionOfFeed(FEED)).id);
+const CADENCE = cadence(feedRt);
+/** An hour counts as complete when its snapshots span at least this long (two 300 s polls short of an hour). */
+const COMPLETE_HOUR_SPAN_MS = 50 * 60_000;
+
 // --set key=value[,key=value] overrides prediction settings, for tuning.
 const cfg: PredictionConfig = { ...rtConfig.prediction };
 for (const kv of opt("--set")?.split(",") ?? []) {
@@ -116,8 +126,8 @@ const fmt = (a: number[]) =>
 
 async function main() {
   // Complete hours: snapshots spanning most of the hour. Not a snapshot count, since the poll
-  // interval varies from 60 s to 300 s through the day (regions/metro-vancouver/config/rt.json → poll).
-  const hours = (await loadRecordedHours()).filter(
+  // interval varies through the day (feed.json → realtime.poll).
+  const hours = (await loadRecordedHours(FEED)).filter(
     (h) =>
       !h.open
       && h.snapshots.length > 1
@@ -126,7 +136,7 @@ async function main() {
   );
   if (hours.length < 2)
     throw new Error(
-      "Need at least two complete recorded hours in var/rt-history/",
+      `Need at least two complete recorded hours in var/rt-history/${FEED}/`,
     );
   const testLabels =
     opt("--test")?.split(",")
@@ -141,7 +151,7 @@ async function main() {
       !testLabels.includes(h.label)
       && (!trainDays || (trainDays === "weekend") === isWeekend(h.label)),
   );
-  const plans = await planLoader();
+  const plans = await planLoader(FEED);
   const pp = await plans.forTime(test[0]!.snapshots[0]!.fetchedAt);
   if (!pp) throw new Error("No feed for the test hours");
 
@@ -250,7 +260,7 @@ function subsample(
   every: string | undefined,
 ): RtSnapshot[] {
   if (!every) return snaps;
-  const schedule = rtConfig.poll;
+  const schedule = feedRt.poll;
   const intervalMs = (t: number) =>
     (every === "schedule" ?
       pollIntervalS(schedule, "positions", t)

@@ -74,8 +74,23 @@ export interface LiveTransitResponse {
   schema: typeof LIVE_SCHEMA;
   /** Epoch ms when the server next expects new data (a poll or an AIS batch), or null if it doesn't know. */
   nextAt: number | null;
-  /** By source id, e.g. "translink/vehicles", "seabus/ais", "translink/changes", "dispatch". */
+  /**
+   * By source id: "<feed>/vehicles" and "<feed>/changes" for each of the region's feeds with real
+   * time (e.g. "translink/vehicles"), "seabus/ais", "dispatch".
+   */
   sources: Record<string, LiveSection>;
+}
+
+/** The section with this id, if it's of this kind. */
+export function sectionOf<K extends LiveSection["kind"]>(
+  r: LiveTransitResponse,
+  id: string,
+  kind: K,
+): Extract<LiveSection, { kind: K }> | undefined {
+  const s = r.sources[id];
+  return s?.kind === kind ?
+      (s as Extract<LiveSection, { kind: K }>)
+    : undefined;
 }
 
 /** The sections of one kind, in source id order. */

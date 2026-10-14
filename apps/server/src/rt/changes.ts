@@ -1,5 +1,5 @@
 // Collects GTFS-RT service changes for our bus routes per service date (packages/transit-core/src/rt/changes.ts) and
-// keeps them in var/rt-history/changes/YYYYMMDD.json, since TransLink's feeds drop a trip's
+// keeps them in var/rt-history/<feed>/changes/YYYYMMDD.json, since TransLink's feeds drop a trip's
 // cancellation once it has run and an alert once it's over. Each state of a day is a version (a
 // content hash): the live endpoint points to the current one, served at an immutable URL.
 

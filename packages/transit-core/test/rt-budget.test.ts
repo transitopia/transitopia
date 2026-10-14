@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
+import translink from "@transitopia/feeds/translink/feed.json" with { type: "json" };
+import victoria from "@transitopia/feeds/bc-transit-victoria/feed.json" with { type: "json" };
+import kelowna from "@transitopia/feeds/bc-transit-kelowna/feed.json" with { type: "json" };
+import { parseFeed } from "../src/config.ts";
 import {
   bandAt,
   cadence,
@@ -8,12 +11,12 @@ import {
   pollIntervalS,
   RequestLedger,
   simulatePolls,
-  type CadenceConfig,
   type PollSchedule,
 } from "../src/rt/budget.ts";
 import { fromWallTime } from "../src/time.ts";
 
-const SCHEDULE = (rtConfig as unknown as CadenceConfig).poll;
+const rtConfig = parseFeed(translink).realtime!;
+const SCHEDULE = rtConfig.poll;
 /** Local (Vancouver) time. 2026-09-28 is a Monday. */
 const at = (day: number, hour: number, minute = 0) =>
   fromWallTime({ year: 2026, month: 9, day, hour, minute, second: 0 });
@@ -35,6 +38,17 @@ describe("poll schedule", () => {
       expect(maxRequestsPer24h(SCHEDULE, start, 8)).toBeLessThanOrEqual(
         SCHEDULE.dailyCap - 25,
       );
+    }
+  });
+
+  it("keeps every feed's schedule under its own cap", () => {
+    for (const json of [translink, victoria, kelowna]) {
+      const f = parseFeed(json);
+      for (const start of [at(28, 0), at(28, 13, 7), at(26, 0)])
+        expect(
+          maxRequestsPer24h(f.realtime!.poll, start, 8),
+          f.id,
+        ).toBeLessThanOrEqual(f.realtime!.poll.dailyCap);
     }
   });
 
@@ -61,8 +75,8 @@ describe("poll schedule", () => {
   });
 
   it("derives cadence thresholds from the interval in use", () => {
-    const c = cadence(rtConfig as unknown as CadenceConfig);
-    const cfg = rtConfig as unknown as CadenceConfig;
+    const c = cadence(rtConfig);
+    const cfg = rtConfig;
     expect(c.maxInterpolateS(at(28, 8))).toBe(60 + cfg.interpolateSlackS);
     expect(c.maxExtrapolateS(at(28, 12))).toBe(150 + cfg.extrapolateSlackS);
     expect(c.staleAfterMs(at(28, 2))).toBe((300 + cfg.staleGraceS) * 1000);

@@ -8,9 +8,10 @@ import type { GeoJSONSource, Map as MlMap } from "maplibre-gl";
 import type { ExpressionSpecification } from "@maplibre/maplibre-gl-style-spec";
 import type { InfraCollection } from "@transitopia/transit-core/infra/types.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
-import type {
-  PlanRoute,
-  ServicePlan,
+import {
+  feedDataPath,
+  type PlanRoute,
+  type ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
 import type { Theme } from "@transitopia/map-style/basemap.ts";
 import { VEHICLES_BEFORE_LAYER } from "./static.ts";
@@ -37,7 +38,7 @@ export interface PlatformsFile {
 
 export async function loadTracks(
   base: string,
-  path = "data/infra/tracks.geojson",
+  path: string,
 ): Promise<InfraCollection | undefined> {
   try {
     const res = await fetch(`${base}${path}`);
@@ -49,10 +50,13 @@ export async function loadTracks(
 
 export async function loadPlatforms(
   base: string,
+  feed: string,
   feedVersion: string,
 ): Promise<PlatformsFile | undefined> {
   try {
-    const res = await fetch(`${base}data/feeds/${feedVersion}/platforms.json`);
+    const res = await fetch(
+      `${base}${feedDataPath(feed, feedVersion, "platforms.json")}`,
+    );
     return res.ok ? ((await res.json()) as PlatformsFile) : undefined;
   } catch {
     return undefined;

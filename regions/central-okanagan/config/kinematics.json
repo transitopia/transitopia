@@ -1,0 +1,12 @@
+{
+  "$comment": "Vehicle motion and size assumptions (format: regions/metro-vancouver/config/kinematics.json). Buses only. Length 12 m and highway speeds are guesses: which buses run the drawn routes (double-deckers, articulated) is OPEN-QUESTIONS #4.",
+  "modes": {
+    "bus": { "accel": 1.0, "decel": 1.0, "maxSpeed": 90, "minCruiseFraction": 0.0, "dwell": 0, "length": 12, "width": 2.6, "profile": "linear" }
+  },
+  "routes": {},
+  "sizing": {
+    "$comment": "Vehicles are drawn to true scale when zoomed in, but never smaller than this many pixels long, so they stay visible at city zoom.",
+    "minPixelLength": 14,
+    "minPixelWidth": 8
+  }
+}

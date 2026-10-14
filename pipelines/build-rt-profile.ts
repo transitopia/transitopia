@@ -1,34 +1,41 @@
-// Learn bus travel-time profiles from recorded GTFS-RT positions (packages/transit-core/DESIGN.md#buses):
-//   var/rt-history/**  →  var/public/data/feeds/<version>/rt-profile.json (one per feed with data)
+// Learn bus travel-time profiles from each feed's recorded GTFS-RT positions (packages/transit-core/DESIGN.md#buses):
+//   var/rt-history/<feed>/**  →  var/public/data/feeds/<feed>/<version>/rt-profile.json (one per version with data)
 //
-//   npm run build:rt-profile
+//   npm run build:rt-profile [-- --feed <id>]
+// Prediction settings are those of the first region showing the feed (config/rt.json → prediction).
 // The live view uses the profile to predict buses between fixes; without one it falls back to the
 // timetable. Rebuild as history accumulates. Check the effect with `npx tsx pipelines/eval-rt.ts`.
 
-import { join } from "node:path";
-import rtJson from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
-import { parseConfig } from "@transitopia/transit-core/config.ts";
 import {
   ProfileBuilder,
   type PredictionConfig,
 } from "@transitopia/transit-core/rt/profile.ts";
 import type { PreparedPlan } from "@transitopia/transit-core/schedule/engine.ts";
-import { FEEDS_OUT_DIR, log, writeJson } from "@transitopia/data/paths.ts";
+import {
+  feedVersionFile,
+  log,
+  readConfig,
+  readFeed,
+  readFeeds,
+  regionOfFeed,
+  writeJson,
+} from "@transitopia/data/paths.ts";
+import type { FeedInfo } from "@transitopia/transit-core/config.ts";
 import { eachRecordedHour, planLoader } from "./lib/rt-history.ts";
 import { addDays, localDate } from "@transitopia/transit-core/time.ts";
 
-const rtConfig = parseConfig("rt", rtJson);
-
-async function main() {
+async function buildFeed(feed: FeedInfo): Promise<void> {
+  const rtConfig = await readConfig("rt", (await regionOfFeed(feed.id)).id);
   const cfg: PredictionConfig = rtConfig.prediction;
   const since = addDays(
     localDate(Date.now()),
     -rtConfig.prediction.profileHistoryDays,
   );
-  const plans = await planLoader();
+  const plans = await planLoader(feed.id);
   const builders = new Map<PreparedPlan, ProfileBuilder>();
   let hours = 0;
   for await (const h of eachRecordedHour(
+    feed.id,
     Temporal.PlainDate.from(since).toString(),
   )) {
     hours++;
@@ -45,19 +52,28 @@ async function main() {
     }
   }
   if (!hours) {
-    log("No recorded RT history (var/rt-history/); skipping");
+    log(
+      `${feed.id}: no recorded RT history (var/rt-history/${feed.id}/); skipping`,
+    );
     return;
   }
   for (const [pp, b] of builders) {
     const profile = b.build();
     await writeJson(
-      join(FEEDS_OUT_DIR, pp.plan.feedVersion, "rt-profile.json"),
+      feedVersionFile(feed.id, pp.plan.feedVersion, "rt-profile.json"),
       profile,
     );
     log(
-      `${pp.plan.feedVersion}: profile for ${Object.keys(profile.shapes).length} shapes from ${profile.hours.length} recorded hours`,
+      `${feed.id} ${pp.plan.feedVersion}: profile for ${Object.keys(profile.shapes).length} shapes from ${profile.hours.length} recorded hours`,
     );
   }
+}
+
+async function main() {
+  const i = process.argv.indexOf("--feed");
+  const only = i >= 0 ? process.argv[i + 1] : undefined;
+  for (const feed of only ? [await readFeed(only)] : await readFeeds())
+    if (feed.realtime) await buildFeed(feed);
 }
 
 main().catch((e) => {

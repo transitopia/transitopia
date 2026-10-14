@@ -13,6 +13,7 @@
     "apps/server",
     "packages/*",
     "pipelines",
+    "feeds",
     "regions/*"
   ],
   "scripts": {

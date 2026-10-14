@@ -37,8 +37,10 @@ import {
   type VehicleState,
 } from "@transitopia/transit-core/schedule/engine.ts";
 import {
+  feedDataPath,
   feedForDate,
   manifestRange,
+  regionDataPath,
   type FeedManifest,
   type ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
@@ -78,20 +80,32 @@ export class PlanStore {
   readonly dataBase: string;
   /** URL prefix of the RT service, or undefined for schedules only. */
   private readonly apiBase: string | undefined;
-  private readonly config: Pick<RegionConfig, "kinematics" | "operations">;
+  /** The region's id: its published files are under regionDataPath(region). */
+  readonly region: string;
+  private readonly config: Pick<
+    RegionConfig,
+    "kinematics" | "operations" | "feed"
+  >;
 
   private constructor(
     manifest: FeedManifest,
     base: string,
     apiBase: string | undefined,
-    config: Pick<RegionConfig, "kinematics" | "operations">,
+    region: string,
+    config: Pick<RegionConfig, "kinematics" | "operations" | "feed">,
     scenario?: ScenarioManifest,
   ) {
     this.manifest = manifest;
     this.dataBase = base;
     this.apiBase = apiBase;
+    this.region = region;
     this.config = config;
     this.scenario = scenario;
+  }
+
+  /** Whether the region has track-level rail, and with it tracks, movements, dispatch and observations. */
+  get rail(): boolean {
+    return this.config.operations !== undefined;
   }
 
   /** Enable track-level SkyTrain playback (movement files need the track graph). */
@@ -124,9 +138,13 @@ export class PlanStore {
 
   /** Observations for a service date (empty until loaded or if there are none). */
   private observationsFor(date: string): Observation[] | undefined {
+    // Only the rail region publishes observations so far.
+    if (!this.rail) return [];
     if (this.observationIndex === undefined) {
       this.observationIndex = null;
-      void fetch(`${this.dataBase}data/observations/index.json`)
+      void fetch(
+        `${this.dataBase}${regionDataPath(this.region, "observations/index.json")}`,
+      )
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null)
         .then((idx) => {
@@ -159,6 +177,7 @@ export class PlanStore {
    * none, undefined while loading. Patches are dispatched centrally, never in the browser.
    */
   private patchFor(date: string): DispatchPatch | null | undefined {
+    if (!this.rail) return null;
     if (this.dispatchIndex === undefined) {
       this.dispatchIndex = null;
       const get = (url: string) =>
@@ -167,7 +186,9 @@ export class PlanStore {
           .catch(() => null);
       // The static index (build:dispatch) and, unless viewing a scenario, the live one.
       void Promise.all([
-        get(`${this.dataBase}data/dispatch/index.json`),
+        get(
+          `${this.dataBase}${regionDataPath(this.region, "dispatch/index.json")}`,
+        ),
         this.scenario || !this.apiBase ?
           null
         : get(`${this.apiBase}rt/dispatch`),
@@ -238,7 +259,7 @@ export class PlanStore {
     const index = this.movementIndexes.get(version);
     if (index === undefined) {
       const entry = this.manifest.feeds.find((f) => f.version === version);
-      const url = `${this.dataBase}${entry?.movements ?? `data/feeds/${version}/movements/index.json`}`;
+      const url = `${this.dataBase}${entry?.movements ?? feedDataPath(this.config.feed.id, version, "movements/index.json")}`;
       this.fetchOnce(
         version,
         url,
@@ -280,8 +301,8 @@ export class PlanStore {
         this.graph,
         this.config.kinematics,
         {
-          deadheadSpeedFactor: this.config.operations.yard.deadheadSpeedFactor,
-          turnbackSpeedFactor: this.config.operations.turnback.speedFactor,
+          deadheadSpeedFactor: this.config.operations!.yard.deadheadSpeedFactor,
+          turnbackSpeedFactor: this.config.operations!.turnback.speedFactor,
           shapes: true,
         },
       );
@@ -332,12 +353,13 @@ export class PlanStore {
   static async load(
     base: string,
     apiBase: string | undefined,
-    config: Pick<RegionConfig, "kinematics" | "operations">,
+    region: string,
+    config: Pick<RegionConfig, "kinematics" | "operations" | "feed">,
     scenario?: string,
   ): Promise<PlanStore> {
     if (scenario) {
       const res = await fetch(
-        `${base}data/scenarios/${encodeURIComponent(scenario)}/manifest.json`,
+        `${base}${regionDataPath(region, `scenarios/${encodeURIComponent(scenario)}/manifest.json`)}`,
       );
       if (!res.ok)
         throw new Error(
@@ -348,11 +370,14 @@ export class PlanStore {
         { schema: 1, generatedAt: sm.builtAt, feeds: sm.feeds },
         base,
         apiBase,
+        region,
         config,
         sm,
       );
     }
-    const res = await fetch(`${base}data/manifest.json`);
+    const res = await fetch(
+      `${base}${feedDataPath(config.feed.id, undefined, "manifest.json")}`,
+    );
     if (!res.ok)
       throw new Error(
         `No timetable data (HTTP ${res.status}). Run "npm run data" first.`,
@@ -361,13 +386,18 @@ export class PlanStore {
       (await res.json()) as FeedManifest,
       base,
       apiBase,
+      region,
       config,
     );
   }
 
-  /** Track network to draw and route on. */
-  get tracksPath(): string {
-    return this.scenario?.tracks ?? "data/infra/tracks.geojson";
+  /** Track network to draw and route on, in a region with track-level rail. */
+  get tracksPath(): string | undefined {
+    if (!this.rail) return undefined;
+    return (
+      this.scenario?.tracks
+      ?? regionDataPath(this.region, "infra/tracks.geojson")
+    );
   }
 
   /** Instants covered by the available feeds: first service day start to end of last service day. */

@@ -1,0 +1,9 @@
+{
+  "name": "@transitopia/feeds",
+  "private": true,
+  "description": "The transit feeds regions show: where each is published, how often it may be polled, and which of its routes to draw.",
+  "type": "module",
+  "exports": {
+    "./*": "./*"
+  }
+}

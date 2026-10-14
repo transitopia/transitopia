@@ -1,0 +1,9 @@
+{
+  "name": "@transitopia/region-greater-victoria",
+  "private": true,
+  "description": "Curated inputs for Greater Victoria: config, and what we know about its transit.",
+  "type": "module",
+  "exports": {
+    "./*": "./*"
+  }
+}

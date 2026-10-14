@@ -1,0 +1,41 @@
+{
+  "$comment": "How the region's map uses real-time data (apps/server/README.md#real-time-service); how often its feed is polled is the feed's (feed.json → realtime). Copied from Metro Vancouver's, where prediction was tuned on TransLink's 99 and RapidBus; untested here (OPEN-QUESTIONS #3).",
+  "$clientPollS": "The browser polls the live endpoint (GET /regions/<id>/live/transit) at most this often; it is also the endpoint's longest edge-cache time. Guess.",
+  "clientPollS": 10,
+  "$clientPollMaxS": "...and at least this often, even when the server expects no new data sooner (its nextAt). Guess.",
+  "clientPollMaxS": 60,
+  "$clientPollSlackS": "The browser polls this long after the server's nextAt, so the poll or AIS batch it waits for has landed. A positions poll usually answers within 1-3 s (guess).",
+  "clientPollSlackS": 3,
+  "$detourNearM": "A bus off its route counts as on detour only within this distance of a stop a detour alert for its route lists (guess, as Metro Vancouver's; OPEN-QUESTIONS #3).",
+  "detourNearM": 3000,
+  "$prediction": "Live bus prediction and learned travel-time profiles (packages/transit-core/src/rt/profile.ts): Metro Vancouver's settings, untested on BC Transit's buses (OPEN-QUESTIONS #3).",
+  "prediction": {
+    "binM": 50,
+    "bandStartHours": [0, 6, 9, 15, 18],
+    "maxPairS": 90,
+    "maxOffsetM": 50,
+    "stationaryM": 15,
+    "stopZoneM": 60,
+    "stopExcessM": 75,
+    "baselineWindowM": 600,
+    "minBinMetres": 150,
+    "minStopPasses": 3,
+    "defaultSpeedMps": 8,
+    "defaultDwellS": 15,
+    "minDwellS": 4,
+    "paceWindowS": 180,
+    "paceWeight": 0,
+    "paceClamp": [0.7, 1.5],
+    "catchUpMps": 8,
+    "minGlideS": 2,
+    "maxGlideS": 25,
+    "snapM": 600,
+    "scheduleAnchorS": 180,
+    "profileHistoryDays": 28
+  },
+  "$carry": "Carrying RT bus delays into schedule estimates (packages/transit-core/src/rt/carry.ts): Metro Vancouver's guesses (OPEN-QUESTIONS #3).",
+  "carry": {
+    "minLayoverS": 120,
+    "maxTrips": 2
+  }
+}

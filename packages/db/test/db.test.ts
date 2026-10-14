@@ -21,13 +21,15 @@ describe.skipIf(!TEST_DATABASE_URL)("database", () => {
     expect(await migrate(t.pool)).toEqual([]);
     const r = await t.db.selectFrom("regions").selectAll().execute();
     expect(r.map((x) => x.id)).toEqual(["metro-vancouver"]);
+    const f = await t.db.selectFrom("feeds").select("id").execute();
+    expect(f.map((x) => x.id)).toEqual(["translink"]);
   });
 
   it("keeps service dates as strings and bigints as numbers", async () => {
     await t.db
       .insertInto("trip_changes")
       .values({
-        region_id: "metro-vancouver",
+        feed_id: "translink",
         service_date: "2026-09-29",
         trip_id: "t1",
         route_id: "6641",
@@ -63,7 +65,7 @@ describe.skipIf(!TEST_DATABASE_URL)("database", () => {
     await t.db
       .insertInto("rt_positions")
       .values({
-        region_id: "metro-vancouver",
+        feed_id: "translink",
         fetched_at: new Date(now),
         vehicle_id: "v",
         label: null,

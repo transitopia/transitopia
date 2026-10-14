@@ -14,7 +14,11 @@ import { dropExpiredPartitions } from "@transitopia/db/partitions.ts";
 import { toWallTime } from "@transitopia/transit-core/time.ts";
 import { run } from "./exec.ts";
 
-/** Upload closed hour files (and the kept records) to `remote`. The open hour is left for later. */
+/**
+ * Upload closed hour files (and the kept records) to `remote`. The open hour is left for later.
+ * Recordings are per feed (rt-history/<feed>/…): rclone patterns without a leading "/" match at any
+ * depth, so these cover every feed's.
+ */
 export async function archiveRecordings(remote: string): Promise<void> {
   const copy = async (dir: string, dest: string, filters: string[]) => {
     // Nothing recorded there (yet), e.g. no AIS key.
@@ -64,7 +68,13 @@ export async function expireRawData(opts: {
       .execute();
   const dirs: string[] = [];
   const oldest = localDay(cutoff);
-  for (const base of [RT_HISTORY_DIR, AIS_HISTORY_DIR]) {
+  // Each feed's recordings (var/rt-history/<feed>/<date>/), and AIS's.
+  const feedDirs = (
+    await readdir(RT_HISTORY_DIR, { withFileTypes: true }).catch(() => [])
+  )
+    .filter((d) => d.isDirectory() && !/^\d{4}-\d{2}-\d{2}$/.test(d.name))
+    .map((d) => join(RT_HISTORY_DIR, d.name));
+  for (const base of [...feedDirs, AIS_HISTORY_DIR]) {
     let days: string[] = [];
     try {
       days = await readdir(base);
@@ -77,6 +87,7 @@ export async function expireRawData(opts: {
         dirs.push(join(base, d));
       }
   }
+  // The pattern matches at any depth: rt-history/<feed>/<date>/, and the layout before feeds had ids.
   if (opts.archiveRemote)
     for (const sub of ["rt-history", "ais-history"])
       await run(
