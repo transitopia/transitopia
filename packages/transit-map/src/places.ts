@@ -116,7 +116,7 @@ export function placeLocation(
   const at =
     p.kind === "station" ? plan.stations.find((s) => s.id === p.id)
     : p.kind === "exchange" ? hubsOf(plan).find((h) => h.id === p.id)
-    : plan.stops.find((s) => s.id === p.id);
+    : pp.stopById.get(p.id);
   return at ? [at.lon, at.lat] : undefined;
 }
 
@@ -156,7 +156,7 @@ export function placeSnapshot(
   const where =
     p.kind === "station" ? plan.stations.find((s) => s.id === p.id)
     : p.kind === "exchange" ? hub
-    : plan.stops.find((s) => s.id === p.id);
+    : pp.stopById.get(p.id);
   if (!where) return undefined;
   const date = displayServiceDate(t);
   const stopIds =
@@ -198,8 +198,7 @@ export function placeSnapshot(
     ...new Set([...stopIds].flatMap((id) => pp.catalogAtStop.get(id) ?? [])),
   ].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   routeKeys.push(...catalogKeys.filter((k) => !routeKeys.includes(k)));
-  const stopName = (id: string) =>
-    plan.stops.find((s) => s.id === id)?.name ?? id;
+  const stopName = (id: string) => pp.stopById.get(id)?.name ?? id;
   const parent =
     p.kind === "stop" ? hubs.find((h) => h.bays.includes(p.id)) : undefined;
   return {
