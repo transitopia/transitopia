@@ -183,6 +183,8 @@ export class RtService {
   private nextPollAt: Partial<Record<PollFeed, number>> = {};
   private capped = false;
   private startedAt = Date.now();
+  /** When this process started polling TransLink as the leader (feeds' ages count from here until their first success). */
+  private pollingSince: number | undefined;
   readonly recorder: Recorder;
   readonly dispatcher: LiveDispatcher | undefined;
   readonly ais: AisFeed | undefined;
@@ -355,6 +357,7 @@ export class RtService {
         + `${pollIntervalS(SCHEDULE, "tripUpdates", now)}s trip updates, ${pollIntervalS(SCHEDULE, "alerts", now)}s alerts; `
         + `${this.ledger.count(now)}/${SCHEDULE.dailyCap} requests used in the last 24 h); recording to ${this.recorder.dir}`,
     );
+    this.pollingSince = Date.now();
     this.loop("tripUpdates", () => this.pollTripUpdates());
     this.loop("positions", () => this.pollPositions());
     this.loop("alerts", () => this.pollAlerts());
@@ -810,6 +813,10 @@ export class RtService {
           database: Boolean(this.store),
           hasKey: this.hasKey,
           uptimeS: Math.round((Date.now() - this.startedAt) / 1000),
+          pollingForS:
+            this.pollingSince === undefined ?
+              null
+            : Math.round((Date.now() - this.pollingSince) / 1000),
           upstreamCalls: this.upstreamCalls,
           budget: this.budgetStatus(),
           lastSnapshotAgeS:

@@ -188,7 +188,8 @@ publishing them ([DATA-LICENSES.md](../DATA-LICENSES.md)).
 almost none of the buses (`config/rt.json` → `tripUpdatesMinCoverage`), the database is unreachable, or a
 daily job (statistics, data build, backup) failed or hasn't succeeded for 36 hours. An uptime
 monitor watches it ([api-server-setup.md, step 13](api-server-setup.md#13-uptime-monitor)). The
-response body says which check failed; `/admin` shows the same, plus recent jobs.
+response body says which check failed; `/admin` shows the same, plus recent jobs. A deploy doesn't
+trip it: after a restart, trip updates count as fresh until 3 poll intervals after polling starts.
 
 #### Automatic deploys
 
