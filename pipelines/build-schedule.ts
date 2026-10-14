@@ -4,10 +4,14 @@
 // Output: var/public/data/feeds/<version>/plan.json, var/public/data/manifest.json
 // See packages/transit-core/DESIGN.md#timetables.
 //
-//   tsx pipelines/build-schedule.ts            # build any feed version not yet built
+//   tsx pipelines/build-schedule.ts            # build feeds not yet built, or built from other inputs
 //   tsx pipelines/build-schedule.ts --force    # rebuild all
+//
+// A plan records what it was built from besides its feed (`inputs`: PLAN_FORMAT and the config
+// files above), so editing routes.json or changing what this writes rebuilds existing plans too.
 
-import { readdir, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { readCsv, readCsvAll, type Row } from "./lib/gtfs-zip.ts";
 import {
@@ -77,6 +81,25 @@ const SIMPLIFY_M: Record<RouteKind, number> = { skytrain: 1, shape: 3, bus: 4 };
 const STOP_OFFSET_WARN_M = 150;
 /** Same-named stations closer than this are one station on the map. */
 const STATION_MERGE_M = 400;
+/**
+ * Bump when this script writes something different from the same feed and config (a new field,
+ * different filtering), so plans already built are rebuilt. 2: route catalogue and its bays.
+ */
+const PLAN_FORMAT = 2;
+
+/** What a plan is built from besides its feed: PLAN_FORMAT and the config files buildPlan reads. */
+async function inputsHash(): Promise<string> {
+  const h = createHash("sha256").update(`plan format ${PLAN_FORMAT}\n`);
+  for (const f of [
+    join(CONFIG_DIR, "routes.json"),
+    join(REGION_DIR, "region.json"),
+    join(INFRA_DIR, "seabus.json"),
+    join(CONFIG_DIR, "seabus.json"),
+  ])
+    h.update(await readFile(f));
+  return h.digest("hex").slice(0, 16);
+}
+
 /** GTFS route_type for buses: the feed's other bus routes go in the plan's catalogue. */
 const GTFS_BUS = "3";
 /** Catalogue routes have no colour of their own (GTFS gives buses none): one neutral badge. */
@@ -614,14 +637,26 @@ async function main() {
   const force = process.argv.includes("--force");
   const versions =
     (await exists(GTFS_RAW_DIR)) ? await readdir(GTFS_RAW_DIR) : [];
+  const inputs = await inputsHash();
   let built = 0;
   for (const v of versions.sort()) {
     const zip = join(GTFS_RAW_DIR, v, "google_transit.zip");
     if (!(await exists(zip))) continue;
     const out = join(FEEDS_OUT_DIR, v, "plan.json");
-    if (!force && (await exists(out))) continue;
-    log(`Building plan for feed ${v}`);
+    const was =
+      (await exists(out)) ?
+        ((await readJson<ServicePlan>(out)).inputs ?? "none")
+      : undefined;
+    if (!force && was === inputs) continue;
+    log(
+      `Building plan for feed ${v}${
+        force ? ""
+        : was === undefined ? " (new)"
+        : " (config or plan format changed)"
+      }`,
+    );
     const plan = await buildPlan(zip);
+    plan.inputs = inputs;
     await writeJson(out, plan);
     const size = (await stat(out)).size;
     log(`Wrote ${out} (${(size / 1e6).toFixed(1)} MB)`);

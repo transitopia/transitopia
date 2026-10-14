@@ -119,6 +119,11 @@ export interface ServicePlan {
   feedEnd: string;
   timezone: string;
   builtAt: string;
+  /**
+   * A hash of what built it besides the feed (build-schedule's PLAN_FORMAT and config), so the
+   * build redoes a plan when those change. Absent in plans built before it.
+   */
+  inputs?: string;
   routes: PlanRoute[];
   stops: PlanStop[];
   stations: PlanStation[];
