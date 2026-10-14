@@ -141,6 +141,11 @@ const RouteCardBody: React.FC<{
           { ...timeState(snap), onGoLive: () => engine.goLive() }
         )
       }
+      back={
+        snap.back ?
+          { label: snap.back, onBack: () => engine.back() }
+        : undefined
+      }
       onClose={() => engine.select(undefined)}
       footer={
         <>

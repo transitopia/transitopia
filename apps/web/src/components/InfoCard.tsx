@@ -6,8 +6,9 @@ import { Menu } from "./Menu.tsx";
 // The card for anything tapped on the map (apps/web/README.md#feature-cards): vehicles, stations,
 // stops, routes, bike routes and bike parking all use these slots, top to bottom: header (icon tile,
 // eyebrow, title, subtitle, ⋯ menu, close), an optional status line, chips, sections of rows, and a
-// footer saying where the data comes from. Actions live only in the ⋯ menu, so the body is only
-// information. Desktop: a 360 px panel at the top right; phones: a bottom sheet.
+// footer saying where the data comes from. Actions live only in the ⋯ menu, so the body is
+// information (departure rows excepted: they open what they name). A card opened from another card (a departure row's menu) gets a back strip on top
+// naming that card. Desktop: a 360 px panel at the top right; phones: a bottom sheet.
 
 /** How a time or position is known: the same marks everywhere (live green dot, recorded grey dot, estimated "~"). */
 export type Mark = "live" | "recorded" | "estimated";
@@ -78,6 +79,8 @@ export const InfoCard: React.FC<{
    * (apps/web/README.md#time-and-not-live). Bike cards ignore the map's time and never get one.
    */
   notLive?: { future: boolean; when: string; onGoLive: () => void } | undefined;
+  /** The card this one was opened from (apps/web/README.md#cross-references): its title, and how to return. */
+  back?: { label: string; onBack: () => void } | undefined;
   footer?: React.ReactNode;
   onClose: () => void;
   children?: React.ReactNode;
@@ -90,6 +93,7 @@ export const InfoCard: React.FC<{
   chips,
   actions,
   notLive,
+  back,
   footer,
   onClose,
   children,
@@ -107,6 +111,16 @@ export const InfoCard: React.FC<{
       data-map-overlay
       className={`info-card absolute z-50 flex flex-col overflow-hidden bg-(--card-bg) text-(--card-text) shadow-[0_8px_28px_rgb(17_24_39/0.16)] max-sm:inset-x-0 max-sm:bottom-0 max-sm:max-h-[60dvh] max-sm:rounded-t-[20px] max-sm:border-t sm:top-5 sm:right-[3.25rem] sm:max-h-[calc(100%-11rem)] sm:w-[360px] sm:rounded-2xl sm:border dark:shadow-[0_10px_32px_rgb(0_0_0/0.5)] ${notLive ? "border-(--notlive-border) max-sm:border-t-2 sm:border-2" : "border-(--card-border)"}`}>
       <div className="overflow-y-auto pb-[env(safe-area-inset-bottom)] sm:pb-0">
+        {back ?
+          <button
+            type="button"
+            onClick={back.onBack}
+            aria-label={`Back to ${back.label}`}
+            className="flex h-10 w-full items-center gap-1.5 border-b border-(--card-divider) bg-(--card-back-bg) pr-4 pl-2.5 text-left text-[13.5px] font-bold text-(--card-link) hover:bg-(--card-hover)">
+            <Icon icon="chevron-left" size={18} />
+            <span className="truncate">{back.label}</span>
+          </button>
+        : null}
         {notLive ?
           <div
             role="status"
