@@ -9,10 +9,10 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  CONFIG_DIR,
   SCENARIOS_DIR,
   PUBLIC_DATA_DIR,
   log,
+  readConfig,
   readJson,
   writeJson,
 } from "./lib/paths.ts";
@@ -23,7 +23,6 @@ import {
   loadTracks,
 } from "./lib/infra.ts";
 import { buildAllMovements } from "./lib/movements.ts";
-import type { DispatchConfig } from "@transitopia/transit-core/dispatch/dispatch.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
 import { mapPlatforms } from "@transitopia/transit-core/infra/platforms.ts";
 import { routePattern } from "@transitopia/transit-core/infra/patterns.ts";
@@ -35,8 +34,6 @@ import type {
   ScenarioManifest,
   ScenarioSpec,
 } from "@transitopia/transit-core/scenario/types.ts";
-import type { OperationsConfig } from "@transitopia/transit-core/movement/build.ts";
-import type { KinematicsConfig } from "@transitopia/transit-core/movement/kinematics.ts";
 
 async function main() {
   const name = process.argv[2];
@@ -46,12 +43,8 @@ async function main() {
     );
   const dir = join(SCENARIOS_DIR, name);
   const spec = await readJson<ScenarioSpec>(join(dir, "scenario.json"));
-  const kin = await readJson<KinematicsConfig>(
-    join(CONFIG_DIR, "kinematics.json"),
-  );
-  const ops = await readJson<OperationsConfig>(
-    join(CONFIG_DIR, "operations.json"),
-  );
+  const kin = await readConfig("kinematics");
+  const ops = await readConfig("operations");
   const overrides = await loadOverrides();
   const out = join(PUBLIC_DATA_DIR, "scenarios", name);
   const rel = `data/scenarios/${name}`;
@@ -126,9 +119,7 @@ async function main() {
   );
 
   // 4. Movements.
-  const dispatchCfg = await readJson<DispatchConfig>(
-    join(CONFIG_DIR, "dispatch.json"),
-  );
+  const dispatchCfg = await readConfig("dispatch");
   const { index } = await buildAllMovements({
     plan,
     graph,

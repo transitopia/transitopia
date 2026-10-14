@@ -5,14 +5,12 @@
 
 import { join } from "node:path";
 import { readdir } from "node:fs/promises";
-import { CONFIG_DIR, FEEDS_OUT_DIR, readJson } from "./lib/paths.ts";
+import { FEEDS_OUT_DIR, readConfig, readJson } from "./lib/paths.ts";
 import { loadAllPlans, loadGraph } from "./lib/infra.ts";
 import { dispatchSummary } from "./lib/movements.ts";
 import { preparePlan } from "@transitopia/transit-core/schedule/engine.ts";
 import { TrainPlayback } from "@transitopia/transit-core/movement/playback.ts";
 import type { MovementsFile } from "@transitopia/transit-core/movement/types.ts";
-import type { KinematicsConfig } from "@transitopia/transit-core/movement/kinematics.ts";
-import type { OperationsConfig } from "@transitopia/transit-core/movement/build.ts";
 import { distM } from "@transitopia/transit-core/geo.ts";
 import { formatServiceTime } from "@transitopia/transit-core/time.ts";
 
@@ -26,12 +24,8 @@ const arg = (name: string) => {
 
 async function main() {
   const { graph } = await loadGraph();
-  const kin = await readJson<KinematicsConfig>(
-    join(CONFIG_DIR, "kinematics.json"),
-  );
-  const ops = await readJson<OperationsConfig>(
-    join(CONFIG_DIR, "operations.json"),
-  );
+  const kin = await readConfig("kinematics");
+  const ops = await readConfig("operations");
   const step = Number(arg("--step") ?? 5);
   let failures = 0;
   for (const plan of await loadAllPlans()) {
