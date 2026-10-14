@@ -73,6 +73,26 @@ interface PreparedRun {
   turnbackKin: Kinematics;
 }
 
+/** What every state of a run at one instant shares. */
+type Base = Pick<
+  VehicleState,
+  "id" | "provenance" | "source" | "serviceDate" | "length" | "width"
+>;
+
+/** Where a run's train is and what it's doing, for TrainPlayback.state(). */
+interface TrainAt {
+  pos: TrackPos;
+  dir: Dir;
+  status: VehicleStatus;
+  speed: number;
+  /** Its trip's headsign, or what it's doing out of service. */
+  headsign: string;
+  /** The stop it's at or heading for. */
+  stopName?: string | undefined;
+  /** The trip it's running (none out of service: the run's line is its route). */
+  trip?: { id: string; routeKey: string } | undefined;
+}
+
 export interface PlaybackOptions {
   deadheadSpeedFactor: number;
   /** Speed factor for turnback moves (default: deadheadSpeedFactor). */
@@ -259,26 +279,22 @@ export class TrainPlayback {
     }
     const te = r.events[lo]!;
     const e = te.e;
-    const base = {
+    const base: Base = {
       id: `${serviceDate}:${r.run.id}`,
-      provenance: "estimated" as const,
+      provenance: "estimated",
       source: `timetable ${this.pp.plan.feedVersion} + run inference`,
       serviceDate,
       length: r.kin.length,
       width: r.kin.width,
     };
     if (e.k === "hold") {
-      const pos = { seg: this.file.segIds[e.seg]!, offset: e.offset };
-      const v = this.state(
-        r,
-        base,
-        pos,
-        e.dir,
-        e.kind === "signal" ? "held" : "layover",
-        undefined,
-        this.nextTripHeadsign(r, lo),
-        0,
-      );
+      const v = this.state(r, base, {
+        pos: { seg: this.file.segIds[e.seg]!, offset: e.offset },
+        dir: e.dir,
+        status: e.kind === "signal" ? "held" : "layover",
+        speed: 0,
+        headsign: this.nextTripHeadsign(r, lo),
+      });
       if (e.why) v.note = `Held: ${e.why}`;
       return v;
     }
@@ -290,18 +306,13 @@ export class TrainPlayback {
         : "Turning back";
       if (e.via) {
         const { d, speed } = alongVia(e.via, sec);
-        const { pos, dir } = this.along(path, d);
         const w = e.waits?.find((x) => sec >= x.t0 && sec <= x.t1);
-        const v = this.state(
-          r,
-          base,
-          pos,
-          dir,
-          w ? "held" : e.kind,
-          undefined,
-          headsign,
+        const v = this.state(r, base, {
+          ...this.along(path, d),
+          status: w ? "held" : e.kind,
           speed,
-        );
+          headsign,
+        });
         if (w) v.note = `Held: ${w.why}`;
         return v;
       }
@@ -311,19 +322,12 @@ export class TrainPlayback {
         e.kind === "turnback" ? r.turnbackKin : r.deadheadKin,
       );
       const tt = Math.min(e.t1 - e.t0, Math.max(0, sec - e.t0));
-      const d = distanceAt(leg, tt);
-      const { pos, dir } = this.along(path, d);
-      const status: VehicleStatus = e.kind;
-      return this.state(
-        r,
-        base,
-        pos,
-        dir,
-        status,
-        undefined,
+      return this.state(r, base, {
+        ...this.along(path, distanceAt(leg, tt)),
+        status: e.kind,
+        speed: speedAt(leg, tt),
         headsign,
-        speedAt(leg, tt),
-      );
+      });
     }
     // Revenue trip.
     const t = this.pp.tripIndex.get(e.trip)!;
@@ -360,7 +364,12 @@ export class TrainPlayback {
       if (arr[mid]! <= sec) i = mid;
       else hiI = mid - 1;
     }
-    const headsign = t.trip.headsign;
+    const onTrip = {
+      headsign: t.trip.headsign,
+      trip: { id: t.trip.id, routeKey: t.route.key },
+    };
+    const stopName = (k: number) =>
+      this.pp.plan.stops[t.pattern.stops[k]!]!.name;
     // Dispatched trips: seconds late (+) or early (−) against the timetable at this stop or the next.
     const late = (v: VehicleState, at: number) => {
       if (!e.times) return v;
@@ -372,83 +381,57 @@ export class TrainPlayback {
       if (Math.abs(d) >= 1) v.delay = d;
       return v;
     };
-    if (sec <= dep[i]! || i === n - 1) {
-      const { pos, dir } = stopPos(i);
+    if (sec <= dep[i]! || i === n - 1)
       return late(
-        this.state(
-          r,
-          base,
-          pos,
-          dir,
-          "dwell",
-          this.pp.plan.stops[t.pattern.stops[i]!]!.name,
-          headsign,
-          0,
-          t.trip.id,
-          t.route.key,
-        ),
+        this.state(r, base, {
+          ...stopPos(i),
+          status: "dwell",
+          speed: 0,
+          stopName: stopName(i),
+          ...onTrip,
+        }),
         i,
       );
-    }
     const pi = hopPath(i);
     const path = this.paths[pi]!;
     const waits = e.waits?.filter((w) => w.hop === i);
     const via = e.via?.find((x) => x.hop === i);
     if (via) {
       const { d, speed } = alongVia(via.pts, sec);
-      const { pos, dir } = this.along(path, d);
       const w = waits?.find((x) => sec >= x.t0 && sec <= x.t1);
-      const next = this.pp.plan.stops[t.pattern.stops[i + 1]!]!.name;
-      const v = this.state(
-        r,
-        base,
-        pos,
-        dir,
-        w ? "held" : "moving",
-        next,
-        headsign,
+      const v = this.state(r, base, {
+        ...this.along(path, d),
+        status: w ? "held" : "moving",
         speed,
-        t.trip.id,
-        t.route.key,
-      );
+        stopName: stopName(i + 1),
+        ...onTrip,
+      });
       if (w) v.note = `Held: ${w.why}`;
       return late(v, i + 1);
     }
     if (waits?.length)
       return late(
-        this.hopWithWaits(
-          r,
-          base,
+        this.hopWithWaits(r, base, sec, {
           path,
-          dep[i]!,
-          arr[i + 1]!,
+          dep: dep[i]!,
+          arr: arr[i + 1]!,
           waits,
-          sec,
-          this.pp.plan.stops[t.pattern.stops[i + 1]!]!.name,
-          headsign,
-          t.trip.id,
-          t.route.key,
-        ),
+          stopName: stopName(i + 1),
+          ...onTrip,
+        }),
         i + 1,
       );
     const leg = this.leg(pi, arr[i + 1]! - dep[i]!, r.kin);
     const tt = sec - dep[i]!;
-    const d = distanceAt(leg, tt);
-    const { pos, dir } = this.along(path, d);
     const holding = tt < leg.hold;
     return late(
-      this.state(
-        r,
-        base,
-        pos,
-        dir,
-        holding ? "dwell" : "moving",
-        this.pp.plan.stops[t.pattern.stops[holding ? i : i + 1]!]!.name,
-        headsign,
-        speedAt(leg, tt),
-        t.trip.id,
-        t.route.key,
-      ),
+      this.state(r, base, {
+        ...this.along(path, distanceAt(leg, tt)),
+        status: holding ? "dwell" : "moving",
+        speed: speedAt(leg, tt),
+        stopName: stopName(holding ? i : i + 1),
+        ...onTrip,
+      }),
       holding ? i : i + 1,
     );
   }
@@ -456,20 +439,26 @@ export class TrainPlayback {
   /** A hop with signal waits: stop-to-stop legs between the waits, standing still during them. */
   private hopWithWaits(
     r: PreparedRun,
-    base: Pick<
-      VehicleState,
-      "id" | "provenance" | "source" | "serviceDate" | "length" | "width"
-    >,
-    path: DecodedPath,
-    dep: number,
-    arr: number,
-    waits: HopWait[],
+    base: Base,
     sec: number,
-    nextStop: string,
-    headsign: string,
-    tripId: string,
-    routeKey: string,
+    hop: {
+      path: DecodedPath;
+      /** Departure from the hop's first stop and arrival at its last (service-day s). */
+      dep: number;
+      arr: number;
+      waits: HopWait[];
+      /** The stop it's heading for, and the trip it's running. */
+      stopName: string;
+      headsign: string;
+      trip: { id: string; routeKey: string };
+    },
   ): VehicleState {
+    const { path, dep, arr, waits } = hop;
+    const shown = {
+      stopName: hop.stopName,
+      headsign: hop.headsign,
+      trip: hop.trip,
+    };
     let d0 = 0;
     let t0 = dep;
     for (const w of [
@@ -478,53 +467,32 @@ export class TrainPlayback {
     ]) {
       if (sec < w.t0) {
         const leg = this.freeLeg(w.d - d0, w.t0 - t0, r.kin);
-        const { pos, dir } = this.along(path, d0 + distanceAt(leg, sec - t0));
-        return this.state(
-          r,
-          base,
-          pos,
-          dir,
-          "moving",
-          nextStop,
-          headsign,
-          speedAt(leg, sec - t0),
-          tripId,
-          routeKey,
-        );
+        return this.state(r, base, {
+          ...this.along(path, d0 + distanceAt(leg, sec - t0)),
+          status: "moving",
+          speed: speedAt(leg, sec - t0),
+          ...shown,
+        });
       }
       if (sec <= w.t1 && w.why) {
-        const { pos, dir } = this.along(path, w.d);
-        const v = this.state(
-          r,
-          base,
-          pos,
-          dir,
-          "held",
-          nextStop,
-          headsign,
-          0,
-          tripId,
-          routeKey,
-        );
+        const v = this.state(r, base, {
+          ...this.along(path, w.d),
+          status: "held",
+          speed: 0,
+          ...shown,
+        });
         v.note = `Held: ${w.why}`;
         return v;
       }
       d0 = w.d;
       t0 = w.t1;
     }
-    const { pos, dir } = this.along(path, path.length);
-    return this.state(
-      r,
-      base,
-      pos,
-      dir,
-      "moving",
-      nextStop,
-      headsign,
-      0,
-      tripId,
-      routeKey,
-    );
+    return this.state(r, base, {
+      ...this.along(path, path.length),
+      status: "moving",
+      speed: 0,
+      ...shown,
+    });
   }
 
   private freeLeg(
@@ -569,27 +537,14 @@ export class TrainPlayback {
     return { pos: { seg: p.segs[i]!, offset: from + dir * into }, dir };
   }
 
-  private state(
-    r: PreparedRun,
-    base: Pick<
-      VehicleState,
-      "id" | "provenance" | "source" | "serviceDate" | "length" | "width"
-    >,
-    pos: TrackPos,
-    dir: Dir,
-    status: VehicleStatus,
-    stopName: string | undefined,
-    headsign: string,
-    speed: number,
-    tripId = "",
-    routeKey = r.run.line,
-  ): VehicleState {
+  private state(r: PreparedRun, base: Base, at: TrainAt): VehicleState {
+    const { pos, dir, status, speed, headsign, stopName } = at;
     const p = this.g.pointAt(pos, dir);
     const v: VehicleState = {
       ...base,
-      routeKey,
+      routeKey: at.trip?.routeKey ?? r.run.line,
       mode: "skytrain",
-      tripId,
+      tripId: at.trip?.id ?? "",
       headsign,
       lon: p.lon,
       lat: p.lat,
