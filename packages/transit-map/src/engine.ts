@@ -201,6 +201,8 @@ const REVEAL_EDGE_FRACTION = 0.15;
 const REVEAL_PAN_MS = 600;
 /** Starting to follow eases to the vehicle over this long; then it's held at the centre. */
 const FOLLOW_START_MS = 500;
+/** While following, a change in the chrome's padding eases to the new centre over at least this long. */
+const PADDING_EASE_MS = 300;
 /** Snapshot refresh while playing (discrete changes publish immediately). */
 const SNAPSHOT_INTERVAL_MS = 200;
 /**
@@ -251,6 +253,8 @@ export class TransitEngine {
   /** The real-time corrections last applied, per service date (for departure times). */
   private lastCorrections: Map<string, ScheduleCorrections> | undefined;
   private following = false;
+  /** When the ease that starts (or re-aims) follow ends (performance.now()). */
+  private followEaseEnds = 0;
   /** Follow ended: drop the map padding it set, once the map stops moving (a drag may be under way). */
   private clearPaddingPending = false;
   /** Screen edges covered by the host's chrome (cards, time bar), px: follow keeps clear of them. */
@@ -751,14 +755,20 @@ export class TransitEngine {
     if (map.touchZoomRotate.isEnabled()) map.touchZoomRotate.enable(around);
     if (on) {
       this.clearPaddingPending = false;
-      const v = this.lastVehicles.find((x) => x.id === this.selectedId);
-      if (v)
-        map.easeTo({
-          center: [v.lon, v.lat],
-          padding: this.viewPadding,
-          duration: FOLLOW_START_MS,
-        });
+      this.easeToFollowed(FOLLOW_START_MS);
     } else this.clearPaddingPending = true;
+  }
+
+  /** Ease the followed vehicle to the centre of the area the host's chrome leaves clear. */
+  private easeToFollowed(duration: number): void {
+    const v = this.lastVehicles.find((x) => x.id === this.selectedId);
+    if (!v) return;
+    this.followEaseEnds = performance.now() + duration;
+    this.map.easeTo({
+      center: [v.lon, v.lat],
+      padding: this.viewPadding,
+      duration,
+    });
   }
 
   /** The map's current padding, every side defined. */
@@ -794,14 +804,31 @@ export class TransitEngine {
     this.clearPaddingPending = false;
   }
 
-  /** The screen edges the host's chrome covers (px), so follow and centre keep clear of them. */
+  /**
+   * The screen edges the host's chrome covers (px), so follow and centre keep clear of them. While
+   * following, a change (a vehicle's card opening as follow starts, or resizing) eases to the new
+   * centre, re-aiming the follow-start ease if it's still going, rather than leaving keepCentred to
+   * jump there. Not during a user's zoom: easeTo would cancel it (keepCentred catches up after).
+   */
   setViewPadding(p: {
     top: number;
     right: number;
     bottom: number;
     left: number;
   }): void {
+    const old = this.viewPadding;
     this.viewPadding = p;
+    if (
+      !this.following
+      || (p.top === old.top
+        && p.right === old.right
+        && p.bottom === old.bottom
+        && p.left === old.left)
+    )
+      return;
+    const left = this.followEaseEnds - performance.now();
+    if (left > 0 || !this.map.isMoving())
+      this.easeToFollowed(Math.max(left, PADDING_EASE_MS));
   }
 
   /**
