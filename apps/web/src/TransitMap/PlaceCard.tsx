@@ -19,6 +19,8 @@ import {
   type CardAction,
   type Mark,
 } from "../components/InfoCard.tsx";
+import { Menu, type MenuItem } from "../components/Menu.tsx";
+import type { IconId } from "../components/Icon.tsx";
 import { clockMinutes, timeState } from "./format.ts";
 import { bandOf, everyText } from "./frequency.ts";
 
@@ -78,13 +80,16 @@ const RouteBadge: React.FC<{ route: PlanRoute; ring?: boolean }> = ({
   </span>
 );
 
-const Frequency: React.FC<{ minutes: number; approx?: boolean }> = ({
-  minutes,
-  approx,
-}) => {
+const Frequency: React.FC<{
+  minutes: number;
+  approx?: boolean;
+  /** Bold, in the text colour (a bracket's footnote), rather than muted. */
+  strong?: boolean;
+}> = ({ minutes, approx, strong }) => {
   const band = bandOf(minutes);
   return (
-    <span className="mt-0.5 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-(--card-muted)">
+    <span
+      className={`inline-flex items-center gap-1.5 text-[12.5px] ${strong ? "font-bold" : "mt-0.5 font-semibold text-(--card-muted)"}`}>
       {everyText(minutes, approx)} ·
       <span className="inline-flex items-center gap-1">
         <span
@@ -98,11 +103,21 @@ const Frequency: React.FC<{ minutes: number; approx?: boolean }> = ({
   );
 };
 
+/** A departure row's look; as a menu trigger it fills the section's width and highlights while open. */
+const rowClass = (open: boolean) =>
+  `-mx-2 flex min-h-10 w-[calc(100%+1rem)] items-center gap-2.5 rounded-lg px-2 py-2 text-left hover:bg-(--card-hover) ${open ? "bg-(--card-combined-bg)" : ""}`;
+
+/**
+ * A departure row opens a menu of what it names (apps/web/README.md#cross-references): its route,
+ * its bus bay, and the vehicle on its next trip when that's on the map. Always a menu, even with only
+ * the route in it, so a row behaves the same whether or not its vehicle is out yet.
+ */
 const GroupRow: React.FC<{
   group: PlaceGroup;
   now: number;
   live: boolean;
-}> = ({ group, now, live }) => {
+  items: MenuItem[];
+}> = ({ group, now, live, items }) => {
   const [first, ...rest] = group.departures;
   const cancelled = group.departures.filter((d) => d.cancelled);
   const note = [
@@ -123,10 +138,10 @@ const GroupRow: React.FC<{
       {timeText(d, now, live, isFirst)}
     </span>
   );
-  return (
-    <div className="flex min-h-10 items-center gap-2.5 py-2">
+  const content = (
+    <>
       <RouteBadge route={group.route} />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <span className="flex min-w-0 flex-1 flex-col">
         <span className="text-[14.5px] leading-snug">
           {headsign(group.headsign)}
         </span>
@@ -138,7 +153,7 @@ const GroupRow: React.FC<{
         {group.minutes !== undefined ?
           <Frequency minutes={group.minutes} />
         : null}
-      </div>
+      </span>
       {first ?
         <span className="flex flex-col items-end gap-px whitespace-nowrap tabular-nums">
           <span className="text-[15px] font-extrabold">
@@ -151,13 +166,22 @@ const GroupRow: React.FC<{
           : null}
         </span>
       : null}
-    </div>
+    </>
+  );
+  return (
+    <Menu
+      label={`${group.route.label} ${headsign(group.headsign).toLowerCase()}`}
+      iconTrigger={false}
+      trigger={content}
+      items={items}
+      triggerClassName={rowClass}
+    />
   );
 };
 
 /**
  * A station, bus exchange or bus stop (apps/web/README.md#station-and-stop-cards): what leaves after
- * the map's time, one row per route and destination ordered by the soonest, with how often each runs
+ * the map's time, one row per route and destination ordered by platform or bay, then the soonest, with how often each runs
  * in the next hour, and a combined row for routes that share a stretch from here. A station lists its
  * trains, then its sailings, then the buses from its bays.
  */
@@ -176,6 +200,11 @@ type Shared = PlaceSnapshot["shared"][number];
 type DepartureKind = "train" | "ferry" | "bus";
 const kindOf = (r: PlanRoute): DepartureKind =>
   r.mode === "bus" || r.mode === "ferry" ? r.mode : "train";
+const VEHICLE: Record<DepartureKind, { noun: string; icon: IconId }> = {
+  train: { noun: "train", icon: "train" },
+  ferry: { noun: "ferry", icon: "ferry" },
+  bus: { noun: "bus", icon: "bus-front-fill" },
+};
 const NOUNS: Record<DepartureKind, string> = {
   train: "trains",
   ferry: "sailings",
@@ -205,30 +234,94 @@ const SharedRow: React.FC<{ shared: Shared }> = ({ shared: s }) => (
   </div>
 );
 
-/** One kind of departure (trains, sailings or buses): shared stretches on top, then a row per group. */
+const groupKey = (g: PlaceGroup) => `${g.route.key}|${g.headsign}`;
+const sharedKey = (s: Shared) => s.routes.map((r) => r.key).join() + s.to;
+
+/**
+ * The rows of a shared stretch whose trips all leave from one platform or bay, tied by a rail on
+ * the left, with what they add up to under them ("Either one, to Columbia · every ~6m · Good").
+ */
+const SharedBracket: React.FC<{
+  shared: Shared;
+  children: React.ReactNode;
+  count: number;
+}> = ({ shared: s, children, count }) => (
+  <div className="flex gap-2">
+    <span
+      aria-hidden="true"
+      className="mt-2.5 mb-2 w-[3px] flex-none rounded-sm bg-(--card-bracket)"
+    />
+    <div className="min-w-0 flex-1">
+      <div className="divide-y divide-(--card-divider)">{children}</div>
+      <p className="flex flex-wrap items-center gap-x-1.5 pb-2 text-[12.5px] leading-snug font-bold">
+        {count === 2 ? "Either one" : "Any of these"}, to {s.to}
+        {s.minutes !== undefined ?
+          <>
+            {" ·"}
+            <Frequency minutes={s.minutes} approx strong />
+          </>
+        : null}
+      </p>
+    </div>
+  </div>
+);
+
+/**
+ * One kind of departure (trains, sailings or buses), a row per group in platform order. A shared
+ * stretch whose trips all leave from one platform or bay brackets its rows there (kept together, in
+ * the place of its soonest); any other (several platforms, or a street stop) is a combined row on top.
+ */
 const DepartureList: React.FC<{
   title: string;
   groups: PlaceGroup[];
   shared: Shared[];
   empty: string;
   snap: TransitSnapshot;
-}> = ({ title, groups, shared, empty, snap }) => (
-  <CardSection title={title}>
-    {shared.map((s) => (
-      <SharedRow key={s.routes.map((r) => r.key).join() + s.to} shared={s} />
-    ))}
-    {groups.length ?
-      groups.map((g) => (
-        <GroupRow
-          key={`${g.route.key}|${g.headsign}`}
-          group={g}
-          now={snap.t}
-          live={snap.live}
-        />
-      ))
-    : <p className="py-2 text-sm text-(--card-muted)">{empty}</p>}
-  </CardSection>
-);
+  itemsFor: (g: PlaceGroup) => MenuItem[];
+}> = ({ title, groups, shared, empty, snap, itemsFor }) => {
+  const owner = new Map<string, Shared>();
+  for (const s of shared)
+    if (s.platforms.length === 1) for (const k of s.groups) owner.set(k, s);
+  const shown = new Set(groups.map(groupKey));
+  const row = (g: PlaceGroup) => (
+    <GroupRow
+      key={groupKey(g)}
+      group={g}
+      now={snap.t}
+      live={snap.live}
+      items={itemsFor(g)}
+    />
+  );
+  const done = new Set<Shared>();
+  const blocks: React.ReactNode[] = [];
+  for (const g of groups) {
+    const s = owner.get(groupKey(g));
+    const members = s ? groups.filter((x) => owner.get(groupKey(x)) === s) : [];
+    if (!s || members.length < 2) blocks.push(row(g));
+    else if (!done.has(s)) {
+      done.add(s);
+      blocks.push(
+        <SharedBracket key={sharedKey(s)} shared={s} count={members.length}>
+          {members.map(row)}
+        </SharedBracket>,
+      );
+    }
+  }
+  // A stretch is bracketed only when its rows are all in this list; otherwise it stays on top.
+  const onTop = shared.filter(
+    (s) => !done.has(s) && s.groups.some((k) => shown.has(k)),
+  );
+  return (
+    <CardSection title={title}>
+      {onTop.map((s) => (
+        <SharedRow key={sharedKey(s)} shared={s} />
+      ))}
+      {groups.length ?
+        blocks
+      : <p className="py-2 text-sm text-(--card-muted)">{empty}</p>}
+    </CardSection>
+  );
+};
 
 const PlaceCardBody: React.FC<{
   engine: TransitEngine;
@@ -265,7 +358,42 @@ const PlaceCardBody: React.FC<{
         || (x.kind === "bus" && place.bays.length),
     );
   const has = (kind: DepartureKind) => sections.some((x) => x.kind === kind);
-  const go = (p: Place) => () => engine.selectPlace(p);
+  // Cards opened from this one get a back strip returning here.
+  const go = (p: Place) => () => engine.open({ place: p }, title);
+  const itemsFor = (g: PlaceGroup): MenuItem[] => {
+    const items: MenuItem[] = [
+      {
+        id: "route",
+        label: `View route: ${g.route.label}`,
+        lead: <RouteBadge route={g.route} />,
+        onSelect: go({ kind: "route", id: g.route.key }),
+      },
+    ];
+    const bay =
+      g.stopIds.length === 1 ?
+        place.bays.find((b) => b.id === g.stopIds[0])
+      : undefined;
+    if (bay)
+      items.push({
+        id: "stop",
+        label: `View stop: ${bay.label}`,
+        icon: "bus-stop",
+        onSelect: go({ kind: "stop", id: bay.id }),
+      });
+    const next = g.departures.find((d) => !d.cancelled);
+    const vehicle = g.vehicle;
+    if (vehicle && next) {
+      const kind = kindOf(g.route);
+      items.push({
+        id: "vehicle",
+        label: `View ${VEHICLE[kind].noun}`,
+        icon: VEHICLE[kind].icon,
+        note: `${headsign(g.headsign)} · ${timeText(next, snap.t, snap.live, true)}`,
+        onSelect: () => engine.open({ vehicle }, title),
+      });
+    }
+    return items;
+  };
   const actions: CardAction[] = [
     {
       id: "centre",
@@ -338,10 +466,17 @@ const PlaceCardBody: React.FC<{
       chips={place.routes.map((r) => ({
         label: isBus(r) ? r.key : r.label,
         color: { bg: r.color, fg: r.textColor },
+        onSelect: go({ kind: "route", id: r.key }),
+        action: `View route: ${r.label}`,
       }))}
       actions={actions}
       notLive={
         snap.live ? undefined : { ...state, onGoLive: () => engine.goLive() }
+      }
+      back={
+        snap.back ?
+          { label: snap.back, onBack: () => engine.back() }
+        : undefined
       }
       onClose={() => engine.select(undefined)}
       footer={
@@ -375,6 +510,7 @@ const PlaceCardBody: React.FC<{
           )}
           groups={x.groups}
           shared={x.shared}
+          itemsFor={itemsFor}
           empty={
             sections.length > 1 ?
               `No ${NOUNS[x.kind]} leave here in the next two hours.`

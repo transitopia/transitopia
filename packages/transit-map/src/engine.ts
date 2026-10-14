@@ -121,7 +121,14 @@ export interface PlaceGroup {
   departures: Departure[];
   /** Average minutes between departures in the hour from the shown time (timetable). */
   minutes: number | undefined;
+  /** Stops it leaves from (at a station: platforms or bus bays), by GTFS stop_id. */
+  stopIds: string[];
+  /** The vehicle on the map running its next departure, if that trip is drawn yet. */
+  vehicle: string | undefined;
 }
+
+/** A card to open: a vehicle's, or a place's (station, exchange, stop or route line). */
+export type CardTarget = { vehicle: string } | { place: Place };
 
 /** The selected route line: how often it runs now and how many of its vehicles are out. */
 export interface RouteSnapshot {
@@ -169,6 +176,8 @@ export interface PlaceSnapshot extends Place {
     routes: PlanRoute[];
     /** Platforms its trips leave from, where known. */
     platforms: string[];
+    /** The groups it combines, as `${route key}|${headsign}`. */
+    groups: string[];
     to: string;
     minutes: number | undefined;
   }[];
@@ -205,6 +214,8 @@ export interface TransitSnapshot {
   selected: SelectedVehicle | undefined;
   /** The selected station, stop or route line (exclusive with a selected vehicle). */
   place: PlaceSnapshot | RouteSnapshot | undefined;
+  /** The title of the card `back()` returns to, when this one was opened from another card. */
+  back: string | undefined;
   /** Registry ids (@transitopia/shared/datasets.ts) of the data drawn right now. */
   datasets: string[];
   scenario: { name: string; description: string } | undefined;
@@ -304,6 +315,8 @@ export class TransitEngine {
   /** The SeaBus berth pair last applied to the map (re-applied after the style reloads). */
   private ferryPair: string | null | undefined;
   private lastVehicles: VehicleState[] = [];
+  /** Cards `open()` came through, oldest first, each with its title for the back strip. */
+  private trail: { target: CardTarget; label: string }[] = [];
   private describers = new Map<string, (d: string) => ServiceDayInfo>();
   private snapshot: TransitSnapshot;
   private listeners = new Set<() => void>();
@@ -512,9 +525,51 @@ export class TransitEngine {
 
   /**
    * Select a vehicle (or none). A new selection follows it only when asked; closing or choosing
-   * another vehicle stops following.
+   * another vehicle stops following. Forgets the cards `open()` came through.
    */
   select(id: string | undefined, opts?: { follow?: boolean }): void {
+    this.trail = [];
+    this.selectVehicle(id, opts);
+  }
+
+  /** Open a station's or stop's card (closing any vehicle's), forgetting the cards `open()` came through. */
+  selectPlace(place: Place): void {
+    this.trail = [];
+    this.showPlace(place);
+  }
+
+  /**
+   * Open another card from the one showing (a station's departure → its route, bay or vehicle), so
+   * its back strip returns here; `from` is this card's title for that strip. A vehicle opened this
+   * way is followed under the same rule as tapping it (apps/web/README.md#cross-references).
+   */
+  open(target: CardTarget, from: string): void {
+    const here: CardTarget | undefined =
+      this.selectedId !== undefined ? { vehicle: this.selectedId }
+      : this.place ? { place: this.place }
+      : undefined;
+    if (here) this.trail.push({ target: here, label: from });
+    this.show(target);
+  }
+
+  /** Back to the card the showing one was opened from. */
+  back(): void {
+    const prev = this.trail.pop();
+    if (prev) this.show(prev.target);
+  }
+
+  private show(target: CardTarget): void {
+    if ("place" in target) this.showPlace(target.place);
+    else
+      this.selectVehicle(target.vehicle, {
+        follow: Math.abs(this.clock.rate) <= FOLLOW_MAX_RATE,
+      });
+  }
+
+  private selectVehicle(
+    id: string | undefined,
+    opts?: { follow?: boolean },
+  ): void {
     const changed = id !== this.selectedId;
     if (changed)
       this.selectedRoute = this.lastVehicles.find((v) => v.id === id)?.routeKey;
@@ -530,8 +585,7 @@ export class TransitEngine {
     this.publish();
   }
 
-  /** Open a station's or stop's card (closing any vehicle's). */
-  selectPlace(place: Place): void {
+  private showPlace(place: Place): void {
     this.selectedId = this.vehicles.selectedId = undefined;
     this.selectedRoute = undefined;
     this.setFollow(false);
@@ -974,6 +1028,7 @@ export class TransitEngine {
       following: this.following,
       selected,
       place: this.placeSnapshot(t),
+      back: this.trail.at(-1)?.label,
       datasets:
         prev && prev.datasets.join() === this.datasets.join() ?
           prev.datasets
@@ -1040,6 +1095,16 @@ export class TransitEngine {
     );
     const groups = groupDepartures(deps);
     const routeOf = (k: string) => pp.routes.get(k)!;
+    // Vehicles on the map by the trip they're running, for "View bus" on a departure.
+    const drawn = new Map(
+      this.lastVehicles
+        .filter(
+          (v) =>
+            !this.hidden.has(v.routeKey)
+            && !(this.liveOnly && v.provenance === "estimated"),
+        )
+        .map((v) => [`${v.serviceDate}|${v.tripId}`, v.id]),
+    );
     const routeKeys =
       p.kind === "station" || p.kind === "exchange" ?
         [
@@ -1098,10 +1163,16 @@ export class TransitEngine {
         platforms: g.platforms,
         departures: g.departures.slice(0, DEPARTURES_PER_GROUP),
         minutes: minutesBetween(g.departures, t),
+        stopIds: [...new Set(g.departures.map((d) => d.stopId))],
+        vehicle: (() => {
+          const next = g.departures.find((d) => !d.cancelled);
+          return next && drawn.get(`${next.serviceDate}|${next.tripId}`);
+        })(),
       })),
       shared: sharedStretches(plan, groups).map((s) => ({
         routes: [...new Set(s.groups.map((g) => g.routeKey))].map(routeOf),
         platforms: [...new Set(s.groups.flatMap((g) => g.platforms))].sort(),
+        groups: s.groups.map((g) => `${g.routeKey}|${g.headsign}`),
         to: placeName(plan, s.toStopId),
         minutes: minutesBetween(s.departures, t),
       })),

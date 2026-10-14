@@ -117,6 +117,8 @@ export const VehicleCard: React.FC<{
   const sel = snap.selected;
   if (!sel) return null;
   const close = () => engine.select(undefined);
+  const back =
+    snap.back ? { label: snap.back, onBack: () => engine.back() } : undefined;
   const v = sel.vehicle;
   const route = sel.route;
   if (!v || !route)
@@ -130,6 +132,7 @@ export const VehicleCard: React.FC<{
         eyebrow="Vehicle"
         title="Not in service at this time"
         subtitle="It may be in service at another time of day."
+        back={back}
         onClose={close}
       />
     );
@@ -221,6 +224,7 @@ export const VehicleCard: React.FC<{
           { ...timeState(snap), onGoLive: () => engine.goLive() }
         )
       }
+      back={back}
       onClose={close}
       footer={
         <>

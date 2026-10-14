@@ -219,6 +219,46 @@ describe("grouping, frequency and shared stretches", () => {
   });
 });
 
+describe("groupDepartures order", () => {
+  const dep = (routeKey: string, t: number, platform?: string) => ({
+    tripId: `${routeKey}${t}`,
+    routeKey,
+    headsign: routeKey,
+    stopId: "S",
+    platform,
+    pattern: 0,
+    index: 0,
+    serviceDate: DATE,
+    t,
+    sched: t,
+    source: "schedule" as const,
+    cancelled: false,
+  });
+  const order = (deps: ReturnType<typeof dep>[]) =>
+    groupDepartures(deps).map((g) => g.routeKey);
+
+  it("orders by platform or bay number, then by soonest", () => {
+    // Already soonest first, as departuresAt returns them.
+    expect(
+      order([
+        dep("P3", 1, "3"),
+        dep("P10", 2, "10"),
+        dep("P1late", 4, "1"),
+        dep("P1", 3, "1"),
+        dep("P2", 5, "2"),
+      ]),
+    ).toEqual(["P1late", "P1", "P2", "P3", "P10"]);
+  });
+
+  it("puts groups without a platform last, by soonest", () => {
+    expect(order([dep("A", 1), dep("B", 2, "5"), dep("C", 3)])).toEqual([
+      "B",
+      "A",
+      "C",
+    ]);
+  });
+});
+
 describe("stopsOf", () => {
   it("includes a station's platforms", () => {
     const withStation: ServicePlan = {

@@ -29,6 +29,7 @@ const icons = {
   // Our own icons:
   "chevron-down": line(<path d="M4 6l4 4 4-4" />, 1.667),
   "chevron-up": line(<path d="M4 10l4-4 4 4" />, 1.667),
+  "chevron-left": line(<path d="M10 4l-4 4 4 4" />, 1.667),
   /** Slower / faster (the speed stepper). */
   "chevrons-left": line(
     <path d="M7.333 4.667l-3.333 3.333 3.333 3.333M12 4.667l-3.333 3.333 3.333 3.333" />,

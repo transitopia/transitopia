@@ -48,20 +48,23 @@ export const LayersPanel: React.FC<{
   const { open, setOpen, host } = useLayersPanel();
   const ref = React.useRef<HTMLElement>(null);
 
-  // Close on Escape, or a press outside the panel and the header (desktop: it's a popover).
+  // Close on Escape, or a press outside the panel and the header (desktop: it's a popover). Escape
+  // is caught first and marked handled, so an open card stays open (InfoCard closes on Escape).
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.preventDefault();
+      setOpen(false);
     };
     const onDown = (e: PointerEvent) => {
       const header = ref.current?.closest("header");
       if (header && !header.contains(e.target as Node)) setOpen(false);
     };
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     document.addEventListener("pointerdown", onDown);
     return () => {
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
       document.removeEventListener("pointerdown", onDown);
     };
   }, [open, setOpen]);
