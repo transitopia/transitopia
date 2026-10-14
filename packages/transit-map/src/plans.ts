@@ -47,9 +47,7 @@ import {
   localDate,
   serviceDayStart,
 } from "@transitopia/transit-core/time.ts";
-import { kinematicsConfig, operationsConfig } from "./config.ts";
-
-export const kinematics = kinematicsConfig;
+import type { RegionConfig } from "./config.ts";
 
 export class PlanStore {
   private prepared = new Map<string, PreparedPlan>();
@@ -79,16 +77,19 @@ export class PlanStore {
   readonly dataBase: string;
   /** URL prefix of the RT service, or undefined for schedules only. */
   private readonly apiBase: string | undefined;
+  private readonly config: Pick<RegionConfig, "kinematics" | "operations">;
 
   private constructor(
     manifest: FeedManifest,
     base: string,
     apiBase: string | undefined,
+    config: Pick<RegionConfig, "kinematics" | "operations">,
     scenario?: ScenarioManifest,
   ) {
     this.manifest = manifest;
     this.dataBase = base;
     this.apiBase = apiBase;
+    this.config = config;
     this.scenario = scenario;
   }
 
@@ -276,10 +277,10 @@ export class PlanStore {
         usable ? applyPatch(file, patch) : file,
         pp,
         this.graph,
-        kinematics,
+        this.config.kinematics,
         {
-          deadheadSpeedFactor: operationsConfig.yard.deadheadSpeedFactor,
-          turnbackSpeedFactor: operationsConfig.turnback.speedFactor,
+          deadheadSpeedFactor: this.config.operations.yard.deadheadSpeedFactor,
+          turnbackSpeedFactor: this.config.operations.turnback.speedFactor,
           shapes: true,
         },
       );
@@ -333,6 +334,7 @@ export class PlanStore {
   static async load(
     base: string,
     apiBase: string | undefined,
+    config: Pick<RegionConfig, "kinematics" | "operations">,
     scenario?: string,
   ): Promise<PlanStore> {
     if (scenario) {
@@ -348,6 +350,7 @@ export class PlanStore {
         { schema: 1, generatedAt: sm.builtAt, feeds: sm.feeds },
         base,
         apiBase,
+        config,
         sm,
       );
     }
@@ -356,7 +359,12 @@ export class PlanStore {
       throw new Error(
         `No timetable data (HTTP ${res.status}). Run "npm run data" first.`,
       );
-    return new PlanStore((await res.json()) as FeedManifest, base, apiBase);
+    return new PlanStore(
+      (await res.json()) as FeedManifest,
+      base,
+      apiBase,
+      config,
+    );
   }
 
   /** Track network to draw and route on. */
@@ -388,7 +396,7 @@ export class PlanStore {
           return r.json() as Promise<ServicePlan>;
         })
         .then((plan) => {
-          const pp = preparePlan(plan, kinematics);
+          const pp = preparePlan(plan, this.config.kinematics);
           this.prepared.set(feed.version, pp);
           this.loading.delete(feed.version);
           this.emit();

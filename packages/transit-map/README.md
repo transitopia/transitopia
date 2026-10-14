@@ -3,14 +3,14 @@
 The transit engine on a host MapLibre map: the clock, playback, real-time data in the browser, and the WebGL layers that draw vehicles. No UI framework: the site's React controls ([apps/web](../../apps/web/README.md#transit-mode)) read its snapshot store and call its methods. The models it plays back are in [packages/transit-core/DESIGN.md](../transit-core/DESIGN.md).
 
 ```ts
-const engine = await TransitEngine.create(map, { dataBase, apiBase, theme });
+const engine = await TransitEngine.create(map, { dataBase, apiBase, theme, config });
 const snap = useSyncExternalStore(engine.subscribe, engine.getSnapshot); // in React
 engine.toggle(); engine.setRate(10); engine.seek(t); engine.goLive(); engine.select(id);
 engine.setTheme("dark");   // before the host swaps the basemap style
 engine.dispose();
 ```
 
-`dataBase` is where the published transit data lives (`var/public/` locally, served at `/dev-data/`; `https://data.transitopia.org/` in production). `apiBase` is the server; without it the engine makes no real-time requests at all and shows schedules only.
+`dataBase` is where the published transit data lives (`var/public/` locally, served at `/dev-data/`; `https://data.transitopia.org/` in production). `apiBase` is the server; without it the engine makes no real-time requests at all and shows schedules only. `config` is the region's kinematics, operations, real-time and SeaBus settings (`RegionConfig`), each checked with `parseConfig` (packages/transit-core/src/config.ts): the engine imports no region of its own, so the host chooses (the site's is `apps/web/src/TransitMap/region-config.ts`).
 
 ## How a frame is drawn
 
@@ -23,6 +23,8 @@ clock → playback → WebGL, every animation frame, without React. Positions ar
 | `src/plans.ts` | Loads the manifest, the plan for a date's feed, movement files, dispatch patches (static, live and preview versions) and the track network |
 | `src/rt.ts` | Real-time buses in the browser: polls `/rt/live` near now and fetches recorded hours elsewhere, plus service changes and travel-time profiles |
 | `src/ais.ts` | SeaBus AIS: polls `/rt/ais/fixes` for dates in progress and turns fixes into schedule corrections |
+| `src/places.ts` | What a station, exchange, stop or route card shows: `placeSnapshot()`, a function of the place, the shown feed and time, the vehicles and the corrections |
+| `src/config.ts` | `RegionConfig`: the region's config the host passes to `TransitEngine.create()` |
 | `src/url.ts` | Shareable view state in the query string ([below](#url-state)) |
 | `src/prefs.ts` | Per-viewer preferences in local storage (theme, hidden routes, legend state), guarded so they work without it |
 | `src/layers/` | MapLibre layers ([below](#rendering)) |
