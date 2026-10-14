@@ -3,19 +3,32 @@ import type { TransitEngine } from "@transitopia/transit-map/engine.ts";
 
 type Padding = { top: number; right: number; bottom: number; left: number };
 
+type Rect = Pick<
+  DOMRect,
+  "top" | "right" | "bottom" | "left" | "width" | "height"
+>;
+
 /**
  * The map edges covered by chrome marked `data-map-overlay` (header, cards, time bar), so follow and
- * "Centre on map" keep the vehicle where it can be seen (apps/web/README.md#follow). Each overlay
- * counts against whichever edge gives up the smallest share of the map: the header is a top band,
- * the desktop card a right one, a phone's bottom sheet a bottom one.
+ * "Centre on map" keep the vehicle where it can be seen (apps/web/README.md#follow).
  */
 export function measureOverlays(map: HTMLElement): Padding {
-  const box = map.getBoundingClientRect();
+  return overlayPadding(
+    map.getBoundingClientRect(),
+    [...document.querySelectorAll<HTMLElement>("[data-map-overlay]")].map(
+      (el) => el.getBoundingClientRect(),
+    ),
+  );
+}
+
+/**
+ * Each overlay counts against whichever edge of the map `box` gives up the smallest share of the
+ * map: the header is a top band, the desktop card a right one, a phone's bottom sheet a bottom one.
+ * Hidden overlays (no size) don't count.
+ */
+export function overlayPadding(box: Rect, overlays: Rect[]): Padding {
   const pad: Padding = { top: 0, right: 0, bottom: 0, left: 0 };
-  for (const el of document.querySelectorAll<HTMLElement>(
-    "[data-map-overlay]",
-  )) {
-    const r = el.getBoundingClientRect();
+  for (const r of overlays) {
     if (!r.width || !r.height) continue;
     const sides: [keyof Padding, number, number][] = [
       ["top", r.bottom - box.top, box.height],
