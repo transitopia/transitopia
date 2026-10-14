@@ -15,6 +15,6 @@
     "@transitopia/region-metro-vancouver": "*",
     "@transitopia/shared": "*",
     "@transitopia/transit-core": "*",
-    "maplibre-gl": "^6.11.2"
+    "maplibre-gl": "^6.13.0"
   }
 }

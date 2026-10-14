@@ -10,13 +10,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.101.4",
+    "@tanstack/react-query": "^5.104.1",
     "@transitopia/map-style": "*",
     "@transitopia/region-metro-vancouver": "*",
     "@transitopia/shared": "*",
     "@transitopia/transit-core": "*",
     "@transitopia/transit-map": "*",
-    "maplibre-gl": "^6.11.2",
+    "maplibre-gl": "^6.13.0",
     "pmtiles": "^4.5.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -27,10 +27,10 @@
     "@tailwindcss/vite": "^4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@vitejs/plugin-react": "^6",
+    "@vitejs/plugin-react": "^6.1.2",
     "sirv": "^3.0.2",
     "tailwindcss": "^4",
     "typescript": "^7",
-    "vite": "^8"
+    "vite": "^8.3.4"
   }
 }
