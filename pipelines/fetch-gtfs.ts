@@ -11,8 +11,8 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
-import { readCsvAll } from "./lib/gtfs-zip.ts";
-import { GTFS_RAW_DIR, log } from "./lib/paths.ts";
+import { readCsvAll } from "@transitopia/data/gtfs-zip.ts";
+import { GTFS_RAW_DIR, log } from "@transitopia/data/paths.ts";
 
 const LATEST_URL = "https://gtfs-static.translink.ca/gtfs/google_transit.zip";
 const HISTORY_URL = (date: string) =>

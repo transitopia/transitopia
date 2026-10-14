@@ -10,11 +10,8 @@ import {
   OBSERVATIONS_DIR,
   DISRUPTIONS_DIR,
   readJson,
-} from "@transitopia/pipelines/lib/paths.ts";
-import {
-  datesOf,
-  loadDisruptions,
-} from "@transitopia/pipelines/lib/disruptions.ts";
+} from "@transitopia/data/paths.ts";
+import { datesOf, loadDisruptions } from "@transitopia/data/disruptions.ts";
 import type { Db } from "@transitopia/db/connect.ts";
 import type {
   DisruptionRow as ApiDisruptionRow,

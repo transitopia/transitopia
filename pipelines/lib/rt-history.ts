@@ -26,7 +26,7 @@ import {
   FEEDS_OUT_DIR,
   readConfig,
   readJson,
-} from "./paths.ts";
+} from "@transitopia/data/paths.ts";
 
 export { RT_HISTORY_DIR };
 

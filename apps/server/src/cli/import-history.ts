@@ -25,8 +25,8 @@ import {
   PUBLIC_DATA_DIR,
   PUBLIC_DIR,
   readJson,
-} from "@transitopia/pipelines/lib/paths.ts";
-import { archivedFeeds } from "@transitopia/pipelines/lib/gtfs-day.ts";
+} from "@transitopia/data/paths.ts";
+import { archivedFeeds } from "@transitopia/data/gtfs-day.ts";
 import { createDb } from "@transitopia/db/connect.ts";
 import { migrate } from "@transitopia/db/migrate.ts";
 import { ensurePartitionsFor } from "@transitopia/db/partitions.ts";

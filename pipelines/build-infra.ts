@@ -5,8 +5,13 @@
 //   npm run build:infra
 
 import { join } from "node:path";
-import { PUBLIC_DATA_DIR, FEEDS_OUT_DIR, log, writeJson } from "./lib/paths.ts";
-import { loadAllPlans, loadGraph } from "./lib/infra.ts";
+import {
+  PUBLIC_DATA_DIR,
+  FEEDS_OUT_DIR,
+  log,
+  writeJson,
+} from "@transitopia/data/paths.ts";
+import { loadAllPlans, loadGraph } from "@transitopia/data/infra.ts";
 import { mapPlatforms } from "@transitopia/transit-core/infra/platforms.ts";
 
 export interface PlatformsFile {

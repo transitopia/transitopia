@@ -1,6 +1,6 @@
 # Pipelines
 
-Build-time data pipelines, validators and tools, run from the repo root (`npm run …` or `npx tsx pipelines/<name>.ts`). They write to `var/` (gitignored); `lib/paths.ts` is the one place that knows where data lives. The models they build are described in [packages/transit-core/DESIGN.md](../packages/transit-core/DESIGN.md). In production the server runs the build steps daily ([apps/server → Jobs](../apps/server/README.md#jobs)).
+Build-time data pipelines, validators and tools, run from the repo root (`npm run …` or `npx tsx pipelines/<name>.ts`). They write to `var/` (gitignored); [`@transitopia/data`](../packages/data/README.md)'s `paths.ts` is the one place that knows where data lives, and holds the data access the server shares with them (GTFS zips, disruption files, the track graph, dispatch contexts). The models they build are described in [packages/transit-core/DESIGN.md](../packages/transit-core/DESIGN.md). In production the server runs the build steps daily ([apps/server → Jobs](../apps/server/README.md#jobs)).
 
 ## Building the transit data
 

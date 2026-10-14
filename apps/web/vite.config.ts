@@ -5,7 +5,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import sirv from "sirv";
 
-/** Pipeline output (pipelines/lib/paths.ts): tiles, basemap assets and transit data. */
+/** Pipeline output (packages/data/src/paths.ts): tiles, basemap assets and transit data. */
 const VAR_PUBLIC = fileURLToPath(new URL("../../var/public", import.meta.url));
 
 /**

@@ -8,7 +8,7 @@ import {
   AIS_HISTORY_DIR,
   DISPATCH_HISTORY_DIR,
   RT_HISTORY_DIR,
-} from "@transitopia/pipelines/lib/paths.ts";
+} from "@transitopia/data/paths.ts";
 import type { Db } from "@transitopia/db/connect.ts";
 import { dropExpiredPartitions } from "@transitopia/db/partitions.ts";
 import { toWallTime } from "@transitopia/transit-core/time.ts";

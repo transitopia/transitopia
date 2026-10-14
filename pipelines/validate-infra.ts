@@ -4,8 +4,12 @@
 //   npm run validate:infra
 
 import { join } from "node:path";
-import { readJson } from "./lib/paths.ts";
-import { INFRA_DIR, loadGraph, loadLatestPlan } from "./lib/infra.ts";
+import { readJson } from "@transitopia/data/paths.ts";
+import {
+  INFRA_DIR,
+  loadGraph,
+  loadLatestPlan,
+} from "@transitopia/data/infra.ts";
 import { mapPlatforms } from "@transitopia/transit-core/infra/platforms.ts";
 import { routePattern } from "@transitopia/transit-core/infra/patterns.ts";
 import type { Dir, TrackGraph } from "@transitopia/transit-core/infra/graph.ts";

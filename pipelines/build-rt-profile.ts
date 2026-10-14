@@ -13,7 +13,7 @@ import {
   type PredictionConfig,
 } from "@transitopia/transit-core/rt/profile.ts";
 import type { PreparedPlan } from "@transitopia/transit-core/schedule/engine.ts";
-import { FEEDS_OUT_DIR, log, writeJson } from "./lib/paths.ts";
+import { FEEDS_OUT_DIR, log, writeJson } from "@transitopia/data/paths.ts";
 import { eachRecordedHour, planLoader } from "./lib/rt-history.ts";
 import { addDays, localDate } from "@transitopia/transit-core/time.ts";
 

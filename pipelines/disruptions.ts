@@ -12,8 +12,11 @@
 import { readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
-import { RT_HISTORY_DIR, log } from "./lib/paths.ts";
-import { DISRUPTIONS_DIR, loadDisruptions } from "./lib/disruptions.ts";
+import { RT_HISTORY_DIR, log } from "@transitopia/data/paths.ts";
+import {
+  DISRUPTIONS_DIR,
+  loadDisruptions,
+} from "@transitopia/data/disruptions.ts";
 import { AlertDrafts } from "@transitopia/server/rt/alerts.ts";
 import type { ServiceAlert } from "@transitopia/transit-core/disruption/alerts.ts";
 import type {

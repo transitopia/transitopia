@@ -1,0 +1,21 @@
+{
+  "name": "@transitopia/data",
+  "private": true,
+  "description": "Node-side access to the region's data on disk, shared by the pipelines and the server: where data lives, config, GTFS zips, disruption files, the track graph and dispatch contexts.",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@transitopia/transit-core": "*",
+    "csv-parse": "^7.0.3",
+    "yauzl": "^3.4.0"
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.16",
+    "@types/yauzl": "^3.4.0"
+  }
+}

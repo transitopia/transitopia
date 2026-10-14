@@ -7,7 +7,7 @@
 
 import { mkdir, writeFile, copyFile } from "node:fs/promises";
 import { join } from "node:path";
-import { RAW_DIR, log } from "./lib/paths.ts";
+import { RAW_DIR, log } from "@transitopia/data/paths.ts";
 
 /** Metro Vancouver, [south, west, north, east] (Overpass order). */
 const BBOX = [49.1, -123.3, 49.35, -122.7].join(",");

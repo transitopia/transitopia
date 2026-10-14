@@ -9,8 +9,8 @@ import {
   AIS_HISTORY_DIR,
   readConfig,
   readJson,
-} from "./lib/paths.ts";
-import { loadLatestPlan } from "./lib/infra.ts";
+} from "@transitopia/data/paths.ts";
+import { loadLatestPlan } from "@transitopia/data/infra.ts";
 import { Recorder } from "@transitopia/server/rt/recorder.ts";
 import { readRecordedFixes } from "@transitopia/server/rt/ais.ts";
 import {

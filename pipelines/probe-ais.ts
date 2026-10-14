@@ -6,7 +6,7 @@
 
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { RAW_DIR, log } from "./lib/paths.ts";
+import { RAW_DIR, log } from "@transitopia/data/paths.ts";
 import { aisstreamApiKey } from "@transitopia/server/secrets.ts";
 
 const FLEET: Record<string, string> = {

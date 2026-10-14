@@ -27,7 +27,7 @@ import {
   VAR_DIR,
   log,
   writeJson,
-} from "./lib/paths.ts";
+} from "@transitopia/data/paths.ts";
 
 const seabus = parseConfig("seabus", seabusJson);
 const CADENCE = cadence(parseConfig("rt", rtJson));

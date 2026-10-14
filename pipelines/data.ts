@@ -6,7 +6,7 @@
 //   npm run data -- --osm   # also re-fetch and re-import OpenStreetMap tracks
 
 import { spawnSync } from "node:child_process";
-import { log } from "./lib/paths.ts";
+import { log } from "@transitopia/data/paths.ts";
 
 const steps: [string, string[]][] = [
   ["Fetch latest GTFS", ["pipelines/fetch-gtfs.ts"]],

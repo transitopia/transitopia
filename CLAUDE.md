@@ -15,7 +15,8 @@ npm workspaces ([docs/DESIGN.md → Repository layout](docs/DESIGN.md#repository
 | `packages/transit-map/` | The transit engine on a host map: `TransitEngine.create(map, { dataBase, apiBase, theme, config })` (`engine.ts`; `config` is the region's, from the host); clock, playback, WebGL layers, and a snapshot store React reads with `useSyncExternalStore`. No UI framework. |
 | `packages/map-style/` | The site's Protomaps basemap (light and dark), fonts list and zoom helpers. |
 | `packages/shared/` | Shared by web and server: the dataset registry (`datasets.ts`) behind the attribution control. |
-| `pipelines/` | Build-time pipelines and validators. `pipelines/lib/paths.ts` is the one place that knows where data lives. |
+| `pipelines/` | Build-time pipelines and validators. |
+| `packages/data/` | Node-side data access shared by pipelines and the server: `src/paths.ts` is the one place that knows where data lives; GTFS zips, disruption files, the track graph, dispatch contexts. Not for the browser. |
 | `regions/metro-vancouver/` | Committed, curated inputs: `config/`, `infrastructure/`, `scenarios/`, `observations/`, `disruptions/`; what we know about operations (`README.md`) and what we don't (`OPEN-QUESTIONS.md`). |
 | `map-layers/` | Java/Planetiler profile for the cycling layer (built daily in CI). |
 | `infra/` | Deployment: `compose.yml` (server, PostGIS, Caddy, backups), `server.Dockerfile`, `compose.dev.yml` (the local database). See `deployment/README.md`. |

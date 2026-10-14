@@ -8,8 +8,8 @@
 // Movements are dispatched (signalling-aware, packages/transit-core/DESIGN.md#dispatcher) unless --no-dispatch.
 
 import { join } from "node:path";
-import { FEEDS_OUT_DIR, readConfig } from "./lib/paths.ts";
-import { loadAllPlans, loadGraph } from "./lib/infra.ts";
+import { FEEDS_OUT_DIR, readConfig } from "@transitopia/data/paths.ts";
+import { loadAllPlans, loadGraph } from "@transitopia/data/infra.ts";
 import { buildAllMovements } from "./lib/movements.ts";
 import { mapPlatforms } from "@transitopia/transit-core/infra/platforms.ts";
 

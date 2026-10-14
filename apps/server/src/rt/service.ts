@@ -45,7 +45,7 @@ import {
   AIS_HISTORY_DIR,
   PUBLIC_DIR,
   PUBLIC_DATA_DIR,
-} from "@transitopia/pipelines/lib/paths.ts";
+} from "@transitopia/data/paths.ts";
 import { aisstreamApiKey, translinkApiKey } from "../secrets.ts";
 import { AisFeed } from "./ais.ts";
 import {
