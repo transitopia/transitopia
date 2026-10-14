@@ -1,4 +1,5 @@
-// AIS fixes: parsing aisstream.io messages, the compact wire format of GET /rt/ais/fixes, and
+// AIS fixes: parsing aisstream.io messages, the compact wire format of the day files and the live
+// endpoint (and of GET /rt/ais/fixes, until #178 removes it), and
 // which fixes belong to a service date. Shared by the RT service and the browser (packages/transit-core/DESIGN.md#seabus-ais).
 
 import type { RtVehicle } from "../rt/types.ts";
@@ -107,19 +108,37 @@ export interface AisFixesResponse {
   cursor: number;
   /** Changes when the RT service restarts; a client with a cursor from another epoch refetches. */
   epoch: number;
-  /** [mmsi, name, ts, lat, lon, sog, cog], sorted by ts. */
-  fixes: [
-    string,
-    string | null,
-    number,
-    number,
-    number,
-    number | null,
-    number | null,
-  ][];
+  /** Sorted by ts. */
+  fixes: AisRow[];
 }
 
-export function encodeFixes(fixes: AisFix[]): AisFixesResponse["fixes"] {
+/**
+ * Response of GET /regions/<id>/days/<YYYYMMDD>/seabus/ais: the fixes recorded for a service date so
+ * far. Shared by every visitor (cached at the edge); the live endpoint's AIS section continues it.
+ */
+export interface AisDayResponse {
+  status: "ok" | "stale" | "unavailable";
+  error?: string;
+  /** Epoch ms: every batch recorded up to this is included. */
+  to: number;
+  /** The date's window is over and every fix in it is included: this won't change. */
+  complete: boolean;
+  /** Sorted by ts. */
+  fixes: AisRow[];
+}
+
+/** A fix in the compact wire format: [mmsi, name, ts, lat, lon, sog, cog]. */
+export type AisRow = [
+  string,
+  string | null,
+  number,
+  number,
+  number,
+  number | null,
+  number | null,
+];
+
+export function encodeFixes(fixes: AisFix[]): AisRow[] {
   return fixes.map((f) => [
     f.mmsi,
     f.name ?? null,
@@ -131,7 +150,7 @@ export function encodeFixes(fixes: AisFix[]): AisFixesResponse["fixes"] {
   ]);
 }
 
-export function decodeFixes(rows: AisFixesResponse["fixes"]): AisFix[] {
+export function decodeFixes(rows: AisRow[]): AisFix[] {
   return rows.map(([mmsi, name, ts, lat, lon, sog, cog]) => {
     const f: AisFix = { mmsi, ts, lat, lon };
     if (name !== null) f.name = name;

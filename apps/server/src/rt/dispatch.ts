@@ -3,7 +3,7 @@
 // Every `dispatchCheckS` it reads the confirmed corrections (the database, or without one
 // regions/metro-vancouver/observations/*.json and disruptions/*.json) and, for each service date near
 // today whose inputs changed, re-dispatches that date and publishes a new patch version. Clients
-// learn the current versions from /rt/live (or /rt/dispatch) and fetch
+// learn the current versions from the live endpoint (or /rt/dispatch) and fetch
 // /rt/dispatch/<date>/<version>.json, which never changes. Client requests never start a dispatch.
 // Versions are kept in var/dispatch-history/<date>/<version>.json (and listed in dispatch_versions),
 // so any version can be served again (and, later, an "as known then" view).
@@ -96,7 +96,7 @@ export class LiveDispatcher {
     if (this.timer) clearTimeout(this.timer);
   }
 
-  /** Current versions, for /rt/live and /rt/dispatch. */
+  /** Current versions, for the live endpoints and /rt/dispatch. */
   pointer(): Record<string, string> {
     return Object.fromEntries(
       [...this.current].sort(([a], [b]) => a.localeCompare(b)),

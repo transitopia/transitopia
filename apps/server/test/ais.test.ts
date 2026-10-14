@@ -499,7 +499,26 @@ describe("AisFeed", () => {
       const all = await feed.fixesFor(date);
       expect(all.fixes).toHaveLength(1);
       expect((await feed.fixesFor(date, all.cursor)).fixes).toHaveLength(0);
+      // The day file and the live window only hold recorded batches.
+      expect((await feed.dayFile(date)).fixes).toHaveLength(0);
+      expect(feed.liveWindow(300_000).fixes).toHaveLength(0);
+      expect(feed.nextBatchAt()).toBeUndefined();
       await (feed as any).flush();
+      const file = await feed.dayFile(date);
+      expect(file.fixes).toHaveLength(1);
+      expect(file.complete).toBe(false);
+      const win = feed.liveWindow(300_000);
+      expect(win.fixes).toHaveLength(1);
+      // Batch times: the day file reaches the window's end, and the window covers its batch.
+      expect(file.to).toBe(win.to);
+      expect(win.from).toBe(win.to - 300_000);
+      expect(feed.nextBatchAt()).toBe(win.to + 3_600_000);
+      // An empty batch moves the day file on, but not the window (anchored to the last fixes).
+      await new Promise((r) => setTimeout(r, 5));
+      await (feed as any).flush();
+      expect((await feed.dayFile(date)).to).toBeGreaterThan(win.to);
+      expect(feed.liveWindow(300_000)).toEqual(win);
+      expect(feed.nextBatchAt()).toBeUndefined();
       feed.stop();
       // A restarted feed resumes the recorded fix.
       const again = new AisFeed({

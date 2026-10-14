@@ -48,12 +48,13 @@ Desktop-first, but the map and time controls must work on phones, with minimal c
  Browser ──────────────▶ │ www.transitopia.org        static SPA (Pages, from the prod branch) │
                          │ map-tiles.transitopia.org  basemap and cycling tiles (worker on R2) │
                          │ data.transitopia.org       transit data build output (R2)           │
-                         │ api.transitopia.org ─┐     proxied; /rt/live edge-cached 10 s       │
+                         │ api.transitopia.org ─┐     proxied; live poll edge-cached ≤ 10 s    │
                          └──────────────────────┼──────────────────────────────────────────────┘
                                                 ▼
                          ┌───────────── FullHost VM, Toronto (Docker Compose) ──────────────┐
                          │ server (Node/TS, Hono)                                           │
-                         │  ├ API: /rt/* (live, history, changes, dispatch, AIS), /healthz, │
+                         │  ├ API: /regions/<id>/live/transit, per-date files (AIS,         │
+                         │  │      changes), /rt/* (history, dispatch), /healthz,           │
                          │  │      /auth (GitHub), /admin/api                               │
                          │  ├ leader (pg advisory lock): GTFS-RT within the budget, AIS,    │
                          │  │      alerts, recorder, live dispatcher                        │
@@ -140,7 +141,7 @@ Other providers get budgets under their own terms. aisstream.io allows 3 connect
 Observations (sightings of a train or vessel at a stop at a time, consists, cancellations) and disruptions (single-track sections, reduced headways for a period) refine the schedule. The engine side is in [packages/transit-core/DESIGN.md → Corrections](../packages/transit-core/DESIGN.md#corrections) and [→ Disruptions and alerts](../packages/transit-core/DESIGN.md#disruptions-and-alerts).
 
 - In production they live in the database, each with a review state: `draft → previewing → confirmed | discarded`. The server drafts disruptions from TransLink alerts; admins edit them at `/admin`.
-- **Preview**: an admin dispatches the dates a draft touches (within a week of today) with the draft added. The result is a **preview version**: an immutable dispatch patch like any other, but not advertised in `/rt/live`. `/admin` links to `/transit?preview=<YYYYMMDD>:<version>`, and the time bar says it's showing unconfirmed corrections. Preview versions hold nothing private, so anyone with the link can see one.
+- **Preview**: an admin dispatches the dates a draft touches (within a week of today) with the draft added. The result is a **preview version**: an immutable dispatch patch like any other, but not advertised by the live endpoint. `/admin` links to `/transit?preview=<YYYYMMDD>:<version>`, and the time bar says it's showing unconfirmed corrections. Preview versions hold nothing private, so anyone with the link can see one.
 - **Confirm** publishes the input, and the next regular dispatch includes it. A disruption can't be confirmed without saying which track stays open. Editing a confirmed input sends it back to draft.
 - The files under `regions/metro-vancouver/{observations,disruptions}/` are imported into a new database, and are what local runs without a database use. `npm run corrections -- export|import|pull` moves corrections between the two.
 - Precedence, shown as provenance: manual observation > live sensor (GTFS-RT, AIS) > confirmed disruption or alert > schedule.
@@ -201,6 +202,7 @@ Made while planning V2 (2026-09-29 to 2026-10-01). Change them deliberately, and
 | Mobile app | Low priority; mobile web must be good enough for testing and reporting. **Capacitor** is tentatively accepted (our core is MapLibre GL JS plus a custom WebGL layer, which React Native's native MapLibre bindings can't run), to be reviewed before starting. Meanwhile: token auth, bottom-sheet panels, touch targets ≥ 44 px, no dependence on hover. |
 | Trip planning | Wanted after the mobile app. Evaluate reusing an existing system (the Transit app's API, OpenTripPlanner, MOTIS) before building anything. |
 | Next region | Montreal, a long way off. |
+| Live data | **One poll per map**: `/regions/<id>/live/transit` for transit (later `/regions/<id>/live/cycling` for GBFS), shared by every visitor at the edge, with a section per source (agency or feed) and pointers to immutable per-date files for anything large or slow-changing ([apps/server → Live endpoint](../apps/server/README.md#live-endpoint), issue #177). Polling, not server-sent events or WebSockets: an open connection per visitor would reach the one VM and lose the edge cache. |
 | Environments | Production and local development. A staging environment can be added cheaply later: configuration in env files, hostnames and buckets as config, unattended migrations, a Compose project per environment. Staging would never poll TransLink. |
 
 ## Risks

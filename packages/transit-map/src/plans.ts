@@ -47,6 +47,7 @@ import {
   localDate,
   serviceDayStart,
 } from "@transitopia/transit-core/time.ts";
+import type { VersionPointer } from "@transitopia/transit-core/rt/live.ts";
 import type { RegionConfig } from "./config.ts";
 
 export class PlanStore {
@@ -303,16 +304,13 @@ export class PlanStore {
     return Object.keys(this.preview).sort();
   }
 
-  /** New live dispatch versions from /rt/live (service date → version). */
-  setLiveDispatch(pointer: Record<string, string> | undefined): void {
+  /** New live dispatch versions from the live endpoint (service date → version and path). */
+  setLiveDispatch(pointer: Record<string, VersionPointer> | undefined): void {
     if (!pointer || this.scenario) return;
     let changed = false;
-    for (const [date, version] of Object.entries(pointer)) {
-      if (this.liveDispatch[date]?.version === version) continue;
-      this.liveDispatch[date] = {
-        version,
-        path: `rt/dispatch/${date}/${version}.json`,
-      };
+    for (const [date, entry] of Object.entries(pointer)) {
+      if (this.liveDispatch[date]?.version === entry.version) continue;
+      this.liveDispatch[date] = { version: entry.version, path: entry.path };
       changed = true;
     }
     if (changed) this.emit();

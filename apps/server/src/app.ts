@@ -1,6 +1,6 @@
 // The server's HTTP API (Hono):
 //
-//   /rt/*              public real-time API (rt/service.ts), CORS *, cached at the edge
+//   /rt/*, /regions/*  public real-time API (rt/service.ts), CORS *, cached at the edge
 //   /healthz           freshness checks for monitoring (503 when data is stale)
 //   /auth/*            admin sign-in with GitHub (auth.ts)
 //   /admin/api/*       the review queue behind /admin: disruptions and observations with previews,
@@ -31,7 +31,7 @@ import type {
 } from "@transitopia/transit-core/disruption/types.ts";
 import type { ObservationFile } from "@transitopia/transit-core/corrections/types.ts";
 import { observationProblems } from "@transitopia/transit-core/corrections/validate.ts";
-import type { RtService } from "./rt/service.ts";
+import { notModified, type RtService } from "./rt/service.ts";
 import type { Auth, SessionUser } from "./auth.ts";
 import { originAllowed, type ServerEnv } from "./env.ts";
 import type { CorrectionsRepo } from "./corrections.ts";
@@ -60,7 +60,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
   });
 
   // ---- Real-time API -------------------------------------------------------------------------
-  app.on(["GET", "HEAD", "OPTIONS"], "/rt/*", async (c) => {
+  app.on(["GET", "HEAD", "OPTIONS"], ["/rt/*", "/regions/*"], async (c) => {
     if (c.req.method === "OPTIONS")
       return c.body(null, 204, {
         "Access-Control-Allow-Origin": "*",
@@ -68,6 +68,14 @@ export function createApp(deps: AppDeps): Hono<Env> {
       });
     const url = new URL(c.req.url);
     const r = await service.handle(url.pathname, url.searchParams);
+    if (
+      r.status === 200
+      && notModified(
+        c.req.header("If-None-Match"),
+        r.headers["ETag"] ?? r.headers["etag"],
+      )
+    )
+      return new Response(null, { status: 304, headers: r.headers });
     return new Response(
       c.req.method === "HEAD" ? null : new Uint8Array(Buffer.from(r.body)),
       { status: r.status, headers: r.headers },

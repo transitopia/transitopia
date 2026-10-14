@@ -1,7 +1,8 @@
 // AIS feed (packages/transit-core/DESIGN.md#seabus-ais): one WebSocket to aisstream.io per leader process, filtered to the SeaBus
 // fleet. Fixes are kept in memory for the last two days, recorded in batches with the RT recorder
-// format (var/ais-history/, same hourly files and coverage index), and served per service date.
-// Client requests never touch the upstream connection.
+// format (var/ais-history/, same hourly files and coverage index), and served per service date
+// (dayFile) and as a trailing window for the live endpoint (liveWindow), both by batch time so the
+// two meet without a gap. Client requests never touch the upstream connection.
 
 import { readFile } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
@@ -20,6 +21,8 @@ const URL = "wss://stream.aisstream.io/v0/stream";
 /** Keep this much history in memory (ms); older dates are read from the recorder's files. */
 const MEMORY_MS = 48 * 3_600_000;
 const PAST_DATES_CACHED = 7;
+/** A date's fixes are all recorded this long after its window ends (a batch or two). */
+const COMPLETE_AFTER_BATCHES = 2;
 
 export interface AisConfig {
   vessels: { mmsi: string; name: string }[];
@@ -27,6 +30,9 @@ export interface AisConfig {
   batchS: number;
   maxBackoffS: number;
 }
+
+/** A fix in memory: seq numbers arrivals (the /rt/ais/fixes cursor); `at` is its batch's time, once recorded. */
+type HeldFix = AisFix & { seq: number; at?: number };
 
 type Socket = Pick<WebSocket, "send" | "close" | "addEventListener">;
 
@@ -44,12 +50,15 @@ export interface AisFeedOptions {
 }
 
 export class AisFeed {
-  /** Fixes in memory, in arrival order; seq numbers them for incremental fetches. */
-  private fixes: (AisFix & { seq: number })[] = [];
+  /** Fixes in memory, in arrival order. */
+  private fixes: HeldFix[] = [];
   private seq = 0;
   /** Identifies this process's numbering: a client whose cursor has another epoch refetches. */
   readonly epoch = Date.now();
-  private pending: AisFix[] = [];
+  private pending: HeldFix[] = [];
+  /** When the latest batch was recorded, and the latest one with fixes in it. */
+  private lastBatchAt: number | undefined;
+  private lastFixBatchAt: number | undefined;
   private past = new Map<string, AisFix[]>();
   private socket: Socket | undefined;
   private connected = false;
@@ -81,7 +90,9 @@ export class AisFeed {
       ...(await readRecordedFixes(this.opts.recorder, addDays(today, -1))),
       ...(await readRecordedFixes(this.opts.recorder, today)),
     ]);
-    this.fixes = resumed.map((f) => ({ ...f, seq: ++this.seq }));
+    // Recorded before this process: older than any live window.
+    this.fixes = resumed.map((f) => ({ ...f, seq: ++this.seq, at: 0 }));
+    this.lastBatchAt = Date.now();
     this.batchTimer = setInterval(
       () => void this.flush(),
       this.opts.cfg.batchS * 1000,
@@ -134,8 +145,52 @@ export class AisFeed {
     }
     const fixes = this.fixes
       .filter((f) => f.seq > after && f.ts >= from && f.ts < to)
-      .map(({ seq: _, ...f }) => f);
+      .map(strip);
     return { fixes: fixes.sort((a, b) => a.ts - b.ts), cursor: this.seq };
+  }
+
+  /**
+   * A service date's fixes recorded so far (sorted by time), complete through `to`: every batch
+   * recorded up to then is in them. `complete` once the date's window is over and recorded.
+   */
+  async dayFile(
+    serviceDate: string,
+    now = Date.now(),
+  ): Promise<{ fixes: AisFix[]; to: number; complete: boolean }> {
+    const [from, to] = serviceDateWindow(serviceDate);
+    const complete =
+      now > to + COMPLETE_AFTER_BATCHES * this.opts.cfg.batchS * 1000;
+    if (from < now - MEMORY_MS) {
+      const r = await this.fixesFor(serviceDate);
+      return { fixes: r.fixes, to, complete: true };
+    }
+    const fixes = this.fixes
+      .filter((f) => f.at !== undefined && f.ts >= from && f.ts < to)
+      .map(strip)
+      .sort((a, b) => a.ts - b.ts);
+    return { fixes, to: this.lastBatchAt ?? 0, complete };
+  }
+
+  /**
+   * The batches recorded in the `windowMs` up to the latest one with fixes: those after `from`, up
+   * to and including `to`. Anchored to data rather than the request time, so the result only
+   * changes when a batch brings fixes.
+   */
+  liveWindow(windowMs: number): { fixes: AisFix[]; from: number; to: number } {
+    const to = this.lastFixBatchAt ?? this.lastBatchAt ?? 0;
+    const from = to - windowMs;
+    const fixes = this.fixes
+      .filter((f) => f.at !== undefined && f.at > from && f.at <= to)
+      .map(strip)
+      .sort((a, b) => a.ts - b.ts);
+    return { fixes, from, to };
+  }
+
+  /** When the next batch is expected to bring fixes: the next one after a batch that did, else unknown. */
+  nextBatchAt(): number | undefined {
+    if (!this.connected || this.lastBatchAt === undefined) return undefined;
+    if (this.lastFixBatchAt !== this.lastBatchAt) return undefined;
+    return this.lastBatchAt + this.opts.cfg.batchS * 1000;
   }
 
   private connect(): void {
@@ -203,15 +258,22 @@ export class AisFeed {
     }
     const fix = parseAisMessage(msg, this.mmsis);
     if (!fix) return;
-    this.fixes.push({ ...fix, seq: ++this.seq });
-    this.pending.push(fix);
+    const held: HeldFix = { ...fix, seq: ++this.seq };
+    this.fixes.push(held);
+    this.pending.push(held);
   }
 
   /** Record pending fixes (an empty batch while connected keeps coverage going); prune memory. */
   private async flush(): Promise<void> {
     const now = Date.now();
-    const batch = this.pending;
+    const held = this.pending;
     this.pending = [];
+    for (const f of held) f.at = now;
+    if (held.length || this.connected) {
+      this.lastBatchAt = now;
+      if (held.length) this.lastFixBatchAt = now;
+    }
+    const batch = held.map(strip);
     if (this.opts.record !== false && (batch.length || this.connected)) {
       await this.opts.recorder.record({
         fetchedAt: now,
@@ -226,6 +288,10 @@ export class AisFeed {
     if (this.fixes.length && this.fixes[0]!.ts < cutoff)
       this.fixes = this.fixes.filter((f) => f.ts >= cutoff);
   }
+}
+
+function strip({ seq: _, at: __, ...f }: HeldFix): AisFix {
+  return f;
 }
 
 /** Recorded fixes that can belong to a service date's trips (see serviceDateWindow), sorted. */

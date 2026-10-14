@@ -101,7 +101,9 @@ if (!env.poll && !env.forwardTo)
 const auth = new Auth(db?.db, env);
 const app = createApp({ service, auth, env, db: db?.db, repo, jobs });
 const server = serve({ fetch: app.fetch, port: env.port }, (info) => {
-  log(`Listening on http://localhost:${info.port} (/rt/live, /healthz)`);
+  log(
+    `Listening on http://localhost:${info.port} (/regions/<id>/live/transit, /rt/*, /healthz)`,
+  );
   void service.start(info.port);
 });
 

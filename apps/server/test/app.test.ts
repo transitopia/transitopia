@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Disruption } from "@transitopia/transit-core/disruption/types.ts";
-import { disruptionProblems } from "../src/app.ts";
+import { createApp, disruptionProblems, type AppDeps } from "../src/app.ts";
 
 const disruption = (active: Disruption["active"]): Disruption =>
   ({
@@ -39,5 +39,44 @@ describe("disruptionProblems", () => {
       expect(disruptionProblems(disruption([{ from, until }]), "d1")).toEqual([
         `period ${from} → ${until} is not a valid range of ISO 8601 times with offset`,
       ]);
+  });
+});
+
+describe("the real-time API", () => {
+  it("routes /rt/* and /regions/*, and answers a matching If-None-Match with a 304", async () => {
+    const paths: string[] = [];
+    const service = {
+      handle: async (path: string) => {
+        paths.push(path);
+        return {
+          status: 200,
+          headers: { ETag: 'W/"abc123"', "Cache-Control": "public, max-age=5" },
+          body: "{}",
+        };
+      },
+    };
+    const app = createApp({
+      service,
+      auth: {},
+      env: { allowedOrigins: [] },
+    } as unknown as AppDeps);
+    const full = await app.request("/regions/r/live/transit");
+    expect(full.status).toBe(200);
+    expect(await full.text()).toBe("{}");
+    // As it comes back through a proxy that compressed the body.
+    const same = await app.request("/regions/r/live/transit", {
+      headers: { "If-None-Match": 'W/"abc123-gzip"' },
+    });
+    expect(same.status).toBe(304);
+    expect(same.headers.get("Cache-Control")).toBe("public, max-age=5");
+    const changed = await app.request("/rt/live", {
+      headers: { "If-None-Match": 'W/"def456"' },
+    });
+    expect(changed.status).toBe(200);
+    expect(paths).toEqual([
+      "/regions/r/live/transit",
+      "/regions/r/live/transit",
+      "/rt/live",
+    ]);
   });
 });
