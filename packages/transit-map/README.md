@@ -3,14 +3,14 @@
 The transit engine on a host MapLibre map: the clock, playback, real-time data in the browser, and the WebGL layers that draw vehicles. No UI framework: the site's React controls ([apps/web](../../apps/web/README.md#transit-mode)) read its snapshot store and call its methods. The models it plays back are in [packages/transit-core/DESIGN.md](../transit-core/DESIGN.md).
 
 ```ts
-const engine = await TransitEngine.create(map, { dataBase, apiBase, theme });
+const engine = await TransitEngine.create(map, { dataBase, apiBase, theme, config });
 const snap = useSyncExternalStore(engine.subscribe, engine.getSnapshot); // in React
 engine.toggle(); engine.setRate(10); engine.seek(t); engine.goLive(); engine.select(id);
 engine.setTheme("dark");   // before the host swaps the basemap style
 engine.dispose();
 ```
 
-`dataBase` is where the published transit data lives (`var/public/` locally, served at `/dev-data/`; `https://data.transitopia.org/` in production). `apiBase` is the server; without it the engine makes no real-time requests at all and shows schedules only.
+`dataBase` is where the published transit data lives (`var/public/` locally, served at `/dev-data/`; `https://data.transitopia.org/` in production). `apiBase` is the server; without it the engine makes no real-time requests at all and shows schedules only. `config` is the region's kinematics, operations, real-time and SeaBus settings (`RegionConfig`), each checked with `parseConfig` (packages/transit-core/src/config.ts): the engine imports no region of its own, so the host chooses (the site's is `apps/web/src/TransitMap/region-config.ts`).
 
 ## How a frame is drawn
 

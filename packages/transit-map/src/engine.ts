@@ -37,7 +37,6 @@ import {
   PlanStore,
   SERVICE_DAY_ROLLOVER_H,
   displayServiceDate,
-  kinematics,
   mergeCorrections,
 } from "./plans.ts";
 import {
@@ -75,9 +74,11 @@ import {
   type RouteSnapshot,
 } from "./places.ts";
 import { loadPref, savePref } from "./prefs.ts";
+import type { RegionConfig } from "./config.ts";
 
 export type { Theme };
 export type { RtMode };
+export type { RegionConfig };
 export { RATES } from "./clock.ts";
 
 export interface TransitEngineOptions {
@@ -94,6 +95,8 @@ export interface TransitEngineOptions {
   initial?: UrlState | undefined;
   /** Dataset registry id for routes whose plan doesn't name one (plans built before PlanRoute.dataset). */
   dataset?: string | undefined;
+  /** The region's config (kinematics, operations, real-time and SeaBus settings), checked with parseConfig. */
+  config: RegionConfig;
 }
 
 export interface SelectedVehicle {
@@ -281,6 +284,7 @@ export class TransitEngine {
     const store = await PlanStore.load(
       opts.dataBase,
       opts.apiBase,
+      opts.config,
       opts.scenario,
     );
     return new TransitEngine(map, store, opts);
@@ -316,11 +320,14 @@ export class TransitEngine {
     this.showStops = loadPref("showStops", true);
     this.liveOnly = loadPref("liveOnly", false);
 
-    this.vehicles = new VehicleLayer(map, kinematics.sizing);
+    this.vehicles = new VehicleLayer(map, opts.config.kinematics.sizing);
     this.vehicles.selectedId = this.selectedId;
-    this.rt = new RtClient({ data: opts.dataBase, api: opts.apiBase });
+    this.rt = new RtClient(
+      { data: opts.dataBase, api: opts.apiBase },
+      opts.config,
+    );
     // SeaBus: AIS fixes anchor the timetable (packages/transit-core/DESIGN.md#seabus-ais).
-    this.ais = new AisClient(opts.apiBase);
+    this.ais = new AisClient(opts.apiBase, opts.config);
     // Schedule estimates for buses stop at stops, using the same travel-time profile as live prediction.
     store.pacerFor = (pp) => this.rt.predictorFor(pp)?.pacer;
     this.snapshot = this.buildSnapshot(this.clock.now());

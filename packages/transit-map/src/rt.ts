@@ -36,9 +36,8 @@ import {
   localDate,
   toWallTime,
 } from "@transitopia/transit-core/time.ts";
-import { kinematics } from "./plans.ts";
-import { rtConfig } from "./config.ts";
-import { cadence } from "@transitopia/transit-core/rt/budget.ts";
+import type { RegionConfig } from "./config.ts";
+import { cadence, type Cadence } from "@transitopia/transit-core/rt/budget.ts";
 
 /** Live mode applies when the clock is within this of wall-clock time. */
 const LIVE_WINDOW_MS = 10 * 60_000;
@@ -49,9 +48,6 @@ const MAX_HOURS_CACHED = 8;
 const MAX_HOUR_LOADS = 2;
 /** Timelines kept for recently shown snapshot sets: scrubbing back and forth near hour boundaries switches between them. */
 const MAX_TIMELINES_CACHED = 4;
-const PREDICTION: PredictionConfig = rtConfig.prediction;
-/** Thresholds that follow how often the server polls (packages/transit-core/src/rt/budget.ts). */
-const CADENCE = cadence(rtConfig);
 /** Service changes for today and yesterday are refetched this often (cheap: they come from our server, which polls TransLink on its own schedule). */
 const CHANGES_REFRESH_MS = 60_000;
 const MAX_CHANGE_DAYS_CACHED = 6;
@@ -109,10 +105,20 @@ export class RtClient {
   /** URL prefixes of the published data and of the RT service (undefined: schedules only). */
   private readonly data: string;
   private readonly api: string | undefined;
+  private readonly config: Pick<RegionConfig, "kinematics" | "rt">;
+  /** Thresholds that follow the poll schedule (packages/transit-core/src/rt/budget.ts). */
+  private readonly cadence: Cadence;
+  private readonly prediction: PredictionConfig;
 
-  constructor(urls: { data: string; api: string | undefined }) {
+  constructor(
+    urls: { data: string; api: string | undefined },
+    config: Pick<RegionConfig, "kinematics" | "rt">,
+  ) {
     this.data = urls.data;
     this.api = urls.api;
+    this.config = config;
+    this.cadence = cadence(config.rt);
+    this.prediction = config.rt.prediction;
     this.available = urls.api !== undefined;
     if (!this.available)
       this.liveError = "Real-time data isn't available on this site yet";
@@ -133,7 +139,7 @@ export class RtClient {
     const nearNow = Math.abs(t - Date.now()) < LIVE_WINDOW_MS;
     if (nearNow) this.ensureLivePolling();
     else this.stopLivePolling();
-    if (!nearNow || t < Date.now() - CADENCE.maxInterpolateLimitS * 1000)
+    if (!nearNow || t < Date.now() - this.cadence.maxInterpolateLimitS * 1000)
       this.ensureHours(t);
     if (this.available) this.ensureChanges(t);
   }
@@ -170,9 +176,10 @@ export class RtClient {
     const inLive =
       liveSpan !== undefined
       && t >= liveSpan[0]
-      && t <= liveSpan[1] + CADENCE.staleAfterMs(liveSpan[1]);
+      && t <= liveSpan[1] + this.cadence.staleAfterMs(liveSpan[1]);
     const covered =
-      inLive || coverageContains(this.coverage, t, CADENCE.coverageGapMs(t));
+      inLive
+      || coverageContains(this.coverage, t, this.cadence.coverageGapMs(t));
     if (!covered) return { mode: "estimated" };
 
     const snapshots = inLive ? this.live : this.snapshotsAround(t);
@@ -193,13 +200,15 @@ export class RtClient {
     let timeline = this.timelines.get(key);
     if (timeline) this.timelines.delete(key);
     else {
-      timeline = new RtTimeline(snapshots, pp, kinematics, {
-        maxInterpolateS: CADENCE.maxInterpolateS,
-        maxExtrapolateS: CADENCE.maxExtrapolateS,
+      timeline = new RtTimeline(snapshots, pp, this.config.kinematics, {
+        maxInterpolateS: this.cadence.maxInterpolateS,
+        maxExtrapolateS: this.cadence.maxExtrapolateS,
         source: live ? "GTFS-RT live" : "GTFS-RT recorded",
         changes: this.changesView(),
-        detourNearM: rtConfig.detourNearM,
-        ...(predictor ? { prediction: { cfg: PREDICTION, predictor } } : {}),
+        detourNearM: this.config.rt.detourNearM,
+        ...(predictor ?
+          { prediction: { cfg: this.prediction, predictor } }
+        : {}),
       });
       if (this.timelines.size >= MAX_TIMELINES_CACHED)
         this.timelines.delete(this.timelines.keys().next().value!);
@@ -227,7 +236,7 @@ export class RtClient {
     const recorded =
       (
         !fromLive
-        && coverageContains(this.coverage, t, CADENCE.coverageGapMs(t))
+        && coverageContains(this.coverage, t, this.cadence.coverageGapMs(t))
       ) ?
         this.snapshotsAround(t)
       : undefined;
@@ -246,7 +255,7 @@ export class RtClient {
         result: delayCorrections(
           pp,
           delays,
-          rtConfig.carry,
+          this.config.rt.carry,
           this.changesView().cancelled,
         ),
       };
@@ -281,7 +290,7 @@ export class RtClient {
       );
       this.view = {
         version: this.changesVersion,
-        view: changesView(days, CADENCE.alertGraceMs),
+        view: changesView(days, this.cadence.alertGraceMs),
       };
     }
     return this.view.view;
@@ -341,7 +350,7 @@ export class RtClient {
         // Without a profile, the timetable still gives better predictions than a fixed speed.
         this.predictors.set(
           version,
-          new Predictor(pp, PREDICTION, profile, (date, tripId) =>
+          new Predictor(pp, this.prediction, profile, (date, tripId) =>
             this.changesView().skipped(date, tripId),
           ),
         );
@@ -370,7 +379,7 @@ export class RtClient {
     const last = this.live.at(-1);
     if (
       !last
-      || Date.now() - last.fetchedAt > CADENCE.staleAfterMs(last.fetchedAt)
+      || Date.now() - last.fetchedAt > this.cadence.staleAfterMs(last.fetchedAt)
     )
       return undefined;
     return [this.live[0]!.fetchedAt, last.fetchedAt];
@@ -414,7 +423,7 @@ export class RtClient {
         this.liveError = "Real-time service unreachable";
       }
       if (this.liveTimer !== undefined)
-        this.liveTimer = setTimeout(poll, rtConfig.clientPollS * 1000);
+        this.liveTimer = setTimeout(poll, this.config.rt.clientPollS * 1000);
     };
     this.liveTimer = setTimeout(poll, 0);
   }
@@ -437,7 +446,7 @@ export class RtClient {
   /** Load the hour containing t, plus the neighbouring hour when t is near a boundary. */
   private ensureHours(t: number): void {
     if (!coverageContains(this.coverage, t, 15 * 60_000)) return;
-    const margin = CADENCE.maxInterpolateLimitS * 1000;
+    const margin = this.cadence.maxInterpolateLimitS * 1000;
     const ids = new Map<string, { date: string; hour: string }>();
     // The hour containing t first: it's the one needed to show anything.
     for (const x of [t, t - margin, t + margin]) {
@@ -495,7 +504,7 @@ export class RtClient {
   private snapshotsAround(t: number): RtSnapshot[] | undefined {
     const own = this.hours.get(this.hourId(t).id);
     if (!own || own.status === "loading") return undefined;
-    const margin = CADENCE.maxInterpolateLimitS * 1000;
+    const margin = this.cadence.maxInterpolateLimitS * 1000;
     const out: RtSnapshot[] = [];
     const seen = new Set<string>();
     for (const x of [t - margin, t, t + margin]) {

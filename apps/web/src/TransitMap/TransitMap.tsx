@@ -18,6 +18,7 @@ import { PlaceCard } from "./PlaceCard.tsx";
 import { RouteCard } from "./RouteCard.tsx";
 import { FollowPill } from "./FollowPill.tsx";
 import { useOverlayPadding } from "./overlayPadding.ts";
+import { regionConfig } from "./region-config.ts";
 
 const [w, s, e, n] = region.initialBounds;
 const INITIAL_BOUNDS: [[number, number], [number, number]] = [
@@ -79,6 +80,7 @@ export default function TransitMap() {
       scenario: params.get("scenario") ?? undefined,
       debug: params.has("debug"),
       dataset: region.gtfsDataset,
+      config: regionConfig,
     }).then(
       (eng) => {
         if (cancelled) {

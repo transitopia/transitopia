@@ -25,12 +25,9 @@ import type {
   ScheduleCorrections,
 } from "@transitopia/transit-core/schedule/engine.ts";
 import { serviceDayStart } from "@transitopia/transit-core/time.ts";
-import { rtConfig, seabusConfig } from "./config.ts";
+import type { RegionConfig } from "./config.ts";
 
 const ROUTE = "seabus";
-const MATCH: AisMatchConfig = seabusConfig.ais.match;
-const GLIDE: GlideConfig = seabusConfig.ais.glide;
-const NAMES = new Map(seabusConfig.ais.vessels.map((v) => [v.mmsi, v.name]));
 const MAX_DATES = 4;
 
 interface DateFixes {
@@ -60,9 +57,24 @@ export class AisClient {
   error: string | undefined;
   /** URL prefix of the RT service, or undefined for schedules only. */
   private readonly api: string | undefined;
+  private readonly match: AisMatchConfig;
+  private readonly glide: GlideConfig;
+  /** Vessel names by MMSI. */
+  private readonly names: Map<string, string>;
+  /** How often to poll for new fixes while a date is in progress (s). */
+  private readonly pollS: number;
 
-  constructor(api: string | undefined) {
+  constructor(
+    api: string | undefined,
+    config: Pick<RegionConfig, "rt" | "seabus">,
+  ) {
     this.api = api;
+    this.match = config.seabus.ais.match;
+    this.glide = config.seabus.ais.glide;
+    this.names = new Map(
+      config.seabus.ais.vessels.map((v) => [v.mmsi, v.name]),
+    );
+    this.pollS = config.rt.clientPollS;
     this.available = api !== undefined;
   }
 
@@ -114,7 +126,7 @@ export class AisClient {
     if (!d.fixes.length) return undefined;
     if (d.memo?.pp !== pp || d.memo.n !== d.fixes.length) {
       const prev = d.memo?.pp === pp ? d.memo : undefined;
-      const day = aisCorrections(pp, date, d.fixes, ROUTE, MATCH);
+      const day = aisCorrections(pp, date, d.fixes, ROUTE, this.match);
       let glide: (Glide & { from: number }) | undefined;
       if (prev && d.arrivedAt !== undefined) {
         // Glide from what was on screen when the fixes arrived (mid-glide, if one was running).
@@ -130,7 +142,7 @@ export class AisClient {
           shown,
           day.corrections,
           k,
-          GLIDE,
+          this.glide,
         );
         if (g.until > k) glide = { ...g, from: k };
       }
@@ -155,7 +167,7 @@ export class AisClient {
       this.error = body.error;
       const fresh = decodeFixes(body.fixes).map((f) => ({
         ...f,
-        name: NAMES.get(f.mmsi) ?? f.name,
+        name: this.names.get(f.mmsi) ?? f.name,
       }));
       // A restarted service numbers fixes afresh: start over.
       if (body.epoch !== d.epoch) {
@@ -178,7 +190,7 @@ export class AisClient {
       this.error = "Real-time service unreachable";
     } finally {
       d.loading = false;
-      d.nextPollAt = Date.now() + rtConfig.clientPollS * 1000;
+      d.nextPollAt = Date.now() + this.pollS * 1000;
     }
   }
 }

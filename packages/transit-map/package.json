@@ -12,7 +12,6 @@
   "dependencies": {
     "@maplibre/maplibre-gl-style-spec": "^26.4.4",
     "@transitopia/map-style": "*",
-    "@transitopia/region-metro-vancouver": "*",
     "@transitopia/shared": "*",
     "@transitopia/transit-core": "*",
     "maplibre-gl": "^6.13.0"

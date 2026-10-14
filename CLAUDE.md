@@ -12,7 +12,7 @@ npm workspaces ([docs/DESIGN.md → Repository layout](docs/DESIGN.md#repository
 | `apps/server/` | The server (api.transitopia.org): budgeted TransLink poller, AIS stream, recorder, live dispatch, scheduled jobs (statistics, retention, the daily data build), admin API. Hono; settings from the environment (`src/env.ts`). |
 | `packages/db/` | PostgreSQL: SQL migrations, Kysely types (`schema.ts`), partitions, `job_runs`. Tests use a scratch database when `TEST_DATABASE_URL` is set. |
 | `packages/transit-core/` | DOM-free engine: GTFS, track graph, run inference, dispatcher, playback, corrections, RT prediction. |
-| `packages/transit-map/` | The transit engine on a host map: `TransitEngine.create(map, { dataBase, apiBase, theme })` (`engine.ts`); clock, playback, WebGL layers, and a snapshot store React reads with `useSyncExternalStore`. No UI framework. |
+| `packages/transit-map/` | The transit engine on a host map: `TransitEngine.create(map, { dataBase, apiBase, theme, config })` (`engine.ts`; `config` is the region's, from the host); clock, playback, WebGL layers, and a snapshot store React reads with `useSyncExternalStore`. No UI framework. |
 | `packages/map-style/` | The site's Protomaps basemap (light and dark), fonts list and zoom helpers. |
 | `packages/shared/` | Shared by web and server: the dataset registry (`datasets.ts`) behind the attribution control. |
 | `pipelines/` | Build-time pipelines and validators. `pipelines/lib/paths.ts` is the one place that knows where data lives. |

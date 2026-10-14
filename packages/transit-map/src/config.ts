@@ -1,12 +1,11 @@
-// The region config the engine uses, checked when it loads (packages/transit-core/src/config.ts).
+// The region config the engine runs with (packages/transit-core/src/config.ts). The host passes it
+// in (TransitEngineOptions.config), checked with parseConfig: the engine knows no region of its own.
 
-import { parseConfig } from "@transitopia/transit-core/config.ts";
-import kinematicsJson from "@transitopia/region-metro-vancouver/config/kinematics.json";
-import operationsJson from "@transitopia/region-metro-vancouver/config/operations.json";
-import rtJson from "@transitopia/region-metro-vancouver/config/rt.json";
-import seabusJson from "@transitopia/region-metro-vancouver/config/seabus.json";
+import type { Config } from "@transitopia/transit-core/config.ts";
 
-export const kinematicsConfig = parseConfig("kinematics", kinematicsJson);
-export const operationsConfig = parseConfig("operations", operationsJson);
-export const rtConfig = parseConfig("rt", rtJson);
-export const seabusConfig = parseConfig("seabus", seabusJson);
+export interface RegionConfig {
+  kinematics: Config<"kinematics">;
+  operations: Config<"operations">;
+  rt: Config<"rt">;
+  seabus: Config<"seabus">;
+}
