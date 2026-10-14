@@ -125,7 +125,11 @@ export interface DepartureGroup {
   departures: Departure[];
 }
 
-/** One group per route + destination, ordered by each group's soonest departure. */
+/**
+ * One group per route + destination. Groups with a platform or bay are ordered by its number
+ * (Platform 1 before 2, Bay 1 before 5), then by soonest departure; groups without one (a street
+ * stop) come after, by soonest departure.
+ */
 export function groupDepartures(deps: readonly Departure[]): DepartureGroup[] {
   const groups = new Map<string, DepartureGroup>();
   for (const d of deps) {
@@ -144,8 +148,26 @@ export function groupDepartures(deps: readonly Departure[]): DepartureGroup[] {
     if (d.platform && !g.platforms.includes(d.platform))
       g.platforms.push(d.platform);
   }
-  // deps are sorted, so insertion order is already by soonest departure.
-  return [...groups.values()];
+  // deps are sorted, so insertion order is by soonest departure; the stable sort keeps it within a platform.
+  return [...groups.values()].sort((a, b) =>
+    comparePlatforms(lowestPlatform(a), lowestPlatform(b)),
+  );
+}
+
+const byNumber = new Intl.Collator(undefined, { numeric: true });
+
+const lowestPlatform = (g: DepartureGroup): string | undefined =>
+  [...g.platforms].sort(byNumber.compare)[0];
+
+/** Numbered platforms in order ("2" before "10"), unnumbered last. */
+function comparePlatforms(
+  a: string | undefined,
+  b: string | undefined,
+): number {
+  if (a === b) return 0;
+  if (a === undefined) return 1;
+  if (b === undefined) return -1;
+  return byNumber.compare(a, b);
 }
 
 /**

@@ -157,7 +157,7 @@ const GroupRow: React.FC<{
 
 /**
  * A station, bus exchange or bus stop (apps/web/README.md#station-and-stop-cards): what leaves after
- * the map's time, one row per route and destination ordered by the soonest, with how often each runs
+ * the map's time, one row per route and destination ordered by platform or bay, then the soonest, with how often each runs
  * in the next hour, and a combined row for routes that share a stretch from here. A station lists its
  * trains, then its sailings, then the buses from its bays.
  */
