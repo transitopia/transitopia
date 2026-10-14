@@ -56,6 +56,10 @@ import {
   STOP_NO_DROPOFF,
   STOP_NO_PICKUP,
 } from "@transitopia/transit-core/plan/types.ts";
+import {
+  bayAtPlace,
+  busHubs,
+} from "@transitopia/transit-core/plan/exchanges.ts";
 
 interface RouteConfig {
   key: string;
@@ -443,6 +447,33 @@ export async function buildPlan(zipPath: string): Promise<ServicePlan> {
   }
   stations.length = 0;
   stations.push(...merged.sort((a, b) => a.name.localeCompare(b.name)));
+
+  // The other bays at stations and exchanges on the map, so their cards list every route there
+  // (bays only catalogue routes use); bays elsewhere wait until their buses are drawn.
+  const hubs = busHubs({ routes, stops, stations, patterns, trips });
+  const hubBays = hubs.flatMap((h) =>
+    h.bays.map((id) => stops[stopIndex.get(id)!]!),
+  );
+  const servedByCatalog = new Set(
+    [...catalogStops.values()].flatMap((s) => [...s]),
+  );
+  let addedBays = 0;
+  for (const id of [...servedByCatalog].sort()) {
+    const row = allStops.get(id);
+    if (stopIndex.has(id) || !row) continue;
+    const s: PlanStop = {
+      id,
+      name: row.stop_name!,
+      lon: Number(row.stop_lon),
+      lat: Number(row.stop_lat),
+    };
+    if (!bayAtPlace(s, hubBays, stations)) continue;
+    if (row.stop_code) s.code = row.stop_code;
+    stopIndex.set(id, stops.length);
+    stops.push(s);
+    addedBays++;
+  }
+  log(`Added ${addedBays} bays at stations and exchanges for catalogue routes`);
 
   // The catalogue: each route's stops among the plan's, and its trips' start times.
   for (const t of catalogTrips.values()) {
