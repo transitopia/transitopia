@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { TrackGraph } from "../src/infra/graph.ts";
 import { dispatch, type DispatchConfig } from "../src/dispatch/dispatch.ts";
+import {
+  createTrain,
+  Interlocking,
+  type Train,
+} from "../src/dispatch/interlocking.ts";
+import { buildModels, type MoveItem } from "../src/dispatch/model.ts";
 import { TrainPlayback } from "../src/movement/playback.ts";
 import { preparePlan } from "../src/schedule/engine.ts";
 import type {
@@ -354,5 +360,62 @@ describe("dispatch", () => {
     } finally {
       log.mockRestore();
     }
+  });
+});
+
+describe("interlocking", () => {
+  const speeds = { deadhead: 0.55, turnback: 0.8 };
+  /** The fixture's two trains at their first positions, before either has appeared. */
+  const setup = () => {
+    const models = buildModels(movements(["up", "down"]), pp, kin, {
+      minHoldS: config.minHoldS,
+    });
+    const il = new Interlocking(models, g, config, undefined);
+    const [up, down] = models.map((m, i) => createTrain(m, i, speeds)) as [
+      Train,
+      Train,
+    ];
+    il.now = 8 * 3600;
+    return { il, up, down };
+  };
+  /** Put the train on its first move (its trip), and return that. */
+  const firstMove = (tr: Train): MoveItem => {
+    tr.i = tr.m.items.findIndex((it) => it.k === "move");
+    return tr.m.items[tr.i] as MoveItem;
+  };
+  // Up's route starts at A1 (N@100): junction J is 900 m along it, then the single track to B.
+  const J = 900;
+
+  it("holds a train short of single track another train stands on, saying which", () => {
+    const { il, up, down } = setup();
+    // Down appears at B, on the single track (and reserves it); up appears at A1.
+    expect(il.canSpawn(down)).toBe(true);
+    il.occupy(down);
+    expect(il.canSpawn(up)).toBe(true);
+    il.occupy(up);
+    const move = firstMove(up);
+    const held = il.authority(up, move, move.g1);
+    expect(held.by).toBe(down);
+    expect(held.why).toMatch(/occupied|single track/);
+    expect(held.lim).toBeLessThan(J - config.foulingM - up.half);
+
+    // Once down has gone (released everything, off the track), up may run all the way to B.
+    il.release(down, true);
+    il.clearOccupancy();
+    il.occupy(up);
+    const clear = il.authority(up, move, move.g1);
+    expect(clear.by).toBeUndefined();
+    expect(clear.lim).toBeGreaterThanOrEqual(move.g1 - 1e-6);
+  });
+
+  it("doesn't let a train appear where another stands", () => {
+    const { il, down } = setup();
+    const { up: other } = setup();
+    expect(il.canSpawn(down)).toBe(true);
+    il.occupy(down);
+    // A second train at the same berth (the other model of the same run) can't appear.
+    const twin = createTrain(down.m, 2, speeds);
+    expect(il.canSpawn(twin)).toBe(false);
+    expect(il.canSpawn(other)).toBe(true);
   });
 });
