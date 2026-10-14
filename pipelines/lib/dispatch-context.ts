@@ -5,6 +5,7 @@ import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { PUBLIC_DIR, PUBLIC_DATA_DIR, readConfig, readJson } from "./paths.ts";
 import { loadGraph } from "./infra.ts";
+import { dispatchDebugFromEnv } from "./dispatch-debug.ts";
 import {
   preparePlan,
   type PreparedPlan,
@@ -139,6 +140,7 @@ export class DispatchContexts {
       kin,
       ops,
       platforms: report.assignments,
+      debug: dispatchDebugFromEnv(),
       ...(report.patternPositions ?
         { patternPositions: report.patternPositions }
       : {}),

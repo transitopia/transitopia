@@ -7,7 +7,7 @@
     "./*": "./src/*"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test"
   },
   "devDependencies": {
     "@transitopia/region-metro-vancouver": "*",

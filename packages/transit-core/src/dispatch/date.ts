@@ -15,7 +15,11 @@ import { railInputs } from "../corrections/reconcile.ts";
 import type { Observation } from "../corrections/types.ts";
 import { applyDisruptions, periodsOn } from "../disruption/apply.ts";
 import type { Disruption } from "../disruption/types.ts";
-import { dispatchAsync, type DispatchConfig } from "./dispatch.ts";
+import {
+  dispatchAsync,
+  type DispatchConfig,
+  type DispatchDebug,
+} from "./dispatch.ts";
 import { inputsVersion, makePatch, type DispatchPatch } from "./patch.ts";
 
 export interface DateInputs {
@@ -37,6 +41,8 @@ export interface DateContext {
   /** Platform mapping, for re-inferring a disrupted date. */
   platforms: Map<string, PlatformAssignment>;
   patternPositions?: Map<number, Map<number, TrackPos>>;
+  /** The dispatcher's debug output (not part of the date's version). */
+  debug?: DispatchDebug | undefined;
 }
 
 /** Disruptions that apply on the date (confirmed, with a period touching its service day). */
@@ -88,6 +94,7 @@ export async function dispatchDate(
       date: inputs.date,
       rail,
       base: ctx.base,
+      debug: ctx.debug,
     });
     return makePatch(ctx.base, out, {
       date: inputs.date,
@@ -127,6 +134,7 @@ export async function dispatchDate(
     inputs: labels(rail.used, disruptions),
     date: inputs.date,
     rail,
+    debug: ctx.debug,
   });
   // Trains on a disrupted line carry the notice while it applies.
   for (const run of out.runs) {
