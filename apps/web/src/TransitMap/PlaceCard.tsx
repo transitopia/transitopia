@@ -80,13 +80,16 @@ const RouteBadge: React.FC<{ route: PlanRoute; ring?: boolean }> = ({
   </span>
 );
 
-const Frequency: React.FC<{ minutes: number; approx?: boolean }> = ({
-  minutes,
-  approx,
-}) => {
+const Frequency: React.FC<{
+  minutes: number;
+  approx?: boolean;
+  /** Bold, in the text colour (a bracket's footnote), rather than muted. */
+  strong?: boolean;
+}> = ({ minutes, approx, strong }) => {
   const band = bandOf(minutes);
   return (
-    <span className="mt-0.5 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-(--card-muted)">
+    <span
+      className={`inline-flex items-center gap-1.5 text-[12.5px] ${strong ? "font-bold" : "mt-0.5 font-semibold text-(--card-muted)"}`}>
       {everyText(minutes, approx)} ·
       <span className="inline-flex items-center gap-1">
         <span
@@ -231,7 +234,43 @@ const SharedRow: React.FC<{ shared: Shared }> = ({ shared: s }) => (
   </div>
 );
 
-/** One kind of departure (trains, sailings or buses): shared stretches on top, then a row per group. */
+const groupKey = (g: PlaceGroup) => `${g.route.key}|${g.headsign}`;
+const sharedKey = (s: Shared) => s.routes.map((r) => r.key).join() + s.to;
+
+/**
+ * The rows of a shared stretch whose trips all leave from one platform or bay, tied by a rail on
+ * the left, with what they add up to under them ("Either one, to Columbia · every ~6m · Good").
+ */
+const SharedBracket: React.FC<{
+  shared: Shared;
+  children: React.ReactNode;
+  count: number;
+}> = ({ shared: s, children, count }) => (
+  <div className="flex gap-2">
+    <span
+      aria-hidden="true"
+      className="mt-2.5 mb-2 w-[3px] flex-none rounded-sm bg-(--card-bracket)"
+    />
+    <div className="min-w-0 flex-1">
+      <div className="divide-y divide-(--card-divider)">{children}</div>
+      <p className="flex flex-wrap items-center gap-x-1.5 pb-2 text-[12.5px] leading-snug font-bold">
+        {count === 2 ? "Either one" : "Any of these"}, to {s.to}
+        {s.minutes !== undefined ?
+          <>
+            {" ·"}
+            <Frequency minutes={s.minutes} approx strong />
+          </>
+        : null}
+      </p>
+    </div>
+  </div>
+);
+
+/**
+ * One kind of departure (trains, sailings or buses), a row per group in platform order. A shared
+ * stretch whose trips all leave from one platform or bay brackets its rows there (kept together, in
+ * the place of its soonest); any other (several platforms, or a street stop) is a combined row on top.
+ */
 const DepartureList: React.FC<{
   title: string;
   groups: PlaceGroup[];
@@ -239,24 +278,50 @@ const DepartureList: React.FC<{
   empty: string;
   snap: TransitSnapshot;
   itemsFor: (g: PlaceGroup) => MenuItem[];
-}> = ({ title, groups, shared, empty, snap, itemsFor }) => (
-  <CardSection title={title}>
-    {shared.map((s) => (
-      <SharedRow key={s.routes.map((r) => r.key).join() + s.to} shared={s} />
-    ))}
-    {groups.length ?
-      groups.map((g) => (
-        <GroupRow
-          key={`${g.route.key}|${g.headsign}`}
-          group={g}
-          now={snap.t}
-          live={snap.live}
-          items={itemsFor(g)}
-        />
-      ))
-    : <p className="py-2 text-sm text-(--card-muted)">{empty}</p>}
-  </CardSection>
-);
+}> = ({ title, groups, shared, empty, snap, itemsFor }) => {
+  const owner = new Map<string, Shared>();
+  for (const s of shared)
+    if (s.platforms.length === 1) for (const k of s.groups) owner.set(k, s);
+  const shown = new Set(groups.map(groupKey));
+  const row = (g: PlaceGroup) => (
+    <GroupRow
+      key={groupKey(g)}
+      group={g}
+      now={snap.t}
+      live={snap.live}
+      items={itemsFor(g)}
+    />
+  );
+  const done = new Set<Shared>();
+  const blocks: React.ReactNode[] = [];
+  for (const g of groups) {
+    const s = owner.get(groupKey(g));
+    const members = s ? groups.filter((x) => owner.get(groupKey(x)) === s) : [];
+    if (!s || members.length < 2) blocks.push(row(g));
+    else if (!done.has(s)) {
+      done.add(s);
+      blocks.push(
+        <SharedBracket key={sharedKey(s)} shared={s} count={members.length}>
+          {members.map(row)}
+        </SharedBracket>,
+      );
+    }
+  }
+  // A stretch is bracketed only when its rows are all in this list; otherwise it stays on top.
+  const onTop = shared.filter(
+    (s) => !done.has(s) && s.groups.some((k) => shown.has(k)),
+  );
+  return (
+    <CardSection title={title}>
+      {onTop.map((s) => (
+        <SharedRow key={sharedKey(s)} shared={s} />
+      ))}
+      {groups.length ?
+        blocks
+      : <p className="py-2 text-sm text-(--card-muted)">{empty}</p>}
+    </CardSection>
+  );
+};
 
 const PlaceCardBody: React.FC<{
   engine: TransitEngine;

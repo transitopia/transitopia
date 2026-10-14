@@ -176,6 +176,8 @@ export interface PlaceSnapshot extends Place {
     routes: PlanRoute[];
     /** Platforms its trips leave from, where known. */
     platforms: string[];
+    /** The groups it combines, as `${route key}|${headsign}`. */
+    groups: string[];
     to: string;
     minutes: number | undefined;
   }[];
@@ -1170,6 +1172,7 @@ export class TransitEngine {
       shared: sharedStretches(plan, groups).map((s) => ({
         routes: [...new Set(s.groups.map((g) => g.routeKey))].map(routeOf),
         platforms: [...new Set(s.groups.flatMap((g) => g.platforms))].sort(),
+        groups: s.groups.map((g) => `${g.routeKey}|${g.headsign}`),
         to: placeName(plan, s.toStopId),
         minutes: minutesBetween(s.departures, t),
       })),
