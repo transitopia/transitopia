@@ -106,6 +106,10 @@ export class TrainPlayback {
   private runs: PreparedRun[];
   private legCache = new Map<string, LegProfile>();
   private kin: (line: string) => Kinematics;
+  /** Per parked train (by index): the track it stands on, found once (null: none nearby). */
+  private parkedTrack = new Map<number, TrackPos | null>();
+  /** VehicleState.source of every estimated train. */
+  private source: string;
 
   readonly file: MovementsFile;
   private pp: PreparedPlan;
@@ -124,6 +128,7 @@ export class TrainPlayback {
     this.g = g;
     this.opts = opts;
     this.kin = (line) => kinematicsFor(kin, "skytrain", line);
+    this.source = `timetable ${pp.plan.feedVersion} + run inference`;
     this.paths = file.paths.map((packed) => {
       const segs: string[] = [];
       const from: number[] = [];
@@ -230,10 +235,14 @@ export class TrainPlayback {
     sec: number,
     serviceDate: string,
   ): VehicleState | undefined {
-    const track = this.g.nearest(p.at, 15)[0];
-    if (!track) return undefined;
+    let pos = this.parkedTrack.get(i);
+    if (pos === undefined) {
+      const track = this.g.nearest(p.at, 15)[0];
+      pos = track ? { seg: track.seg, offset: track.offset } : null;
+      this.parkedTrack.set(i, pos);
+    }
+    if (!pos) return undefined;
     const k = this.kin(p.line);
-    const pos = { seg: track.seg, offset: track.offset };
     const pt = this.g.pointAt(pos, 1);
     const near = Math.abs(sec - p.seen) <= OBSERVED_WINDOW_S;
     const v: VehicleState = {
@@ -253,7 +262,7 @@ export class TrainPlayback {
       length: k.length,
       width: k.width,
       observedAt: serviceDayStart(serviceDate) + p.seen * 1000,
-      track: pos,
+      track: { seg: pos.seg, offset: pos.offset },
     };
     if (p.consist) v.consist = p.consist;
     if (this.opts.shapes)
@@ -282,7 +291,7 @@ export class TrainPlayback {
     const base: Base = {
       id: `${serviceDate}:${r.run.id}`,
       provenance: "estimated",
-      source: `timetable ${this.pp.plan.feedVersion} + run inference`,
+      source: this.source,
       serviceDate,
       length: r.kin.length,
       width: r.kin.width,
