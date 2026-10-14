@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   bayAtPlace,
+  baseName,
   bayLabel,
   bayNumber,
   busHubs,
@@ -17,6 +18,28 @@ describe("isBay", () => {
     expect(isBay("Newton Exchange @ Layover")).toBe(false);
     expect(isBay("Eastbound W Broadway @ Alma St")).toBe(false);
     expect(isBay("Westbound W Broadway @ Bayswater St")).toBe(false);
+  });
+
+  it("reads BC Transit's bays, which have no @", () => {
+    expect(isBay("Langford Exch (Jacklin Rd) Bay D")).toBe(true);
+    expect(isBay("UBCO Exchange Bay C")).toBe(true);
+    expect(isBay("Legislature Exch")).toBe(true);
+    expect(isBay("Swartz Bay Ferry Terminal Bay A")).toBe(true);
+    expect(isBay("Douglas St at Bay St")).toBe(false);
+    expect(isBay("Fort St at Foul Bay Rd")).toBe(false);
+    expect(isBay("HMC Dockyard Terminal")).toBe(false);
+    expect(bayNumber("Royal Oak Exch Bay H")).toBe("H");
+    expect(bayLabel("Langford Exch (Jacklin Rd) Bay D")).toBe("Bay D");
+    expect(bayLabel("Legislature Exch")).toBe("Bay");
+    expect(baseName("Langford Exch (Jacklin Rd) Bay D")).toBe(
+      "Langford Exchange",
+    );
+    expect(baseName("Langford Exch Bay A")).toBe("Langford Exchange");
+    expect(baseName("Legislature Exch")).toBe("Legislature Exchange");
+    expect(baseName("UBCO Exchange Bay C")).toBe("UBCO Exchange");
+    expect(baseName("Swartz Bay Ferry Terminal Bay A")).toBe(
+      "Swartz Bay Ferry Terminal",
+    );
   });
 
   it("reads bay numbers", () => {

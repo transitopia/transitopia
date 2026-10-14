@@ -37,17 +37,33 @@ const MERGE_M = 250;
  */
 const STATION_M = 400;
 
+// Agencies name bays differently; both forms are read here (generic heuristics, no agency switch):
+//   TransLink:  "UBC Exchange @ Bay 7", "Joyce Station @ Bay 1 Unload Only", "Phibbs Exchange @"
+//   BC Transit: "Langford Exch (Jacklin Rd) Bay D", "UBCO Exchange Bay C", "Legislature Exch",
+//               "Swartz Bay Ferry Terminal Bay A"
+
 /** "Bay 7", "Bay 1 Unload Only", "Unloading Only", or "" ("Phibbs Exchange @"): a bay, not a street stop. */
 const BAY = /@\s*(Bay\b.*|Unload.*)?$/i;
+/**
+ * An exchange or terminal, optionally the street a group of its bays is on, then a bay letter or
+ * number ("Bay St" is a street: a bay is one letter or a number). The exchange itself (no bay) only
+ * when the name ends with it.
+ */
+const SUFFIX_BAY =
+  /^(.*\b(?:Exch|Exchange|Terminal))(?:\s*\([^)]*\))?\s+Bay\s+([0-9]+|[A-Z])\s*$/i;
+const SUFFIX_EXCHANGE = /^(.*\b(?:Exch|Exchange))\s*$/i;
 
 /** Whether a GTFS stop name is an exchange or station bay. */
 export function isBay(name: string): boolean {
-  return BAY.test(name) && !/@\s*Layover\b/i.test(name);
+  if (name.includes("@")) return BAY.test(name) && !/@\s*Layover\b/i.test(name);
+  return SUFFIX_BAY.test(name) || SUFFIX_EXCHANGE.test(name);
 }
 
-/** The bay's number or letter ("7" for "… @ Bay 7"), if it has one. */
+/** The bay's number or letter ("7" for "… @ Bay 7", "D" for "… Exch Bay D"), if it has one. */
 export function bayNumber(name: string): string | undefined {
-  return /@\s*Bay\s+([0-9A-Z]+)\b/i.exec(name)?.[1];
+  return (
+    /@\s*Bay\s+([0-9A-Z]+)\b/i.exec(name)?.[1] ?? SUFFIX_BAY.exec(name)?.[2]
+  );
 }
 
 /** A bay's short name: "Bay 7", "Unloading Only", or "Bay" where it has none ("Phibbs Exchange @"). */
@@ -57,9 +73,19 @@ export function bayLabel(name: string): string {
   return name.split("@")[1]?.replace(/\s+/g, " ").trim() || "Bay";
 }
 
-/** The name before "@", whitespace tidied: "Oakridge-41st Ave Station  @ Bay 4" → "Oakridge-41st Ave Station". */
+/**
+ * The exchange's or station's name, whitespace tidied: "Oakridge-41st Ave Station  @ Bay 4" →
+ * "Oakridge-41st Ave Station", "Langford Exch (Jacklin Rd) Bay D" → "Langford Exchange".
+ */
 export function baseName(name: string): string {
-  return name.split("@")[0]!.replace(/\s+/g, " ").trim();
+  const base =
+    name.includes("@") ?
+      name.split("@")[0]!
+    : (SUFFIX_BAY.exec(name)?.[1] ?? SUFFIX_EXCHANGE.exec(name)?.[1] ?? name);
+  return base
+    .replace(/\bExch$/i, "Exchange")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 const firstWord = (name: string) => name.toLowerCase().split(/[\s-]+/)[0] ?? "";
