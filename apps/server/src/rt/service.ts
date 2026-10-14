@@ -158,7 +158,8 @@ export class RtService {
   readonly alertDrafts: AlertDrafts;
   readonly changes: ServiceChanges;
   private routesLoadedFrom: number | undefined;
-  private timers: ReturnType<typeof setTimeout>[] = [];
+  /** Each feed's pending poll (one per feed: a tick schedules the next). */
+  private timers: Partial<Record<PollFeed, ReturnType<typeof setTimeout>>> = {};
   private running = false;
   /** Per feed: when it last polled successfully and its last error, so one feed's success can't hide another's failure. */
   private feeds: Record<PollFeed, { lastOkAt?: number; lastError?: string }> = {
@@ -448,8 +449,8 @@ export class RtService {
     this.isLeader = false;
     this.dispatcher?.stop();
     this.ais?.stop();
-    for (const t of this.timers) clearTimeout(t);
-    this.timers = [];
+    for (const t of Object.values(this.timers)) clearTimeout(t);
+    this.timers = {};
     if (this.leaderRetry) clearTimeout(this.leaderRetry);
     void this.leaderLock?.release();
   }
@@ -498,8 +499,9 @@ export class RtService {
   ): void {
     const schedule = (at: number) => {
       this.nextPollAt[feed] = at;
+      clearTimeout(this.timers[feed]);
       if (this.running)
-        this.timers.push(setTimeout(tick, Math.max(0, at - Date.now())));
+        this.timers[feed] = setTimeout(tick, Math.max(0, at - Date.now()));
     };
     const tick = async () => {
       if (!this.running) return;
