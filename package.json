@@ -45,8 +45,8 @@
     "scenario": "tsx pipelines/scenario.ts"
   },
   "devDependencies": {
-    "@types/node": "^26.6.3",
-    "oxlint": "^1.78",
+    "@types/node": "^26.6.4",
+    "oxlint": "^1.87",
     "oxlint-tsgolint": "^7",
     "prettier": "^3",
     "tsx": "^4.23.15",
