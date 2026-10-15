@@ -13,4 +13,8 @@ Drawn route (`feeds/bc-transit-kelowna/routes.json`): **97 Okanagan RapidBus** (
 
 - **Real-time data** (sampled 2026-10-14 15:00): 52 buses reporting, 9 of them on the 97; trip updates covered 90 % of buses on a trip.
 
+### Buses
+
+*Was part of OPEN-QUESTIONS #4.* Kelowna has no articulated buses (Braden MacDonald, 2026-10-15), so the 97 is drawn as a 12 m bus.
+
 What's still assumed is in [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md); when one is answered, update the config and move the answer here with its source.

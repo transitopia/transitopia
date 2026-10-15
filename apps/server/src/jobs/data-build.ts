@@ -18,6 +18,7 @@ import type { Db } from "@transitopia/db/connect.ts";
 import type { CorrectionsRepo } from "../corrections.ts";
 import type { ServerEnv } from "../env.ts";
 import { run } from "./exec.ts";
+import { isoDate } from "../store.ts";
 
 export interface DataBuildResult {
   newFeeds: string[];
@@ -110,13 +111,11 @@ async function recordFeeds(
         `${env.archiveRemote}/${key}`,
         "--s3-no-check-bucket",
       ]);
-    const iso = (d: string) =>
-      `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
     const row = {
       feed_id: feedId,
       version: f.version,
-      start_date: iso(f.start),
-      end_date: iso(f.end),
+      start_date: isoDate(f.start),
+      end_date: isoDate(f.end),
       fetched_at: (await stat(f.path)).mtime,
       sha256: await sha256File(f.path),
       bytes: (await stat(f.path)).size,

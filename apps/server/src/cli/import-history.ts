@@ -43,7 +43,7 @@ import { vehicleToFix } from "@transitopia/transit-core/ais/fixes.ts";
 import type { RtDayChanges } from "@transitopia/transit-core/rt/changes.ts";
 import type { DispatchPatch } from "@transitopia/transit-core/dispatch/patch.ts";
 import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
-import { Store } from "../store.ts";
+import { isoDate, Store } from "../store.ts";
 import { CorrectionsRepo } from "../corrections.ts";
 import { syncSources } from "../sources.ts";
 
@@ -126,7 +126,6 @@ async function imported(
 }
 
 // Positions, service changes and the request ledger, per feed.
-const iso = (d: string) => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
 for (const feed of (await readFeeds()).filter((f) => f.realtime)) {
   const dir = join(varDir, "rt-history", feed.id);
   const ids = await routeIds(feed.id);
@@ -175,7 +174,7 @@ for (const feed of (await readFeeds()).filter((f) => f.realtime)) {
       /^\d{8}\.json$/.test(f),
     )) {
       const d = await readJson<RtDayChanges>(join(changesDir, f));
-      const date = iso(d.date);
+      const date = isoDate(d.date);
       const rows = [
         ...Object.entries(d.cancelled).map(([tripId, [first, last]]) => ({
           tripId,
@@ -247,8 +246,8 @@ for (const feed of (await readFeeds()).filter((f) => f.realtime)) {
       .values({
         feed_id: feed.id,
         version: f.version,
-        start_date: iso(f.start),
-        end_date: iso(f.end),
+        start_date: isoDate(f.start),
+        end_date: isoDate(f.end),
         fetched_at: new Date(),
         sha256: "",
         bytes: 0,

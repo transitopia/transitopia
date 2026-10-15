@@ -39,7 +39,7 @@ export interface TripChangeRow {
 /** Rows per INSERT (Postgres allows 65,535 parameters per statement). */
 const CHUNK = 2000;
 /** YYYYMMDD → YYYY-MM-DD, for date columns. */
-const isoDate = (yyyymmdd: string) =>
+export const isoDate = (yyyymmdd: string) =>
   Temporal.PlainDate.from(yyyymmdd).toString();
 
 /** AIS fixes are of TransLink's SeaBus: their polls are recorded as its feed's. */

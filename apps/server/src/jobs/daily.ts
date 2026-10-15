@@ -9,6 +9,7 @@ import type {
 } from "@transitopia/transit-core/config.ts";
 import type { Db } from "@transitopia/db/connect.ts";
 import { ensurePartitionsFor } from "@transitopia/db/partitions.ts";
+import { isoDate } from "../store.ts";
 import {
   feedZipFor,
   loadDayTimetable,
@@ -30,8 +31,6 @@ import { serviceDayStart } from "@transitopia/transit-core/time.ts";
 const CHUNK = 2000;
 /** Positions this long after the service day's start can still belong to it (ms). */
 const DAY_SPAN_MS = 32 * 3_600_000;
-
-const iso = (d: string) => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
 
 export interface DailyResult {
   feedVersion: string;
@@ -138,7 +137,7 @@ export async function dailyStats(
     await tx
       .deleteFrom("observed_stop_times")
       .where("feed_id", "=", feed.id)
-      .where("service_date", "=", iso(date))
+      .where("service_date", "=", isoDate(date))
       .execute();
     for (let i = 0; i < observed.length; i += CHUNK)
       await tx
@@ -146,7 +145,7 @@ export async function dailyStats(
         .values(
           observed.slice(i, i + CHUNK).map((o) => ({
             feed_id: feed.id,
-            service_date: iso(date),
+            service_date: isoDate(date),
             trip_id: o.tripId,
             stop_sequence: o.seq,
             stop_id: o.stopId,
@@ -183,7 +182,7 @@ export async function dailyStats(
     .selectFrom("trip_changes")
     .select(["trip_id", "cancelled", "skipped_stop_ids"])
     .where("feed_id", "=", feed.id)
-    .where("service_date", "=", iso(date))
+    .where("service_date", "=", isoDate(date))
     .execute();
   const stats = routeStats(
     {
@@ -218,7 +217,7 @@ export async function dailyStats(
     await tx
       .deleteFrom("route_stats_daily")
       .where("feed_id", "=", feed.id)
-      .where("service_date", "=", iso(date))
+      .where("service_date", "=", isoDate(date))
       .execute();
     for (let i = 0; i < stats.length; i += CHUNK)
       await tx
@@ -226,7 +225,7 @@ export async function dailyStats(
         .values(
           stats.slice(i, i + CHUNK).map((s) => ({
             feed_id: feed.id,
-            service_date: iso(date),
+            service_date: isoDate(date),
             route_id: s.routeId,
             route_short_name: s.routeShortName ?? null,
             direction_id: s.directionId,
