@@ -46,7 +46,11 @@ import {
   simplify,
   type LonLat,
 } from "@transitopia/transit-core/geo.ts";
-import { parseGtfsTime, TIMEZONE } from "@transitopia/transit-core/time.ts";
+import {
+  parseGtfsTime,
+  TIMEZONE,
+  serviceDate,
+} from "@transitopia/transit-core/time.ts";
 import {
   applyFerryBerths,
   type FerryInfra,
@@ -556,8 +560,8 @@ export async function buildPlan(
         "saturday",
         "sunday",
       ].map((d) => r[d] === "1"),
-      start: r.start_date!,
-      end: r.end_date!,
+      start: serviceDate(r.start_date!),
+      end: serviceDate(r.end_date!),
     }));
   const exceptions: CalendarException[] = (
     await readCsvAll(zipPath, "calendar_dates.txt")
@@ -565,7 +569,7 @@ export async function buildPlan(
     .filter((r) => usedServices.has(r.service_id!))
     .map((r) => ({
       serviceId: r.service_id!,
-      date: r.date!,
+      date: serviceDate(r.date!),
       type: r.exception_type === "1" ? 1 : 2,
     }));
 
@@ -576,8 +580,8 @@ export async function buildPlan(
     feedLabel: shortId(feed.display?.feedVersion, info.feed_version!),
     ...(feed.display?.tripId ? { tripIdPattern: feed.display.tripId } : {}),
     feedVersion: info.feed_version!,
-    feedStart: info.feed_start_date!,
-    feedEnd: info.feed_end_date!,
+    feedStart: serviceDate(info.feed_start_date!),
+    feedEnd: serviceDate(info.feed_end_date!),
     timezone: TIMEZONE,
     builtAt: new Date().toISOString(),
     routes,

@@ -31,7 +31,10 @@ import type {
   PreparedPlan,
   ScheduleCorrections,
 } from "@transitopia/transit-core/schedule/engine.ts";
-import { serviceDayStart } from "@transitopia/transit-core/time.ts";
+import {
+  serviceDayStart,
+  type ServiceDate,
+} from "@transitopia/transit-core/time.ts";
 import type { RegionConfig } from "./config.ts";
 
 const MAX_DATES = 4;
@@ -63,7 +66,7 @@ interface DateFixes {
 }
 
 export class AisClient {
-  private dates = new Map<string, DateFixes>();
+  private dates = new Map<ServiceDate, DateFixes>();
   private listeners = new Set<() => void>();
   available: boolean;
   /** Why live AIS data is unavailable, for display. */
@@ -107,7 +110,7 @@ export class AisClient {
 
   /** SeaBus corrections for a service date at display time t (epoch ms), fetching fixes as needed. */
   correctionsFor(
-    date: string,
+    date: ServiceDate,
     pp: PreparedPlan,
     t: number,
   ): ScheduleCorrections | undefined {
@@ -121,11 +124,11 @@ export class AisClient {
   }
 
   /** The berth pair in use on a service date, per its AIS fixes; undefined without any. */
-  pairFor(date: string, pp: PreparedPlan): string | undefined {
+  pairFor(date: ServiceDate, pp: PreparedPlan): string | undefined {
     return this.dayFor(date, pp)?.pair;
   }
 
-  private dayFor(date: string, pp: PreparedPlan): AisDay | undefined {
+  private dayFor(date: ServiceDate, pp: PreparedPlan): AisDay | undefined {
     if (!this.available) return undefined;
     let d = this.dates.get(date);
     if (!d) {
@@ -218,7 +221,7 @@ export class AisClient {
     for (const fn of this.listeners) fn();
   }
 
-  private async fetchDay(date: string, d: DateFixes): Promise<void> {
+  private async fetchDay(date: ServiceDate, d: DateFixes): Promise<void> {
     d.loading = true;
     d.fetchedAt = Date.now();
     d.gap = false;

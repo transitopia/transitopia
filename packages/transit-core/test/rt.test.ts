@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { serviceDate } from "../src/time.ts";
 import {
   coverageContains,
   decodeSnapshot,
@@ -53,8 +54,8 @@ const corner: [number, number] = [-123.08625, 49.25];
 const plan: ServicePlan = {
   schema: 1,
   feedVersion: "t",
-  feedStart: "20260901",
-  feedEnd: "20261231",
+  feedStart: serviceDate("20260901"),
+  feedEnd: serviceDate("20261231"),
   timezone: "America/Vancouver",
   builtAt: "",
   routes: [
@@ -236,7 +237,9 @@ describe("prediction", () => {
     };
     // Skipped on the fix's service date only.
     const p = new Predictor(pp2, cfg, profile, (date, trip) =>
-      date === "20260928" && trip === "trip1" ? new Set(["mid"]) : undefined,
+      date === serviceDate("20260928") && trip === "trip1" ?
+        new Set(["mid"])
+      : undefined,
     );
     const trip = pp2.tripIndex.get("trip1")!;
     expect(p.walk(p.course(trip, T0), 900, 20).along).toBeCloseTo(1100, 5);
@@ -264,8 +267,8 @@ describe("prediction", () => {
         {
           serviceId: "wk",
           days: [true, true, true, true, true, true, true],
-          start: "20260901",
-          end: "20261231",
+          start: serviceDate("20260901"),
+          end: serviceDate("20261231"),
         },
       ],
       exceptions: [],
@@ -274,21 +277,23 @@ describe("prediction", () => {
     const p = new Predictor(pp2, cfg);
     const trip = pp2.tripIndex.get("trip1")!;
     const start = trip.trip.start;
-    const moving = p.pacer(trip, start + 100, "20260928")!;
+    const moving = p.pacer(trip, start + 100, serviceDate("20260928"))!;
     expect(moving.speed).toBeGreaterThan(0);
     // Arrives a little early and waits: standing at the stop until its timetable time.
-    expect(p.pacer(trip, start + 192, "20260928")).toEqual({
+    expect(p.pacer(trip, start + 192, serviceDate("20260928"))).toEqual({
       along: 1000,
       speed: 0,
     });
-    expect(p.pacer(trip, start + 199, "20260928")).toEqual({
+    expect(p.pacer(trip, start + 199, serviceDate("20260928"))).toEqual({
       along: 1000,
       speed: 0,
     });
-    expect(p.pacer(trip, start + 210, "20260928")!.along).toBeGreaterThan(1000);
+    expect(
+      p.pacer(trip, start + 210, serviceDate("20260928"))!.along,
+    ).toBeGreaterThan(1000);
     // And the schedule engine uses it: dwelling at the stop.
     const [v] = scheduledVehicles(pp2, {
-      serviceDate: "20260928",
+      serviceDate: serviceDate("20260928"),
       sec: start + 195,
       pacer: p.pacer,
     });
@@ -366,8 +371,8 @@ describe("carrying RT delays into schedule estimates", () => {
       {
         serviceId: "wk",
         days: [true, true, true, true, true, true, true],
-        start: "20260901",
-        end: "20261231",
+        start: serviceDate("20260901"),
+        end: serviceDate("20261231"),
       },
     ],
     exceptions: [],
@@ -410,7 +415,7 @@ describe("carrying RT delays into schedule estimates", () => {
   };
   const pp2 = preparePlan(two, kin);
   const predictor = new Predictor(pp2, cfg);
-  const date = "20260928";
+  const date = serviceDate("20260928");
   const day0 = Date.UTC(2026, 8, 28, 7, 0, 0); // service day start (00:00 PDT)
   // Bus seen at 200 m, 5 min late (scheduled there at T + 38.5 s).
   const fixTs = day0 + (T + 38.5 + 300) * 1000;
@@ -812,7 +817,7 @@ describe("service changes (GTFS-RT)", () => {
     ],
   });
   const day = (patch: Partial<RtDayChanges>): RtDayChanges => ({
-    ...emptyDayChanges("20260928"),
+    ...emptyDayChanges(serviceDate("20260928")),
     ...patch,
   });
   const detour = (directionId?: number) =>

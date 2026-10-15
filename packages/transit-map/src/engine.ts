@@ -12,6 +12,7 @@ import {
   addDays,
   localDate,
   serviceDayStart,
+  type ServiceDate,
 } from "@transitopia/transit-core/time.ts";
 import {
   makeServiceDescriber,
@@ -135,7 +136,7 @@ export type CardTarget = { vehicle: string } | { place: Place };
 
 /** A kind of day in the shown feed, with the route's minutes between trips per hour (DAY_HOURS). */
 export interface RouteDay {
-  date: string;
+  date: ServiceDate;
   label: string;
   hours: (number | undefined)[];
 }
@@ -146,7 +147,7 @@ export interface TransitSnapshot {
   /** Shown instant, epoch ms (updated a few times a second while playing). */
   t: number;
   /** Displayed service date (YYYYMMDD) and its description ("Weekday", "Sunday/holiday", …). */
-  serviceDate: string;
+  serviceDate: ServiceDate;
   serviceLabel: string;
   playing: boolean;
   rate: number;
@@ -265,7 +266,7 @@ export class TransitEngine {
   /** Per feed and route: its day types and hourly frequencies (they don't change with the time). */
   private routeDayCache = new WeakMap<PreparedPlan, Map<string, RouteDay[]>>();
   /** The real-time corrections last applied, per service date (for departure times). */
-  private lastCorrections: Map<string, ScheduleCorrections> | undefined;
+  private lastCorrections: Map<ServiceDate, ScheduleCorrections> | undefined;
   private following = false;
   /** When the ease that starts (or re-aims) follow ends (performance.now()). */
   private followEaseEnds = 0;
@@ -282,7 +283,7 @@ export class TransitEngine {
   private lastVehicles: VehicleState[] = [];
   /** Cards `open()` came through, oldest first, each with its title for the back strip. */
   private trail: { target: CardTarget; label: string }[] = [];
-  private describers = new Map<string, (d: string) => ServiceDayInfo>();
+  private describers = new Map<string, (d: ServiceDate) => ServiceDayInfo>();
   private snapshot: TransitSnapshot;
   private listeners = new Set<() => void>();
   private lastPublish = 0;
@@ -474,7 +475,7 @@ export class TransitEngine {
   }
 
   /** Jump to another service date at the same time of day. */
-  seekDate(date: string): void {
+  seekDate(date: ServiceDate): void {
     const t = this.clock.now();
     const sec = (t - serviceDayStart(displayServiceDate(t))) / 1000;
     this.clock.seek(serviceDayStart(date) + sec * 1000);
@@ -967,7 +968,7 @@ export class TransitEngine {
     }, URL_WRITE_THROTTLE_MS);
   }
 
-  private describeDate(date: string): string {
+  private describeDate(date: ServiceDate): string {
     const feed = feedForDate(this.store.manifest, date);
     const pp = this.store.planFor(date);
     if (!feed) return "No timetable for this date";

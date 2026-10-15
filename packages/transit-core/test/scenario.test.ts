@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { serviceDate } from "../src/time.ts";
 import { TrackGraph } from "../src/infra/graph.ts";
 import { composeNetwork } from "../src/scenario/network.ts";
 import { applyService } from "../src/scenario/service.ts";
@@ -103,8 +104,8 @@ describe("applyService extend", () => {
   const plan: ServicePlan = {
     schema: 1,
     feedVersion: "v",
-    feedStart: "20260901",
-    feedEnd: "20261231",
+    feedStart: serviceDate("20260901"),
+    feedEnd: serviceDate("20261231"),
     timezone: "America/Vancouver",
     builtAt: "",
     routes: [
@@ -256,8 +257,8 @@ describe("applyService truncate", () => {
   const plan: ServicePlan = {
     schema: 1,
     feedVersion: "v",
-    feedStart: "20260901",
-    feedEnd: "20261231",
+    feedStart: serviceDate("20260901"),
+    feedEnd: serviceDate("20261231"),
     timezone: "America/Vancouver",
     builtAt: "",
     routes: [

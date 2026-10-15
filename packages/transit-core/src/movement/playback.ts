@@ -24,7 +24,11 @@ import {
   OBSERVED_WINDOW_S,
   type ParkedTrain,
 } from "../corrections/reconcile.ts";
-import { formatServiceTime, serviceDayStart } from "../time.ts";
+import {
+  formatServiceTime,
+  serviceDayStart,
+  type ServiceDate,
+} from "../time.ts";
 
 /** Distance and speed at `sec` along a flattened [t, d, …] trajectory (linear between points). */
 function alongVia(pts: number[], sec: number): { d: number; speed: number } {
@@ -195,7 +199,7 @@ export class TrainPlayback {
    */
   vehiclesAt(
     sec: number,
-    serviceDate: string,
+    serviceDate: ServiceDate,
     routes?: Set<string>,
   ): VehicleState[] {
     const out: VehicleState[] = [];
@@ -234,7 +238,7 @@ export class TrainPlayback {
     p: ParkedTrain,
     i: number,
     sec: number,
-    serviceDate: string,
+    serviceDate: ServiceDate,
   ): VehicleState | undefined {
     let pos = this.parkedTrack.get(i);
     if (pos === undefined) {
@@ -277,7 +281,7 @@ export class TrainPlayback {
   private runAt(
     r: PreparedRun,
     sec: number,
-    serviceDate: string,
+    serviceDate: ServiceDate,
   ): VehicleState | undefined {
     // Last event starting at or before sec.
     let lo = 0;

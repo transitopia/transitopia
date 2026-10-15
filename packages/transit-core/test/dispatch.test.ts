@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { serviceDate } from "../src/time.ts";
 import { TrackGraph } from "../src/infra/graph.ts";
 import { dispatch, type DispatchConfig } from "../src/dispatch/dispatch.ts";
 import {
@@ -120,8 +121,8 @@ const opts = {
 const plan: ServicePlan = {
   schema: 1,
   feedVersion: "t",
-  feedStart: "20260901",
-  feedEnd: "20261231",
+  feedStart: serviceDate("20260901"),
+  feedEnd: serviceDate("20261231"),
   timezone: "America/Vancouver",
   builtAt: "",
   routes: [
@@ -321,7 +322,7 @@ describe("dispatch", () => {
     });
     let both = 0;
     for (let t = 8 * 3600 - 30; t <= 8 * 3600 + 600; t += 1) {
-      const vs = pb.vehiclesAt(t, "20260928");
+      const vs = pb.vehiclesAt(t, serviceDate("20260928"));
       const onSingle = vs.filter(
         (v) =>
           v.track?.seg === "s" || (v.track && v.track.offset > 1000 - 34 - 15),

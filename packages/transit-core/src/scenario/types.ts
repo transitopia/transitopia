@@ -1,6 +1,7 @@
 // Scenario definitions (packages/transit-core/DESIGN.md#scenarios): alternate infrastructure and/or service, as config files in
 // config/regions/metro-vancouver/scenarios/<name>/scenario.json, built by `npm run scenario <name>`.
 
+import type { FeedManifestEntry } from "../plan/types.ts";
 import type { LonLat } from "../geo.ts";
 import type { LineKey, SegmentKind } from "../infra/types.ts";
 
@@ -72,13 +73,6 @@ export interface ScenarioManifest {
   description: string;
   builtAt: string;
   /** Same shape as the main feed manifest, pointing at the scenario's plan. */
-  feeds: {
-    version: string;
-    start: string;
-    end: string;
-    path: string;
-    builtAt: string;
-    movements: string;
-  }[];
+  feeds: (FeedManifestEntry & { movements: string })[];
   tracks: string;
 }

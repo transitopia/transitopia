@@ -40,7 +40,11 @@ import {
   type Cadence,
   type PollFeed,
 } from "@transitopia/transit-core/rt/budget.ts";
-import { addDays, localDate } from "@transitopia/transit-core/time.ts";
+import {
+  addDays,
+  localDate,
+  isServiceDate,
+} from "@transitopia/transit-core/time.ts";
 import { PUBLIC_DIR, feedPaths } from "@transitopia/data/paths.ts";
 import type { ProviderStatus } from "@transitopia/shared/admin-api.ts";
 import { Recorder } from "./recorder.ts";
@@ -402,7 +406,7 @@ export class FeedPoller {
     const rows = changes.map((c) => ({
       tripId: c.tripId,
       routeId: c.routeId,
-      date: c.startDate && /^\d{8}$/.test(c.startDate) ? c.startDate : today,
+      date: c.startDate && isServiceDate(c.startDate) ? c.startDate : today,
       cancelled: c.cancelled,
       skippedStopIds: c.skippedStopIds,
     }));

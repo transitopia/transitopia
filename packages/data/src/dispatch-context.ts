@@ -1,6 +1,7 @@
 // Loads what dispatching one service date needs from the built data (plan, graph, inferred and
 // dispatched runs, config), with caching. Used by build:dispatch and the RT service.
 
+import type { ServiceDate } from "@transitopia/transit-core/time.ts";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -89,7 +90,7 @@ export class DispatchContexts {
   }
 
   /** The context for a service date (YYYYMMDD), or undefined if no dispatched plan covers it. */
-  async forDate(date: string): Promise<DateContext | undefined> {
+  async forDate(date: ServiceDate): Promise<DateContext | undefined> {
     const manifest = await (this.manifest ??= readManifest(this.net.feed));
     const feed = feedForDate(manifest, date);
     if (!feed) return undefined;

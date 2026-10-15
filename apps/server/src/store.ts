@@ -3,7 +3,9 @@
 // dispatch versions (per region).
 // The hourly NDJSON files (recorder.ts) are written alongside; both expire after the retention period.
 
+import { type ServiceDate } from "@transitopia/transit-core/time.ts";
 import { sql } from "kysely";
+import { isoDate } from "./dates.ts";
 import type { Db } from "@transitopia/db/connect.ts";
 import { ensurePartitionsFor } from "@transitopia/db/partitions.ts";
 import type { PollFeed } from "@transitopia/transit-core/rt/budget.ts";
@@ -28,8 +30,7 @@ export interface RecordedVehicle {
 }
 
 export interface TripChangeRow {
-  /** Service date, YYYYMMDD. */
-  date: string;
+  date: ServiceDate;
   tripId: string;
   routeId?: string | undefined;
   cancelled: boolean;
@@ -38,9 +39,6 @@ export interface TripChangeRow {
 
 /** Rows per INSERT (Postgres allows 65,535 parameters per statement). */
 const CHUNK = 2000;
-/** YYYYMMDD → YYYY-MM-DD, for date columns. */
-export const isoDate = (yyyymmdd: string) =>
-  Temporal.PlainDate.from(yyyymmdd).toString();
 
 export class Store {
   readonly db: Db;
@@ -274,7 +272,7 @@ export class Store {
   }
 
   async recordDispatchVersion(v: {
-    date: string;
+    date: ServiceDate;
     version: string;
     kind: "live" | "preview";
     previewOf?: string | undefined;

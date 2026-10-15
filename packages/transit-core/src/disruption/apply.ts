@@ -8,7 +8,7 @@ import { routePattern } from "../infra/patterns.ts";
 import type { PlatformAssignment } from "../infra/platforms.ts";
 import type { Closure } from "../movement/build.ts";
 import type { PlanPattern, PlanTrip, ServicePlan } from "../plan/types.ts";
-import { serviceDayStart } from "../time.ts";
+import { serviceDayStart, type ServiceDate } from "../time.ts";
 import type { Disruption } from "./types.ts";
 
 export interface DisruptionNotice {
@@ -39,7 +39,10 @@ const SERVICE_FROM_S = 4 * 3600;
 const SERVICE_UNTIL_S = 30 * 3600;
 
 /** A disruption's active periods on a service date, as service-day seconds. */
-export function periodsOn(d: Disruption, date: string): [number, number][] {
+export function periodsOn(
+  d: Disruption,
+  date: ServiceDate,
+): [number, number][] {
   const day = serviceDayStart(date);
   const out: [number, number][] = [];
   for (const p of d.active) {
@@ -59,7 +62,7 @@ export interface ApplyInput {
   patternPositions?: Map<number, Map<number, TrackPos>>;
   /** Active rail service ids on the date. */
   services: Set<string>;
-  date: string;
+  date: ServiceDate;
   disruptions: Disruption[];
   /** Through-service headway for single-tracked lines when a disruption doesn't give one (s). */
   singleTrackHeadwayS?: number;

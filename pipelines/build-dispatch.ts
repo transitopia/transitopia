@@ -5,6 +5,7 @@
 //
 //   npm run build:dispatch
 
+import { isServiceDate } from "@transitopia/transit-core/time.ts";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -39,7 +40,7 @@ async function buildNetwork(net: RailNetwork) {
   const index: DispatchIndex = { schema: 1, byDate: {} };
   const builtAt = new Date().toISOString();
   const disruptions = await loadDisruptions(regionPaths(region).disruptions);
-  const dates = new Set(Object.keys(obsIndex.byDate));
+  const dates = new Set(Object.keys(obsIndex.byDate).filter(isServiceDate));
   for (const d of disruptions)
     if (d.status !== "draft") for (const x of datesOf(d)) dates.add(x);
   for (const date of [...dates].sort()) {

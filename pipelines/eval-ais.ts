@@ -26,6 +26,7 @@ import {
   localDate,
   serviceDayStart,
   TIMEZONE,
+  isServiceDate,
 } from "@transitopia/transit-core/time.ts";
 
 const feedArg = process.argv.indexOf("--feed");
@@ -43,7 +44,7 @@ const names = new Map(ais.vessels.map((v) => [v.mmsi, v.name]));
 
 const now = Temporal.Now.zonedDateTimeISO(TIMEZONE);
 const date =
-  process.argv.slice(2).find((a) => /^\d{8}$/.test(a))
+  process.argv.slice(2).find(isServiceDate)
   ?? localDate(
     (now.hour < 3 ? now.subtract({ days: 1 }) : now).epochMilliseconds,
   );

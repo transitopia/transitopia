@@ -42,6 +42,7 @@ import {
   addDays,
   localDate,
   toWallTime,
+  type ServiceDate,
 } from "@transitopia/transit-core/time.ts";
 import type { RegionConfig } from "./config.ts";
 import { cadence, type Cadence } from "@transitopia/transit-core/rt/budget.ts";
@@ -116,7 +117,7 @@ export class RtClient {
         result: ReturnType<typeof delayCorrections>;
       }
     | undefined;
-  private changes = new Map<string, DayChanges>();
+  private changes = new Map<ServiceDate, DayChanges>();
   /** Bumped whenever loaded service changes differ. */
   private changesVersion = 0;
   private view: { version: number; view: ChangesView } | undefined;
@@ -261,7 +262,7 @@ export class RtClient {
     pp: PreparedPlan | undefined,
   ):
     | {
-        byDate: Map<string, ScheduleCorrections>;
+        byDate: Map<ServiceDate, ScheduleCorrections>;
         carried: Map<string, CarriedBus>;
       }
     | undefined {
@@ -298,7 +299,7 @@ export class RtClient {
   }
 
   /** Trips TransLink cancelled on a service date, as corrections that hide their schedule estimates. */
-  cancellationsFor(date: string): ScheduleCorrections | undefined {
+  cancellationsFor(date: ServiceDate): ScheduleCorrections | undefined {
     let m = this.cancelledMemo.get(date);
     if (m?.version !== this.changesVersion) {
       const ids = this.changesView().cancelledTrips(date);

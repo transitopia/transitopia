@@ -4,6 +4,7 @@
 //
 //   npm run build:observations
 
+import { isoToServiceDate } from "@transitopia/transit-core/time.ts";
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -47,7 +48,7 @@ async function buildRegion(region: string) {
       } else valid.push(o);
     });
     await writeJson(join(OUT, f), { observations: valid });
-    for (const d of new Set(valid.map((o) => o.date.replaceAll("-", ""))))
+    for (const d of new Set(valid.map((o) => isoToServiceDate(o.date))))
       (index.byDate[d] ??= []).push(`${REL}/${f}`);
     count += valid.length;
   }

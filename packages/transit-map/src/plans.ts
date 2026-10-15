@@ -48,6 +48,7 @@ import {
   addDays,
   localDate,
   serviceDayStart,
+  type ServiceDate,
 } from "@transitopia/transit-core/time.ts";
 import type { VersionPointer } from "@transitopia/transit-core/rt/live.ts";
 import type { RegionConfig } from "./config.ts";
@@ -137,7 +138,7 @@ export class PlanStore {
   }
 
   /** Observations for a service date (empty until loaded or if there are none). */
-  private observationsFor(date: string): Observation[] | undefined {
+  private observationsFor(date: ServiceDate): Observation[] | undefined {
     // Only the rail region publishes observations so far.
     if (!this.rail) return [];
     if (this.observationIndex === undefined) {
@@ -176,7 +177,7 @@ export class PlanStore {
    * The dispatch patch for a date (observations, disruptions; packages/transit-core/DESIGN.md#dispatcher): null if there is
    * none, undefined while loading. Patches are dispatched centrally, never in the browser.
    */
-  private patchFor(date: string): DispatchPatch | null | undefined {
+  private patchFor(date: ServiceDate): DispatchPatch | null | undefined {
     if (!this.rail) return null;
     if (this.dispatchIndex === undefined) {
       this.dispatchIndex = null;
@@ -231,7 +232,7 @@ export class PlanStore {
 
   /** Observations applied to a date's timetable vehicles (SeaBus, WCE, buses), cached. */
   private scheduledCorrectionsFor(
-    date: string,
+    date: ServiceDate,
     pp: PreparedPlan,
   ): ScheduledCorrections | undefined {
     const obs = this.observationsFor(date);
@@ -251,7 +252,7 @@ export class PlanStore {
 
   /** Track-level playback for a service date, or undefined (not built / still loading). */
   private playbackFor(
-    date: string,
+    date: ServiceDate,
     pp: PreparedPlan,
   ): TrainPlayback | undefined {
     if (!this.graph) return undefined;
@@ -411,7 +412,7 @@ export class PlanStore {
   }
 
   /** Prepared plan for a service date, or undefined while it loads (a change event fires when ready). */
-  planFor(date: string): PreparedPlan | undefined {
+  planFor(date: ServiceDate): PreparedPlan | undefined {
     const feed = feedForDate(this.manifest, date);
     if (!feed) return undefined;
     const p = this.prepared.get(feed.version);
@@ -463,7 +464,7 @@ export class PlanStore {
   vehiclesAt(
     t: number,
     routes?: Set<string>,
-    rtCorrections?: Map<string, ScheduleCorrections>,
+    rtCorrections?: Map<ServiceDate, ScheduleCorrections>,
   ): VehicleState[] {
     const today = localDate(t);
     const out: VehicleState[] = [];
@@ -543,7 +544,7 @@ export function mergeCorrections(
  * service day, matching how the timetable (and riders) think about late-night trips.
  */
 export const SERVICE_DAY_ROLLOVER_H = 3;
-export function displayServiceDate(t: number): string {
+export function displayServiceDate(t: number): ServiceDate {
   return localDate(t - SERVICE_DAY_ROLLOVER_H * 3600_000);
 }
 

@@ -62,7 +62,11 @@ import type { CorrectionsRepo } from "../corrections.ts";
 import type { RtStatus } from "@transitopia/shared/admin-api.ts";
 import { FeedPoller } from "./feed.ts";
 import type { DecodedAlert } from "./upstream.ts";
-import { addDays, localDate } from "@transitopia/transit-core/time.ts";
+import {
+  addDays,
+  localDate,
+  isServiceDate,
+} from "@transitopia/transit-core/time.ts";
 import {
   LIVE_SCHEMA,
   type LiveAisSection,
@@ -579,6 +583,7 @@ export class RtService {
       : undefined;
     if (aisDay && ais) {
       const date = aisDay[1]!;
+      if (!isServiceDate(date)) return json(404, { error: "Not found" });
       let body: AisDayResponse;
       if (ais.stream) {
         const st = ais.stream.status();
@@ -615,6 +620,7 @@ export class RtService {
       : undefined;
     if (changes && poller) {
       const date = changes[1]!;
+      if (!isServiceDate(date)) return json(404, { error: "Not found" });
       const version = changes[3];
       if (version) {
         // Asked for by a pointer from the live endpoint, so normally still kept.
@@ -679,7 +685,7 @@ export class RtService {
       }
       case "/rt/ais/fixes": {
         const date = params.get("date") ?? "";
-        if (!/^\d{8}$/.test(date))
+        if (!isServiceDate(date))
           return json(400, { error: "date=YYYYMMDD required" });
         const st = this.ais?.status();
         const r =
@@ -701,7 +707,7 @@ export class RtService {
         const p = this.poller(params.get("feed"));
         if (!p) return noFeed();
         const date = params.get("date") ?? "";
-        if (!/^\d{8}$/.test(date))
+        if (!isServiceDate(date))
           return json(400, { error: "date=YYYYMMDD required" });
         return json(200, await p.changes.get(date), {
           "Cache-Control": "public, max-age=30",
@@ -754,7 +760,10 @@ export class RtService {
         "Cache-Control": "public, max-age=10",
       });
     const m = /^\/rt\/dispatch\/(\d{8})\/([0-9a-z]+)\.json$/.exec(pathname);
-    const patch = m ? await this.dispatcher.patch(m[1]!, m[2]!) : undefined;
+    const patch =
+      m && isServiceDate(m[1]!) ?
+        await this.dispatcher.patch(m[1], m[2]!)
+      : undefined;
     if (!patch) return json(404, { error: "No such dispatch version" });
     return json(200, patch, {
       "Cache-Control": "public, max-age=31536000, immutable",

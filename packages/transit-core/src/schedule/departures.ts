@@ -6,7 +6,7 @@
 import { STOP_NO_PICKUP, type ServicePlan } from "../plan/types.ts";
 import { placeName as stopName } from "../plan/display.ts";
 import { bayNumber } from "../plan/exchanges.ts";
-import { serviceDayStart } from "../time.ts";
+import { serviceDayStart, type ServiceDate } from "../time.ts";
 import {
   shiftAt,
   type PreparedPlan,
@@ -24,7 +24,7 @@ export interface Departure {
   pattern: number;
   /** Index of that stop in the pattern. */
   index: number;
-  serviceDate: string;
+  serviceDate: ServiceDate;
   /** Epoch ms, shifted by real-time corrections where known. */
   t: number;
   /** Epoch ms, from the timetable. */
@@ -58,8 +58,8 @@ export function departuresAt(
   stops: ReadonlySet<string>,
   from: number,
   to: number,
-  dates: readonly string[],
-  corrections?: (date: string) => ScheduleCorrections | undefined,
+  dates: readonly ServiceDate[],
+  corrections?: (date: ServiceDate) => ScheduleCorrections | undefined,
 ): Departure[] {
   const { plan } = pp;
   // Pattern → indices of the stops (not the last one: nothing departs from a trip's end).

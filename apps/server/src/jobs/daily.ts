@@ -9,7 +9,7 @@ import type {
 } from "@transitopia/transit-core/config.ts";
 import type { Db } from "@transitopia/db/connect.ts";
 import { ensurePartitionsFor } from "@transitopia/db/partitions.ts";
-import { isoDate } from "../store.ts";
+import { isoDate } from "../dates.ts";
 import {
   feedZipFor,
   loadDayTimetable,
@@ -26,7 +26,10 @@ import {
   STATS_VERSION,
   type ObservedRow,
 } from "@transitopia/transit-core/rt/stats.ts";
-import { serviceDayStart } from "@transitopia/transit-core/time.ts";
+import {
+  serviceDayStart,
+  type ServiceDate,
+} from "@transitopia/transit-core/time.ts";
 
 const CHUNK = 2000;
 /** Positions this long after the service day's start can still belong to it (ms). */
@@ -48,7 +51,7 @@ export type RealtimeFeed = Pick<FeedInfo, "id"> & {
 export async function dailyStats(
   db: Db,
   feed: RealtimeFeed,
-  date: string,
+  date: ServiceDate,
   log: (msg: string) => void = () => {},
 ): Promise<DailyResult> {
   const zip = await feedZipFor(feed.id, date);
@@ -249,7 +252,7 @@ export async function dailyStats(
 export async function hasRecording(
   db: Db,
   feedId: string,
-  date: string,
+  date: ServiceDate,
 ): Promise<boolean> {
   const start = serviceDayStart(date);
   const row = await db

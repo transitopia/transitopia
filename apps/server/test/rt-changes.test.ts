@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { serviceDate } from "@transitopia/transit-core/time.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -52,7 +53,12 @@ describe("trip-updates feed summary", () => {
   const feed = {
     trips: [
       { tripId: "a", routeId: "6641", stopDelays: 4 },
-      { tripId: "b", routeId: "6641", startDate: "20261012", stopDelays: 0 },
+      {
+        tripId: "b",
+        routeId: "6641",
+        startDate: serviceDate("20261012"),
+        stopDelays: 0,
+      },
     ],
     headerTs: 1_000_000,
     bytes: 2048,
@@ -74,7 +80,12 @@ describe("trip-updates feed summary", () => {
       busesOnTrips: 3,
       busesMatched: 1,
       unmatchedTrips: [
-        { tripId: "b", routeId: "6641", startDate: "20261012", stopDelays: 0 },
+        {
+          tripId: "b",
+          routeId: "6641",
+          startDate: serviceDate("20261012"),
+          stopDelays: 0,
+        },
       ],
       unmatchedBuses: [{ tripId: "c", routeId: "6641" }, { tripId: "d" }],
     });
@@ -107,7 +118,7 @@ describe("GTFS-RT service changes: decoding", () => {
         tripUpdate: {
           trip: {
             tripId: "15519786",
-            startDate: "20260929",
+            startDate: serviceDate("20260929"),
             scheduleRelationship: 0,
             routeId: "38311",
             directionId: 1,
@@ -129,7 +140,7 @@ describe("GTFS-RT service changes: decoding", () => {
         tripUpdate: {
           trip: {
             tripId: "15519634",
-            startDate: "20260929",
+            startDate: serviceDate("20260929"),
             scheduleRelationship: 3,
             routeId: "38311",
             directionId: 0,
@@ -155,13 +166,13 @@ describe("GTFS-RT service changes: decoding", () => {
       {
         tripId: "15519786",
         routeId: "38311",
-        startDate: "20260929",
+        startDate: serviceDate("20260929"),
         stopDelays: 1,
       },
       {
         tripId: "15519634",
         routeId: "38311",
-        startDate: "20260929",
+        startDate: serviceDate("20260929"),
         stopDelays: 0,
       },
       { tripId: "x", routeId: "38311", stopDelays: 1 },
@@ -173,14 +184,14 @@ describe("GTFS-RT service changes: decoding", () => {
       {
         tripId: "15519786",
         routeId: "38311",
-        startDate: "20260929",
+        startDate: serviceDate("20260929"),
         cancelled: false,
         skippedStopIds: ["2742"],
       },
       {
         tripId: "15519634",
         routeId: "38311",
-        startDate: "20260929",
+        startDate: serviceDate("20260929"),
         cancelled: true,
         skippedStopIds: ["4461"],
       },
@@ -242,14 +253,21 @@ describe("ServiceChanges", () => {
     dir = await mkdtemp(join(tmpdir(), "rt-changes-"));
     const sc = new ServiceChanges(dir, true);
     await sc.updateTrips(
-      [{ tripId: "t1", date: "20260929", cancelled: true, skippedStopIds: [] }],
+      [
+        {
+          tripId: "t1",
+          date: serviceDate("20260929"),
+          cancelled: true,
+          skippedStopIds: [],
+        },
+      ],
       1000,
     );
     await sc.updateTrips(
       [
         {
           tripId: "t2",
-          date: "20260929",
+          date: serviceDate("20260929"),
           cancelled: false,
           skippedStopIds: ["a"],
         },
@@ -258,10 +276,15 @@ describe("ServiceChanges", () => {
     );
     await sc.updateTrips(
       [
-        { tripId: "t1", date: "20260929", cancelled: true, skippedStopIds: [] },
+        {
+          tripId: "t1",
+          date: serviceDate("20260929"),
+          cancelled: true,
+          skippedStopIds: [],
+        },
         {
           tripId: "t2",
-          date: "20260929",
+          date: serviceDate("20260929"),
           cancelled: false,
           skippedStopIds: ["b", "a"],
         },
@@ -271,42 +294,51 @@ describe("ServiceChanges", () => {
     // t1 no longer reported: still recorded.
     await sc.updateTrips([], 4000);
     await sc.flushed();
-    const reloaded = await new ServiceChanges(dir, true).get("20260929");
+    const reloaded = await new ServiceChanges(dir, true).get(
+      serviceDate("20260929"),
+    );
     expect(reloaded.cancelled).toEqual({ t1: [1000, 3000] });
     expect(reloaded.skipped).toEqual({ t2: ["a", "b"] });
-    expect((await sc.get("20260930")).cancelled).toEqual({});
+    expect((await sc.get(serviceDate("20260930"))).cancelled).toEqual({});
   });
 
   it("versions each state of a day, keeping recent versions for their immutable URLs", async () => {
     const sc = new ServiceChanges("/nonexistent", false);
-    const v1 = await sc.versioned("20260929");
-    expect(await sc.versioned("20260929")).toBe(v1);
+    const v1 = await sc.versioned(serviceDate("20260929"));
+    expect(await sc.versioned(serviceDate("20260929"))).toBe(v1);
     await sc.updateTrips(
-      [{ tripId: "t1", date: "20260929", cancelled: true, skippedStopIds: [] }],
+      [
+        {
+          tripId: "t1",
+          date: serviceDate("20260929"),
+          cancelled: true,
+          skippedStopIds: [],
+        },
+      ],
       1000,
     );
-    const v2 = await sc.versioned("20260929");
+    const v2 = await sc.versioned(serviceDate("20260929"));
     expect(v2.version).not.toBe(v1.version);
     expect(JSON.parse(v2.body).cancelled).toEqual({ t1: [1000, 1000] });
-    expect(sc.version("20260929", v1.version)).toBe(v1.body);
-    expect(sc.version("20260929", v2.version)).toBe(v2.body);
-    expect(sc.version("20260929", "000000000000")).toBeUndefined();
+    expect(sc.version(serviceDate("20260929"), v1.version)).toBe(v1.body);
+    expect(sc.version(serviceDate("20260929"), v2.version)).toBe(v2.body);
+    expect(sc.version(serviceDate("20260929"), "000000000000")).toBeUndefined();
     // Only a few are kept.
     for (let i = 2; i < 8; i++) {
       await sc.updateTrips(
         [
           {
             tripId: `t${i}`,
-            date: "20260929",
+            date: serviceDate("20260929"),
             cancelled: true,
             skippedStopIds: [],
           },
         ],
         1000,
       );
-      await sc.versioned("20260929");
+      await sc.versioned(serviceDate("20260929"));
     }
-    expect(sc.version("20260929", v1.version)).toBeUndefined();
+    expect(sc.version(serviceDate("20260929"), v1.version)).toBeUndefined();
   });
 
   it("records alerts under the local date, keeping when each was first and last seen", async () => {
@@ -324,7 +356,7 @@ describe("ServiceChanges", () => {
     };
     await sc.updateAlerts([a], t0);
     await sc.updateAlerts([{ ...a, header: "UPDATE: v2" }], t0 + 300_000);
-    const d = await sc.get("20260929");
+    const d = await sc.get(serviceDate("20260929"));
     expect(d.alerts).toEqual([
       { ...a, header: "UPDATE: v2", seen: [t0, t0 + 300_000] },
     ]);
@@ -356,13 +388,13 @@ describe("route alerts", () => {
   it("merge across days by id", () => {
     const m = mergeAlerts([
       {
-        date: "20260928",
+        date: serviceDate("20260928"),
         cancelled: {},
         skipped: {},
         alerts: [{ ...a, seen: [100, 200] }],
       },
       {
-        date: "20260929",
+        date: serviceDate("20260929"),
         cancelled: {},
         skipped: {},
         alerts: [{ ...a, seen: [300, 400] }],
@@ -386,7 +418,7 @@ describe("changesView", () => {
     const v = changesView(
       [
         {
-          date: "20260929",
+          date: serviceDate("20260929"),
           cancelled: { tu1: [0, 0] },
           skipped: { t9: ["x"] },
           alerts: [
@@ -410,10 +442,16 @@ describe("changesView", () => {
       ],
       0,
     );
-    expect(v.cancelledTrips("20260929").sort()).toEqual(["al1", "tu1"]);
-    expect(v.cancelled("20260929", "part")).toBe(false);
-    expect([...v.skipped("20260929", "part")!]).toEqual(["s1", "s2"]);
-    expect([...v.skipped("20260929", "t9")!]).toEqual(["x"]);
-    expect(v.cancelled("20260930", "tu1")).toBe(false);
+    expect(v.cancelledTrips(serviceDate("20260929")).sort()).toEqual([
+      "al1",
+      "tu1",
+    ]);
+    expect(v.cancelled(serviceDate("20260929"), "part")).toBe(false);
+    expect([...v.skipped(serviceDate("20260929"), "part")!]).toEqual([
+      "s1",
+      "s2",
+    ]);
+    expect([...v.skipped(serviceDate("20260929"), "t9")!]).toEqual(["x"]);
+    expect(v.cancelled(serviceDate("20260930"), "tu1")).toBe(false);
   });
 });

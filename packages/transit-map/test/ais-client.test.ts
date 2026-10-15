@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { serviceDate } from "@transitopia/transit-core/time.ts";
 import { parseConfig, parseFeed } from "@transitopia/transit-core/config.ts";
 import {
   encodeFixes,
@@ -21,8 +22,8 @@ const config = {
 const plan: ServicePlan = {
   schema: 1,
   feedVersion: "test",
-  feedStart: "20260901",
-  feedEnd: "20261231",
+  feedStart: serviceDate("20260901"),
+  feedEnd: serviceDate("20261231"),
   timezone: "America/Vancouver",
   builtAt: "",
   routes: [],
@@ -37,7 +38,7 @@ const pp = preparePlan(
   plan,
   parseConfig("kinematics", { ...kinematics, routes: {} }),
 );
-const DATE = "20261014";
+const DATE = serviceDate("20261014");
 const [start] = serviceDateWindow(DATE);
 const fix = (ts: number): AisFix => ({
   mmsi: "316042365",

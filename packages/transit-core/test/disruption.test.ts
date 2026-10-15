@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { serviceDate } from "../src/time.ts";
 import { TrackGraph } from "../src/infra/graph.ts";
 import { applyDisruptions } from "../src/disruption/apply.ts";
 import type { Disruption } from "../src/disruption/types.ts";
@@ -165,8 +166,8 @@ const stop = (id: string, station: string, x: number, y: number) => ({
 const plan = {
   schema: 1,
   feedVersion: "t",
-  feedStart: "20260901",
-  feedEnd: "20261231",
+  feedStart: serviceDate("20260901"),
+  feedEnd: serviceDate("20261231"),
   timezone: "America/Vancouver",
   builtAt: "",
   routes: [
@@ -280,7 +281,7 @@ const day = applyDisruptions({
   graph: g,
   platforms,
   services,
-  date: "20260928",
+  date: serviceDate("20260928"),
   disruptions: [disruption],
 });
 
@@ -358,7 +359,7 @@ describe("disruptions", () => {
     let shared = 0;
     for (let t = 22 * 3600 - 60; t <= 22 * 3600 + 900; t++) {
       const onU1 = pb
-        .vehiclesAt(t, "20260928")
+        .vehiclesAt(t, serviceDate("20260928"))
         .filter((v) => v.track?.seg === "U1" && v.tripId);
       if (onU1.length > 1 && new Set(onU1.map((v) => v.tripId)).size > 1)
         shared++;

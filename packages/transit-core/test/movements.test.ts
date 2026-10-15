@@ -22,7 +22,7 @@ import { railInputs } from "../src/corrections/reconcile.ts";
 import { dispatch, type DispatchConfig } from "../src/dispatch/dispatch.ts";
 import type { MovementsFile } from "../src/movement/types.ts";
 import type { Observation } from "../src/corrections/types.ts";
-import { serviceDayStart } from "../src/time.ts";
+import { serviceDayStart, serviceDate } from "../src/time.ts";
 
 // A single line with stub ends and a yard branching off the middle:
 //
@@ -128,8 +128,8 @@ const ops: OperationsConfig = {
 const plan: ServicePlan = {
   schema: 1,
   feedVersion: "t",
-  feedStart: "20260901",
-  feedEnd: "20261231",
+  feedStart: serviceDate("20260901"),
+  feedEnd: serviceDate("20261231"),
   timezone: "America/Vancouver",
   builtAt: "",
   routes: [
@@ -257,7 +257,7 @@ describe("buildMovements + TrainPlayback", () => {
     let prev: { lon: number; lat: number } | undefined;
     const seen = new Set<string>();
     for (let t = 7 * 3600 + 3000; t <= 9 * 3600; t += 2) {
-      const [v] = pb.vehiclesAt(t, "20260928");
+      const [v] = pb.vehiclesAt(t, serviceDate("20260928"));
       if (!v) {
         prev = undefined;
         continue;
@@ -273,11 +273,11 @@ describe("buildMovements + TrainPlayback", () => {
       new Set(["pullout", "layover", "dwell", "moving", "pullin"]),
     );
     // B is a stub: the train pulls up towards the buffer (≤ 1 train length past the platform point).
-    const atB = pb.vehiclesAt(8 * 3600 + 180 + 5, "20260928")[0]!;
+    const atB = pb.vehiclesAt(8 * 3600 + 180 + 5, serviceDate("20260928"))[0]!;
     const xAtB = (atB.lon - pt(0)[0]) * M_PER_DEG_LON;
     expect(xAtB).toBeGreaterThan(1890);
     expect(xAtB).toBeLessThan(2000 - 68 / 2);
-    const leavingB = pb.vehiclesAt(8 * 3600 + 400, "20260928")[0]!;
+    const leavingB = pb.vehiclesAt(8 * 3600 + 400, serviceDate("20260928"))[0]!;
     expect(leavingB.bearing).toBeCloseTo(270, 0);
   });
 
@@ -318,7 +318,7 @@ describe("corrections (observations → dispatcher → playback)", () => {
     turnbackSpeedFactor: ops.turnback.speedFactor,
   };
   const base = dispatch(file, pp, g, dopts);
-  const date = "20260928";
+  const date = serviceDate("20260928");
   const iso = (sec: number) =>
     new Date(serviceDayStart(date) + sec * 1000).toISOString();
   const x = (v: { lon: number }) => (v.lon - pt(0)[0]) * M_PER_DEG_LON;

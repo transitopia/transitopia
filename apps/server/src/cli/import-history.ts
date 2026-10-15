@@ -43,7 +43,9 @@ import { vehicleToFix } from "@transitopia/transit-core/ais/fixes.ts";
 import type { RtDayChanges } from "@transitopia/transit-core/rt/changes.ts";
 import type { DispatchPatch } from "@transitopia/transit-core/dispatch/patch.ts";
 import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
-import { isoDate, Store } from "../store.ts";
+import { isoDate } from "../dates.ts";
+import { Store } from "../store.ts";
+import { isServiceDate } from "@transitopia/transit-core/time.ts";
 import { CorrectionsRepo } from "../corrections.ts";
 import { syncSources } from "../sources.ts";
 
@@ -283,9 +285,7 @@ for (const feed of (await readFeeds()).filter((f) => f.ais)) {
 const dispatchDir = join(varDir, "dispatch-history");
 let versions = 0;
 if (existsSync(dispatchDir))
-  for (const date of (await readdir(dispatchDir)).filter((d) =>
-    /^\d{8}$/.test(d),
-  ))
+  for (const date of (await readdir(dispatchDir)).filter(isServiceDate))
     for (const f of (await readdir(join(dispatchDir, date))).filter((f) =>
       f.endsWith(".json"),
     )) {

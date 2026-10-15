@@ -13,6 +13,8 @@
 //    path is only in the text ("via Gilmore Ave, Lougheed Hwy, ..."), so it isn't drawn.
 // See config/regions/metro-vancouver/OPEN-QUESTIONS.md #28.
 
+import type { ServiceDate } from "../time.ts";
+
 /** GTFS-RT Alert.Effect values. */
 export const EFFECT_NO_SERVICE = 1;
 export const EFFECT_DETOUR = 4;
@@ -33,7 +35,7 @@ export interface RtRouteAlert {
 
 export interface RtDayChanges {
   /** Service date, YYYYMMDD. */
-  date: string;
+  date: ServiceDate;
   /** trip_id → [first, last] epoch ms it was seen cancelled. */
   cancelled: Record<string, [number, number]>;
   /** trip_id → stop_ids seen skipped (not for cancelled trips). */
@@ -42,7 +44,7 @@ export interface RtDayChanges {
   alerts: RtRouteAlert[];
 }
 
-export function emptyDayChanges(date: string): RtDayChanges {
+export function emptyDayChanges(date: ServiceDate): RtDayChanges {
   return { date, cancelled: {}, skipped: {}, alerts: [] };
 }
 
@@ -113,11 +115,11 @@ export function mergeAlerts(
 
 /** Lookups over the loaded days' changes, for the timeline, the predictor and carried delays. */
 export interface ChangesView {
-  cancelled: (serviceDate: string, tripId: string) => boolean;
+  cancelled: (serviceDate: ServiceDate, tripId: string) => boolean;
   /** Every trip cancelled on a service date. */
-  cancelledTrips: (serviceDate: string) => string[];
+  cancelledTrips: (serviceDate: ServiceDate) => string[];
   skipped: (
-    serviceDate: string,
+    serviceDate: ServiceDate,
     tripId: string,
   ) => ReadonlySet<string> | undefined;
   /** Detour alerts covering a bus on its trip at t. */

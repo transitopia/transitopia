@@ -9,7 +9,11 @@ import type {
   DisruptionFile,
 } from "@transitopia/transit-core/disruption/types.ts";
 import { periodsOn } from "@transitopia/transit-core/disruption/apply.ts";
-import { addDays, localDate } from "@transitopia/transit-core/time.ts";
+import {
+  addDays,
+  localDate,
+  type ServiceDate,
+} from "@transitopia/transit-core/time.ts";
 
 /** Confirmed and draft disruptions from a region's disruptions/*.json (regionPaths(region).disruptions). */
 export async function loadDisruptions(dir: string): Promise<Disruption[]> {
@@ -26,8 +30,8 @@ export async function loadDisruptions(dir: string): Promise<Disruption[]> {
 }
 
 /** Service dates (YYYYMMDD) a disruption touches. */
-export function datesOf(d: Disruption): string[] {
-  const dates = new Set<string>();
+export function datesOf(d: Disruption): ServiceDate[] {
+  const dates = new Set<ServiceDate>();
   for (const p of d.active) {
     for (const iso of [p.from, p.until]) {
       const local = localDate(Date.parse(iso));

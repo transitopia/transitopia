@@ -2,6 +2,7 @@
 // change in its base plan. Built at build time for static hosting and by the RT service live, in
 // the same format; clients apply the patch for the date they show.
 
+import type { ServiceDate } from "../time.ts";
 import type { Observation } from "../corrections/types.ts";
 import type { DispatchSummary, MovementsFile, Run } from "../movement/types.ts";
 import type { ParkedTrain } from "../corrections/reconcile.ts";
@@ -10,7 +11,7 @@ import type { DisruptionNotice } from "../disruption/apply.ts";
 export interface DispatchPatch {
   schema: 1;
   /** Service date, YYYYMMDD. */
-  date: string;
+  date: ServiceDate;
   feedVersion: string;
   /** The base movement file's service key and build time (a patch only fits that base). */
   services: string[];
@@ -47,7 +48,7 @@ export function makePatch(
   base: MovementsFile,
   dispatched: MovementsFile,
   meta: {
-    date: string;
+    date: ServiceDate;
     version: string;
     builtAt: string;
     unmatched: DispatchPatch["unmatched"];

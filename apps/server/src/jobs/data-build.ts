@@ -19,7 +19,7 @@ import type { Db } from "@transitopia/db/connect.ts";
 import type { CorrectionsRepo } from "../corrections.ts";
 import type { ServerEnv } from "../env.ts";
 import { run } from "./exec.ts";
-import { isoDate } from "../store.ts";
+import { isoDate } from "../dates.ts";
 
 export interface DataBuildResult {
   newFeeds: string[];

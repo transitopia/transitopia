@@ -2,7 +2,11 @@
 // the place, the routes serving it, and its departures after the shown time from the timetable
 // shifted by the real-time corrections the vehicles use (packages/transit-core/DESIGN.md#departures).
 
-import { addDays, serviceDayStart } from "@transitopia/transit-core/time.ts";
+import {
+  addDays,
+  serviceDayStart,
+  type ServiceDate,
+} from "@transitopia/transit-core/time.ts";
 import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
 import { bayLabel } from "@transitopia/transit-core/plan/exchanges.ts";
 import type {
@@ -101,7 +105,7 @@ export interface PlaceContext {
   vehicles: VehicleState[];
   drawn: (v: VehicleState) => boolean;
   /** The real-time corrections the vehicles use, per service date. */
-  corrections: (date: string) => ScheduleCorrections | undefined;
+  corrections: (date: ServiceDate) => ScheduleCorrections | undefined;
   /** The datasets behind routes (each with whether real-time data is shown for it), for credits. */
   datasetsOf: (routes: Iterable<[PlanRoute | undefined, boolean]>) => string[];
 }

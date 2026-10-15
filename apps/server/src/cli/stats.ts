@@ -6,6 +6,7 @@
 //
 // Every feed with real-time data, or the one named.
 
+import { isServiceDate } from "@transitopia/transit-core/time.ts";
 import { readFeed, readFeeds } from "@transitopia/data/paths.ts";
 import { createDb } from "@transitopia/db/connect.ts";
 import { migrate } from "@transitopia/db/migrate.ts";
@@ -14,7 +15,7 @@ import { syncSources } from "../sources.ts";
 
 const url = process.env.DATABASE_URL;
 const args = process.argv.slice(2);
-const dates = args.filter((a) => /^\d{8}$/.test(a));
+const dates = args.filter(isServiceDate);
 const only =
   args.includes("--feed") ? args[args.indexOf("--feed") + 1] : undefined;
 if (!url || !dates.length) {

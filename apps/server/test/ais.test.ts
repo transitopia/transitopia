@@ -21,7 +21,10 @@ import {
   scheduledVehicles,
 } from "@transitopia/transit-core/schedule/engine.ts";
 import { distM } from "@transitopia/transit-core/geo.ts";
-import { serviceDayStart } from "@transitopia/transit-core/time.ts";
+import {
+  serviceDayStart,
+  serviceDate,
+} from "@transitopia/transit-core/time.ts";
 import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
 import type { KinematicsConfig } from "@transitopia/transit-core/movement/kinematics.ts";
 import { AisFeed } from "../src/rt/ais.ts";
@@ -55,8 +58,8 @@ const N: [number, number] = [-123.1, 49.29978];
 const plan: ServicePlan = {
   schema: 1,
   feedVersion: "test",
-  feedStart: "20260901",
-  feedEnd: "20261231",
+  feedStart: serviceDate("20260901"),
+  feedEnd: serviceDate("20261231"),
   timezone: "America/Vancouver",
   builtAt: "",
   routes: [
@@ -108,15 +111,15 @@ const plan: ServicePlan = {
       {
         serviceId: "wk",
         days: [true, true, true, true, true, false, false],
-        start: "20260901",
-        end: "20261231",
+        start: serviceDate("20260901"),
+        end: serviceDate("20261231"),
       },
     ],
     exceptions: [],
   },
 };
 const pp = preparePlan(plan, kin);
-const DATE = "20260928";
+const DATE = serviceDate("20260928");
 const day = serviceDayStart(DATE);
 const cfg: AisMatchConfig = {
   maxOffsetM: 200,

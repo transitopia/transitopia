@@ -7,7 +7,7 @@
 
 import type { PreparedPlan } from "../schedule/engine.ts";
 import type { MovementsFile } from "../movement/types.ts";
-import { serviceDayStart } from "../time.ts";
+import { serviceDayStart, type ServiceDate } from "../time.ts";
 import type { Consist, Observation } from "./types.ts";
 
 /** A stop time the dispatcher must honour (service-day seconds). `at`: seen while stopped. */
@@ -63,7 +63,7 @@ export function railInputs(
   file: MovementsFile,
   pp: PreparedPlan,
   observations: Observation[],
-  serviceDate: string,
+  serviceDate: ServiceDate,
 ): RailInputs {
   const dayStart = serviceDayStart(serviceDate);
   const toSec = (iso: string) => (Date.parse(iso) - dayStart) / 1000;
@@ -263,7 +263,7 @@ export interface ScheduledCorrections {
 export function reconcileScheduled(
   pp: PreparedPlan,
   observations: Observation[],
-  serviceDate: string,
+  serviceDate: ServiceDate,
 ): ScheduledCorrections {
   const dayStart = serviceDayStart(serviceDate);
   const toSec = (iso: string) => (Date.parse(iso) - dayStart) / 1000;

@@ -186,12 +186,42 @@ export function fromWallTime(w: WallTime, tz = TIMEZONE): number {
   return guess;
 }
 
-export function parseServiceDate(date: string): {
+/**
+ * A service date, "YYYYMMDD" (GTFS convention; the transit day, which runs past midnight). A string
+ * at run time, branded so that it can't be mixed up with an ISO date ("YYYY-MM-DD") or any other
+ * string: make one with serviceDate() (checked), or get one from the functions here.
+ */
+export type ServiceDate = string & { readonly __serviceDate: unique symbol };
+
+/** Whether a string is a valid service date ("YYYYMMDD", a real calendar date). */
+export function isServiceDate(s: string): s is ServiceDate {
+  if (!/^\d{8}$/.test(s)) return false;
+  const [y, m, d] = [+s.slice(0, 4), +s.slice(4, 6), +s.slice(6, 8)];
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return (
+    date.getUTCFullYear() === y
+    && date.getUTCMonth() === m - 1
+    && date.getUTCDate() === d
+  );
+}
+
+/** A string as a service date; throws unless it's a valid "YYYYMMDD". */
+export function serviceDate(s: string): ServiceDate {
+  if (!isServiceDate(s)) throw new Error(`Bad service date: ${s}`);
+  return s;
+}
+
+/** An ISO date ("YYYY-MM-DD", e.g. an observation's) as a service date; throws unless valid. */
+export function isoToServiceDate(iso: string): ServiceDate {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) throw new Error(`Bad ISO date: ${iso}`);
+  return serviceDate(iso.replaceAll("-", ""));
+}
+
+export function parseServiceDate(date: ServiceDate): {
   year: number;
   month: number;
   day: number;
 } {
-  if (!/^\d{8}$/.test(date)) throw new Error(`Bad service date: ${date}`);
   return {
     year: +date.slice(0, 4),
     month: +date.slice(4, 6),
@@ -203,12 +233,12 @@ export function formatServiceDate(
   year: number,
   month: number,
   day: number,
-): string {
-  return `${year}${String(month).padStart(2, "0")}${String(day).padStart(2, "0")}`;
+): ServiceDate {
+  return `${year}${String(month).padStart(2, "0")}${String(day).padStart(2, "0")}` as ServiceDate;
 }
 
 /** Epoch ms of the GTFS reference point for a service date: local noon minus 12 hours. */
-export function serviceDayStart(date: string, tz = TIMEZONE): number {
+export function serviceDayStart(date: ServiceDate, tz = TIMEZONE): number {
   const { year, month, day } = parseServiceDate(date);
   return (
     fromWallTime({ year, month, day, hour: 12, minute: 0, second: 0 }, tz)
@@ -217,7 +247,7 @@ export function serviceDayStart(date: string, tz = TIMEZONE): number {
 }
 
 /** Calendar date arithmetic on service date strings. */
-export function addDays(date: string, n: number): string {
+export function addDays(date: ServiceDate, n: number): ServiceDate {
   const { year, month, day } = parseServiceDate(date);
   const d = new Date(Date.UTC(year, month - 1, day + n));
   return formatServiceDate(
@@ -228,13 +258,13 @@ export function addDays(date: string, n: number): string {
 }
 
 /** 0 = Monday … 6 = Sunday (matches calendar.txt column order). */
-export function dayOfWeek(date: string): number {
+export function dayOfWeek(date: ServiceDate): number {
   const { year, month, day } = parseServiceDate(date);
   return (new Date(Date.UTC(year, month - 1, day)).getUTCDay() + 6) % 7;
 }
 
 /** Local calendar date of an instant. */
-export function localDate(epochMs: number, tz = TIMEZONE): string {
+export function localDate(epochMs: number, tz = TIMEZONE): ServiceDate {
   const w = toWallTime(epochMs, tz);
   return formatServiceDate(w.year, w.month, w.day);
 }

@@ -1,6 +1,7 @@
 // The service plan: the compact, per-feed-version schedule produced by pipelines/build-schedule.ts and
 // consumed by the browser. See packages/transit-core/DESIGN.md#timetables.
 
+import type { ServiceDate } from "../time.ts";
 import type { ServiceCalendar } from "../gtfs/calendar.ts";
 import type { LonLat } from "../geo.ts";
 
@@ -125,8 +126,8 @@ export interface ServicePlan {
   /** How its trip ids are shortened for display (feed.json → display.tripId; plan/display.ts). */
   tripIdPattern?: string | undefined;
   feedVersion: string;
-  feedStart: string;
-  feedEnd: string;
+  feedStart: ServiceDate;
+  feedEnd: ServiceDate;
   timezone: string;
   builtAt: string;
   /**
@@ -179,8 +180,8 @@ export interface FerryBerthPlan {
 
 export interface FeedManifestEntry {
   version: string;
-  start: string;
-  end: string;
+  start: ServiceDate;
+  end: ServiceDate;
   /** The plan (relative to the data root): feedDataPath(feed, version, "plan.json"). */
   path: string;
   builtAt: string;
@@ -234,7 +235,7 @@ export function regionDataPath(region: string, file?: string): string {
 /** The newest feed whose validity range covers the service date. */
 export function feedForDate(
   manifest: FeedManifest,
-  date: string,
+  date: ServiceDate,
 ): FeedManifestEntry | undefined {
   let best: FeedManifestEntry | undefined;
   for (const f of manifest.feeds) {
@@ -252,7 +253,7 @@ export function feedForDate(
 /** Union of all feed ranges, for bounding the date picker. */
 export function manifestRange(
   manifest: FeedManifest,
-): { start: string; end: string } | undefined {
+): { start: ServiceDate; end: ServiceDate } | undefined {
   if (!manifest.feeds.length) return undefined;
   return {
     start: manifest.feeds.reduce(
