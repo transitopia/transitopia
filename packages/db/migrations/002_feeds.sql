@@ -1,9 +1,8 @@
 -- Feeds (docs/DESIGN.md#regions-and-feeds): what the server polls and records is per feed, not per
 -- region, since a feed can be in several regions (a ferry between two) and a region can show
--- several feeds. Raw real-time data, service changes, alerts, GTFS feeds, observed stop times and
--- statistics move from region_id to feed_id. Corrections, dispatch versions and the leader row stay
--- the region's; AIS fixes too (they're the SeaBus's, in TransLink's feed: their polls in rt_polls
--- are recorded under it).
+-- several feeds. Raw real-time data, AIS fixes (config/feeds/<id>/feed.json → ais), service
+-- changes, alerts, GTFS feeds, observed stop times and statistics move from region_id to feed_id.
+-- Corrections, dispatch versions and the leader row stay the region's.
 --
 -- Every row so far is TransLink's. A column added with a constant default is metadata only (no
 -- table rewrite, even on the partitioned tables), then the default is dropped: new rows name their
@@ -30,6 +29,11 @@ alter table rt_polls drop column region_id;
 alter table rt_positions add column feed_id text not null default 'translink';
 alter table rt_positions alter column feed_id drop default;
 alter table rt_positions drop column region_id;
+
+-- ais_fixes (partitioned by day; every fix so far is TransLink's SeaBus).
+alter table ais_fixes add column feed_id text not null default 'translink';
+alter table ais_fixes alter column feed_id drop default;
+alter table ais_fixes drop column region_id;
 
 alter table trip_changes add column feed_id text not null default 'translink' references feeds;
 alter table trip_changes alter column feed_id drop default;
