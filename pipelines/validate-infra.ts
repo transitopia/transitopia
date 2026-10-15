@@ -4,12 +4,13 @@
 //   npm run validate:infra
 
 import { join } from "node:path";
-import { readJson } from "@transitopia/data/paths.ts";
 import {
-  INFRA_DIR,
-  loadGraph,
-  loadLatestPlan,
-} from "@transitopia/data/infra.ts";
+  readJson,
+  railNetworks,
+  type RailNetwork,
+  regionPaths,
+} from "@transitopia/data/paths.ts";
+import { loadGraph, loadLatestPlan } from "@transitopia/data/infra.ts";
 import { mapPlatforms } from "@transitopia/transit-core/infra/platforms.ts";
 import { routePattern } from "@transitopia/transit-core/infra/patterns.ts";
 import type { Dir, TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
@@ -55,9 +56,10 @@ function components(g: TrackGraph): string[][] {
   return out.sort((a, b) => b.length - a.length);
 }
 
-async function main() {
-  const { graph: g, overrides } = await loadGraph();
-  const plan = await loadLatestPlan();
+/** One rail network (railNetworks: a feed with track-level rail, in its region). */
+async function buildNetwork(net: RailNetwork) {
+  const { graph: g, overrides } = await loadGraph(net.region);
+  const plan = await loadLatestPlan(net.feed);
   const railKeys = new Set(
     plan.routes.filter((r) => r.kind === "skytrain").map((r) => r.key),
   );
@@ -165,7 +167,7 @@ async function main() {
   const checklist = await readJson<{
     items: ChecklistItem[];
     stations: { required: string[] };
-  }>(join(INFRA_DIR, "diagram-checklist.json"));
+  }>(join(regionPaths(net.region).infra, "diagram-checklist.json"));
   for (const item of checklist.items) {
     const kinds = new Set(item.kinds);
     const found = [...g.segments.values()].some(
@@ -192,6 +194,10 @@ async function main() {
   for (const e of errors) console.log(`  ERROR: ${e}`);
   console.log(`${errors.length} errors, ${warnings.length} warnings`);
   if (errors.length) process.exit(1);
+}
+
+async function main() {
+  for (const net of await railNetworks()) await buildNetwork(net);
 }
 
 main().catch((e) => {

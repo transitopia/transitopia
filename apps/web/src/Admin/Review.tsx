@@ -2,7 +2,7 @@
 // the buttons that move it along, and links to previews.
 
 import React from "react";
-import region from "@transitopia/config/regions/metro-vancouver/region.json";
+import { railRegion } from "../TransitMap/regions.ts";
 import type { Previews, ReviewState } from "@transitopia/shared/admin-api.ts";
 import { useWrite } from "./api.ts";
 import { button, errorText, primary } from "./styles.ts";
@@ -160,7 +160,7 @@ function PreviewLinks({
     from ?
       new Date(from).toLocaleTimeString("en-CA", {
         hour12: false,
-        timeZone: region.timezone,
+        timeZone: railRegion().info.timezone,
       })
     : "08:00:00";
   return (

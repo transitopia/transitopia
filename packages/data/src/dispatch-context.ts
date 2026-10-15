@@ -5,11 +5,11 @@ import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   PUBLIC_DIR,
-  RAIL_FEED,
   readConfig,
   readJson,
   readManifest,
   railFeedConfig,
+  type RailNetwork,
 } from "./paths.ts";
 import { loadGraph } from "./infra.ts";
 import { dispatchDebugFromEnv } from "./dispatch-debug.ts";
@@ -39,7 +39,9 @@ import {
 } from "@transitopia/transit-core/infra/platforms.ts";
 import type { Overrides } from "./infra.ts";
 
+/** What dispatching a rail network's service dates needs, cached (one per rail network). */
 export class DispatchContexts {
+  readonly net: RailNetwork;
   private manifest: Promise<FeedManifest> | undefined;
   private graph:
     Promise<{ graph: TrackGraph; overrides: Overrides }> | undefined;
@@ -54,6 +56,10 @@ export class DispatchContexts {
   private plans = new Map<string, Promise<PreparedPlan>>();
   private files = new Map<string, Promise<MovementsFile>>();
 
+  constructor(net: RailNetwork) {
+    this.net = net;
+  }
+
   /** Forget cached build outputs (after a rebuild). */
   reset(): void {
     this.manifest = undefined;
@@ -63,9 +69,9 @@ export class DispatchContexts {
 
   private loadConfigs() {
     return (this.configs ??= Promise.all([
-      railFeedConfig().then((c) => c.kinematics),
-      readConfig("operations"),
-      readConfig("dispatch"),
+      railFeedConfig(this.net).then((c) => c.kinematics),
+      readConfig("operations", this.net.region),
+      readConfig("dispatch", this.net.region),
     ]).then(([kin, ops, dispatch]) => ({ kin, ops, dispatch })));
   }
 
@@ -84,7 +90,7 @@ export class DispatchContexts {
 
   /** The context for a service date (YYYYMMDD), or undefined if no dispatched plan covers it. */
   async forDate(date: string): Promise<DateContext | undefined> {
-    const manifest = await (this.manifest ??= readManifest(RAIL_FEED));
+    const manifest = await (this.manifest ??= readManifest(this.net.feed));
     const feed = feedForDate(manifest, date);
     if (!feed) return undefined;
     const { kin, ops, dispatch } = await this.loadConfigs();
@@ -101,7 +107,7 @@ export class DispatchContexts {
       join(
         PUBLIC_DIR,
         feed.movements
-          ?? feedDataPath(RAIL_FEED, feed.version, "movements/index.json"),
+          ?? feedDataPath(this.net.feed, feed.version, "movements/index.json"),
       ),
     );
     const rail = new Set(
@@ -119,7 +125,7 @@ export class DispatchContexts {
     const [base, inferred, { graph, overrides }] = await Promise.all([
       this.file(path),
       this.file(path.replace(/\/([^/]+)$/, "/inferred/$1")),
-      (this.graph ??= loadGraph()),
+      (this.graph ??= loadGraph(this.net.region)),
     ]);
     if (base.schema !== 2) return undefined;
     let report = this.platforms.get(feed.version);

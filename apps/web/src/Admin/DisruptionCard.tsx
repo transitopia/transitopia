@@ -1,5 +1,5 @@
 import React from "react";
-import region from "@transitopia/config/regions/metro-vancouver/region.json";
+import { railRegion } from "../TransitMap/regions.ts";
 import type { Disruption } from "@transitopia/transit-core/disruption/types.ts";
 import {
   disruption,
@@ -73,7 +73,7 @@ export function DisruptionCard({ row }: { row: DisruptionRow }) {
 function periods(d: Disruption): string {
   const f = (iso: string) =>
     new Date(iso).toLocaleString("en-CA", {
-      timeZone: region.timezone,
+      timeZone: railRegion().info.timezone,
       dateStyle: "medium",
       timeStyle: "short",
     });

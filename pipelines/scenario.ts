@@ -1,7 +1,7 @@
 // Build a scenario (packages/transit-core/DESIGN.md#scenarios): alternate track and/or service defined in
-// config/regions/metro-vancouver/scenarios/<name>/scenario.json, run through the same pipeline as the base network:
+// config/regions/<region>/scenarios/<name>/scenario.json (a region with track-level rail), run through the same pipeline as the base network:
 // compose tracks → modify service → map platforms → infer runs → movements. Output:
-//   var/public/data/regions/metro-vancouver/scenarios/<name>/{manifest.json, plan.json, tracks.geojson, movements/}
+//   var/public/data/regions/<region>/scenarios/<name>/{manifest.json, plan.json, tracks.geojson, movements/}
 // View with ?scenario=<name>.
 //
 //   npm run scenario -- <name>
@@ -10,16 +10,17 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   PUBLIC_DIR,
-  RAIL_REGION,
-  SCENARIOS_DIR,
   log,
   readConfig,
   readJson,
   writeJson,
   railFeedConfig,
+  exists,
+  railNetworks,
+  regionPaths,
+  type RailNetwork,
 } from "@transitopia/data/paths.ts";
 import {
-  INFRA_DIR,
   loadLatestPlan,
   loadOverrides,
   loadTracks,
@@ -44,22 +45,34 @@ async function main() {
     throw new Error(
       "Usage: npm run scenario -- <name> (lowercase, digits, dashes)",
     );
-  const dir = join(SCENARIOS_DIR, name);
+  // The rail network whose region has the scenario.
+  let net: RailNetwork | undefined;
+  for (const n of await railNetworks())
+    if (
+      await exists(join(regionPaths(n.region).scenarios, name, "scenario.json"))
+    )
+      net = n;
+  if (!net)
+    throw new Error(`No region with track-level rail has scenario ${name}`);
+  const dir = join(regionPaths(net.region).scenarios, name);
   const spec = await readJson<ScenarioSpec>(join(dir, "scenario.json"));
-  const kin = (await railFeedConfig()).kinematics;
-  const ops = await readConfig("operations");
-  const overrides = await loadOverrides();
-  const rel = regionDataPath(RAIL_REGION, `scenarios/${name}`);
+  const kin = (await railFeedConfig(net)).kinematics;
+  const ops = await readConfig("operations", net.region);
+  const overrides = await loadOverrides(net.region);
+  const rel = regionDataPath(net.region, `scenarios/${name}`);
   const out = join(PUBLIC_DIR, rel);
 
   // 1. Tracks.
-  let tracks = await loadTracks();
+  let tracks = await loadTracks(net.region);
   const infra = spec.infrastructure;
   if (infra) {
     const future =
       infra.includeFuture ?
         (JSON.parse(
-          await readFile(join(INFRA_DIR, "future.generated.geojson"), "utf8"),
+          await readFile(
+            join(regionPaths(net.region).infra, "future.generated.geojson"),
+            "utf8",
+          ),
         ) as InfraCollection)
       : undefined;
     const custom =
@@ -84,7 +97,7 @@ async function main() {
     graph.setTurn(t.node, t.a, t.b, false);
 
   // 2. Service.
-  const base = await loadLatestPlan();
+  const base = await loadLatestPlan(net.feed);
   const plan =
     spec.service?.operations.length ?
       applyService(base, spec.service.operations, kin, name)
@@ -122,7 +135,7 @@ async function main() {
   );
 
   // 4. Movements.
-  const dispatchCfg = await readConfig("dispatch");
+  const dispatchCfg = await readConfig("dispatch", net.region);
   const { index } = await buildAllMovements({
     plan,
     graph,

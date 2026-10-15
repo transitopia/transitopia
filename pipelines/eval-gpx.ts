@@ -16,9 +16,6 @@
 
 import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import translinkFeed from "@transitopia/config/feeds/translink/feed.json" with { type: "json" };
-import rtJson from "@transitopia/config/regions/metro-vancouver/rt.json" with { type: "json" };
-import { parseConfig, parseFeed } from "@transitopia/transit-core/config.ts";
 import {
   cumulativeLengths,
   distM,
@@ -35,13 +32,20 @@ import {
 import { RtTimeline } from "@transitopia/transit-core/rt/timeline.ts";
 import type { RtSnapshot } from "@transitopia/transit-core/rt/types.ts";
 import { loadRecordedHours, planLoader } from "./lib/rt-history.ts";
-import { log, ROOT } from "@transitopia/data/paths.ts";
+import {
+  log,
+  readFeed,
+  readFeedConfig,
+  regionOfFeed,
+  regionPaths,
+} from "@transitopia/data/paths.ts";
 
 // GPX rides so far are all on TransLink's buses.
 const FEED = "translink";
-const rtConfig = parseConfig("rt", rtJson);
-const CADENCE = cadence(parseFeed(translinkFeed).realtime!);
-const GPX_DIR = join(ROOT, "config/regions/metro-vancouver/observations/gpx");
+const REGION = (await regionOfFeed(FEED)).id;
+const rtConfig = (await readFeedConfig(FEED, REGION)).rt;
+const CADENCE = cadence((await readFeed(FEED)).realtime!);
+const GPX_DIR = join(regionPaths(REGION).observations, "gpx");
 /** The live client keeps at least this much history per timeline (as eval-rt.ts). */
 const HISTORY_MS = 10 * 60_000;
 /** Ground truth is standing below this speed (m/s); GPS speed on a stopped phone is ~0.1–0.5. */

@@ -1,15 +1,16 @@
 // Validate and publish observation files (packages/transit-core/DESIGN.md#corrections):
-//   config/regions/metro-vancouver/observations/*.json → var/public/data/regions/metro-vancouver/observations/<name>.json + index.json (by service date)
+//   config/regions/<region>/observations/*.json → var/public/data/regions/<region>/observations/<name>.json + index.json (by service date),
+//   for each region with track-level rail
 //
 //   npm run build:observations
 
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  OBSERVATIONS_DIR,
   PUBLIC_DIR,
-  RAIL_REGION,
   log,
+  railNetworks,
+  regionPaths,
   readJson,
   writeJson,
 } from "@transitopia/data/paths.ts";
@@ -21,10 +22,10 @@ import type {
 import { observationProblems } from "@transitopia/transit-core/corrections/validate.ts";
 import { regionDataPath } from "@transitopia/transit-core/plan/types.ts";
 
-const SRC = OBSERVATIONS_DIR;
-const REL = regionDataPath(RAIL_REGION, "observations");
-const OUT = join(PUBLIC_DIR, REL);
-async function main() {
+async function buildRegion(region: string) {
+  const SRC = regionPaths(region).observations;
+  const REL = regionDataPath(region, "observations");
+  const OUT = join(PUBLIC_DIR, REL);
   let files: string[] = [];
   try {
     files = (await readdir(SRC)).filter((f) => f.endsWith(".json"));
@@ -55,6 +56,11 @@ async function main() {
     `Published ${count} observations from ${files.length} files (${bad} invalid, skipped)`,
   );
   if (bad) process.exitCode = 1;
+}
+
+async function main() {
+  const regions = new Set((await railNetworks()).map((n) => n.region));
+  for (const region of regions) await buildRegion(region);
 }
 
 main().catch((e) => {

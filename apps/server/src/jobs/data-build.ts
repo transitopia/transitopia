@@ -7,6 +7,7 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
+import { join } from "node:path";
 import {
   CORRECTIONS_EXPORT_DIR,
   PUBLIC_DATA_DIR,
@@ -35,7 +36,10 @@ export async function buildData(opts: {
   const { db, repo, env, log } = opts;
   const childEnv: NodeJS.ProcessEnv = {};
   if (repo) {
-    const n = await repo.exportFiles(CORRECTIONS_EXPORT_DIR);
+    // The pipelines read a region's corrections from <dir>/<region>/ (regionPaths).
+    const n = await repo.exportFiles(
+      join(CORRECTIONS_EXPORT_DIR, repo.regionId),
+    );
     log(
       `exported ${n.observationSets} observation sets and ${n.disruptions} disruptions for the build`,
     );

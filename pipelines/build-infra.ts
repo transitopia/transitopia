@@ -6,11 +6,12 @@
 
 import { join } from "node:path";
 import {
-  RAIL_FEED,
   feedVersionFile,
   log,
   regionDataDir,
   writeJson,
+  railNetworks,
+  type RailNetwork,
 } from "@transitopia/data/paths.ts";
 import { loadAllPlans, loadGraph } from "@transitopia/data/infra.ts";
 import { mapPlatforms } from "@transitopia/transit-core/infra/platforms.ts";
@@ -23,11 +24,15 @@ export interface PlatformsFile {
   >;
 }
 
-async function main() {
-  const { graph, overrides, tracks } = await loadGraph();
-  await writeJson(join(regionDataDir(), "infra", "tracks.geojson"), tracks);
+/** One rail network (railNetworks: a feed with track-level rail, in its region). */
+async function buildNetwork(net: RailNetwork) {
+  const { graph, overrides, tracks } = await loadGraph(net.region);
+  await writeJson(
+    join(regionDataDir(net.region), "infra", "tracks.geojson"),
+    tracks,
+  );
   log(`Wrote infra/tracks.geojson (${graph.segments.size} segments)`);
-  for (const plan of await loadAllPlans()) {
+  for (const plan of await loadAllPlans(net.feed)) {
     const railKeys = new Set(
       plan.routes.filter((r) => r.kind === "skytrain").map((r) => r.key),
     );
@@ -48,13 +53,17 @@ async function main() {
       };
     }
     await writeJson(
-      feedVersionFile(RAIL_FEED, plan.feedVersion, "platforms.json"),
+      feedVersionFile(net.feed, plan.feedVersion, "platforms.json"),
       out,
     );
     log(
       `Feed ${plan.feedVersion}: ${report.assignments.size} platforms mapped, ${report.breaks.length} breaks`,
     );
   }
+}
+
+async function main() {
+  for (const net of await railNetworks()) await buildNetwork(net);
 }
 
 main().catch((e) => {

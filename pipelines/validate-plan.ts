@@ -6,11 +6,12 @@
 import { join } from "node:path";
 import { readdir } from "node:fs/promises";
 import {
-  RAIL_FEED,
   feedVersionFile,
   readConfig,
   readJson,
   railFeedConfig,
+  railNetworks,
+  type RailNetwork,
 } from "@transitopia/data/paths.ts";
 import { loadAllPlans, loadGraph } from "@transitopia/data/infra.ts";
 import { dispatchSummary } from "./lib/movements.ts";
@@ -28,15 +29,16 @@ const arg = (name: string) => {
   return i >= 0 ? process.argv[i + 1] : undefined;
 };
 
-async function main() {
-  const { graph } = await loadGraph();
-  const kin = (await railFeedConfig()).kinematics;
-  const ops = await readConfig("operations");
+/** One rail network (railNetworks: a feed with track-level rail, in its region). */
+async function buildNetwork(net: RailNetwork) {
+  const { graph } = await loadGraph(net.region);
+  const kin = (await railFeedConfig(net)).kinematics;
+  const ops = await readConfig("operations", net.region);
   const step = Number(arg("--step") ?? 5);
   let failures = 0;
-  for (const plan of await loadAllPlans()) {
+  for (const plan of await loadAllPlans(net.feed)) {
     const pp = preparePlan(plan, kin);
-    const dir = feedVersionFile(RAIL_FEED, plan.feedVersion, "movements");
+    const dir = feedVersionFile(net.feed, plan.feedVersion, "movements");
     const keys = (await readdir(dir))
       .filter((f) => f.endsWith(".json") && f !== "index.json")
       .map((f) => f.replace(/\.json$/, ""));
@@ -143,6 +145,10 @@ async function main() {
   }
   console.log(failures ? `${failures} teleports` : "OK: no teleports");
   if (failures) process.exit(1);
+}
+
+async function main() {
+  for (const net of await railNetworks()) await buildNetwork(net);
 }
 
 main().catch((e) => {

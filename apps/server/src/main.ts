@@ -8,7 +8,7 @@
 import { serve } from "@hono/node-server";
 import { checkTimezoneData } from "@transitopia/transit-core/time.ts";
 import {
-  RAIL_REGION,
+  railNetwork,
   readFeeds,
   readRegions,
 } from "@transitopia/data/paths.ts";
@@ -31,6 +31,8 @@ const log = (m: string) => console.log(`[server] ${m}`);
 // Every region (config/regions/*/region.json) and the feeds they show (config/feeds/*/feed.json), checked.
 const regions = await readRegions();
 const feeds = await readFeeds();
+// Track-level rail: its live dispatch, corrections and /admin support one network so far.
+const rail = await railNetwork();
 // Recordings and downloads from before feeds had ids move into TransLink's directories, once.
 const moved = await migrateLegacyFiles();
 if (moved.length)
@@ -71,8 +73,8 @@ if (env.databaseUrl) {
   await ensurePartitions(db.db);
   await syncSources(db.db, regions, feeds);
 }
-const store = db ? new Store(db.db, RAIL_REGION) : undefined;
-const repo = db ? new CorrectionsRepo(db.db, RAIL_REGION) : undefined;
+const store = db ? new Store(db.db, rail.region) : undefined;
+const repo = db ? new CorrectionsRepo(db.db, rail.region) : undefined;
 if (repo) {
   // First start on a new database: bring in the committed corrections (existing ids are kept).
   const n = await repo.importFiles();
@@ -90,6 +92,7 @@ const jobs =
 const service = new RtService({
   regions,
   feeds,
+  rail,
   // Without RT_POLL nothing is polled and keys in .secrets or the environment are ignored: polling
   // spends shared budgets, and production needs all of TransLink's
   // (docs/DESIGN.md#upstream-request-budget).
@@ -103,7 +106,7 @@ const service = new RtService({
       new PgLeaderLock({
         url: env.databaseUrl,
         db: db.db,
-        regionId: RAIL_REGION,
+        regionId: rail.region,
         advertiseUrl: env.advertiseUrl,
         onLost: () => {
           console.error(

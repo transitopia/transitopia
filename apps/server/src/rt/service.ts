@@ -40,8 +40,8 @@ import type {
   RtLiveResponse,
 } from "@transitopia/transit-core/rt/types.ts";
 import {
-  DISRUPTIONS_DIR,
-  RAIL_REGION,
+  regionPaths,
+  type RailNetwork,
   RT_HISTORY_DIR,
   AIS_HISTORY_DIR,
 } from "@transitopia/data/paths.ts";
@@ -167,7 +167,12 @@ export interface RtServiceOptions {
   forwardTo?: string | undefined;
   /** Called when this process becomes the leader (e.g. to start the scheduled jobs). */
   onLead?: (() => void) | undefined;
-  /** The rail region's id (AIS, dispatch, alert drafts; default metro-vancouver), when `regions` isn't given. */
+  /**
+   * The rail network (packages/data/src/paths.ts → railNetwork): its region's live endpoint carries
+   * live dispatch, and its feed's alerts become disruption drafts. Without one, neither runs.
+   */
+  rail?: RailNetwork | undefined;
+  /** When `regions` isn't given, serve one region of this id showing `feeds` (tests). */
   regionId?: string | undefined;
   log?: (msg: string) => void;
 }
@@ -181,8 +186,8 @@ export class RtService {
   /** One per feed with real time, by feed id. */
   readonly pollers = new Map<string, FeedPoller>();
   readonly regions: ServedRegion[];
-  /** The region with track-level rail: SeaBus AIS, live dispatch and alert drafts are its. */
-  readonly railRegion: string;
+  /** The rail network, if this server has one: live dispatch and alert drafts are its. */
+  readonly rail: RailNetwork | undefined;
   private running = false;
   private startedAt = Date.now();
   readonly dispatcher: LiveDispatcher | undefined;
@@ -207,10 +212,11 @@ export class RtService {
   private onLead: (() => void) | undefined;
 
   constructor(opts: RtServiceOptions = {}) {
-    this.railRegion = opts.regionId ?? RAIL_REGION;
-    this.regions = opts.regions ?? [
-      { id: this.railRegion, feeds: [LEGACY_FEED] },
-    ];
+    this.rail = opts.rail;
+    const feedIds = (opts.feeds ?? [parseFeed(translinkFeed)]).map((f) => f.id);
+    this.regions =
+      opts.regions
+      ?? (opts.regionId ? [{ id: opts.regionId, feeds: feedIds }] : []);
     this.historyDir = opts.historyDir ?? RT_HISTORY_DIR;
     this.log = opts.log ?? ((m) => console.log(`[rt] ${m}`));
     this.record = opts.record ?? true;
@@ -220,9 +226,7 @@ export class RtService {
     this.onLead = opts.onLead;
     if (opts.forwardTo) this.leaderUrl = opts.forwardTo.replace(/\/$/, "");
     const poll = !opts.forwardTo && (opts.poll ?? true);
-    const railFeeds = new Set(
-      this.regions.find((r) => r.id === this.railRegion)?.feeds ?? [],
-    );
+    const railFeeds = new Set(this.rail ? [this.rail.feed] : []);
     for (const feed of opts.feeds ?? [parseFeed(translinkFeed)]) {
       const rt = feed.realtime;
       if (!rt) continue;
@@ -251,9 +255,10 @@ export class RtService {
       );
     }
     this.dispatcher =
-      opts.dispatch === false || opts.forwardTo ?
+      opts.dispatch === false || opts.forwardTo || !this.rail ?
         undefined
       : new LiveDispatcher({
+          net: this.rail,
           log: this.log,
           ...(opts.store ? { store: opts.store } : {}),
           ...(opts.corrections ? { corrections: opts.corrections } : {}),
@@ -288,12 +293,15 @@ export class RtService {
         : undefined;
       this.aisFeeds.set(feed.id, { cfg, stream });
     }
-    // Alert drafts and their history go with the rail region's (first) feed's recordings.
-    const draftsFeed = [...railFeeds][0] ?? LEGACY_FEED;
+    // Alert drafts and their history go with the rail feed's recordings.
     this.alertDrafts = new AlertDrafts({
       repo: opts.corrections,
-      disruptionsDir: opts.disruptionsDir ?? DISRUPTIONS_DIR,
-      historyDir: join(this.historyDir, draftsFeed),
+      disruptionsDir:
+        opts.disruptionsDir
+        ?? (this.rail ?
+          regionPaths(this.rail.region).disruptions
+        : join(this.historyDir, "disruptions")),
+      historyDir: join(this.historyDir, this.rail?.feed ?? LEGACY_FEED),
       log: this.log,
     });
   }
@@ -503,7 +511,7 @@ export class RtService {
       const next = a.stream?.nextBatchAt();
       if (next !== undefined) due.push(next);
     }
-    if (region.id === this.railRegion) {
+    if (region.id === this.rail?.region) {
       if (this.dispatcher)
         r.sources["dispatch"] = {
           kind: "dispatch",

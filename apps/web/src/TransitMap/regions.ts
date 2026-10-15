@@ -111,6 +111,19 @@ export const REGIONS: readonly SiteRegion[] = Object.values(regionFiles)
 export const DEFAULT_REGION: SiteRegion =
   REGIONS.find((r) => r.info.id === DEFAULT_REGION_ID) ?? REGIONS[0]!;
 
+/**
+ * The region with track-level rail (operations config), whose corrections /admin reviews: the
+ * server's live dispatcher and corrections support one so far.
+ */
+export function railRegion(): SiteRegion {
+  const rail = REGIONS.filter((r) => r.config.operations);
+  if (rail.length !== 1)
+    throw new Error(
+      `Expected one region with track-level rail, found ${rail.length}`,
+    );
+  return rail[0]!;
+}
+
 /** [[west, south], [east, north]] for MapLibre. */
 export function lngLatBounds(
   b: readonly [number, number, number, number],

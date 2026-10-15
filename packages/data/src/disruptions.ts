@@ -1,9 +1,9 @@
-// Disruption files (config/regions/metro-vancouver/disruptions/*.json): loading and the service dates they touch. Shared by
+// Disruption files (a region's disruptions/*.json, regionPaths): loading and the service dates they touch. Shared by
 // build:dispatch and the RT service's live dispatch.
 
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { DISRUPTIONS_DIR, readJson } from "./paths.ts";
+import { readJson } from "./paths.ts";
 import type {
   Disruption,
   DisruptionFile,
@@ -11,12 +11,8 @@ import type {
 import { periodsOn } from "@transitopia/transit-core/disruption/apply.ts";
 import { addDays, localDate } from "@transitopia/transit-core/time.ts";
 
-export { DISRUPTIONS_DIR };
-
-/** Confirmed and draft disruptions from config/regions/metro-vancouver/disruptions/*.json. */
-export async function loadDisruptions(
-  dir = DISRUPTIONS_DIR,
-): Promise<Disruption[]> {
+/** Confirmed and draft disruptions from a region's disruptions/*.json (regionPaths(region).disruptions). */
+export async function loadDisruptions(dir: string): Promise<Disruption[]> {
   let files: string[] = [];
   try {
     files = (await readdir(dir)).filter((f) => f.endsWith(".json"));

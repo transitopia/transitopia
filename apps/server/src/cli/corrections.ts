@@ -7,7 +7,7 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import region from "@transitopia/config/regions/metro-vancouver/region.json" with { type: "json" };
+import { railNetwork } from "@transitopia/data/paths.ts";
 import { createDb } from "@transitopia/db/connect.ts";
 import { migrate } from "@transitopia/db/migrate.ts";
 import { CorrectionsRepo } from "../corrections.ts";
@@ -50,7 +50,8 @@ if (cmd === "pull") {
   if (!url) usage();
   const { db, pool } = createDb(url!);
   await migrate(pool);
-  const repo = new CorrectionsRepo(db, region.id);
+  // Corrections are the rail network's region's (railNetwork).
+  const repo = new CorrectionsRepo(db, (await railNetwork()).region);
   if (cmd === "export") {
     if (!a) usage();
     const n = await repo.exportFiles(a!);

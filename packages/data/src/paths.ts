@@ -44,27 +44,29 @@ export const OPERATORS_DIR = join(CONFIG_ROOT, "operators");
 export const FEEDS_DIR = join(CONFIG_ROOT, "feeds");
 export const REGIONS_DIR = join(CONFIG_ROOT, "regions");
 
-/**
- * The region with track-level rail: its track infrastructure, run inference, dispatcher, scenarios
- * and corrections. The rail pipelines and the server's dispatcher work on it alone for now.
- */
-export const RAIL_REGION = "metro-vancouver";
-/** The feed whose trains the rail pipelines model (SkyTrain, in TransLink's feed). */
-export const RAIL_FEED = "translink";
-export const REGION_DIR = join(REGIONS_DIR, RAIL_REGION);
-export const INFRA_DIR = join(REGION_DIR, "infrastructure");
-export const SCENARIOS_DIR = join(REGION_DIR, "scenarios");
 // Corrections: the committed files, or on the server an export of the confirmed ones from its
-// database (TRANSITOPIA_CORRECTIONS_DIR, with observations/ and disruptions/ inside).
+// database (TRANSITOPIA_CORRECTIONS_DIR, with <region>/observations/ and <region>/disruptions/ inside).
 const CORRECTIONS_DIR = process.env.TRANSITOPIA_CORRECTIONS_DIR;
-export const OBSERVATIONS_DIR =
-  CORRECTIONS_DIR ?
-    join(CORRECTIONS_DIR, "observations")
-  : join(REGION_DIR, "observations");
-export const DISRUPTIONS_DIR =
-  CORRECTIONS_DIR ?
-    join(CORRECTIONS_DIR, "disruptions")
-  : join(REGION_DIR, "disruptions");
+
+/** Where a region's curated files are (config/regions/<region>/). */
+export function regionPaths(region: string): {
+  dir: string;
+  /** Track infrastructure (tracks.generated.geojson, overrides.json, …), where the region has track-level rail. */
+  infra: string;
+  scenarios: string;
+  observations: string;
+  disruptions: string;
+} {
+  const dir = join(REGIONS_DIR, region);
+  const corrections = CORRECTIONS_DIR ? join(CORRECTIONS_DIR, region) : dir;
+  return {
+    dir,
+    infra: join(dir, "infrastructure"),
+    scenarios: join(dir, "scenarios"),
+    observations: join(corrections, "observations"),
+    disruptions: join(corrections, "disruptions"),
+  };
+}
 
 // Gitignored downloads, recordings and build output.
 export const VAR_DIR = join(ROOT, "var");
@@ -115,7 +117,7 @@ export function feedVersionFile(
 }
 
 /** Where a region's published files are, on disk: var/public/data/regions/<region>/. */
-export function regionDataDir(region: string = RAIL_REGION): string {
+export function regionDataDir(region: string): string {
   return join(PUBLIC_DIR, regionDataPath(region));
 }
 
@@ -183,16 +185,58 @@ export async function readFeedRoutes(feed: string): Promise<Config<"routes">> {
  */
 export async function readConfig<
   N extends Exclude<ConfigName, "kinematics" | "rt" | "routes">,
->(name: N, region: string = RAIL_REGION): Promise<Config<N>> {
+>(name: N, region: string): Promise<Config<N>> {
   return parseConfig(
     name,
     await readJson<unknown>(join(REGIONS_DIR, region, `${name}.json`)),
   );
 }
 
-/** The rail feed's settings in the rail region (track-level rail: run inference, dispatch). */
-export function railFeedConfig(): ReturnType<typeof readFeedConfig> {
-  return readFeedConfig(RAIL_FEED, RAIL_REGION);
+/**
+ * A feed with track-level rail (routes of kind "skytrain", e.g. TransLink's SkyTrain), and the region
+ * whose track network it runs on (the one showing it with infrastructure/tracks.generated.geojson):
+ * what the rail pipelines, run inference and the dispatcher work on (docs/DESIGN.md#regions-and-feeds).
+ */
+export interface RailNetwork {
+  feed: string;
+  region: string;
+}
+
+/** Every rail network, by region then feed. */
+export async function railNetworks(): Promise<RailNetwork[]> {
+  const out: RailNetwork[] = [];
+  for (const r of await readRegions()) {
+    if (
+      !(await exists(join(regionPaths(r.id).infra, "tracks.generated.geojson")))
+    )
+      continue;
+    for (const feed of r.feeds)
+      if (
+        (await readFeedRoutes(feed)).routes.some((x) => x.kind === "skytrain")
+      )
+        out.push({ feed, region: r.id });
+  }
+  return out;
+}
+
+/**
+ * The rail network, for what supports only one so far: the server's live dispatcher, its corrections
+ * and /admin. Fails clearly when there are several (or none).
+ */
+export async function railNetwork(): Promise<RailNetwork> {
+  const nets = await railNetworks();
+  if (nets.length !== 1)
+    throw new Error(
+      `Expected exactly one region with track-level rail, found ${nets.length} (${nets.map((n) => `${n.feed} in ${n.region}`).join(", ") || "none"}): the server's live dispatcher, corrections and /admin support one so far`,
+    );
+  return nets[0]!;
+}
+
+/** A rail network's settings (its feed's, in its region). */
+export function railFeedConfig(
+  net: RailNetwork,
+): ReturnType<typeof readFeedConfig> {
+  return readFeedConfig(net.feed, net.region);
 }
 
 /** An operator's operator.json, checked. */

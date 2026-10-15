@@ -8,25 +8,27 @@
 // Movements are dispatched (signalling-aware, packages/transit-core/DESIGN.md#dispatcher) unless --no-dispatch.
 
 import {
-  RAIL_FEED,
   feedVersionFile,
   readConfig,
   railFeedConfig,
+  railNetworks,
+  type RailNetwork,
 } from "@transitopia/data/paths.ts";
 import { feedDataPath } from "@transitopia/transit-core/plan/types.ts";
 import { loadAllPlans, loadGraph } from "@transitopia/data/infra.ts";
 import { buildAllMovements } from "./lib/movements.ts";
 import { mapPlatforms } from "@transitopia/transit-core/infra/platforms.ts";
 
-async function main() {
-  const { graph, overrides } = await loadGraph();
-  const kin = (await railFeedConfig()).kinematics;
-  const ops = await readConfig("operations");
+/** One rail network (railNetworks: a feed with track-level rail, in its region). */
+async function buildNetwork(net: RailNetwork) {
+  const { graph, overrides } = await loadGraph(net.region);
+  const kin = (await railFeedConfig(net)).kinematics;
+  const ops = await readConfig("operations", net.region);
   const dispatchCfg =
     process.argv.includes("--no-dispatch") ?
       undefined
-    : await readConfig("dispatch");
-  for (const plan of await loadAllPlans()) {
+    : await readConfig("dispatch", net.region);
+  for (const plan of await loadAllPlans(net.feed)) {
     const railKeys = new Set(
       plan.routes.filter((r) => r.kind === "skytrain").map((r) => r.key),
     );
@@ -45,11 +47,15 @@ async function main() {
       kin,
       ops,
       ...(dispatchCfg ? { dispatch: dispatchCfg } : {}),
-      outDir: feedVersionFile(RAIL_FEED, plan.feedVersion, "movements"),
-      relDir: feedDataPath(RAIL_FEED, plan.feedVersion, "movements"),
+      outDir: feedVersionFile(net.feed, plan.feedVersion, "movements"),
+      relDir: feedDataPath(net.feed, plan.feedVersion, "movements"),
       verbose: process.argv.includes("--verbose"),
     });
   }
+}
+
+async function main() {
+  for (const net of await railNetworks()) await buildNetwork(net);
 }
 
 main().catch((e) => {

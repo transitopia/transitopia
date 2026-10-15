@@ -17,6 +17,8 @@ import { rtConfig } from "../config.ts";
 import {
   DISPATCH_HISTORY_DIR,
   PUBLIC_DATA_DIR,
+  regionPaths,
+  type RailNetwork,
 } from "@transitopia/data/paths.ts";
 import { DispatchContexts } from "@transitopia/data/dispatch-context.ts";
 import { datesOf } from "@transitopia/data/disruptions.ts";
@@ -37,7 +39,9 @@ import { FileCorrections, type Corrections } from "../corrections.ts";
 import type { Store } from "../store.ts";
 
 export interface LiveDispatchOptions {
-  /** Where confirmed corrections come from (default: the files under config/regions/metro-vancouver). */
+  /** The rail network it dispatches (packages/data/src/paths.ts → railNetwork). */
+  net: RailNetwork;
+  /** Where confirmed corrections come from (default: the files in the network's region). */
   corrections?: Corrections;
   observationsDir?: string;
   disruptionsDir?: string;
@@ -55,7 +59,7 @@ export class LiveDispatcher {
   readonly historyDir: string;
   private readonly log: (msg: string) => void;
   private readonly now: () => number;
-  private readonly contexts = new DispatchContexts();
+  private readonly contexts: DispatchContexts;
   /** Service date → current patch version (dates without inputs have none: clients use the base plan). */
   private current = new Map<string, string>();
   private patches = new Map<string, DispatchPatch>();
@@ -64,13 +68,15 @@ export class LiveDispatcher {
   private checking: Promise<void> | undefined;
   private builtAt = 0;
 
-  constructor(opts: LiveDispatchOptions = {}) {
+  constructor(opts: LiveDispatchOptions) {
     this.log = opts.log ?? ((m) => console.log(`[dispatch] ${m}`));
+    this.contexts = new DispatchContexts(opts.net);
+    const files = regionPaths(opts.net.region);
     this.corrections =
       opts.corrections
       ?? new FileCorrections({
-        observationsDir: opts.observationsDir,
-        disruptionsDir: opts.disruptionsDir,
+        observationsDir: opts.observationsDir ?? files.observations,
+        disruptionsDir: opts.disruptionsDir ?? files.disruptions,
         log: this.log,
       });
     this.store = opts.store;

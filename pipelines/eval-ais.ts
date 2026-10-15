@@ -5,11 +5,12 @@
 
 import { join } from "node:path";
 import {
-  INFRA_DIR,
   feedPaths,
   readFeed,
+  readFeedConfig,
   readJson,
-  railFeedConfig,
+  regionOfFeed,
+  regionPaths,
 } from "@transitopia/data/paths.ts";
 import { loadLatestPlan } from "@transitopia/data/infra.ts";
 import { Recorder } from "@transitopia/server/rt/recorder.ts";
@@ -27,13 +28,16 @@ import {
   TIMEZONE,
 } from "@transitopia/transit-core/time.ts";
 
-const kin = (await railFeedConfig()).kinematics;
 const feedArg = process.argv.indexOf("--feed");
 const FEED = feedArg >= 0 ? process.argv[feedArg + 1]! : "translink";
+const REGION = (await regionOfFeed(FEED)).id;
+const kin = (await readFeedConfig(FEED, REGION)).kinematics;
 const ais = (await readFeed(FEED)).ais;
 if (!ais)
   throw new Error(`Feed ${FEED} has no vessels with AIS (feed.json → ais)`);
-const infra = await readJson<any>(join(INFRA_DIR, "seabus.json"));
+const infra = await readJson<any>(
+  join(regionPaths(REGION).infra, "seabus.json"),
+);
 const cfg: AisMatchConfig = ais.match;
 const names = new Map(ais.vessels.map((v) => [v.mmsi, v.name]));
 
@@ -43,7 +47,7 @@ const date =
   ?? localDate(
     (now.hour < 3 ? now.subtract({ days: 1 }) : now).epochMilliseconds,
   );
-const pp = preparePlan(await loadLatestPlan(), kin);
+const pp = preparePlan(await loadLatestPlan(FEED), kin);
 const fixes = (
   await readRecordedFixes(
     new Recorder(feedPaths(FEED).aisHistory, ais.coverageGapS * 1000),

@@ -22,7 +22,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import {
-  RAIL_REGION,
+  railNetwork,
   VAR_DIR,
   PUBLIC_DIR,
   readFeeds,
@@ -59,7 +59,8 @@ const log = (m: string) => console.log(`[import] ${m}`);
 const { db, pool } = createDb(url);
 await migrate(pool, log);
 await syncSources(db);
-const store = new Store(db, RAIL_REGION);
+const rail = await railNetwork();
+const store = new Store(db, rail.region);
 if (varDir === VAR_DIR) await migrateLegacyFiles();
 
 /** Our route key → GTFS route_id, from a feed's built plans (the newest version wins). */
@@ -299,7 +300,7 @@ if (existsSync(dispatchDir))
     }
 log(`dispatch versions: ${versions}`);
 
-const n = await new CorrectionsRepo(db, RAIL_REGION).importFiles();
+const n = await new CorrectionsRepo(db, rail.region).importFiles();
 log(
   `corrections: ${n.observationSets} observation sets and ${n.disruptions} disruptions`,
 );
