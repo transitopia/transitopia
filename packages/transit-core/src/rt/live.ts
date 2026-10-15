@@ -35,7 +35,7 @@ export interface LiveVehiclesSection extends DataSection {
 /**
  * AIS fixes recorded in batches (packages/transit-core/DESIGN.md#seabus-ais) from `from` (exclusive) to `to`
  * (inclusive), by batch time. Everything recorded up to `to` is in these and the day files
- * (GET /regions/<id>/days/<YYYYMMDD>/seabus/ais), so a reader whose day file reaches `from` has no gap.
+ * (GET /regions/<id>/days/<YYYYMMDD>/<feed>/ais), so a reader whose day file reaches `from` has no gap.
  */
 export interface LiveAisSection extends DataSection {
   kind: "ais";
@@ -76,7 +76,7 @@ export interface LiveTransitResponse {
   nextAt: number | null;
   /**
    * By source id: "<feed>/vehicles" and "<feed>/changes" for each of the region's feeds with real
-   * time (e.g. "translink/vehicles"), "seabus/ais", "dispatch".
+   * time (e.g. "translink/vehicles"), "<feed>/ais", "dispatch".
    */
   sources: Record<string, LiveSection>;
 }

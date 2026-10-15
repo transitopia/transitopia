@@ -9,7 +9,7 @@ Build-time data pipelines, validators and tools, run from the repo root (`npm ru
 | Command | Script | What |
 |---|---|---|
 | `npm run data:gtfs` | `fetch-gtfs.ts`, `build-schedule.ts` | Fetch every feed's latest GTFS (`config/feeds/*/feed.json`; `--feed <id>`, and `--history <date>` for a dated snapshot where the feed has them), archive it by feed version (skipping a download with the same files as the newest archived), build a service plan per version and each feed's manifest ([Timetables](../packages/transit-core/DESIGN.md#timetables)). One feed failing doesn't stop the others. |
-| `npm run data:osm` | `fetch-osm.ts`, `import-osm.ts` | Fetch SkyTrain track from OSM (Overpass) and import it into `config/regions/metro-vancouver/infrastructure/*.generated.geojson` ([Track graph](../packages/transit-core/DESIGN.md#track-graph)) |
+| `npm run data:osm` | `fetch-osm.ts`, `import-osm.ts` | Fetch SkyTrain track from OSM (Overpass) for a region's bbox and import it into `config/regions/<region>/infrastructure/*.generated.geojson` (`-- --region <id>`; default: the region with track-level rail) ([Track graph](../packages/transit-core/DESIGN.md#track-graph)) |
 | `npm run build:infra` | `build-infra.ts` | Publish Metro Vancouver's track network and the per-version platform mapping of TransLink's feed |
 | `npm run build:movements` | `build-movements.ts` | Infer runs and dispatch them, per service-day type (`--verbose`, `--no-dispatch`) ([Run inference](../packages/transit-core/DESIGN.md#run-inference), [Dispatcher](../packages/transit-core/DESIGN.md#dispatcher)) |
 | `npm run build:observations` | `build-observations.ts` | Validate and publish observation files |

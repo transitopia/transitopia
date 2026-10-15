@@ -83,8 +83,7 @@ packages/data/             Node-side data access for pipelines and the server: w
 packages/db/               PostgreSQL: SQL migrations, Kysely types, partitions, jobs
 packages/shared/           shared by web and server: the dataset registry
 pipelines/                 build-time pipelines and validators
-feeds/                     the feeds regions show: feed.json (sources, request budget), routes.json (what's drawn)
-config/regions/<id>/              committed, curated inputs: region.json, config/, and in Metro Vancouver infrastructure/, scenarios/, observations/, disruptions/
+config/                    committed, curated inputs: defaults/, operators/, feeds/, regions/ (Regions and feeds, below)
 map-layers/                Planetiler (Java) profile for the cycling layer
 infra/                     production Compose stack, server image, Caddy, backups, firewall; the local database
 deployment/                setup and operations notes, the tile worker
@@ -158,25 +157,46 @@ Required legends, such as TransLink's ("Some of the data used in this product or
 
 ## Regions and feeds
 
-A **region** is a place on the map: `config/regions/<id>/region.json` holds its bbox, time zone, first view, time zone checks, and the **feeds** it shows. A **feed** is one agency's published data: `config/feeds/<id>/feed.json` says where its GTFS static and GTFS-realtime are, the request budget and poll schedule, and its dataset for credits; `config/feeds/<id>/routes.json` which of its routes are drawn (by name). Both have schemas in `packages/transit-core/src/config.ts`, checked by a test over every committed file. Agencies shape their ids differently, so a feed also says how riders see them (`feed.json` → `display`: a regex each for trip ids and versions, whose first group is the short form; `packages/transit-core/src/plan/display.ts`). A vehicle card shows "Trip 08:05 from Langford Exchange · 11898518" (where riders can first board it, and the short id) and "Source: BC Transit timetable (202610140)"; links, observations and recordings keep the full GTFS ids.
+Everything committed and curated is under `config/` (one package, `@transitopia/config`), with schemas in `packages/transit-core/src/config.ts`, checked by a test over every committed file:
 
-| Region | Feeds | Drawn |
+```
+config/
+  defaults/        kinematics.json, rt.json: vehicles and real-time use, for every region and operator
+  operators/<id>/  operator.json: who runs the vehicles (TransLink, BC Transit), and its overrides of the defaults
+  feeds/<id>/      feed.json: one agency's published data (GTFS, GTFS-RT, request budget, vessels' AIS),
+                   naming its operator; routes.json: which routes are drawn, by name
+  regions/<id>/    region.json: a place on the map (bbox, time zone, first view, the feeds it shows);
+                   its settings (rt.json, and for Metro Vancouver operations, dispatch, seabus, recording);
+                   infrastructure/, scenarios/, observations/, disruptions/; README, OPEN-QUESTIONS
+```
+
+| Region | Feeds (operator) | Drawn |
 |---|---|---|
-| `metro-vancouver` | `translink` | SkyTrain, SeaBus, West Coast Express, 99, R1–R6 |
-| `greater-victoria` | `bc-transit-victoria` | 95 Blink RapidBus, 15, 70 |
-| `central-okanagan` | `bc-transit-kelowna` | 97 Okanagan RapidBus |
+| `metro-vancouver` | `translink` (TransLink) | SkyTrain, SeaBus, West Coast Express, 99, R1–R6 |
+| `greater-victoria` | `bc-transit-victoria` (BC Transit) | 95 Blink RapidBus, 15, 70 |
+| `central-okanagan` | `bc-transit-kelowna` (BC Transit) | 97 Okanagan RapidBus |
 
-Feeds are separate from regions because neither contains the other: a ferry between two regions (Hullo, Vancouver–Victoria) is one feed in both, and a region can show several agencies. Everything that comes from a feed is keyed by the feed, and happens once whichever regions show it:
+Feeds are separate from regions because neither contains the other: a ferry between two regions (Hullo, Vancouver–Victoria) is one feed in both, and a region can show several agencies. Operators are separate from feeds because one operator publishes many: BC Transit has a feed per transit system, in several regions.
+
+**Settings come in layers** (`resolveKinematics`, `resolveRt`): the defaults, then the feed's operator's overrides (a mode's vehicle settings; bus prediction and carried delays, which depend on its buses and data), then its routes' (`routes.json` → `kinematics`, e.g. a SkyTrain line's train length), then the region's (`rt.json`, e.g. live dispatch). Each layer is partial; the result is checked whole, so a misspelled setting in any layer still fails. Vehicles' minimum drawn size is the defaults' alone, so they look alike everywhere. How often a feed is polled, and the thresholds that follow from it, are the feed's own (`feed.json` → `realtime`).
+
+Everything that comes from a feed is keyed by the feed, and happens once whichever regions show it:
 
 - **Built** per feed: `var/raw/gtfs/<feed>/<version>/`, published at `data/feeds/<feed>/manifest.json` and `data/feeds/<feed>/<version>/` (plan, movements, platforms, real-time profile). A GTFS `feed_version` becomes a directory name with anything but letters, digits, `.`, `_` and `-` replaced (`versionDir`).
-- **Polled and recorded** per feed: one poller each on the server's leader, within the feed's own budget (`feed.json` → `realtime.poll`); recordings in `var/rt-history/<feed>/`; database rows keyed by `feed_id`.
-- What's the **region's** is published under `data/regions/<id>/`: the track network, observations, dispatch patches and scenarios. Track-level rail (run inference, the dispatcher, corrections) and SeaBus AIS exist only in Metro Vancouver so far (`RAIL_REGION` and `RAIL_FEED` in `packages/data/src/paths.ts`).
+- **Polled and recorded** per feed: one poller each on the server's leader, within the feed's own budget (`feed.json` → `realtime.poll`), and one AIS stream for a feed whose vessels report AIS (`feed.json` → `ais`: TransLink's SeaBus); recordings in `var/rt-history/<feed>/` and `var/ais-history/<feed>/`; database rows keyed by `feed_id`.
+- What's the **region's** is published under `data/regions/<id>/`: the track network, observations, dispatch patches and scenarios.
 
-The live endpoint is per region (`/regions/<id>/live/transit`), with a section per feed (`<feed>/vehicles`, `<feed>/changes`) and the region's own (`seabus/ais`, `dispatch`).
+**Track-level rail** runs on **rail networks** (`railNetworks()` in `packages/data/src/paths.ts`): a feed with track-level routes (kind `skytrain`) and the region showing it whose track network it runs on (`infrastructure/tracks.generated.geojson`). The rail pipelines loop over them. The server's live dispatcher, its corrections and `/admin` support one rail network so far (`railNetwork()`, which fails at startup if there are more): a second rail city needs those per region.
 
-**On the site**, `/transit` shows one region at a time: the one whose bbox covers most of the view (`apps/web/src/TransitMap/regions.ts`). Panning into another region recreates the engine for it, keeping the time; outside every region a box offers each. The engine draws one feed per region for now (`RegionConfig.feed`): a region with several feeds needs the engine to merge their plans, layers and live sections, which is the next step when one exists.
+The live endpoint is per region (`/regions/<id>/live/transit`), with sections per feed (`<feed>/vehicles`, `<feed>/changes`, `<feed>/ais`) and the region's own (`dispatch`).
 
-Regions have tiers of detail: (1) track-level rail, the goal everywhere and Vancouver today; (2) shape-level schedules from any GTFS, the starting point for a new city; (3) live buses from any GTFS-RT, as in Victoria and Kelowna. Track-level work for a new city reuses the whole OSM import → overrides → platform mapping → run inference → dispatcher pipeline; what's new per city is curation (overrides, operations config, open questions). Agency quirks (TransLink's alert phrasing, GTFS oddities) belong behind per-agency adapters, and generic GTFS handling stays generic: BC Transit's feeds needed only generic changes (bay names without `@`, `calendar_dates.txt` without `calendar.txt`, a `feed_version` with slashes). Other signalling systems (fixed block) would need a dispatcher extension.
+Agencies shape their ids differently, so a feed also says how riders see them (`feed.json` → `display`: a regex each for trip ids and versions, whose first group is the short form; `packages/transit-core/src/plan/display.ts`). A vehicle card shows "Trip 08:05 from Langford Exchange · 11898518" (where riders can first board it, and the short id) and "Source: BC Transit timetable (202610140)"; links, observations and recordings keep the full GTFS ids.
+
+**On the site**, `/transit` shows one region at a time: the one whose bbox covers most of the view (`apps/web/src/TransitMap/regions.ts`, which finds every region, feed and operator in `config/`, so adding a region is data only). Panning into another region recreates the engine for it, keeping the time; outside every region a box offers each. The engine draws one feed per region for now (`RegionConfig.feed`): a region with several feeds needs the engine to merge their plans, layers and live sections, which is the next step when one exists.
+
+Regions have tiers of detail: (1) track-level rail, the goal everywhere and Vancouver today; (2) shape-level schedules from any GTFS, the starting point for a new city; (3) live buses from any GTFS-RT, as in Victoria and Kelowna. Track-level work for a new city reuses the whole OSM import (`--region`) → overrides → platform mapping → run inference → dispatcher pipeline; what's new per city is curation (overrides, operations config, open questions). Agency quirks (TransLink's alert phrasing, GTFS oddities) belong behind per-agency adapters, and generic GTFS handling stays generic: BC Transit's feeds needed only generic changes (bay names without `@`, `calendar_dates.txt` without `calendar.txt`, a `feed_version` with slashes). Other signalling systems (fixed block) would need a dispatcher extension.
+
+Service dates are `"YYYYMMDD"` strings typed `ServiceDate` (`packages/transit-core/src/time.ts`), a branded type so they can't be mixed up with ISO dates or other strings: they come from `serviceDate()`/`isServiceDate()` where they enter (GTFS, URLs, requests, the command line), `isoToServiceDate()` for observations' ISO dates, and the time helpers.
 
 The basemap is a British Columbia extract of Protomaps' daily build for now. It grows to Canada, then Canada and the US, then the planet as regions are added; only the extract's area changes. Outside the basemap the map has no tiles.
 
@@ -210,7 +230,7 @@ Made while planning V2 (2026-09-29 to 2026-10-01). Change them deliberately, and
 | Mobile app | Low priority; mobile web must be good enough for testing and reporting. **Capacitor** is tentatively accepted (our core is MapLibre GL JS plus a custom WebGL layer, which React Native's native MapLibre bindings can't run), to be reviewed before starting. Meanwhile: token auth, bottom-sheet panels, touch targets ≥ 44 px, no dependence on hover. |
 | Trip planning | Wanted after the mobile app. Evaluate reusing an existing system (the Transit app's API, OpenTripPlanner, MOTIS) before building anything. |
 | Next region | Montreal, a long way off. |
-| Regions and feeds | **Feeds are separate from regions** (2026-10-14): a region lists the feeds it shows, and a feed (fetched, built, polled, recorded) can be in several. Greater Victoria and Central Okanagan (a few BC Transit routes) keep the design multi-region and multi-agency before a second big city. The site shows one region at a time, the one in view ([above](#regions-and-feeds)). |
+| Regions and feeds | **Feeds are separate from regions** (2026-10-14), and **operators from feeds** (2026-10-15): a region lists the feeds it shows, and a feed (fetched, built, polled, recorded) can be in several; settings come in layers (defaults, operator, route, region) under `config/`. Greater Victoria and Central Okanagan (a few BC Transit routes) keep the design multi-region and multi-agency before a second big city. The site shows one region at a time, the one in view ([above](#regions-and-feeds)). |
 | Live data | **One poll per map**: `/regions/<id>/live/transit` for transit (later `/regions/<id>/live/cycling` for GBFS), shared by every visitor at the edge, with a section per source (agency or feed) and pointers to immutable per-date files for anything large or slow-changing ([apps/server → Live endpoint](../apps/server/README.md#live-endpoint), issue #177). Polling, not server-sent events or WebSockets: an open connection per visitor would reach the one VM and lose the edge cache. |
 | Environments | Production and local development. A staging environment can be added cheaply later: configuration in env files, hostnames and buckets as config, unattended migrations, a Compose project per environment. Staging would never poll TransLink. |
 

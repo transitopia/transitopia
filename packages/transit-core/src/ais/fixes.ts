@@ -113,7 +113,7 @@ export interface AisFixesResponse {
 }
 
 /**
- * Response of GET /regions/<id>/days/<YYYYMMDD>/seabus/ais: the fixes recorded for a service date so
+ * Response of GET /regions/<id>/days/<YYYYMMDD>/<feed>/ais: the fixes recorded for a service date so
  * far. Shared by every visitor (cached at the edge); the live endpoint's AIS section continues it.
  */
 export interface AisDayResponse {
