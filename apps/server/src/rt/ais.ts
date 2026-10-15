@@ -14,7 +14,11 @@ import {
   vehicleToFix,
 } from "@transitopia/transit-core/ais/fixes.ts";
 import type { AisFix } from "@transitopia/transit-core/ais/match.ts";
-import { addDays, localDate } from "@transitopia/transit-core/time.ts";
+import {
+  addDays,
+  localDate,
+  type ServiceDate,
+} from "@transitopia/transit-core/time.ts";
 import { hourKey, type Recorder } from "./recorder.ts";
 
 const URL = "wss://stream.aisstream.io/v0/stream";
@@ -128,7 +132,7 @@ export class AisFeed {
    * get only fixes received since (they can arrive out of time order, in bursts).
    */
   async fixesFor(
-    serviceDate: string,
+    serviceDate: ServiceDate,
     after = 0,
   ): Promise<{ fixes: AisFix[]; cursor: number }> {
     const [from, to] = serviceDateWindow(serviceDate);
@@ -154,7 +158,7 @@ export class AisFeed {
    * recorded up to then is in them. `complete` once the date's window is over and recorded.
    */
   async dayFile(
-    serviceDate: string,
+    serviceDate: ServiceDate,
     now = Date.now(),
   ): Promise<{ fixes: AisFix[]; to: number; complete: boolean }> {
     const [from, to] = serviceDateWindow(serviceDate);
@@ -297,7 +301,7 @@ function strip({ seq: _, at: __, ...f }: HeldFix): AisFix {
 /** Recorded fixes that can belong to a service date's trips (see serviceDateWindow), sorted. */
 export async function readRecordedFixes(
   recorder: Recorder,
-  serviceDate: string,
+  serviceDate: ServiceDate,
 ): Promise<AisFix[]> {
   const [from, to] = serviceDateWindow(serviceDate);
   const dates = [...new Set([hourKey(from).date, hourKey(to).date])];

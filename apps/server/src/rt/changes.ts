@@ -1,5 +1,5 @@
 // Collects GTFS-RT service changes for our bus routes per service date (packages/transit-core/src/rt/changes.ts) and
-// keeps them in var/rt-history/changes/YYYYMMDD.json, since TransLink's feeds drop a trip's
+// keeps them in var/rt-history/<feed>/changes/YYYYMMDD.json, since TransLink's feeds drop a trip's
 // cancellation once it has run and an alert once it's over. Each state of a day is a version (a
 // content hash): the live endpoint points to the current one, served at an immutable URL.
 
@@ -11,7 +11,7 @@ import {
   type RtDayChanges,
   type RtRouteAlert,
 } from "@transitopia/transit-core/rt/changes.ts";
-import { localDate } from "@transitopia/transit-core/time.ts";
+import { localDate, type ServiceDate } from "@transitopia/transit-core/time.ts";
 
 /** Days kept in memory; older ones are read from disk when asked for. */
 const MAX_DAYS_CACHED = 4;
@@ -21,18 +21,18 @@ const VERSIONS_KEPT = 4;
 export interface TripChangeInput {
   tripId: string;
   /** Service date, YYYYMMDD. */
-  date: string;
+  date: ServiceDate;
   cancelled: boolean;
   skippedStopIds: string[];
 }
 
 export class ServiceChanges {
-  private days = new Map<string, RtDayChanges>();
+  private days = new Map<ServiceDate, RtDayChanges>();
   private writing: Promise<void> = Promise.resolve();
   /** The current version of each day asked for, until it changes. */
-  private current = new Map<string, { version: string; body: string }>();
+  private current = new Map<ServiceDate, { version: string; body: string }>();
   /** Recent versions' bodies per day, oldest first. */
-  private versions = new Map<string, Map<string, string>>();
+  private versions = new Map<ServiceDate, Map<string, string>>();
 
   readonly dir: string;
   private record: boolean;
@@ -42,12 +42,12 @@ export class ServiceChanges {
     this.record = record;
   }
 
-  private path(date: string): string {
+  private path(date: ServiceDate): string {
     return join(this.dir, `${date}.json`);
   }
 
   /** A service date's changes (empty when nothing was recorded). */
-  async get(date: string): Promise<RtDayChanges> {
+  async get(date: ServiceDate): Promise<RtDayChanges> {
     let d = this.days.get(date);
     if (d) return d;
     try {
@@ -65,7 +65,9 @@ export class ServiceChanges {
   }
 
   /** A service date's changes as JSON, and their version. */
-  async versioned(date: string): Promise<{ version: string; body: string }> {
+  async versioned(
+    date: ServiceDate,
+  ): Promise<{ version: string; body: string }> {
     const hit = this.current.get(date);
     if (hit) return hit;
     const body = JSON.stringify(await this.get(date));
@@ -88,13 +90,13 @@ export class ServiceChanges {
   }
 
   /** A recent version of a date's changes, if still kept. */
-  version(date: string, version: string): string | undefined {
+  version(date: ServiceDate, version: string): string | undefined {
     return this.versions.get(date)?.get(version);
   }
 
   /** Trips cancelled or skipping stops in one trip-updates poll (already filtered to our routes). */
   async updateTrips(trips: TripChangeInput[], now = Date.now()): Promise<void> {
-    const touched = new Set<string>();
+    const touched = new Set<ServiceDate>();
     for (const c of trips) {
       const d = await this.get(c.date);
       if (c.cancelled) {
@@ -132,7 +134,7 @@ export class ServiceChanges {
     this.save(date);
   }
 
-  private save(date: string): void {
+  private save(date: ServiceDate): void {
     this.current.delete(date);
     if (!this.record) return;
     const d = this.days.get(date);

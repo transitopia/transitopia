@@ -83,3 +83,26 @@ export async function listEntries(zipPath: string): Promise<string[]> {
     zip.readEntry();
   });
 }
+
+/**
+ * What a feed holds, from the zip's directory alone (each file's CRC-32 and size), leaving out
+ * feed_info.txt: two downloads with the same signature have the same timetable, whatever their
+ * feed_version says (BC Transit's changes daily).
+ */
+export async function zipSignature(zipPath: string): Promise<string> {
+  const zip = await openZip(zipPath);
+  return new Promise((resolve, reject) => {
+    const parts: string[] = [];
+    zip.on("entry", (e: yauzl.Entry) => {
+      if (e.fileName !== "feed_info.txt")
+        parts.push(`${e.fileName}:${e.crc32}:${e.uncompressedSize}`);
+      zip.readEntry();
+    });
+    zip.on("end", () => {
+      zip.close();
+      resolve(parts.sort().join("\n"));
+    });
+    zip.on("error", reject);
+    zip.readEntry();
+  });
+}

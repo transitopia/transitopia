@@ -2,6 +2,7 @@
 // (movements, plan, time) (packages/transit-core/DESIGN.md#movements-and-playback). Revenue trips take their times from the service plan
 // (with the same modelled dwell as the schedule engine) and their paths from the routed patterns.
 
+import { timetableLabel } from "../plan/display.ts";
 import type { LonLat } from "../geo.ts";
 import type { Dir, TrackGraph, TrackPos } from "../infra/graph.ts";
 import type {
@@ -23,7 +24,11 @@ import {
   OBSERVED_WINDOW_S,
   type ParkedTrain,
 } from "../corrections/reconcile.ts";
-import { formatServiceTime, serviceDayStart } from "../time.ts";
+import {
+  formatServiceTime,
+  serviceDayStart,
+  type ServiceDate,
+} from "../time.ts";
 
 /** Distance and speed at `sec` along a flattened [t, d, …] trajectory (linear between points). */
 function alongVia(pts: number[], sec: number): { d: number; speed: number } {
@@ -128,7 +133,7 @@ export class TrainPlayback {
     this.g = g;
     this.opts = opts;
     this.kin = (line) => kinematicsFor(kin, "skytrain", line);
-    this.source = `timetable ${pp.plan.feedVersion} + run inference`;
+    this.source = `${timetableLabel(pp.plan)} + run inference`;
     this.paths = file.paths.map((packed) => {
       const segs: string[] = [];
       const from: number[] = [];
@@ -194,7 +199,7 @@ export class TrainPlayback {
    */
   vehiclesAt(
     sec: number,
-    serviceDate: string,
+    serviceDate: ServiceDate,
     routes?: Set<string>,
   ): VehicleState[] {
     const out: VehicleState[] = [];
@@ -233,7 +238,7 @@ export class TrainPlayback {
     p: ParkedTrain,
     i: number,
     sec: number,
-    serviceDate: string,
+    serviceDate: ServiceDate,
   ): VehicleState | undefined {
     let pos = this.parkedTrack.get(i);
     if (pos === undefined) {
@@ -276,7 +281,7 @@ export class TrainPlayback {
   private runAt(
     r: PreparedRun,
     sec: number,
-    serviceDate: string,
+    serviceDate: ServiceDate,
   ): VehicleState | undefined {
     // Last event starting at or before sec.
     let lo = 0;

@@ -1,6 +1,6 @@
 // Build a local vector basemap: a PMTiles extract of the Protomaps daily planet build clipped to a
 // region, plus the fonts and sprites the Protomaps style needs, so the app makes no third-party map
-// requests at runtime. See packages/map-style/README.md and docs/DESIGN.md#regions.
+// requests at runtime. See packages/map-style/README.md and docs/DESIGN.md#regions-and-feeds.
 //
 //   tsx pipelines/tiles.ts                  # Metro Vancouver (the standalone transit viewer)
 //   tsx pipelines/tiles.ts --region bc      # British Columbia (the site); large: ~1–2 GB

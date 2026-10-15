@@ -1,5 +1,5 @@
 import React from "react";
-import region from "@transitopia/region-metro-vancouver/region.json";
+import { railRegion } from "../TransitMap/regions.ts";
 import type { Disruption } from "@transitopia/transit-core/disruption/types.ts";
 import {
   disruption,
@@ -15,7 +15,7 @@ import {
 } from "./Review.tsx";
 import { button, card } from "./styles.ts";
 
-/** A disruption (regions/metro-vancouver/disruptions/README.md) to review, or reviewed. */
+/** A disruption (config/regions/metro-vancouver/disruptions/README.md) to review, or reviewed. */
 export function DisruptionCard({ row }: { row: DisruptionRow }) {
   const d = row.body;
   const review = useReview("disruptions", row.id);
@@ -73,7 +73,7 @@ export function DisruptionCard({ row }: { row: DisruptionRow }) {
 function periods(d: Disruption): string {
   const f = (iso: string) =>
     new Date(iso).toLocaleString("en-CA", {
-      timeZone: region.timezone,
+      timeZone: railRegion().info.timezone,
       dateStyle: "medium",
       timeStyle: "short",
     });

@@ -1,0 +1,5 @@
+{
+  "$comment": "SeaBus operating assumptions in Metro Vancouver. Geometry (berths, lanes) is in infrastructure/seabus.json; what we know about berths and lanes is in README.md#berths-and-lanes. The vessels' AIS positions are TransLink's feed's (config/feeds/translink/feed.json → ais).",
+  "$defaultPair": "The berth every vessel uses at both terminals, unless AIS shows otherwise: when a day's docked fixes are mostly at the other pair's berths, that day is drawn along its paths (packages/transit-core/src/ais/match.ts). On a given day all vessels use west–west or east–east, with rare exceptions: the wheelhouse sees the passenger ramps better from one side, so a vessel always loads facing the same way (Braden, 2026-09-28). The timetable allows it: one vessel leaves at least 7 min before the next arrives, even at the weekday peak. Which pair is used varies by day and isn't known in advance; west is from the one sighting (Burrard Pacific Breeze at the West berths, 2026-09-26 14:15/14:29, Braden). guess",
+  "defaultPair": "west"
+}

@@ -2,7 +2,12 @@
 // data, not hardcoded: a date is "regular" if its active service set is the most common one for
 // that weekday across the feed's range.
 
-import { addDays, dayOfWeek, WEEKDAY_NAMES } from "../time.ts";
+import {
+  addDays,
+  dayOfWeek,
+  WEEKDAY_NAMES,
+  type ServiceDate,
+} from "../time.ts";
 
 export interface ServiceDayInfo {
   label: string;
@@ -14,10 +19,10 @@ function key(services: Set<string>): string {
 }
 
 export function makeServiceDescriber(
-  servicesOn: (date: string) => Set<string>,
-  feedStart: string,
-  feedEnd: string,
-): (date: string) => ServiceDayInfo {
+  servicesOn: (date: ServiceDate) => Set<string>,
+  feedStart: ServiceDate,
+  feedEnd: ServiceDate,
+): (date: ServiceDate) => ServiceDayInfo {
   // Most common service set for each weekday.
   const counts: Map<string, number>[] = Array.from(
     { length: 7 },

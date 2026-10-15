@@ -5,18 +5,20 @@
 //   npm run disruptions -- confirm <id> [--keep "<platform stop>"]
 //   npm run disruptions -- discard <id>
 //
-// The RT service drafts disruptions from TransLink alerts into regions/metro-vancouver/disruptions/drafts/ (gitignored).
-// A draft applies only once confirmed: that writes regions/metro-vancouver/disruptions/<id>.json with status "confirmed"
+// The RT service drafts disruptions from TransLink alerts into the rail region's disruptions/drafts/ (gitignored).
+// A draft applies only once confirmed: that writes its disruptions/<id>.json with status "confirmed"
 // (commit it), after checking which track stays open, which alerts rarely say.
 
 import { readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
-import { RT_HISTORY_DIR, log } from "@transitopia/data/paths.ts";
+import rtConfig from "@transitopia/config/regions/metro-vancouver/rt.json" with { type: "json" };
 import {
-  DISRUPTIONS_DIR,
-  loadDisruptions,
-} from "@transitopia/data/disruptions.ts";
+  feedPaths,
+  log,
+  railNetwork,
+  regionPaths,
+} from "@transitopia/data/paths.ts";
+import { loadDisruptions } from "@transitopia/data/disruptions.ts";
 import { AlertDrafts } from "@transitopia/server/rt/alerts.ts";
 import type { ServiceAlert } from "@transitopia/transit-core/disruption/alerts.ts";
 import type {
@@ -24,6 +26,9 @@ import type {
   DisruptionFile,
 } from "@transitopia/transit-core/disruption/types.ts";
 
+// The region with track-level rail: its disruptions (packages/data/src/paths.ts → railNetwork).
+const NET = await railNetwork();
+const DISRUPTIONS_DIR = regionPaths(NET.region).disruptions;
 const DRAFTS = join(DISRUPTIONS_DIR, "drafts");
 const args = process.argv.slice(2);
 const opt = (name: string) => {
@@ -69,7 +74,7 @@ const describe = (d: Disruption) =>
   ].join("; ");
 
 async function list() {
-  const confirmed = (await loadDisruptions()).filter(
+  const confirmed = (await loadDisruptions(DISRUPTIONS_DIR)).filter(
     (d) => d.status !== "draft",
   );
   console.log(`Confirmed (${confirmed.length}):`);
@@ -103,7 +108,7 @@ async function pull() {
   };
   await new AlertDrafts({
     disruptionsDir: DISRUPTIONS_DIR,
-    historyDir: RT_HISTORY_DIR,
+    historyDir: feedPaths(NET.feed).rtHistory,
     log,
   }).update(alerts.map(({ drafted: _d, ...a }) => a));
   await list();
@@ -133,7 +138,7 @@ async function confirm(id: string) {
   );
   await rm(path);
   log(
-    `Confirmed ${id} → regions/metro-vancouver/disruptions/${id}.json (commit it). The RT service applies it within ${rtConfig.dispatchCheckS} s; run npm run build:dispatch for the static site.`,
+    `Confirmed ${id} → config/regions/${NET.region}/disruptions/${id}.json (commit it). The RT service applies it within ${rtConfig.dispatchCheckS} s; run npm run build:dispatch for the static site.`,
   );
 }
 

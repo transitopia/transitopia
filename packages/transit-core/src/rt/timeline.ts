@@ -51,7 +51,7 @@ import {
 } from "./profile.ts";
 import type { ChangesView, RtRouteAlert } from "./changes.ts";
 import type { RtSnapshot, RtVehicle } from "./types.ts";
-import { localDate, serviceDayStart } from "../time.ts";
+import { localDate, serviceDayStart, type ServiceDate } from "../time.ts";
 import type { TripDelay } from "./carry.ts";
 
 export interface TimelineOptions {
@@ -607,7 +607,7 @@ export class RtTimeline {
   private serviceTime(
     trip: PreparedTrip,
     ts: number,
-  ): { date: string; sec: number } {
+  ): { date: ServiceDate; sec: number } {
     const date = tripServiceDate(trip, ts);
     return { date, sec: (ts - serviceDayStart(date)) / 1000 };
   }

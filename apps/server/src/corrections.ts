@@ -1,16 +1,12 @@
 // Corrections: observations and disruptions (docs/DESIGN.md#corrections-and-previews). With a database they live in the
 // observation_sets and disruptions tables with a review state (draft → previewing → confirmed |
-// discarded); without one, in the files under regions/metro-vancouver/ as before. The live
+// discarded); without one, in the files under config/regions/metro-vancouver/ as before. The live
 // dispatcher reads whichever applies through `Corrections`; `export` writes the confirmed ones back
 // to the file format (for tests, reproducible bug reports and the static build).
 
 import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import {
-  OBSERVATIONS_DIR,
-  DISRUPTIONS_DIR,
-  readJson,
-} from "@transitopia/data/paths.ts";
+import { regionPaths, readJson } from "@transitopia/data/paths.ts";
 import { datesOf, loadDisruptions } from "@transitopia/data/disruptions.ts";
 import type { Db } from "@transitopia/db/connect.ts";
 import type {
@@ -43,15 +39,13 @@ export class FileCorrections implements Corrections {
   private readonly disruptionsDir: string;
   private readonly log: (msg: string) => void;
 
-  constructor(
-    opts: {
-      observationsDir?: string | undefined;
-      disruptionsDir?: string | undefined;
-      log?: (msg: string) => void;
-    } = {},
-  ) {
-    this.observationsDir = opts.observationsDir ?? OBSERVATIONS_DIR;
-    this.disruptionsDir = opts.disruptionsDir ?? DISRUPTIONS_DIR;
+  constructor(opts: {
+    observationsDir: string;
+    disruptionsDir: string;
+    log?: (msg: string) => void;
+  }) {
+    this.observationsDir = opts.observationsDir;
+    this.disruptionsDir = opts.disruptionsDir;
     this.log = opts.log ?? (() => {});
   }
 
@@ -288,10 +282,10 @@ export class CorrectionsRepo implements Corrections {
     return Number(r.numUpdatedRows) > 0;
   }
 
-  /** Import the committed files (idempotent: existing ids are left as they are). */
+  /** Import the committed files (default: its region's; idempotent: existing ids are left as they are). */
   async importFiles(
-    observationsDir = OBSERVATIONS_DIR,
-    disruptionsDir = DISRUPTIONS_DIR,
+    observationsDir = regionPaths(this.regionId).observations,
+    disruptionsDir = regionPaths(this.regionId).disruptions,
   ): Promise<{ observationSets: number; disruptions: number }> {
     let observationSets = 0;
     let disruptions = 0;
@@ -320,7 +314,7 @@ export class CorrectionsRepo implements Corrections {
 
   /**
    * Write the confirmed corrections as files: <dir>/observations/<id>.json and
-   * <dir>/disruptions/<id>.json (the formats in regions/metro-vancouver/*\/README.md). The
+   * <dir>/disruptions/<id>.json (the formats in config/regions/metro-vancouver/*\/README.md). The
    * directories are replaced, so they hold exactly what's confirmed.
    */
   async exportFiles(

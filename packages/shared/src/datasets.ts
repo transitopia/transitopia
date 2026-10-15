@@ -8,6 +8,8 @@ export type DatasetId =
   | "transitopia"
   | "translink-gtfs"
   | "translink-gtfs-rt"
+  | "bc-transit-gtfs"
+  | "bc-transit-gtfs-rt"
   | "aisstream";
 
 export interface Dataset {
@@ -27,6 +29,13 @@ const TRANSLINK_LEGEND =
 const TRANSLINK_TERMS = {
   name: "TransLink Open API terms of use",
   url: "https://www.translink.ca/about-us/doing-business-with-translink/app-developer-resources/terms-of-use",
+};
+
+// BC Transit's terms ask that it be identified as the source, with no wording prescribed, and
+// forbid using its marks: the credit names it, no legend.
+const BC_TRANSIT_TERMS = {
+  name: "BC Transit open data terms of use",
+  url: "https://www.bctransit.com/open-data/terms-of-use/",
 };
 
 export const DATASETS: Record<DatasetId, Dataset> = {
@@ -73,6 +82,19 @@ export const DATASETS: Record<DatasetId, Dataset> = {
     legend: TRANSLINK_LEGEND,
     url: "https://www.translink.ca/about-us/doing-business-with-translink/app-developer-resources/gtfs/gtfs-realtime",
     license: TRANSLINK_TERMS,
+  },
+  "bc-transit-gtfs": {
+    id: "bc-transit-gtfs",
+    credit: "Schedules: BC Transit",
+    realtime: "bc-transit-gtfs-rt",
+    url: "https://www.bctransit.com/open-data/",
+    license: BC_TRANSIT_TERMS,
+  },
+  "bc-transit-gtfs-rt": {
+    id: "bc-transit-gtfs-rt",
+    credit: "Real-time: BC Transit",
+    url: "https://www.bctransit.com/open-data/",
+    license: BC_TRANSIT_TERMS,
   },
   aisstream: {
     id: "aisstream",

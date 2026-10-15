@@ -1,5 +1,5 @@
 {
-  "$comment": "Routes shown on the map. Matched against GTFS routes.txt by name (never route_id, which changes between feeds). 'kind' drives how vehicles are modelled: 'skytrain' = track-level (packages/transit-core/DESIGN.md#track-graph–4.4), 'shape' = interpolated along GTFS shapes, 'bus' = GTFS-RT with schedule fallback. 'color' is optional; when omitted the GTFS route_color is used. GTFS has no colours for buses, so each gets a distinct colour for legibility. 'category' is the layer the route belongs to in the site's layers panel: 'rapid' (dedicated right of way: SkyTrain, SeaBus, West Coast Express), 'frequent' (the 99 B-Line and RapidBus R1–R6: frequent, but not true BRT, without dedicated right of way) or 'regular' (every other bus: the feed's other bus routes, listed on cards from the plan's catalogue but not drawn). Set by hand for now (the user's call, 2026-10-14); 'frequent' vs 'regular' should later be computed from scheduled frequency when the plan is built.",
+  "$comment": "TransLink routes shown on the map. Matched against GTFS routes.txt by name (never route_id, which changes between feeds). 'kind' drives how vehicles are modelled: 'skytrain' = track-level (packages/transit-core/DESIGN.md#track-graph–4.4), 'shape' = interpolated along GTFS shapes, 'bus' = GTFS-RT with schedule fallback. 'kinematics' overrides the vehicle settings of the route's mode (config/defaults/kinematics.json, then its operator's). 'color' is optional; when omitted the GTFS route_color is used. GTFS has no colours for buses, so each gets a distinct colour for legibility. 'category' is the layer the route belongs to in the site's layers panel: 'rapid' (dedicated right of way: SkyTrain, SeaBus, West Coast Express), 'frequent' (the 99 B-Line and RapidBus R1–R6: frequent, but not true BRT, without dedicated right of way) or 'regular' (every other bus: the feed's other bus routes, listed on cards from the plan's catalogue but not drawn). Set by hand for now (the user's call, 2026-10-14); 'frequent' vs 'regular' should later be computed from scheduled frequency when the plan is built.",
   "routes": [
     {
       "key": "expo",
@@ -9,7 +9,11 @@
       },
       "kind": "skytrain",
       "mode": "skytrain",
-      "category": "rapid"
+      "category": "rapid",
+      "kinematics": {
+        "length": 80,
+        "$comment": "guess: mix of 4/6-car Mk I, 4-car Mk III and 5-car Mk V (~85 m, 12 sets in service Sep 2026; CPTDB). OPEN-QUESTIONS #9"
+      }
     },
     {
       "key": "millennium",
@@ -19,7 +23,11 @@
       },
       "kind": "skytrain",
       "mode": "skytrain",
-      "category": "rapid"
+      "category": "rapid",
+      "kinematics": {
+        "length": 68,
+        "$comment": "guess: 4-car Mk II (Millennium runs Mk II only, 2 or 4 cars; CPTDB). OPEN-QUESTIONS #9"
+      }
     },
     {
       "key": "canada",
@@ -29,7 +37,12 @@
       },
       "kind": "skytrain",
       "mode": "skytrain",
-      "category": "rapid"
+      "category": "rapid",
+      "kinematics": {
+        "length": 41,
+        "decel": 1.3,
+        "$comment": "2-car Hyundai Rotem EMU, the only Canada Line stock (CPTDB). OPEN-QUESTIONS #9"
+      }
     },
     {
       "key": "seabus",
@@ -49,7 +62,11 @@
       },
       "kind": "shape",
       "mode": "rail",
-      "category": "rapid"
+      "category": "rapid",
+      "kinematics": {
+        "length": 130,
+        "$comment": "guess: typical 5-car consist plus locomotive"
+      }
     },
     {
       "key": "99",

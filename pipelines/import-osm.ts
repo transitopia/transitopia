@@ -1,12 +1,23 @@
 // Convert the OSM extract (pipelines/fetch-osm.ts) into our track model (packages/transit-core/DESIGN.md#track-graph):
-//   regions/metro-vancouver/infrastructure/tracks.generated.geojson   in-service track (committed; don't hand-edit)
-//   regions/metro-vancouver/infrastructure/future.generated.geojson   track with a future opening_date (scenario material)
+//   config/regions/<region>/infrastructure/tracks.generated.geojson   in-service track (committed; don't hand-edit)
+//   config/regions/<region>/infrastructure/future.generated.geojson   track with a future opening_date (scenario material)
 //
 // The network itself (segments, turns, stop positions) is built by packages/transit-core/src/infra/network.ts.
 
 import { join } from "node:path";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { INFRA_DIR, RAW_DIR, log } from "@transitopia/data/paths.ts";
+import {
+  RAW_DIR,
+  log,
+  railNetwork,
+  regionPaths,
+} from "@transitopia/data/paths.ts";
+
+// The region (--region <id>; default: the one with track-level rail).
+const regionArg = process.argv.indexOf("--region");
+const REGION =
+  regionArg >= 0 ? process.argv[regionArg + 1]! : (await railNetwork()).region;
+const INFRA_DIR = regionPaths(REGION).infra;
 import { loadOverrides } from "@transitopia/data/infra.ts";
 import {
   buildNetwork,
@@ -46,7 +57,7 @@ function isFuture(tags: Record<string, string>, today: string): boolean {
  * Track ways we model: railway=subway, plus existing SkyTrain track that OSM marks as under
  * construction/disused (e.g. the Braid–Lougheed Expo track, "opening_date 2027-06") when it is still
  * a member of a current route relation. GTFS keeps scheduling both tracks there, so we treat it as in
- * service but flag it (regions/metro-vancouver/README.md#braid-and-the-omc4-works).
+ * service but flag it (config/regions/metro-vancouver/README.md#braid-and-the-omc4-works).
  */
 function isTrack(w: OsmWay, routeMembers: Set<number>): boolean {
   const t = w.tags ?? {};
@@ -59,7 +70,7 @@ function isTrack(w: OsmWay, routeMembers: Set<number>): boolean {
 }
 
 async function main() {
-  const src = join(RAW_DIR, "osm", "latest.json");
+  const src = join(RAW_DIR, "osm", REGION, "latest.json");
   const raw = JSON.parse(await readFile(src, "utf8")) as {
     osm3s?: { timestamp_osm_base?: string };
     elements: OsmElement[];
@@ -82,7 +93,7 @@ async function main() {
   for (const r of relations)
     if (lineOf(r.tags?.name))
       for (const m of r.members) if (m.type === "way") routeMembers.add(m.ref);
-  const { osm: osmOverrides } = await loadOverrides();
+  const { osm: osmOverrides } = await loadOverrides(REGION);
   const include = new Set(osmOverrides.includeWays);
   const exclude = new Set(osmOverrides.excludeWays);
   for (const w of allWays.values())
@@ -125,7 +136,7 @@ async function main() {
 
   let base = buildNetwork(current, nodes, wayLines, stopNodes, meta);
   // Track missing from OSM (overrides.addTrack), joined by coordinates like scenario track.
-  const { addTrack } = await loadOverrides();
+  const { addTrack } = await loadOverrides(REGION);
   if (addTrack) {
     const custom = JSON.parse(
       await readFile(join(INFRA_DIR, addTrack), "utf8"),

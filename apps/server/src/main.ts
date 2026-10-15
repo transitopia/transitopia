@@ -6,8 +6,13 @@
 //   DATABASE_URL=postgres://… RT_POLL=1 npm run server         # production (infra/compose.yml)
 
 import { serve } from "@hono/node-server";
-import region from "@transitopia/region-metro-vancouver/region.json" with { type: "json" };
 import { checkTimezoneData } from "@transitopia/transit-core/time.ts";
+import {
+  railNetwork,
+  readFeeds,
+  readRegions,
+} from "@transitopia/data/paths.ts";
+import { migrateLegacyFiles } from "@transitopia/data/legacy.ts";
 import { createDb } from "@transitopia/db/connect.ts";
 import { migrate } from "@transitopia/db/migrate.ts";
 import { ensurePartitions } from "@transitopia/db/partitions.ts";
@@ -19,12 +24,27 @@ import { CorrectionsRepo } from "./corrections.ts";
 import { Auth } from "./auth.ts";
 import { createApp } from "./app.ts";
 import { Jobs } from "./jobs/scheduler.ts";
+import { syncSources } from "./sources.ts";
 
 const log = (m: string) => console.log(`[server] ${m}`);
 
+// Every region (config/regions/*/region.json) and the feeds they show (config/feeds/*/feed.json), checked.
+const regions = await readRegions();
+const feeds = await readFeeds();
+// Track-level rail: its live dispatch, corrections and /admin support one network so far.
+const rail = await railNetwork();
+// Recordings and downloads from before feeds had ids move into TransLink's directories, once.
+const moved = await migrateLegacyFiles();
+if (moved.length)
+  log(
+    `moved ${moved.length} files and directories into TransLink's directories`,
+  );
+
 // Every local time (service days, recordings, dispatch dates) comes from the runtime's time zone
 // data, so refuse to start on an outdated copy rather than record and dispatch against wrong times.
-const tzProblems = checkTimezoneData(region.timezoneChecks, region.timezone);
+const tzProblems = regions.flatMap((r) =>
+  checkTimezoneData(r.timezoneChecks, r.timezone).map((p) => `${r.id}: ${p}`),
+);
 if (tzProblems.length) {
   console.error(
     [
@@ -51,9 +71,10 @@ if (env.databaseUrl) {
   const applied = await migrate(db.pool, log);
   if (!applied.length) log("database schema up to date");
   await ensurePartitions(db.db);
+  await syncSources(db.db, regions, feeds);
 }
-const store = db ? new Store(db.db, region.id) : undefined;
-const repo = db ? new CorrectionsRepo(db.db, region.id) : undefined;
+const store = db ? new Store(db.db, rail.region) : undefined;
+const repo = db ? new CorrectionsRepo(db.db, rail.region) : undefined;
 if (repo) {
   // First start on a new database: bring in the committed corrections (existing ids are kept).
   const n = await repo.importFiles();
@@ -65,12 +86,17 @@ if (repo) {
 
 const jobs =
   env.jobs && !env.forwardTo ?
-    new Jobs({ db: db?.db, regionId: region.id, repo, env })
+    new Jobs({ db: db?.db, feeds, repo, env })
   : undefined;
 
 const service = new RtService({
-  // Without RT_POLL, keys in .secrets or the environment are ignored: polling spends the key's
-  // daily budget, and production needs all of it (docs/DESIGN.md#upstream-request-budget).
+  regions,
+  feeds,
+  rail,
+  // Without RT_POLL nothing is polled and keys in .secrets or the environment are ignored: polling
+  // spends shared budgets, and production needs all of TransLink's
+  // (docs/DESIGN.md#upstream-request-budget).
+  poll: env.poll,
   ...(env.poll ? {} : { apiKey: null, aisApiKey: null }),
   forwardTo: env.forwardTo,
   store,
@@ -80,7 +106,7 @@ const service = new RtService({
       new PgLeaderLock({
         url: env.databaseUrl,
         db: db.db,
-        regionId: region.id,
+        regionId: rail.region,
         advertiseUrl: env.advertiseUrl,
         onLost: () => {
           console.error(
@@ -94,7 +120,7 @@ const service = new RtService({
 });
 if (!env.poll && !env.forwardTo)
   log(
-    "Not polling TransLink or aisstream.io (set RT_POLL=1 to, which spends the API key's daily budget; "
+    "Not polling any feed or aisstream.io (set RT_POLL=1 to, which spends their daily budgets; "
       + "or RT_FORWARD_TO=https://api.transitopia.org to use production's live data)",
   );
 

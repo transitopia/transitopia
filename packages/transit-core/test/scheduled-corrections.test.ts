@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { serviceDate } from "../src/time.ts";
 import { reconcileScheduled } from "../src/corrections/reconcile.ts";
 import type { Observation } from "../src/corrections/types.ts";
 import { preparePlan, scheduledVehicles } from "../src/schedule/engine.ts";
@@ -27,8 +28,8 @@ const H14 = 14 * 3600;
 const plan: ServicePlan = {
   schema: 1,
   feedVersion: "test",
-  feedStart: "20260901",
-  feedEnd: "20261231",
+  feedStart: serviceDate("20260901"),
+  feedEnd: serviceDate("20261231"),
   timezone: "America/Vancouver",
   builtAt: "",
   routes: [
@@ -113,8 +114,8 @@ const plan: ServicePlan = {
       {
         serviceId: "sa",
         days: [false, false, false, false, false, true, false],
-        start: "20260901",
-        end: "20261231",
+        start: serviceDate("20260901"),
+        end: serviceDate("20261231"),
       },
     ],
     exceptions: [],
@@ -152,9 +153,9 @@ const obs: Observation[] = [
     source: "test",
   },
 ];
-const corr = reconcileScheduled(pp, obs, "20260926");
+const corr = reconcileScheduled(pp, obs, serviceDate("20260926"));
 const at = (sec: number) =>
-  scheduledVehicles(pp, { serviceDate: "20260926", sec }, corr);
+  scheduledVehicles(pp, { serviceDate: serviceDate("20260926"), sec }, corr);
 
 describe("reconcileScheduled", () => {
   it("matches arrival and departure sightings to the right trips at a terminus", () => {
@@ -191,7 +192,7 @@ describe("reconcileScheduled", () => {
   });
 
   it("leaves other days alone", () => {
-    const none = reconcileScheduled(pp, obs, "20260919");
+    const none = reconcileScheduled(pp, obs, serviceDate("20260919"));
     expect(none.trips.size).toBe(0);
   });
 });

@@ -16,13 +16,13 @@ PostgreSQL (18, with PostGIS) for the Transitopia server: SQL migrations, [Kysel
 
 | Table | What | Kept |
 |---|---|---|
-| `regions` | Region records | |
+| `regions`, `feeds` | Region and feed records, upserted from `config/regions/*/region.json` and `config/feeds/*/feed.json` when the server starts ([docs/DESIGN.md → Regions and feeds](../../docs/DESIGN.md#regions-and-feeds)). What comes from a feed is keyed by `feed_id` (polls, positions, trip changes, alerts, GTFS feeds, observed stop times, statistics); AIS fixes too; corrections and dispatch versions by `region_id`. | |
 | `service_leader` | Where followers forward `/rt/*`. Leadership itself is a session advisory lock. | |
-| `upstream_requests` | Every upstream request, successful or not: the daily cap is enforced against it, so restarts and retries count | |
+| `upstream_requests` | Every upstream request, successful or not, by `provider` (the feed id): each feed's daily cap is enforced against it, so restarts and retries count | |
 | `rt_polls` | One row per poll or AIS batch: the coverage record | |
 | `rt_positions` | Raw vehicle positions from every poll, for every route (partitioned by day) | 60 days |
-| `ais_fixes` | Raw SeaBus AIS fixes (partitioned by day) | 60 days |
-| `trip_changes` | Trips TransLink reported cancelled or skipping stops, per service date, every route | indefinitely |
+| `ais_fixes` | Raw AIS fixes of a feed's vessels (the SeaBus), by `feed_id` (partitioned by day) | 60 days |
+| `trip_changes` | Trips a feed reported cancelled or skipping stops, per service date, every route | indefinitely |
 | `alerts` | GTFS-RT alerts with first and last sighting; the latest wording wins | indefinitely |
 | `observation_sets`, `disruptions` | Curated corrections: `body` is the file format, `state` the review state (`draft`, `previewing`, `confirmed`, `discarded`). Only confirmed ones apply. | indefinitely |
 | `dispatch_versions` | Dispatch patch versions (the patches are files): `live` or `preview` | indefinitely |

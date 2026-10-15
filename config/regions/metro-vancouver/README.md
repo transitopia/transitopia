@@ -1,11 +1,11 @@
 # Metro Vancouver
 
-Curated inputs for the Metro Vancouver region (design: [docs/DESIGN.md → Regions](../../docs/DESIGN.md#regions)):
+Curated inputs for the Metro Vancouver region (design: [docs/DESIGN.md → Regions and feeds](../../docs/DESIGN.md#regions-and-feeds)):
 
 | Path | What |
 |---|---|
 | `region.json` | bbox, time zone, the first view of `/transit`, and time zone data checks |
-| `config/` | Every operating assumption, each with a source or "guess" and a cross-reference to [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md): routes and colours, kinematics, operations (layovers, turnbacks, yards), dispatch (signalling), rt (the poll schedule, bus prediction), seabus, recording (retention, statistics) |
+| `*.json` | Its settings, each with a source or "guess" and a cross-reference to [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md): operations (layovers, turnbacks, yards), dispatch (signalling), rt (live dispatch, beyond the defaults), seabus, recording (retention, statistics). Vehicles (kinematics) and bus prediction are the defaults' ([config/defaults/](../../defaults/)) with TransLink's overrides ([operator.json](../../operators/translink/operator.json)); the routes drawn, their colours and kinematics, and the poll schedule are TransLink's feed's ([config/feeds/translink/](../../feeds/translink/)). |
 | `infrastructure/` | The SkyTrain track network: `tracks.generated.geojson` and `future.generated.geojson` (imported from OSM; don't hand-edit), `overrides.json` (our fixes), `seabus.json` (berths and lanes), `diagram-checklist.json` |
 | `scenarios/` | Alternate track and service ([README](scenarios/README.md)) |
 | `observations/`, `disruptions/` | Corrections in the file format ([observations](observations/README.md), [disruptions](disruptions/README.md)): imported into a new database, and used by local runs without one |
@@ -81,4 +81,4 @@ Only vessels in service are shown: a vessel is drawn from its block's first depa
 - On a given day every vessel runs west berth to west berth, or every vessel east to east, with rare exceptions: the wheelhouse sees the ramps better from one side (Braden, 2026-09-28). The timetable allows one berth per terminal even at the weekday peak (a vessel leaves at least 7 minutes before the next arrives).
 - Vessels keep right, so the two directions cross on either side of the direct line, up to ~250 m apart (AIS tracks, Braden, 2026-09-28).
 - Which pair is in use on a given day comes from AIS: where the day's vessels dock ([packages/transit-core/DESIGN.md → SeaBus AIS](../../packages/transit-core/DESIGN.md#seabus-ais)). The default is west–west (`defaultPair`, from the 2026-09-26 sighting) until a day's docked fixes say otherwise. 2026-09-28 evening: west–west.
-- Berth positions were read off the basemap's pier outlines and checked by Braden (2026-09-28). Modelled in `infrastructure/seabus.json` (berths, lanes traced from AIS) and `config/seabus.json` (pairing), applied at plan build time instead of the GTFS shapes.
+- Berth positions were read off the basemap's pier outlines and checked by Braden (2026-09-28). Modelled in `infrastructure/seabus.json` (berths, lanes traced from AIS) and `seabus.json` (pairing), applied at plan build time instead of the GTFS shapes.

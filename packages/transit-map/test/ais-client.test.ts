@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseConfig } from "@transitopia/transit-core/config.ts";
+import { serviceDate } from "@transitopia/transit-core/time.ts";
+import { parseConfig, parseFeed } from "@transitopia/transit-core/config.ts";
 import {
   encodeFixes,
   serviceDateWindow,
@@ -9,20 +10,20 @@ import type { AisFix } from "@transitopia/transit-core/ais/match.ts";
 import type { LiveTransitResponse } from "@transitopia/transit-core/rt/live.ts";
 import { preparePlan } from "@transitopia/transit-core/schedule/engine.ts";
 import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
-import kinematics from "@transitopia/region-metro-vancouver/config/kinematics.json";
-import rt from "@transitopia/region-metro-vancouver/config/rt.json";
-import seabus from "@transitopia/region-metro-vancouver/config/seabus.json";
+import kinematics from "@transitopia/config/defaults/kinematics.json";
+import rt from "@transitopia/config/defaults/rt.json";
+import translink from "@transitopia/config/feeds/translink/feed.json";
 import { AisClient } from "../src/ais.ts";
 
 const config = {
   rt: parseConfig("rt", rt),
-  seabus: parseConfig("seabus", seabus),
+  feed: parseFeed(translink),
 };
 const plan: ServicePlan = {
   schema: 1,
   feedVersion: "test",
-  feedStart: "20260901",
-  feedEnd: "20261231",
+  feedStart: serviceDate("20260901"),
+  feedEnd: serviceDate("20261231"),
   timezone: "America/Vancouver",
   builtAt: "",
   routes: [],
@@ -33,8 +34,11 @@ const plan: ServicePlan = {
   trips: [],
   calendar: { calendar: [], exceptions: [] },
 };
-const pp = preparePlan(plan, parseConfig("kinematics", kinematics));
-const DATE = "20261014";
+const pp = preparePlan(
+  plan,
+  parseConfig("kinematics", { ...kinematics, routes: {} }),
+);
+const DATE = serviceDate("20261014");
 const [start] = serviceDateWindow(DATE);
 const fix = (ts: number): AisFix => ({
   mmsi: "316042365",
@@ -56,7 +60,7 @@ const live = (
   schema: 1,
   nextAt: null,
   sources: {
-    "seabus/ais": {
+    "translink/ais": {
       kind: "ais",
       encoding: "ais-fixes/1",
       route: "seabus",
@@ -86,7 +90,7 @@ describe("AisClient", () => {
     const state = () => (client as any).dates.get(DATE);
 
     client.pairFor(DATE, pp);
-    expect(urls).toEqual(["https://api/regions/r/days/20261014/seabus/ais"]);
+    expect(urls).toEqual(["https://api/regions/r/days/20261014/translink/ais"]);
     await vi.waitFor(() => expect(state().loading).toBe(false));
     expect(state().fixes).toHaveLength(1);
     expect(state().syncedTo).toBe(t0);

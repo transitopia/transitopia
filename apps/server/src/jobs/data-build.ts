@@ -13,11 +13,13 @@ import {
   PUBLIC_DATA_DIR,
   ROOT,
 } from "@transitopia/data/paths.ts";
+import type { FeedInfo } from "@transitopia/transit-core/config.ts";
 import { archivedFeeds } from "@transitopia/data/gtfs-day.ts";
 import type { Db } from "@transitopia/db/connect.ts";
 import type { CorrectionsRepo } from "../corrections.ts";
 import type { ServerEnv } from "../env.ts";
 import { run } from "./exec.ts";
+import { isoDate } from "../dates.ts";
 
 export interface DataBuildResult {
   newFeeds: string[];
@@ -26,7 +28,7 @@ export interface DataBuildResult {
 
 export async function buildData(opts: {
   db: Db | undefined;
-  regionId: string;
+  feeds: FeedInfo[];
   repo: CorrectionsRepo | undefined;
   env: ServerEnv;
   log: (msg: string) => void;
@@ -34,7 +36,10 @@ export async function buildData(opts: {
   const { db, repo, env, log } = opts;
   const childEnv: NodeJS.ProcessEnv = {};
   if (repo) {
-    const n = await repo.exportFiles(CORRECTIONS_EXPORT_DIR);
+    // The pipelines read a region's corrections from <dir>/<region>/ (regionPaths).
+    const n = await repo.exportFiles(
+      join(CORRECTIONS_EXPORT_DIR, repo.regionId),
+    );
     log(
       `exported ${n.observationSets} observation sets and ${n.disruptions} disruptions for the build`,
     );
@@ -45,12 +50,16 @@ export async function buildData(opts: {
     env: childEnv,
     log: (l) => log(`data: ${l}`),
   });
-  const newFeeds = db ? await recordFeeds(db, opts.regionId, env, log) : [];
+  const newFeeds: string[] = [];
+  if (db)
+    for (const f of opts.feeds)
+      newFeeds.push(...(await recordFeeds(db, f.id, env, log)));
   let published = false;
   if (env.dataPublishRemote) {
     const dest = `${env.dataPublishRemote}/data`;
-    // Everything but the manifest first, so no client reads a manifest pointing at files that aren't
-    // there yet; old files stay for clients holding an older manifest (copy, not sync).
+    // Everything but the manifests first, so no client reads a manifest pointing at files that
+    // aren't there yet; old files stay for clients holding an older manifest (copy, not sync). The
+    // filter names a file anywhere: every feed's data/feeds/<feed>/manifest.json.
     await run("rclone", [
       "copy",
       PUBLIC_DATA_DIR,
@@ -63,8 +72,10 @@ export async function buildData(opts: {
     ]);
     await run("rclone", [
       "copy",
-      join(PUBLIC_DATA_DIR, "manifest.json"),
+      PUBLIC_DATA_DIR,
       dest,
+      "--include",
+      "manifest.json",
       "--header-upload",
       "Cache-Control: public, max-age=300",
       "--s3-no-check-bucket",
@@ -75,10 +86,10 @@ export async function buildData(opts: {
   return { newFeeds, published };
 }
 
-/** Add archived GTFS feeds to gtfs_feeds (kept indefinitely), uploading the zips to the archive. */
+/** Add a feed's archived GTFS versions to gtfs_feeds (kept indefinitely), uploading the zips to the archive. */
 async function recordFeeds(
   db: Db,
-  regionId: string,
+  feedId: string,
   env: ServerEnv,
   log: (msg: string) => void,
 ): Promise<string[]> {
@@ -87,15 +98,16 @@ async function recordFeeds(
       await db
         .selectFrom("gtfs_feeds")
         .select("version")
-        .where("region_id", "=", regionId)
+        .where("feed_id", "=", feedId)
         .where("object_key", "is not", null)
         .execute()
     ).map((r) => r.version),
   );
   const added: string[] = [];
-  for (const f of await archivedFeeds()) {
+  for (const f of await archivedFeeds(feedId)) {
     if (known.has(f.version)) continue;
-    const key = `gtfs/${regionId}/${f.version}/google_transit.zip`;
+    // TransLink's zips were archived at gtfs/metro-vancouver/<version>/ before feeds had ids.
+    const key = `gtfs/${feedId}/${f.version}/google_transit.zip`;
     if (env.archiveRemote)
       await run("rclone", [
         "copyto",
@@ -103,13 +115,11 @@ async function recordFeeds(
         `${env.archiveRemote}/${key}`,
         "--s3-no-check-bucket",
       ]);
-    const iso = (d: string) =>
-      `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
     const row = {
-      region_id: regionId,
+      feed_id: feedId,
       version: f.version,
-      start_date: iso(f.start),
-      end_date: iso(f.end),
+      start_date: isoDate(f.start),
+      end_date: isoDate(f.end),
       fetched_at: (await stat(f.path)).mtime,
       sha256: await sha256File(f.path),
       bytes: (await stat(f.path)).size,
@@ -118,11 +128,11 @@ async function recordFeeds(
     await db
       .insertInto("gtfs_feeds")
       .values(row)
-      .onConflict((oc) => oc.columns(["region_id", "version"]).doUpdateSet(row))
+      .onConflict((oc) => oc.columns(["feed_id", "version"]).doUpdateSet(row))
       .execute();
-    added.push(f.version);
+    added.push(`${feedId}/${f.version}`);
     log(
-      `GTFS feed ${f.version} recorded${env.archiveRemote ? " and archived" : ""}`,
+      `GTFS feed ${feedId} ${f.version} recorded${env.archiveRemote ? " and archived" : ""}`,
     );
   }
   return added;

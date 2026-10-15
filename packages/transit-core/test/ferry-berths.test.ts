@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { serviceDate } from "../src/time.ts";
 import {
   applyFerryBerths,
   berthPath,
@@ -45,8 +46,8 @@ function makePlan(trips: PlanTrip[]): ServicePlan {
   return {
     schema: 1,
     feedVersion: "test",
-    feedStart: "20260901",
-    feedEnd: "20261231",
+    feedStart: serviceDate("20260901"),
+    feedEnd: serviceDate("20261231"),
     timezone: "America/Vancouver",
     builtAt: "",
     routes: [

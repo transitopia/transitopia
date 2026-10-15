@@ -12,7 +12,7 @@ on:
       - "apps/server/**"
       - "packages/**"
       - "pipelines/**"
-      - "regions/**"
+      - "config/**"
       - "infra/**"
       - "package.json"
       - "package-lock.json"

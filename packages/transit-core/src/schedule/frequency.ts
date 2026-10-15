@@ -2,7 +2,7 @@
 // (packages/transit-core/DESIGN.md#departures): minutes between trips per hour of a service day,
 // and the feed's day types (the distinct sets of services a date can have).
 
-import { addDays } from "../time.ts";
+import { addDays, type ServiceDate } from "../time.ts";
 import type { PreparedPlan } from "./engine.ts";
 
 /** The route card's day strip: an hour cell from 05:00 to 01:00 (service hours, may exceed 24). */
@@ -22,7 +22,7 @@ export const DAY_HOURS: readonly number[] = Array.from(
 export function routeMinutes(
   pp: PreparedPlan,
   routeKey: string,
-  date: string,
+  date: ServiceDate,
   from: number,
   seconds: number,
 ): number | undefined {
@@ -55,14 +55,14 @@ export function routeMinutes(
 export function hourlyMinutes(
   pp: PreparedPlan,
   routeKey: string,
-  date: string,
+  date: ServiceDate,
 ): (number | undefined)[] {
   return DAY_HOURS.map((h) => routeMinutes(pp, routeKey, date, h * 3600, 3600));
 }
 
 export interface DayType {
   /** A date with this set of services, the first found from the start date. */
-  date: string;
+  date: ServiceDate;
   /** The services that run (sorted), which is what makes days alike. */
   services: string[];
 }
@@ -71,7 +71,11 @@ export interface DayType {
  * The feed's kinds of day, in the order they come from `from` (so the first is that day's): dates
  * alike when the same services run. Looks `days` ahead, within the feed's validity.
  */
-export function dayTypes(pp: PreparedPlan, from: string, days = 14): DayType[] {
+export function dayTypes(
+  pp: PreparedPlan,
+  from: ServiceDate,
+  days = 14,
+): DayType[] {
   const out: DayType[] = [];
   const seen = new Set<string>();
   for (let i = 0; i < days; i++) {

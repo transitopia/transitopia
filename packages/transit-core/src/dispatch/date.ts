@@ -5,6 +5,7 @@
 // Disruptions change the plan itself (rerouted and cancelled trips), so the date is re-inferred
 // first and the patch carries the whole day's plan.
 
+import type { ServiceDate } from "../time.ts";
 import type { TrackGraph, TrackPos } from "../infra/graph.ts";
 import type { PlatformAssignment } from "../infra/platforms.ts";
 import type { KinematicsConfig } from "../movement/kinematics.ts";
@@ -24,7 +25,7 @@ import { inputsVersion, makePatch, type DispatchPatch } from "./patch.ts";
 
 export interface DateInputs {
   /** Service date, YYYYMMDD. */
-  date: string;
+  date: ServiceDate;
   observations: Observation[];
   disruptions?: Disruption[];
 }

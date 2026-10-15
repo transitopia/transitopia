@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { serviceDate } from "../src/time.ts";
 import { preparePlan, scheduledVehicles } from "../src/schedule/engine.ts";
 import type { ServicePlan } from "../src/plan/types.ts";
 import type { KinematicsConfig } from "../src/movement/kinematics.ts";
@@ -34,8 +35,8 @@ const kin: KinematicsConfig = {
 const plan: ServicePlan = {
   schema: 1,
   feedVersion: "test",
-  feedStart: "20260901",
-  feedEnd: "20261231",
+  feedStart: serviceDate("20260901"),
+  feedEnd: serviceDate("20261231"),
   timezone: "America/Vancouver",
   builtAt: "",
   routes: [
@@ -109,8 +110,8 @@ const plan: ServicePlan = {
       {
         serviceId: "wk",
         days: [true, true, true, true, true, false, false],
-        start: "20260901",
-        end: "20261231",
+        start: serviceDate("20260901"),
+        end: serviceDate("20261231"),
       },
     ],
     exceptions: [],
@@ -118,13 +119,13 @@ const plan: ServicePlan = {
 };
 
 const pp = preparePlan(plan, kin);
-const at = (sec: number, serviceDate = "20260928") =>
-  scheduledVehicles(pp, { serviceDate, sec });
+const at = (sec: number, date = serviceDate("20260928")) =>
+  scheduledVehicles(pp, { serviceDate: date, sec });
 
 describe("scheduledVehicles", () => {
   it("shows nothing before the first departure or on days without service", () => {
     expect(at(85799)).toHaveLength(0);
-    expect(at(85900, "20260927")).toHaveLength(0); // Sunday
+    expect(at(85900, serviceDate("20260927"))).toHaveLength(0); // Sunday
   });
   it("dwells at intermediate stops around the scheduled time", () => {
     const [v] = at(85800 + 120);
@@ -162,7 +163,7 @@ describe("scheduledVehicles", () => {
   it("filters by route", () => {
     expect(
       scheduledVehicles(pp, {
-        serviceDate: "20260928",
+        serviceDate: serviceDate("20260928"),
         sec: 85860,
         routes: new Set(["99"]),
       }),

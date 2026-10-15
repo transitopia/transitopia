@@ -1,9 +1,17 @@
 // Loads what dispatching one service date needs from the built data (plan, graph, inferred and
 // dispatched runs, config), with caching. Used by build:dispatch and the RT service.
 
+import type { ServiceDate } from "@transitopia/transit-core/time.ts";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import { PUBLIC_DIR, PUBLIC_DATA_DIR, readConfig, readJson } from "./paths.ts";
+import {
+  PUBLIC_DIR,
+  readConfig,
+  readJson,
+  readManifest,
+  railFeedConfig,
+  type RailNetwork,
+} from "./paths.ts";
 import { loadGraph } from "./infra.ts";
 import { dispatchDebugFromEnv } from "./dispatch-debug.ts";
 import {
@@ -11,6 +19,7 @@ import {
   type PreparedPlan,
 } from "@transitopia/transit-core/schedule/engine.ts";
 import {
+  feedDataPath,
   feedForDate,
   type FeedManifest,
   type ServicePlan,
@@ -31,7 +40,9 @@ import {
 } from "@transitopia/transit-core/infra/platforms.ts";
 import type { Overrides } from "./infra.ts";
 
+/** What dispatching a rail network's service dates needs, cached (one per rail network). */
 export class DispatchContexts {
+  readonly net: RailNetwork;
   private manifest: Promise<FeedManifest> | undefined;
   private graph:
     Promise<{ graph: TrackGraph; overrides: Overrides }> | undefined;
@@ -46,6 +57,10 @@ export class DispatchContexts {
   private plans = new Map<string, Promise<PreparedPlan>>();
   private files = new Map<string, Promise<MovementsFile>>();
 
+  constructor(net: RailNetwork) {
+    this.net = net;
+  }
+
   /** Forget cached build outputs (after a rebuild). */
   reset(): void {
     this.manifest = undefined;
@@ -55,9 +70,9 @@ export class DispatchContexts {
 
   private loadConfigs() {
     return (this.configs ??= Promise.all([
-      readConfig("kinematics"),
-      readConfig("operations"),
-      readConfig("dispatch"),
+      railFeedConfig(this.net).then((c) => c.kinematics),
+      readConfig("operations", this.net.region),
+      readConfig("dispatch", this.net.region),
     ]).then(([kin, ops, dispatch]) => ({ kin, ops, dispatch })));
   }
 
@@ -75,10 +90,8 @@ export class DispatchContexts {
   }
 
   /** The context for a service date (YYYYMMDD), or undefined if no dispatched plan covers it. */
-  async forDate(date: string): Promise<DateContext | undefined> {
-    const manifest = await (this.manifest ??= readJson<FeedManifest>(
-      join(PUBLIC_DATA_DIR, "manifest.json"),
-    ));
+  async forDate(date: ServiceDate): Promise<DateContext | undefined> {
+    const manifest = await (this.manifest ??= readManifest(this.net.feed));
     const feed = feedForDate(manifest, date);
     if (!feed) return undefined;
     const { kin, ops, dispatch } = await this.loadConfigs();
@@ -94,7 +107,8 @@ export class DispatchContexts {
     const index = await readJson<MovementsIndex>(
       join(
         PUBLIC_DIR,
-        feed.movements ?? `data/feeds/${feed.version}/movements/index.json`,
+        feed.movements
+          ?? feedDataPath(this.net.feed, feed.version, "movements/index.json"),
       ),
     );
     const rail = new Set(
@@ -112,7 +126,7 @@ export class DispatchContexts {
     const [base, inferred, { graph, overrides }] = await Promise.all([
       this.file(path),
       this.file(path.replace(/\/([^/]+)$/, "/inferred/$1")),
-      (this.graph ??= loadGraph()),
+      (this.graph ??= loadGraph(this.net.region)),
     ]);
     if (base.schema !== 2) return undefined;
     let report = this.platforms.get(feed.version);

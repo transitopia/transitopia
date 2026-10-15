@@ -2,6 +2,7 @@
 // "estimated" layer for every mode; SkyTrain will switch to track-level movements (packages/transit-core/DESIGN.md#movements-and-playback),
 // and buses overlay real-time observations on top (§4.5).
 
+import { timetableLabel } from "../plan/display.ts";
 import {
   bearingDeg,
   cumulativeLengths,
@@ -9,7 +10,7 @@ import {
   type LonLat,
 } from "../geo.ts";
 import { indexCalendar } from "../gtfs/calendar.ts";
-import { serviceDayStart } from "../time.ts";
+import { serviceDayStart, type ServiceDate } from "../time.ts";
 import type {
   CatalogRoute,
   PlanPattern,
@@ -54,7 +55,7 @@ export interface VehicleState {
   source: string;
   /** Caveat about this position or its data, shown in the inspect panel. */
   note?: string | undefined;
-  serviceDate: string;
+  serviceDate: ServiceDate;
   /** Real-time vehicle label (e.g. bus fleet number), when observed. */
   label?: string | undefined;
   /** Seconds late (+) or early (−), when known. */
@@ -103,7 +104,7 @@ export interface PreparedPlan {
   tripIndex: Map<string, PreparedTrip>;
   stopById: Map<string, PlanStop>;
   shapeCum: Map<string, Float64Array>;
-  servicesOn: (date: string) => Set<string>;
+  servicesOn: (date: ServiceDate) => Set<string>;
   /** Per service_id, trips sorted by start time. */
   tripsByService: Map<string, PreparedTrip[]>;
   /** Longest visible span of any trip per service, for bounding the search window. */
@@ -325,7 +326,7 @@ function lowerBound(list: PreparedTrip[], t: number): number {
 }
 
 export interface ScheduleQuery {
-  serviceDate: string;
+  serviceDate: ServiceDate;
   /** Seconds since the service day's start (may exceed 86400 for after-midnight service). */
   sec: number;
   routes?: Set<string> | undefined;
@@ -340,7 +341,7 @@ export interface ScheduleQuery {
 export type TripPacer = (
   trip: PreparedTrip,
   sec: number,
-  serviceDate: string,
+  serviceDate: ServiceDate,
 ) => { along: number; speed: number } | undefined;
 
 /**
@@ -559,7 +560,7 @@ function positionOnTrip(
   pp: PreparedPlan,
   t: PreparedTrip,
   sec: number,
-  serviceDate: string,
+  serviceDate: ServiceDate,
   pacer?: TripPacer,
   shapeOverride?: string,
 ): VehicleState {
@@ -650,7 +651,7 @@ function positionOnTrip(
     status,
     stopName: stop?.name,
     provenance: "estimated",
-    source: `schedule ${pp.plan.feedVersion}`,
+    source: timetableLabel(pp.plan),
     serviceDate,
     length: kin.length,
     width: kin.width,

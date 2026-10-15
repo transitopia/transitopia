@@ -12,11 +12,11 @@ import type {
   PreparedTrip,
   ScheduleCorrections,
 } from "../schedule/engine.ts";
-import { toWallTime } from "../time.ts";
+import { toWallTime, type ServiceDate } from "../time.ts";
 
 export interface TripDelay {
   tripId: string;
-  serviceDate: string;
+  serviceDate: ServiceDate;
   /** Seconds late (+) or early (−) at the fix. */
   delay: number;
   /** Scheduled service-day second at the fix's position. */
@@ -52,12 +52,12 @@ export function delayCorrections(
   pp: PreparedPlan,
   delays: TripDelay[],
   cfg: CarryConfig,
-  cancelled?: (serviceDate: string, tripId: string) => boolean,
+  cancelled?: (serviceDate: ServiceDate, tripId: string) => boolean,
 ): {
-  byDate: Map<string, ScheduleCorrections>;
+  byDate: Map<ServiceDate, ScheduleCorrections>;
   carried: Map<string, CarriedBus>;
 } {
-  const byDate = new Map<string, ScheduleCorrections>();
+  const byDate = new Map<ServiceDate, ScheduleCorrections>();
   const carried = new Map<string, CarriedBus>();
   const observed = new Set(delays.map((d) => d.tripId));
   for (const d of delays) {

@@ -26,7 +26,7 @@ import type {
   ScheduleCorrections,
 } from "../schedule/engine.ts";
 import type { PlanPattern } from "../plan/types.ts";
-import { serviceDayStart } from "../time.ts";
+import { serviceDayStart, type ServiceDate } from "../time.ts";
 
 export interface AisFix {
   mmsi: string;
@@ -84,7 +84,7 @@ interface Match {
 /** Corrections for one service date's vessels on `route` from its AIS fixes. */
 export function aisCorrections(
   pp: PreparedPlan,
-  serviceDate: string,
+  serviceDate: ServiceDate,
   fixes: AisFix[],
   route: string,
   cfg: AisMatchConfig,

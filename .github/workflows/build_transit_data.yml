@@ -2,8 +2,8 @@ name: Build Transit Data
 
 # Published transit data for /transit: the service plans, track network and platform mapping,
 # dispatched movements, observations and dispatch patches, served from https://data.transitopia.org/
-# (the site's VITE_TRANSIT_DATA). It downloads GTFS static from gtfs-static.translink.ca, not the
-# rate-limited Open API.
+# (the site's VITE_TRANSIT_DATA). It downloads every feed's GTFS static (config/feeds/*/feed.json), not
+# TransLink's rate-limited Open API.
 #
 # The server builds and publishes this daily itself (apps/server/src/jobs/data-build.ts),
 # with the corrections from its database, so its live dispatch patches fit the published plans. This
@@ -31,7 +31,7 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Fetch the latest GTFS feed and build service plans
+      - name: Fetch the latest GTFS feeds and build service plans
         run: npm run data:gtfs
       - name: Build the track network and platform mapping
         run: npm run build:infra
@@ -50,7 +50,7 @@ jobs:
           curl -fsSL -o /tmp/rclone.zip https://downloads.rclone.org/v1.75.0/rclone-v1.75.0-linux-amd64.zip
           sudo unzip -j -o /tmp/rclone.zip '*/rclone' -d /usr/local/bin
           rclone --version
-      # Everything but the manifest first, so a client never reads a manifest pointing at files that
+      # Everything but the manifests first, so a client never reads a manifest pointing at files that
       # aren't there yet. Old files are kept (copy, not sync) for clients holding an older manifest.
       # Cache-Control is stored on each object: the manifest is short-lived so new builds show up
       # within minutes; the rest isn't content-addressed yet (some paths are rewritten), so a day.
@@ -58,5 +58,5 @@ jobs:
         run: |
           rclone copy var/public/data transitopia_data_r2:transitopia-data/data --exclude manifest.json \
             --header-upload "Cache-Control: public, max-age=86400" --s3-no-check-bucket
-          rclone copy var/public/data/manifest.json transitopia_data_r2:transitopia-data/data \
+          rclone copy var/public/data transitopia_data_r2:transitopia-data/data --include manifest.json \
             --header-upload "Cache-Control: public, max-age=300" --s3-no-check-bucket

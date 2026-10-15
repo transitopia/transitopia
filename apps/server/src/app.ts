@@ -277,7 +277,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
   return app;
 }
 
-/** What the disruption format requires (regions/metro-vancouver/disruptions/README.md). */
+/** What the disruption format requires (config/regions/metro-vancouver/disruptions/README.md). */
 export function disruptionProblems(
   d: Disruption,
   id: string,
@@ -323,35 +323,37 @@ export async function health({ service, db, jobs }: AppDeps): Promise<Health> {
     }
   }
   const status = await rtStatusOf(service);
-  if (status.leader && status.hasKey) {
-    const age = status.lastSnapshotAgeS;
-    const limit = 3 * (status.budget.intervalsS.positions ?? 300);
-    checks.positions = {
+  // Each feed the leader polls: its positions, and its trip updates' freshness and coverage.
+  for (const [feed, p] of Object.entries(status.providers)) {
+    if (!status.leader || !p.polling) continue;
+    const age = p.lastSnapshotAgeS;
+    const limit = 3 * (p.budget.intervalsS.positions ?? 300);
+    checks[`${feed}/positions`] = {
       ok: age !== null && age <= limit,
       detail:
         age === null ? "no poll yet" : (
-          `last poll ${Math.round(age)} s ago (limit ${limit} s)${status.budget.capped ? ", daily cap reached" : ""}`
+          `last poll ${Math.round(age)} s ago (limit ${limit} s)${p.budget.capped ? ", daily cap reached" : ""}`
         ),
     };
-  }
-  if (status.leader && status.hasKey && status.feeds.tripUpdates) {
+    const tripUpdates = p.feeds.tripUpdates;
+    if (!tripUpdates) continue;
     // A failed poll is logged and retried; this catches the feed staying down, or succeeding with
     // nothing that matches the positions (trip updates also carry cancellations and skipped stops).
     // A restarted leader continues the schedule rather than polling at once, so until the first
     // success the age counts from when polling started (apps/server/README.md#real-time-service).
-    const { lastOkAgeS, lastError } = status.feeds.tripUpdates;
-    const limit = 3 * (status.budget.intervalsS.tripUpdates ?? 1800);
-    const age = lastOkAgeS ?? status.pollingForS;
-    const nextInS = status.budget.nextPollInS.tripUpdates;
-    const coverage = status.delayCoverage;
-    const fresh = age !== null && age <= limit;
-    const covered = coverage === null || coverage >= status.minDelayCoverage;
-    checks.tripUpdates = {
+    const { lastOkAgeS, lastError } = tripUpdates;
+    const tuLimit = 3 * (p.budget.intervalsS.tripUpdates ?? 1800);
+    const tuAge = lastOkAgeS ?? p.pollingForS;
+    const nextInS = p.budget.nextPollInS.tripUpdates;
+    const coverage = p.delayCoverage;
+    const fresh = tuAge !== null && tuAge <= tuLimit;
+    const covered = coverage === null || coverage >= p.minDelayCoverage;
+    checks[`${feed}/tripUpdates`] = {
       ok: fresh && covered,
       detail: [
         lastOkAgeS === null ?
-          `no successful poll since polling started ${age ?? 0} s ago (limit ${limit} s)${nextInS === undefined ? "" : `; next poll in ${nextInS} s`}`
-        : `last successful poll ${lastOkAgeS} s ago (limit ${limit} s)`,
+          `no successful poll since polling started ${tuAge ?? 0} s ago (limit ${tuLimit} s)${nextInS === undefined ? "" : `; next poll in ${nextInS} s`}`
+        : `last successful poll ${lastOkAgeS} s ago (limit ${tuLimit} s)`,
         ...(lastError ? [`last error: ${lastError}`] : []),
         ...(typeof coverage === "number" ?
           [`${Math.round(coverage * 100)} % of vehicles have a delay`]
@@ -359,12 +361,13 @@ export async function health({ service, db, jobs }: AppDeps): Promise<Health> {
       ].join("; "),
     };
   }
-  if (status.leader && status.ais) {
-    const age = status.ais.lastMessageAgeS;
-    checks.ais = {
+  for (const [feed, ais] of Object.entries(status.ais)) {
+    if (!status.leader || !ais) continue;
+    const age = ais.lastMessageAgeS;
+    checks[`${feed}/ais`] = {
       // Moored vessels still report every few minutes.
-      ok: status.ais.connected && age !== null && age <= 1800,
-      detail: `${status.ais.connected ? "connected" : "disconnected"}, last message ${age ?? "never"} s ago`,
+      ok: ais.connected && age !== null && age <= 1800,
+      detail: `${ais.connected ? "connected" : "disconnected"}, last message ${age ?? "never"} s ago`,
     };
   }
   if (jobs) Object.assign(checks, await jobs.health());

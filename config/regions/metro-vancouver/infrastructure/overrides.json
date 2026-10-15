@@ -8,7 +8,7 @@
       392377336,
       923211605
     ],
-    "$excludeWaysNote": "Braid–Lougheed Expo track closed until ~2027 for the OMC4 flyover works (confirmed by Braden, 2026-09-26); the other track is single-tracked. regions/metro-vancouver/README.md#braid-and-the-omc4-works."
+    "$excludeWaysNote": "Braid–Lougheed Expo track closed until ~2027 for the OMC4 flyover works (confirmed by Braden, 2026-09-26); the other track is single-tracked. config/regions/metro-vancouver/README.md#braid-and-the-omc4-works."
   },
   "turns": {
     "add": [],

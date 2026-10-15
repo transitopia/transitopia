@@ -1,0 +1,13 @@
+{
+  "$comment": "TransLink (Metro Vancouver): the operator of the translink feed (config/feeds/translink/). Overrides of the defaults (config/defaults/) for its vehicles and data.",
+  "id": "translink",
+  "name": "TransLink",
+  "kinematics": {
+    "modes": {
+      "bus": {
+        "length": 18,
+        "$length": "Its drawn buses (99 B-Line, R1-R6) are mostly 18 m articulated buses (guess; config/regions/metro-vancouver/OPEN-QUESTIONS.md #13)."
+      }
+    }
+  }
+}

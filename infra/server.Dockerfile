@@ -28,7 +28,7 @@ COPY packages/shared/package.json packages/shared/
 COPY packages/transit-core/package.json packages/transit-core/
 COPY packages/transit-map/package.json packages/transit-map/
 COPY pipelines/package.json pipelines/
-COPY regions/metro-vancouver/package.json regions/metro-vancouver/
+COPY config/package.json config/
 RUN npm ci --no-audit --no-fund && npm cache clean --force
 COPY . .
 # var/ (recordings, downloads, build output) is a volume, owned by the unprivileged user.

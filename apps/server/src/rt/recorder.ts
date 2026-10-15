@@ -1,7 +1,8 @@
 // Appends each snapshot to hourly NDJSON files and maintains a coverage index (apps/server/README.md#real-time-service):
-//   var/rt-history/YYYY-MM-DD/HH.ndjson      (current hour, appended)
-//   var/rt-history/YYYY-MM-DD/HH.ndjson.gz   (closed hours, compressed)
-//   var/rt-history/coverage.json             ({ intervals: [[startMs, endMs], ...] })
+//   <dir>/YYYY-MM-DD/HH.ndjson      (current hour, appended)
+//   <dir>/YYYY-MM-DD/HH.ndjson.gz   (closed hours, compressed)
+//   <dir>/coverage.json             ({ intervals: [[startMs, endMs], ...] })
+// <dir> is a feed's var/rt-history/<feed>/, or var/ais-history/.
 // Dates and hours are local (America/Vancouver) time of the fetch.
 
 import { createReadStream, createWriteStream } from "node:fs";

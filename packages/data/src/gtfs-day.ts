@@ -1,26 +1,34 @@
 // One service date's whole timetable, every route (unlike plan.json, which has only the routes we
-// draw), read from the archived GTFS zips in var/raw/gtfs/. For observed stop times and statistics,
+// draw), read from a feed's archived GTFS zips in var/raw/gtfs/<feed>/. For observed stop times and statistics,
 // which cover every bus route (docs/DESIGN.md#retention-and-statistics).
 
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { readCsv, readCsvAll } from "./gtfs-zip.ts";
-import { GTFS_RAW_DIR } from "./paths.ts";
+import { feedPaths } from "./paths.ts";
 import { activeServices } from "@transitopia/transit-core/gtfs/calendar.ts";
-import { parseGtfsTime } from "@transitopia/transit-core/time.ts";
+import {
+  parseGtfsTime,
+  serviceDate,
+  type ServiceDate,
+} from "@transitopia/transit-core/time.ts";
 import type { LonLat } from "@transitopia/transit-core/geo.ts";
 
 export interface FeedZip {
+  /** The version's directory name (versionDir of its feed_version). */
   version: string;
-  /** YYYYMMDD, inclusive. */
-  start: string;
-  end: string;
+  /** Inclusive. */
+  start: ServiceDate;
+  end: ServiceDate;
   path: string;
 }
 
-/** Archived feeds, newest first (by start date, then version). */
-export async function archivedFeeds(dir = GTFS_RAW_DIR): Promise<FeedZip[]> {
+/** A feed's archived versions, newest first (by start date, then version). */
+export async function archivedFeeds(
+  feed: string,
+  dir = feedPaths(feed).raw,
+): Promise<FeedZip[]> {
   if (!existsSync(dir)) return [];
   const out: FeedZip[] = [];
   for (const v of await readdir(dir)) {
@@ -30,8 +38,8 @@ export async function archivedFeeds(dir = GTFS_RAW_DIR): Promise<FeedZip[]> {
     if (!info?.feed_start_date || !info.feed_end_date) continue;
     out.push({
       version: v,
-      start: info.feed_start_date,
-      end: info.feed_end_date,
+      start: serviceDate(info.feed_start_date),
+      end: serviceDate(info.feed_end_date),
       path,
     });
   }
@@ -45,12 +53,13 @@ export async function archivedFeeds(dir = GTFS_RAW_DIR): Promise<FeedZip[]> {
   );
 }
 
-/** The newest archived feed covering a service date (YYYYMMDD). */
+/** A feed's newest archived version covering a service date (YYYYMMDD). */
 export async function feedZipFor(
-  date: string,
-  dir = GTFS_RAW_DIR,
+  feed: string,
+  date: ServiceDate,
+  dir = feedPaths(feed).raw,
 ): Promise<FeedZip | undefined> {
-  return (await archivedFeeds(dir)).find(
+  return (await archivedFeeds(feed, dir)).find(
     (f) => f.start <= date && date <= f.end,
   );
 }
@@ -82,7 +91,7 @@ export interface DayTimetable {
 /** Everything running on a service date (YYYYMMDD) in `feed`. */
 export async function loadDayTimetable(
   feed: FeedZip,
-  date: string,
+  date: ServiceDate,
 ): Promise<DayTimetable> {
   const zip = feed.path;
   const calendar = (await readCsvAll(zip, "calendar.txt")).map((r) => ({
@@ -96,14 +105,14 @@ export async function loadDayTimetable(
       "saturday",
       "sunday",
     ].map((d) => r[d] === "1"),
-    start: r.start_date!,
-    end: r.end_date!,
+    start: serviceDate(r.start_date!),
+    end: serviceDate(r.end_date!),
   }));
   const exceptions = (await readCsvAll(zip, "calendar_dates.txt"))
     .filter((r) => r.date === date)
     .map((r) => ({
       serviceId: r.service_id!,
-      date: r.date!,
+      date: serviceDate(r.date!),
       type: (r.exception_type === "1" ? 1 : 2) as 1 | 2,
     }));
   const services = activeServices({ calendar, exceptions }, date);

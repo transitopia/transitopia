@@ -13,7 +13,7 @@ import {
   type RtSnapshot,
 } from "@transitopia/transit-core/rt/types.ts";
 import {
-  sectionsOfKind,
+  sectionOf,
   type LiveTransitResponse,
   type VersionPointer,
 } from "@transitopia/transit-core/rt/live.ts";
@@ -42,10 +42,25 @@ import {
   addDays,
   localDate,
   toWallTime,
+  type ServiceDate,
 } from "@transitopia/transit-core/time.ts";
 import type { RegionConfig } from "./config.ts";
 import { cadence, type Cadence } from "@transitopia/transit-core/rt/budget.ts";
+import {
+  feedDataPath,
+  LEGACY_FEED,
+} from "@transitopia/transit-core/plan/types.ts";
 import { LIVE_WINDOW_MS } from "./live.ts";
+
+/** A feed without real-time data: nothing is ever fresh or covered. */
+const NO_REALTIME: Cadence = {
+  staleAfterMs: () => 0,
+  coverageGapMs: () => 0,
+  maxInterpolateS: () => 0,
+  maxExtrapolateS: () => 0,
+  maxInterpolateLimitS: 0,
+  alertGraceMs: () => 0,
+};
 
 /** How much live history to keep in memory for interpolation. */
 const LIVE_BUFFER_MS = 20 * 60_000;
@@ -102,7 +117,7 @@ export class RtClient {
         result: ReturnType<typeof delayCorrections>;
       }
     | undefined;
-  private changes = new Map<string, DayChanges>();
+  private changes = new Map<ServiceDate, DayChanges>();
   /** Bumped whenever loaded service changes differ. */
   private changesVersion = 0;
   private view: { version: number; view: ChangesView } | undefined;
@@ -119,24 +134,31 @@ export class RtClient {
   private readonly api: string | undefined;
   /** URL prefix of the region on the RT service (…/regions/<id>/). */
   private readonly region: string | undefined;
-  private readonly config: Pick<RegionConfig, "kinematics" | "rt">;
-  /** Thresholds that follow the poll schedule (packages/transit-core/src/rt/budget.ts). */
+  private readonly config: Pick<RegionConfig, "kinematics" | "rt" | "feed">;
+  /** The feed whose vehicles these are: its live sections, history and changes. */
+  private readonly feed: string;
+  /** Thresholds that follow the feed's poll schedule (packages/transit-core/src/rt/budget.ts). */
   private readonly cadence: Cadence;
   private readonly prediction: PredictionConfig;
 
   constructor(
     urls: { data: string; api: string | undefined; region: string | undefined },
-    config: Pick<RegionConfig, "kinematics" | "rt">,
+    config: Pick<RegionConfig, "kinematics" | "rt" | "feed">,
   ) {
+    const rt = config.feed.realtime;
+    this.feed = config.feed.id;
     this.data = urls.data;
-    this.api = urls.api;
+    this.api = rt ? urls.api : undefined;
     this.region = urls.region;
     this.config = config;
-    this.cadence = cadence(config.rt);
+    this.cadence = rt ? cadence(rt) : NO_REALTIME;
     this.prediction = config.rt.prediction;
-    this.available = urls.api !== undefined;
+    this.available = this.api !== undefined;
     if (!this.available)
-      this.liveError = "Real-time data isn't available on this site yet";
+      this.liveError =
+        rt ?
+          "Real-time data isn't available on this site yet"
+        : `${config.feed.name} publishes no real-time data`;
   }
 
   onChange(fn: () => void): () => void {
@@ -216,7 +238,7 @@ export class RtClient {
       timeline = new RtTimeline(snapshots, pp, this.config.kinematics, {
         maxInterpolateS: this.cadence.maxInterpolateS,
         maxExtrapolateS: this.cadence.maxExtrapolateS,
-        source: live ? "GTFS-RT live" : "GTFS-RT recorded",
+        source: `${pp?.plan.agency ? `${pp.plan.agency} ` : ""}GTFS-RT ${live ? "live" : "recorded"}`,
         changes: this.changesView(),
         detourNearM: this.config.rt.detourNearM,
         ...(predictor ?
@@ -240,7 +262,7 @@ export class RtClient {
     pp: PreparedPlan | undefined,
   ):
     | {
-        byDate: Map<string, ScheduleCorrections>;
+        byDate: Map<ServiceDate, ScheduleCorrections>;
         carried: Map<string, CarriedBus>;
       }
     | undefined {
@@ -277,7 +299,7 @@ export class RtClient {
   }
 
   /** Trips TransLink cancelled on a service date, as corrections that hide their schedule estimates. */
-  cancellationsFor(date: string): ScheduleCorrections | undefined {
+  cancellationsFor(date: ServiceDate): ScheduleCorrections | undefined {
     let m = this.cancelledMemo.get(date);
     if (m?.version !== this.changesVersion) {
       const ids = this.changesView().cancelledTrips(date);
@@ -342,7 +364,7 @@ export class RtClient {
       void fetch(
         pointer ?
           `${this.api}${pointer.path}`
-        : `${this.region}days/${date}/translink/changes`,
+        : `${this.region}days/${date}/${this.feed}/changes`,
       )
         .then((r) => (r.ok ? (r.json() as Promise<RtDayChanges>) : undefined))
         .catch(() => undefined)
@@ -372,8 +394,10 @@ export class RtClient {
     if (p) return p;
     this.predictors.set(version, "loading");
     // Scenario plans ("<version>~<name>") share the base feed's profile.
-    const base = version.split("~")[0];
-    void fetch(`${this.data}data/feeds/${base}/rt-profile.json`)
+    const base = version.split("~")[0]!;
+    void fetch(
+      `${this.data}${feedDataPath(pp.plan.feed ?? LEGACY_FEED, base, "rt-profile.json")}`,
+    )
       .then((r) => (r.ok ? (r.json() as Promise<RtProfileFile>) : undefined))
       .catch(() => undefined)
       .then((profile) => {
@@ -396,11 +420,15 @@ export class RtClient {
   /** A new response from the live endpoint (live.ts): the latest snapshot and service changes versions. */
   acceptLive(r: LiveTransitResponse, receivedAt: number): void {
     if (!this.available) return;
-    // One agency's vehicles today; a region with several would merge their sections here.
-    const v = sectionsOfKind(r, "vehicles")[0];
+    // This feed's sections (a region with several feeds has a pair per feed).
+    const v = sectionOf(r, `${this.feed}/vehicles`, "vehicles");
     this.liveError = v?.error;
     this.liveOk = true;
-    this.changesPointer = sectionsOfKind(r, "changes")[0]?.versions;
+    this.changesPointer = sectionOf(
+      r,
+      `${this.feed}/changes`,
+      "changes",
+    )?.versions;
     if (v?.status === "ok" && v.data) {
       const snapshot = expandSnapshot(v.data);
       const s: RtSnapshot = {
@@ -490,7 +518,7 @@ export class RtClient {
   ): Promise<void> {
     try {
       const res = await fetch(
-        `${this.api}rt/history?date=${date}&hour=${hour}`,
+        `${this.api}rt/history?feed=${this.feed}&date=${date}&hour=${hour}`,
       );
       if (!res.ok) {
         chunk.status = "missing";
@@ -533,7 +561,7 @@ export class RtClient {
     const hi = to + 86_400_000;
     try {
       const res = await fetch(
-        `${this.api}rt/coverage?from=${Math.round(lo)}&to=${Math.round(hi)}`,
+        `${this.api}rt/coverage?feed=${this.feed}&from=${Math.round(lo)}&to=${Math.round(hi)}`,
       );
       if (res.status === 404) {
         this.available = false;

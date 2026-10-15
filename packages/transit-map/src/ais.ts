@@ -1,5 +1,5 @@
 // Browser side of SeaBus AIS (packages/transit-core/DESIGN.md#seabus-ais): a service date's fixes come from its day file
-// (GET /regions/<id>/days/<YYYYMMDD>/seabus/ais, shared by every visitor), then from the live
+// (GET /regions/<id>/days/<YYYYMMDD>/<feed>/ais, shared by every visitor), then from the live
 // endpoint's trailing window while the clock is near now (acceptLive). Both are by batch time on the
 // server, so a window that starts before what the day file reached continues it; one that doesn't
 // (the tab slept) refetches the day file. Fixes become schedule corrections with the core matcher.
@@ -13,7 +13,7 @@ import {
   type AisDayResponse,
 } from "@transitopia/transit-core/ais/fixes.ts";
 import {
-  sectionsOfKind,
+  sectionOf,
   type LiveTransitResponse,
 } from "@transitopia/transit-core/rt/live.ts";
 import {
@@ -31,10 +31,12 @@ import type {
   PreparedPlan,
   ScheduleCorrections,
 } from "@transitopia/transit-core/schedule/engine.ts";
-import { serviceDayStart } from "@transitopia/transit-core/time.ts";
+import {
+  serviceDayStart,
+  type ServiceDate,
+} from "@transitopia/transit-core/time.ts";
 import type { RegionConfig } from "./config.ts";
 
-const ROUTE = "seabus";
 const MAX_DATES = 4;
 
 interface DateFixes {
@@ -64,15 +66,18 @@ interface DateFixes {
 }
 
 export class AisClient {
-  private dates = new Map<string, DateFixes>();
+  private dates = new Map<ServiceDate, DateFixes>();
   private listeners = new Set<() => void>();
   available: boolean;
   /** Why live AIS data is unavailable, for display. */
   error: string | undefined;
   /** URL prefix of the region on the RT service (…/regions/<id>/), or undefined for schedules only. */
   private readonly base: string | undefined;
-  private readonly match: AisMatchConfig;
-  private readonly glide: GlideConfig;
+  /** The feed whose vessels these are, and their route. */
+  private readonly feed: string;
+  private readonly route: string;
+  private readonly match: AisMatchConfig | undefined;
+  private readonly glide: GlideConfig | undefined;
   /** Vessel names by MMSI. */
   private readonly names: Map<string, string>;
   /** Without live data, how often a date in progress refetches its day file (s). */
@@ -82,18 +87,20 @@ export class AisClient {
 
   constructor(
     base: string | undefined,
-    config: Pick<RegionConfig, "rt" | "seabus">,
+    config: Pick<RegionConfig, "rt" | "feed">,
     liveFresh: () => boolean,
   ) {
     this.base = base;
-    this.match = config.seabus.ais.match;
-    this.glide = config.seabus.ais.glide;
-    this.names = new Map(
-      config.seabus.ais.vessels.map((v) => [v.mmsi, v.name]),
-    );
+    const ais = config.feed.ais;
+    this.feed = config.feed.id;
+    this.route = ais?.route ?? "";
+    this.match = ais?.match;
+    this.glide = ais?.glide;
+    this.names = new Map(ais?.vessels.map((v) => [v.mmsi, v.name]));
     this.refreshS = config.rt.clientPollMaxS;
     this.liveFresh = liveFresh;
-    this.available = base !== undefined;
+    // A feed without vessels (feed.json → ais) has nothing to match.
+    this.available = base !== undefined && ais !== undefined;
   }
 
   onChange(fn: () => void): () => void {
@@ -103,7 +110,7 @@ export class AisClient {
 
   /** SeaBus corrections for a service date at display time t (epoch ms), fetching fixes as needed. */
   correctionsFor(
-    date: string,
+    date: ServiceDate,
     pp: PreparedPlan,
     t: number,
   ): ScheduleCorrections | undefined {
@@ -117,11 +124,11 @@ export class AisClient {
   }
 
   /** The berth pair in use on a service date, per its AIS fixes; undefined without any. */
-  pairFor(date: string, pp: PreparedPlan): string | undefined {
+  pairFor(date: ServiceDate, pp: PreparedPlan): string | undefined {
     return this.dayFor(date, pp)?.pair;
   }
 
-  private dayFor(date: string, pp: PreparedPlan): AisDay | undefined {
+  private dayFor(date: ServiceDate, pp: PreparedPlan): AisDay | undefined {
     if (!this.available) return undefined;
     let d = this.dates.get(date);
     if (!d) {
@@ -152,7 +159,7 @@ export class AisClient {
     if (!d.fixes.length) return undefined;
     if (d.memo?.pp !== pp || d.memo.n !== d.fixes.length) {
       const prev = d.memo?.pp === pp ? d.memo : undefined;
-      const day = aisCorrections(pp, date, d.fixes, ROUTE, this.match);
+      const day = aisCorrections(pp, date, d.fixes, this.route, this.match!);
       let glide: (Glide & { from: number }) | undefined;
       if (prev && d.arrivedAt !== undefined) {
         // Glide from what was on screen when the fixes arrived (mid-glide, if one was running).
@@ -164,11 +171,11 @@ export class AisClient {
         const g = glideCorrections(
           pp,
           date,
-          ROUTE,
+          this.route,
           shown,
           day.corrections,
           k,
-          this.glide,
+          this.glide!,
         );
         if (g.until > k) glide = { ...g, from: k };
       }
@@ -181,7 +188,7 @@ export class AisClient {
   /** The SeaBus window of a live response: new fixes for the dates loaded, and how far they reach. */
   acceptLive(r: LiveTransitResponse): void {
     if (!this.available) return;
-    const live = sectionsOfKind(r, "ais").find((x) => x.route === ROUTE);
+    const live = sectionOf(r, `${this.feed}/ais`, "ais");
     if (!live) return;
     this.error = live.error;
     if (live.status === "unavailable") return;
@@ -214,13 +221,13 @@ export class AisClient {
     for (const fn of this.listeners) fn();
   }
 
-  private async fetchDay(date: string, d: DateFixes): Promise<void> {
+  private async fetchDay(date: ServiceDate, d: DateFixes): Promise<void> {
     d.loading = true;
     d.fetchedAt = Date.now();
     d.gap = false;
     try {
       // Revalidated with the ETag: an unchanged day file is a 304.
-      const res = await fetch(`${this.base}days/${date}/seabus/ais`, {
+      const res = await fetch(`${this.base}days/${date}/${this.feed}/ais`, {
         cache: "no-cache",
       });
       if (res.status === 404) {

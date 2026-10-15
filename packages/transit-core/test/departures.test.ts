@@ -13,7 +13,7 @@ import {
 } from "../src/schedule/engine.ts";
 import type { PlanTrip, ServicePlan } from "../src/plan/types.ts";
 import type { KinematicsConfig } from "../src/movement/kinematics.ts";
-import { serviceDayStart } from "../src/time.ts";
+import { serviceDayStart, serviceDate } from "../src/time.ts";
 import {
   DAY_HOURS,
   dayTypes,
@@ -40,7 +40,7 @@ const kin: KinematicsConfig = {
 
 // Two bus routes along one street: both serve S0 → S1 → S2 → S3, then A goes to S4a and B to S4b.
 // A runs every 10 min from 08:00, B every 15 min; each hop takes 2 min.
-const DATE = "20260926"; // a Saturday
+const DATE = serviceDate("20260926"); // a Saturday
 const H8 = 8 * 3600;
 const stop = (id: string, name: string, lon: number) => ({
   id,
@@ -66,8 +66,8 @@ const trips = (
 const plan: ServicePlan = {
   schema: 1,
   feedVersion: "test",
-  feedStart: "20260901",
-  feedEnd: "20261231",
+  feedStart: serviceDate("20260901"),
+  feedEnd: serviceDate("20261231"),
   timezone: "America/Vancouver",
   builtAt: "",
   routes: (["A", "B"] as const).map((key) => ({
@@ -121,8 +121,8 @@ const plan: ServicePlan = {
       {
         serviceId: "sa",
         days: [false, false, false, false, false, true, false],
-        start: "20260901",
-        end: "20261231",
+        start: serviceDate("20260901"),
+        end: serviceDate("20261231"),
       },
     ],
     exceptions: [],
@@ -157,7 +157,9 @@ describe("departuresAt", () => {
 
   it("finds nothing on a day without service", () => {
     expect(
-      departuresAt(pp, new Set(["S1"]), at(H8), at(H8 + 3600), ["20260928"]),
+      departuresAt(pp, new Set(["S1"]), at(H8), at(H8 + 3600), [
+        serviceDate("20260928"),
+      ]),
     ).toEqual([]);
   });
 
@@ -216,6 +218,57 @@ describe("grouping, frequency and shared stretches", () => {
     expect(shared[0]!.groups).toHaveLength(2);
     expect(placeName(plan, shared[0]!.toStopId)).toBe("Renfrew St");
     expect(minutesBetween(shared[0]!.departures, at(H8))).toBe(6);
+  });
+});
+
+describe("shared stretches of short-turns", () => {
+  // A route to UBCO, and a short-turn of it ending one stop on (the 97 at Westside Rd).
+  const shortTurn = (gapM: number) => {
+    const stops = ["here", "queensway", "richter"].map((id) => ({
+      id,
+      name: id,
+      lon: 0,
+      lat: 0,
+    }));
+    const base = { route: "97", direction: 0, shape: "s" };
+    const plan = {
+      stops,
+      stations: [],
+      patterns: [
+        { ...base, id: 0, stops: [0, 1, 2], dist: [0, gapM, gapM + 900] },
+        { ...base, id: 1, stops: [0, 1], dist: [0, gapM] },
+      ],
+    } as unknown as ServicePlan;
+    const dep = (pattern: number, headsign: string, t: number) => ({
+      tripId: `${headsign}${t}`,
+      routeKey: "97",
+      headsign,
+      stopId: "here",
+      pattern,
+      index: 0,
+      serviceDate: DATE,
+      t,
+      sched: t,
+      source: "schedule" as const,
+      cancelled: false,
+    });
+    return sharedStretches(
+      plan,
+      groupDepartures([
+        dep(0, "UBCO", at(H8)),
+        dep(1, "Downtown", at(H8 + 300)),
+      ]),
+    );
+  };
+
+  it("shares a single stop that's far enough on", () => {
+    const [s] = shortTurn(4800);
+    expect(s?.groups.map((g) => g.headsign)).toEqual(["UBCO", "Downtown"]);
+    expect(s?.toStopId).toBe("queensway");
+  });
+
+  it("doesn't share a single stop just around the corner", () => {
+    expect(shortTurn(300)).toEqual([]);
   });
 });
 
@@ -323,13 +376,13 @@ describe("route frequency", () => {
     expect(routeMinutes(withCatalog, "25", DATE, H8, 3600)).toBe(15);
     expect(withCatalog.catalogAtStop.get("S1")).toEqual(["25"]);
     expect(
-      routeMinutes(withCatalog, "25", "20260927", H8, 3600),
+      routeMinutes(withCatalog, "25", serviceDate("20260927"), H8, 3600),
     ).toBeUndefined();
   });
 
   it("lists the feed's kinds of day from a date, that date's first", () => {
     // Only Saturdays have service in the fixture.
-    expect(dayTypes(pp, "20260924")).toEqual([
+    expect(dayTypes(pp, serviceDate("20260924"))).toEqual([
       { date: DATE, services: ["sa"] },
     ]);
   });

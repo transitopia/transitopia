@@ -1,0 +1,14 @@
+{
+  "$comment": "Vehicle motion and size for every region and operator (packages/transit-core/src/config.ts → resolveKinematics). An operator (config/operators/<id>/operator.json → kinematics.modes) overrides a mode's settings, a route (its feed's routes.json → kinematics) any of them. Sources: 'guess' unless noted; see config/regions/metro-vancouver/OPEN-QUESTIONS.md #9, #12, #13. accel/decel in m/s², speeds in km/h, lengths/widths in metres. 'minCruiseFraction': when the schedule allows more time than needed, run no slower than this fraction of maxSpeed and hold the remainder as extra dwell at the origin (packages/transit-core/DESIGN.md#movements-and-playback). 'dwell' is used when GTFS arrival == departure (true for all SkyTrain stops). Buses move along their profile ('linear'), so their speed settings aren't used.",
+  "modes": {
+    "skytrain": { "accel": 1.0, "decel": 1.0, "maxSpeed": 80, "minCruiseFraction": 0.6, "dwell": 25, "length": 68, "width": 3.0, "profile": "trapezoid" },
+    "rail": { "accel": 0.5, "decel": 0.6, "maxSpeed": 120, "minCruiseFraction": 0.5, "dwell": 60, "length": 150, "width": 3.2, "profile": "trapezoid" },
+    "ferry": { "accel": 0.08, "decel": 0.08, "maxSpeed": 24, "minCruiseFraction": 0.6, "dwell": 0, "length": 34, "width": 10.0, "profile": "trapezoid" },
+    "bus": { "accel": 1.0, "decel": 1.0, "maxSpeed": 60, "minCruiseFraction": 0.0, "dwell": 0, "length": 12, "width": 2.6, "profile": "linear" }
+  },
+  "sizing": {
+    "$comment": "Vehicles are drawn to true scale when zoomed in, but never smaller than this many pixels long, so they stay visible at city zoom.",
+    "minPixelLength": 14,
+    "minPixelWidth": 8
+  }
+}

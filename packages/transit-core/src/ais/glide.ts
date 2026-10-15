@@ -9,6 +9,7 @@
 // cross between trips other than leaving the dock, still jump. Pure: the result is a function of
 // (plan, shown, next, K); the caller uses it for display times in [K, until] and `next` otherwise.
 
+import type { ServiceDate } from "../time.ts";
 import { distM } from "../geo.ts";
 import {
   schedAt,
@@ -43,7 +44,7 @@ type Anchors = { sched: number; shift: number }[];
 /** @param k service-day second at which `next` became known. */
 export function glideCorrections(
   pp: PreparedPlan,
-  serviceDate: string,
+  serviceDate: ServiceDate,
   route: string,
   shown: ScheduleCorrections | undefined,
   next: ScheduleCorrections,

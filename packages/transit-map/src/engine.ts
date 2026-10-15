@@ -12,6 +12,7 @@ import {
   addDays,
   localDate,
   serviceDayStart,
+  type ServiceDate,
 } from "@transitopia/transit-core/time.ts";
 import {
   makeServiceDescriber,
@@ -19,8 +20,14 @@ import {
 } from "@transitopia/transit-core/gtfs/describe.ts";
 import {
   feedForDate,
+  LEGACY_FEED,
   type PlanRoute,
 } from "@transitopia/transit-core/plan/types.ts";
+import {
+  firstBoarding,
+  placeName,
+  shortId,
+} from "@transitopia/transit-core/plan/display.ts";
 import type {
   PreparedPlan,
   ScheduleCorrections,
@@ -84,11 +91,14 @@ export type { RegionConfig };
 export { RATES } from "./clock.ts";
 
 export interface TransitEngineOptions {
-  /** URL prefix of the published data (…/data/manifest.json), ending in "/". */
+  /** URL prefix of the published data (…/data/feeds/<feed>/manifest.json), ending in "/". */
   dataBase: string;
   /** URL prefix of the RT service (…/regions/<id>/live/transit), ending in "/"; omit for schedules only. */
   apiBase?: string | undefined;
-  /** The region's id (region.json): the RT service serves its live data under /regions/<id>/. */
+  /**
+   * The region's id (region.json): the RT service serves its live data under /regions/<id>/, and
+   * its published files (tracks, dispatch, observations, scenarios) are under data/regions/<id>/.
+   */
   region: string;
   theme: Theme;
   /** Build a scenario's plans instead of the real network (?scenario=<name>). */
@@ -99,7 +109,7 @@ export interface TransitEngineOptions {
   initial?: UrlState | undefined;
   /** Dataset registry id for routes whose plan doesn't name one (plans built before PlanRoute.dataset). */
   dataset?: string | undefined;
-  /** The region's config (kinematics, operations, real-time and SeaBus settings), checked with parseConfig. */
+  /** The region's config and feed (kinematics, real time, and rail and SeaBus where it has them), checked. */
   config: RegionConfig;
 }
 
@@ -108,6 +118,11 @@ export interface SelectedVehicle {
   /** Undefined when the vehicle isn't in service at the shown time. */
   vehicle: VehicleState | undefined;
   route: PlanRoute | undefined;
+  /**
+   * Its trip as a rider would name it: when and where it starts, and the trip id as its agency's
+   * riders see it (packages/transit-core/src/plan/display.ts). Undefined when the trip isn't in the plan.
+   */
+  trip: { start: number; from: string; shortId: string } | undefined;
   /** Registry ids of the data behind it (@transitopia/shared/datasets.ts), for its card's credits. */
   datasets: string[];
 }
@@ -121,7 +136,7 @@ export type CardTarget = { vehicle: string } | { place: Place };
 
 /** A kind of day in the shown feed, with the route's minutes between trips per hour (DAY_HOURS). */
 export interface RouteDay {
-  date: string;
+  date: ServiceDate;
   label: string;
   hours: (number | undefined)[];
 }
@@ -132,7 +147,7 @@ export interface TransitSnapshot {
   /** Shown instant, epoch ms (updated a few times a second while playing). */
   t: number;
   /** Displayed service date (YYYYMMDD) and its description ("Weekday", "Sunday/holiday", …). */
-  serviceDate: string;
+  serviceDate: ServiceDate;
   serviceLabel: string;
   playing: boolean;
   rate: number;
@@ -251,7 +266,7 @@ export class TransitEngine {
   /** Per feed and route: its day types and hourly frequencies (they don't change with the time). */
   private routeDayCache = new WeakMap<PreparedPlan, Map<string, RouteDay[]>>();
   /** The real-time corrections last applied, per service date (for departure times). */
-  private lastCorrections: Map<string, ScheduleCorrections> | undefined;
+  private lastCorrections: Map<ServiceDate, ScheduleCorrections> | undefined;
   private following = false;
   /** When the ease that starts (or re-aims) follow ends (performance.now()). */
   private followEaseEnds = 0;
@@ -268,7 +283,7 @@ export class TransitEngine {
   private lastVehicles: VehicleState[] = [];
   /** Cards `open()` came through, oldest first, each with its title for the back strip. */
   private trail: { target: CardTarget; label: string }[] = [];
-  private describers = new Map<string, (d: string) => ServiceDayInfo>();
+  private describers = new Map<string, (d: ServiceDate) => ServiceDayInfo>();
   private snapshot: TransitSnapshot;
   private listeners = new Set<() => void>();
   private lastPublish = 0;
@@ -293,6 +308,7 @@ export class TransitEngine {
     const store = await PlanStore.load(
       opts.dataBase,
       opts.apiBase,
+      opts.region,
       opts.config,
       opts.scenario,
     );
@@ -357,13 +373,16 @@ export class TransitEngine {
     store.pacerFor = (pp) => this.rt.predictorFor(pp)?.pacer;
     this.snapshot = this.buildSnapshot(this.clock.now());
 
-    // Track infrastructure (optional: without it, SkyTrain falls back to GTFS shapes).
-    void loadTracks(opts.dataBase, store.tracksPath).then((t) => {
-      if (this.disposed) return;
-      this.tracks = t;
-      if (t) store.setTrackGraph(TrackGraph.fromCollection(t));
-      this.syncStatic(true);
-    });
+    // Track infrastructure, in a region with track-level rail (optional even there: without it,
+    // SkyTrain falls back to GTFS shapes).
+    const tracksPath = store.tracksPath;
+    if (tracksPath)
+      void loadTracks(opts.dataBase, tracksPath).then((t) => {
+        if (this.disposed) return;
+        this.tracks = t;
+        if (t) store.setTrackGraph(TrackGraph.fromCollection(t));
+        this.syncStatic(true);
+      });
     this.syncStatic(true);
 
     const onStyleLoad = () => {
@@ -372,8 +391,11 @@ export class TransitEngine {
       this.syncStatic(true);
     };
     const onStyleData = () => {
-      // A new style (theme switch) replaces our sources and layers; wait for it to load.
-      if (!map.getSource(ROUTES_SOURCE)) this.styleReady = false;
+      // A new style (theme switch) replaces our sources and layers; wait for it to load. Sources
+      // removed from the loaded style (a previous engine disposed, e.g. for another region) aren't
+      // a new style, and no style.load would follow.
+      if (!map.getSource(ROUTES_SOURCE) && !map.isStyleLoaded())
+        this.styleReady = false;
     };
     const onClick = (e: { point: { x: number; y: number } }) => {
       const v = this.vehicles.pickAt(e.point.x, e.point.y);
@@ -453,7 +475,7 @@ export class TransitEngine {
   }
 
   /** Jump to another service date at the same time of day. */
-  seekDate(date: string): void {
+  seekDate(date: ServiceDate): void {
     const t = this.clock.now();
     const sec = (t - serviceDayStart(displayServiceDate(t))) / 1000;
     this.clock.seek(serviceDayStart(date) + sec * 1000);
@@ -946,7 +968,7 @@ export class TransitEngine {
     }, URL_WRITE_THROTTLE_MS);
   }
 
-  private describeDate(date: string): string {
+  private describeDate(date: ServiceDate): string {
     const feed = feedForDate(this.store.manifest, date);
     const pp = this.store.planFor(date);
     if (!feed) return "No timetable for this date";
@@ -990,6 +1012,7 @@ export class TransitEngine {
             id: this.selectedId,
             vehicle: v,
             route,
+            trip: v && this.tripSummary(v),
             datasets: this.datasetsOf([
               [route, v !== undefined && v.provenance !== "estimated"],
             ]),
@@ -1046,6 +1069,19 @@ export class TransitEngine {
    * Departures from the selected place after the shown time, from the timetable shifted by the
    * real-time corrections the vehicles use (packages/transit-core/DESIGN.md#departures).
    */
+  /** The selected vehicle's trip: where and when riders can first board it (epoch ms), and its short id. */
+  private tripSummary(v: VehicleState): SelectedVehicle["trip"] {
+    const pp = this.store.planFor(v.serviceDate);
+    const pt = pp?.tripIndex.get(v.tripId);
+    if (!pp || !pt) return undefined;
+    const i = firstBoarding(pt.pattern);
+    return {
+      start: serviceDayStart(v.serviceDate) + pt.dep[i]! * 1000,
+      from: placeName(pp.plan, pt.pattern.stops[i]!),
+      shortId: shortId(pp.plan.tripIdPattern, v.tripId),
+    };
+  }
+
   private placeSnapshot(t: number): PlaceSnapshot | RouteSnapshot | undefined {
     const pp = this.shownFeed;
     if (!this.place || !pp) return undefined;
@@ -1081,7 +1117,11 @@ export class TransitEngine {
       if (this.debug) {
         const plan = pp.plan;
         const tracks = this.tracks;
-        void loadPlatforms(this.store.dataBase, plan.feedVersion).then(
+        void loadPlatforms(
+          this.store.dataBase,
+          plan.feed ?? LEGACY_FEED,
+          plan.feedVersion,
+        ).then(
           (p) =>
             p
             && !this.disposed

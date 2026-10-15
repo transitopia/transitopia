@@ -13,24 +13,25 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
-import rtJson from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
-import seabusJson from "@transitopia/region-metro-vancouver/config/seabus.json" with { type: "json" };
-import { parseConfig } from "@transitopia/transit-core/config.ts";
 import { cadence } from "@transitopia/transit-core/rt/budget.ts";
 import { extendCoverage } from "@transitopia/transit-core/rt/types.ts";
 import { join } from "node:path";
 import {
-  AIS_HISTORY_DIR,
   DISPATCH_HISTORY_DIR,
-  RT_HISTORY_DIR,
   ROOT,
   VAR_DIR,
+  feedPaths,
   log,
+  readFeeds,
   writeJson,
 } from "@transitopia/data/paths.ts";
+import { migrateLegacyFiles } from "@transitopia/data/legacy.ts";
+import { LEGACY_FEED } from "@transitopia/transit-core/plan/types.ts";
 
-const seabus = parseConfig("seabus", seabusJson);
-const CADENCE = cadence(parseConfig("rt", rtJson));
+const allFeeds = await readFeeds();
+const feeds = allFeeds.filter((f) => f.realtime);
+const aisFeeds = allFeeds.filter((f) => f.ais);
+await migrateLegacyFiles();
 
 const args = process.argv.slice(2);
 const opt = (name: string) => {
@@ -71,15 +72,32 @@ for (
 for (const d of dates) {
   const compact = d.replaceAll("-", "");
   log(`${d}: recordings, service changes, dispatch versions`);
-  rclone("copy", `${remote}/rt-history/${d}`, join(RT_HISTORY_DIR, d));
-  rclone("copy", `${remote}/ais-history/${d}`, join(AIS_HISTORY_DIR, d));
-  rclone(
-    "copy",
-    `${remote}/rt-history/changes`,
-    join(RT_HISTORY_DIR, "changes"),
-    "--include",
-    `${compact}.json`,
-  );
+  for (const feed of feeds) {
+    const local = feedPaths(feed.id).rtHistory;
+    // Before feeds had ids, TransLink's recordings were archived at the top of rt-history/.
+    const archived =
+      feed.id === LEGACY_FEED ?
+        ["rt-history", `rt-history/${feed.id}`]
+      : [`rt-history/${feed.id}`];
+    for (const a of archived) {
+      rclone("copy", `${remote}/${a}/${d}`, join(local, d));
+      rclone(
+        "copy",
+        `${remote}/${a}/changes`,
+        join(local, "changes"),
+        "--include",
+        `${compact}.json`,
+      );
+    }
+  }
+  for (const feed of aisFeeds) {
+    const local = feedPaths(feed.id).aisHistory;
+    // Before feeds had ids, TransLink's AIS was archived at the top of ais-history/.
+    for (const a of feed.id === LEGACY_FEED ?
+      ["ais-history", `ais-history/${feed.id}`]
+    : [`ais-history/${feed.id}`])
+      rclone("copy", `${remote}/${a}/${d}`, join(local, d));
+  }
   rclone(
     "copy",
     `${remote}/dispatch-history/${compact}`,
@@ -88,9 +106,18 @@ for (const d of dates) {
 }
 // The recorder's coverage index (what a local server reports at /rt/coverage), from the hours now here.
 for (const [dir, gapMs] of [
-  [RT_HISTORY_DIR, (t: number) => CADENCE.coverageGapMs(t)],
-  [AIS_HISTORY_DIR, () => seabus.ais.coverageGapS * 1000],
-] as const) {
+  ...feeds.map((f) => {
+    const c = cadence(f.realtime!);
+    return [
+      feedPaths(f.id).rtHistory,
+      (t: number) => c.coverageGapMs(t),
+    ] as const;
+  }),
+  ...aisFeeds.map(
+    (f) =>
+      [feedPaths(f.id).aisHistory, () => f.ais!.coverageGapS * 1000] as const,
+  ),
+]) {
   const intervals: [number, number][] = [];
   if (existsSync(dir))
     for (const day of (await readdir(dir))

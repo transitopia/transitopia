@@ -1,7 +1,7 @@
 // Live dispatch (apps/server/README.md#live-dispatch-and-previews): one dispatcher per deployment, shared by every client.
 //
 // Every `dispatchCheckS` it reads the confirmed corrections (the database, or without one
-// regions/metro-vancouver/observations/*.json and disruptions/*.json) and, for each service date near
+// config/regions/metro-vancouver/observations/*.json and disruptions/*.json) and, for each service date near
 // today whose inputs changed, re-dispatches that date and publishes a new patch version. Clients
 // learn the current versions from the live endpoint (or /rt/dispatch) and fetch
 // /rt/dispatch/<date>/<version>.json, which never changes. Client requests never start a dispatch.
@@ -17,6 +17,8 @@ import { rtConfig } from "../config.ts";
 import {
   DISPATCH_HISTORY_DIR,
   PUBLIC_DATA_DIR,
+  regionPaths,
+  type RailNetwork,
 } from "@transitopia/data/paths.ts";
 import { DispatchContexts } from "@transitopia/data/dispatch-context.ts";
 import { datesOf } from "@transitopia/data/disruptions.ts";
@@ -32,12 +34,19 @@ import type {
 } from "@transitopia/transit-core/dispatch/patch.ts";
 import type { Observation } from "@transitopia/transit-core/corrections/types.ts";
 import type { Disruption } from "@transitopia/transit-core/disruption/types.ts";
-import { addDays, localDate } from "@transitopia/transit-core/time.ts";
+import {
+  addDays,
+  localDate,
+  type ServiceDate,
+  isoToServiceDate,
+} from "@transitopia/transit-core/time.ts";
 import { FileCorrections, type Corrections } from "../corrections.ts";
 import type { Store } from "../store.ts";
 
 export interface LiveDispatchOptions {
-  /** Where confirmed corrections come from (default: the files under regions/metro-vancouver). */
+  /** The rail network it dispatches (packages/data/src/paths.ts → railNetwork). */
+  net: RailNetwork;
+  /** Where confirmed corrections come from (default: the files in the network's region). */
   corrections?: Corrections;
   observationsDir?: string;
   disruptionsDir?: string;
@@ -55,22 +64,25 @@ export class LiveDispatcher {
   readonly historyDir: string;
   private readonly log: (msg: string) => void;
   private readonly now: () => number;
-  private readonly contexts = new DispatchContexts();
+  private readonly contexts: DispatchContexts;
   /** Service date → current patch version (dates without inputs have none: clients use the base plan). */
-  private current = new Map<string, string>();
+  private current = new Map<ServiceDate, string>();
+  /** By "<date>/<version>". */
   private patches = new Map<string, DispatchPatch>();
   private timer: ReturnType<typeof setTimeout> | undefined;
   private running = false;
   private checking: Promise<void> | undefined;
   private builtAt = 0;
 
-  constructor(opts: LiveDispatchOptions = {}) {
+  constructor(opts: LiveDispatchOptions) {
     this.log = opts.log ?? ((m) => console.log(`[dispatch] ${m}`));
+    this.contexts = new DispatchContexts(opts.net);
+    const files = regionPaths(opts.net.region);
     this.corrections =
       opts.corrections
       ?? new FileCorrections({
-        observationsDir: opts.observationsDir,
-        disruptionsDir: opts.disruptionsDir,
+        observationsDir: opts.observationsDir ?? files.observations,
+        disruptionsDir: opts.disruptionsDir ?? files.disruptions,
         log: this.log,
       });
     this.store = opts.store;
@@ -119,7 +131,7 @@ export class LiveDispatcher {
 
   /** A published patch version (from memory, or the history on disk). */
   async patch(
-    date: string,
+    date: ServiceDate,
     version: string,
   ): Promise<DispatchPatch | undefined> {
     if (!/^\d{8}$/.test(date) || !/^[0-9a-z]+$/.test(version)) return undefined;
@@ -160,9 +172,9 @@ export class LiveDispatcher {
     const today = localDate(this.now());
     const lo = addDays(today, -rtConfig.dispatchWindowDays);
     const hi = addDays(today, rtConfig.dispatchWindowDays);
-    const dates = new Set<string>();
+    const dates = new Set<ServiceDate>();
     for (const o of observations) {
-      const d = o.date.replaceAll("-", "");
+      const d = isoToServiceDate(o.date);
       if (d >= lo && d <= hi) dates.add(d);
     }
     for (const d of disruptions)
@@ -175,7 +187,7 @@ export class LiveDispatcher {
       const inputs: DateInputs = {
         date,
         observations: observations.filter(
-          (o) => o.date.replaceAll("-", "") === date,
+          (o) => isoToServiceDate(o.date) === date,
         ),
         disruptions,
       };
@@ -200,10 +212,8 @@ export class LiveDispatcher {
       );
     }
     // Keep only current versions in memory; older ones are on disk.
-    for (const key of this.patches.keys()) {
-      const [d, v] = key.split("/");
-      if (this.current.get(d!) !== v) this.patches.delete(key);
-    }
+    for (const [key, p] of this.patches)
+      if (this.current.get(p.date) !== p.version) this.patches.delete(key);
   }
 
   /** Dispatch a date and write the version (immutable) to the history. */
@@ -249,9 +259,9 @@ export class LiveDispatcher {
   > {
     await this.refreshBase();
     const confirmed = await this.corrections.load();
-    const dates = new Set<string>();
+    const dates = new Set<ServiceDate>();
     for (const o of candidate.observations ?? [])
-      dates.add(o.date.replaceAll("-", ""));
+      dates.add(isoToServiceDate(o.date));
     for (const d of candidate.disruptions ?? [])
       for (const x of datesOf(d)) dates.add(x);
     const out: Record<
@@ -267,7 +277,7 @@ export class LiveDispatcher {
         observations: [
           ...confirmed.observations,
           ...(candidate.observations ?? []),
-        ].filter((o) => o.date.replaceAll("-", "") === date),
+        ].filter((o) => isoToServiceDate(o.date) === date),
         disruptions: [
           // The candidate replaces a confirmed disruption with the same id (an edit).
           ...confirmed.disruptions.filter((d) => !ids.has(d.id)),

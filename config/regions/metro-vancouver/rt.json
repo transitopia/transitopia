@@ -1,0 +1,8 @@
+{
+  "$comment": "Metro Vancouver's real-time settings beyond the defaults (config/defaults/rt.json): live dispatch, and the server's port (read from here until the server has config of its own).",
+  "$dispatchCheckS": "Live dispatch (apps/server/README.md#live-dispatch-and-previews): how often the RT service checks config/regions/metro-vancouver/observations and config/regions/metro-vancouver/disruptions for changes. Only changed inputs re-dispatch a date; client requests never do.",
+  "dispatchCheckS": 30,
+  "$dispatchWindowDays": "Live dispatch covers service dates this many days either side of today; older and later dates come from build:dispatch.",
+  "dispatchWindowDays": 7,
+  "serverPort": 8787
+}

@@ -23,7 +23,13 @@ import type {
   PreparedTrip,
   TripPacer,
 } from "../schedule/engine.ts";
-import { addDays, localDate, serviceDayStart, toWallTime } from "../time.ts";
+import {
+  addDays,
+  localDate,
+  serviceDayStart,
+  toWallTime,
+  type ServiceDate,
+} from "../time.ts";
 import type { RtSnapshot, RtVehicle } from "./types.ts";
 
 export interface PredictionConfig {
@@ -349,7 +355,7 @@ export interface WalkResult {
 }
 
 /** Service date (YYYYMMDD) of a trip running at an instant: after-midnight trips belong to the day before. */
-export function tripServiceDate(trip: PreparedTrip, ms: number): string {
+export function tripServiceDate(trip: PreparedTrip, ms: number): ServiceDate {
   const date = localDate(ms);
   return (ms - serviceDayStart(date)) / 1000 < trip.trip.start - 6 * 3600 ?
       addDays(date, -1)
@@ -358,7 +364,7 @@ export function tripServiceDate(trip: PreparedTrip, ms: number): string {
 
 /** Stop ids a trip skips on a service date (GTFS-RT), if any. */
 export type SkippedStops = (
-  serviceDate: string,
+  serviceDate: ServiceDate,
   tripId: string,
 ) => ReadonlySet<string> | undefined;
 
@@ -528,7 +534,7 @@ export class Predictor {
     trip: PreparedTrip,
     along: number,
     sec: number,
-    serviceDate: string,
+    serviceDate: ServiceDate,
   ): number {
     const lo = trip.dep[0]!;
     const hi = trip.arr[trip.arr.length - 1]!;

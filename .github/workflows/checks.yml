@@ -50,7 +50,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # A pinned TransLink GTFS static snapshot (gtfs-static.translink.ca, not the rate-limited
-      # Open API), so a new upstream feed can't change the result of a PR. Bump it deliberately.
+      # Open API), so a new upstream feed can't change the result of a PR. Bump it deliberately. The
+      # validators check Metro Vancouver's rail, so the other feeds aren't fetched.
       FIXTURE_FEED_DATE: "2026-09-25"
     steps:
       - name: Check out code
@@ -64,13 +65,13 @@ jobs:
       - name: Cache the fixture feed
         uses: actions/cache@v6
         with:
-          path: var/raw/gtfs
-          key: gtfs-fixture-${{ env.FIXTURE_FEED_DATE }}
+          path: var/raw/gtfs/translink
+          key: gtfs-fixture-translink-${{ env.FIXTURE_FEED_DATE }}
       - name: Fetch the fixture feed
-        run: npx tsx pipelines/fetch-gtfs.ts --history "$FIXTURE_FEED_DATE"
+        run: npx tsx pipelines/fetch-gtfs.ts --feed translink --history "$FIXTURE_FEED_DATE"
       - name: Build the timetable and track data
         run: |
-          npx tsx pipelines/build-schedule.ts
+          npx tsx pipelines/build-schedule.ts --feed translink
           npm run build:infra
       - name: Validate infrastructure
         run: npm run validate:infra

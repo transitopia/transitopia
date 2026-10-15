@@ -1,12 +1,13 @@
 // The service plan: the compact, per-feed-version schedule produced by pipelines/build-schedule.ts and
 // consumed by the browser. See packages/transit-core/DESIGN.md#timetables.
 
+import type { ServiceDate } from "../time.ts";
 import type { ServiceCalendar } from "../gtfs/calendar.ts";
 import type { LonLat } from "../geo.ts";
 
 export type RouteKind = "skytrain" | "shape" | "bus";
 export type RouteMode = "skytrain" | "ferry" | "rail" | "bus";
-/** The route's layer in the site's layers panel (config/routes.json → category). */
+/** The route's layer in the site's layers panel (config/feeds/<feed>/routes.json → category). */
 export type RouteCategory = "rapid" | "frequent" | "regular";
 
 export interface PlanRoute {
@@ -114,9 +115,19 @@ export interface PlanTrip {
 
 export interface ServicePlan {
   schema: 1;
+  /**
+   * The feed it was built from (config/feeds/<id>/feed.json): its files are under feedDataPath(feed, …).
+   * Absent in plans built before feeds had ids, which were all TransLink's.
+   */
+  feed?: string | undefined;
+  /** Who runs it ("TransLink"), and the version as shown (feed.json → display.feedVersion; plan/display.ts). */
+  agency?: string | undefined;
+  feedLabel?: string | undefined;
+  /** How its trip ids are shortened for display (feed.json → display.tripId; plan/display.ts). */
+  tripIdPattern?: string | undefined;
   feedVersion: string;
-  feedStart: string;
-  feedEnd: string;
+  feedStart: ServiceDate;
+  feedEnd: ServiceDate;
   timezone: string;
   builtAt: string;
   /**
@@ -169,24 +180,62 @@ export interface FerryBerthPlan {
 
 export interface FeedManifestEntry {
   version: string;
-  start: string;
-  end: string;
+  start: ServiceDate;
+  end: ServiceDate;
+  /** The plan (relative to the data root): feedDataPath(feed, version, "plan.json"). */
   path: string;
   builtAt: string;
-  /** Movements index (relative to public/); default data/feeds/<version>/movements/index.json. */
+  /** Movements index (relative to the data root), where a scenario has its own; default beside the plan. */
   movements?: string;
 }
 
+/** One feed's built versions: data/feeds/<feed>/manifest.json (docs/DESIGN.md#regions-and-feeds). */
 export interface FeedManifest {
   schema: 1;
   generatedAt: string;
   feeds: FeedManifestEntry[];
 }
 
+/** The feed id of plans built before plans recorded one (ServicePlan.feed). */
+export const LEGACY_FEED = "translink";
+
+/**
+ * A feed version as a directory name: GTFS feed_version can be anything, e.g. BC Transit's
+ * "202610140/20261013 21:00:00/20261014 04:00:00". TransLink's ("26SEP_20260925") is unchanged.
+ */
+export function versionDir(feedVersion: string): string {
+  const dir = feedVersion.replace(/[^A-Za-z0-9._-]+/g, "_");
+  if (!dir || dir === "." || dir === "..")
+    throw new Error(`Unusable feed version ${JSON.stringify(feedVersion)}`);
+  return dir;
+}
+
+/** Where a feed's published files live, relative to the data root (URLs and var/public alike). */
+export function feedDataPath(
+  feed: string,
+  feedVersion?: string,
+  file?: string,
+): string {
+  const parts = ["data", "feeds", feed];
+  if (feedVersion !== undefined) parts.push(versionDir(feedVersion));
+  if (file !== undefined) parts.push(file);
+  return parts.join("/");
+}
+
+/** Where a region's published files live (infra, observations, dispatch, scenarios), relative to the data root. */
+export function regionDataPath(region: string, file?: string): string {
+  return [
+    "data",
+    "regions",
+    region,
+    ...(file === undefined ? [] : [file]),
+  ].join("/");
+}
+
 /** The newest feed whose validity range covers the service date. */
 export function feedForDate(
   manifest: FeedManifest,
-  date: string,
+  date: ServiceDate,
 ): FeedManifestEntry | undefined {
   let best: FeedManifestEntry | undefined;
   for (const f of manifest.feeds) {
@@ -204,7 +253,7 @@ export function feedForDate(
 /** Union of all feed ranges, for bounding the date picker. */
 export function manifestRange(
   manifest: FeedManifest,
-): { start: string; end: string } | undefined {
+): { start: ServiceDate; end: ServiceDate } | undefined {
   if (!manifest.feeds.length) return undefined;
   return {
     start: manifest.feeds.reduce(

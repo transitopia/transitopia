@@ -1,16 +1,27 @@
 // Download SkyTrain track data from OpenStreetMap via Overpass (packages/transit-core/DESIGN.md#track-graph): every
 // railway=subway way (mainline, pockets, crossovers, yards) with node geometry, the railway=switch /
 // buffer_stop nodes on them, stop positions, and platforms. Saved with a date so imports are
-// reproducible: var/raw/osm/skytrain-YYYY-MM-DD.json (and latest.json).
+// reproducible: var/raw/osm/<region>/YYYY-MM-DD.json (and latest.json), for --region <id> (default: the
+// region with track-level rail).
 //
 // OSM data © OpenStreetMap contributors, ODbL.
 
 import { mkdir, writeFile, copyFile } from "node:fs/promises";
 import { join } from "node:path";
-import { RAW_DIR, log } from "@transitopia/data/paths.ts";
+import {
+  RAW_DIR,
+  log,
+  railNetwork,
+  readRegion,
+} from "@transitopia/data/paths.ts";
 
-/** Metro Vancouver, [south, west, north, east] (Overpass order). */
-const BBOX = [49.1, -123.3, 49.35, -122.7].join(",");
+// The region (--region <id>; default: the one with track-level rail), and its bbox in Overpass order
+// ([south, west, north, east]).
+const regionArg = process.argv.indexOf("--region");
+const REGION =
+  regionArg >= 0 ? process.argv[regionArg + 1]! : (await railNetwork()).region;
+const [west, south, east, north] = (await readRegion(REGION)).bbox;
+const BBOX = [south, west, north, east].join(",");
 const ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
@@ -42,7 +53,7 @@ out body;
 out skel qt;`;
 
 async function main() {
-  const dir = join(RAW_DIR, "osm");
+  const dir = join(RAW_DIR, "osm", REGION);
   await mkdir(dir, { recursive: true });
   let lastErr: unknown;
   for (const url of ENDPOINTS) {
@@ -61,7 +72,7 @@ async function main() {
       const text = await res.text();
       const data = JSON.parse(text) as { elements: { type: string }[] };
       const date = new Date().toISOString().slice(0, 10);
-      const out = join(dir, `skytrain-${date}.json`);
+      const out = join(dir, `${date}.json`);
       await writeFile(out, text);
       await copyFile(out, join(dir, "latest.json"));
       const counts: Record<string, number> = {};

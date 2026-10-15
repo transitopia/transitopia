@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
@@ -156,7 +156,7 @@ describe("RtService", () => {
       status: "ok",
       encoding: "rt-snapshot/1",
     });
-    expect(body.sources["seabus/ais"]).toMatchObject({
+    expect(body.sources["translink/ais"]).toMatchObject({
       kind: "ais",
       status: "unavailable",
       data: [],
@@ -200,7 +200,7 @@ describe("RtService", () => {
     ).toBe(404);
 
     // The SeaBus day file says why there are no fixes.
-    const ais = await get(`/regions/test-region/days/${date}/seabus/ais`);
+    const ais = await get(`/regions/test-region/days/${date}/translink/ais`);
     expect(JSON.parse(String(ais.body))).toMatchObject({
       status: "unavailable",
       fixes: [],
@@ -232,8 +232,9 @@ describe("RtService", () => {
     await vi.waitFor(() => expect(upstream.mock.calls.length).toBe(3));
     await vi.waitFor(async () =>
       expect(
-        JSON.parse(await readFile(join(dir!, "requests.json"), "utf8"))
-          .requests,
+        JSON.parse(
+          await readFile(join(dir!, "translink", "requests.json"), "utf8"),
+        ).requests,
       ).toHaveLength(3),
     );
     service.stop();
@@ -246,8 +247,10 @@ describe("RtService", () => {
     const status = JSON.parse(
       String((await service.handle("/rt/status", new URLSearchParams())).body),
     );
-    expect(status.budget.used24h).toBe(3);
-    expect(status.budget.nextPollInS.positions).toBeGreaterThan(30);
+    expect(status.providers.translink.budget.used24h).toBe(3);
+    expect(
+      status.providers.translink.budget.nextPollInS.positions,
+    ).toBeGreaterThan(30);
   });
 
   it("keeps one pending timer per feed however long it polls", async () => {
@@ -273,12 +276,14 @@ describe("RtService", () => {
       }
       expect(upstream.mock.calls.length).toBeGreaterThan(9);
       // Private: the handles the service holds (it once kept every poll's, forever).
-      expect(Object.keys(service["timers"])).toHaveLength(3);
+      expect(
+        Object.keys(service.pollers.get("translink")!["timers"]),
+      ).toHaveLength(3);
     } finally {
       vi.useRealTimers();
       service?.stop();
       // The last poll's ledger write, before the directory goes.
-      await service?.["ledgerWrite"];
+      await service?.pollers.get("translink")?.["ledgerWrite"];
     }
   });
 
@@ -289,7 +294,11 @@ describe("RtService", () => {
       hourAgo + i,
       "positions",
     ]);
-    await writeFile(join(dir, "requests.json"), JSON.stringify({ requests }));
+    await mkdir(join(dir, "translink"));
+    await writeFile(
+      join(dir, "translink", "requests.json"),
+      JSON.stringify({ requests }),
+    );
     const upstream = vi.fn();
     vi.stubGlobal("fetch", upstream);
     service = new RtService({
@@ -307,7 +316,7 @@ describe("RtService", () => {
           String(
             (await service!.handle("/rt/status", new URLSearchParams())).body,
           ),
-        ).budget.capped,
+        ).providers.translink.budget.capped,
       ).toBe(true),
     );
     expect(upstream).not.toHaveBeenCalled();
@@ -368,23 +377,31 @@ describe("RtService", () => {
         ),
       );
     await vi.waitFor(async () =>
-      expect((await status()).feeds.tripUpdates.lastError).toMatch(/500/),
+      expect(
+        (await status()).providers.translink.feeds.tripUpdates.lastError,
+      ).toMatch(/500/),
     );
     await vi.waitFor(async () =>
-      expect((await status()).feeds.positions.lastOkAgeS).not.toBeNull(),
+      expect(
+        (await status()).providers.translink.feeds.positions.lastOkAgeS,
+      ).not.toBeNull(),
     );
-    expect((await status()).feeds.tripUpdates.lastError).toMatch(/500/);
+    expect(
+      (await status()).providers.translink.feeds.tripUpdates.lastError,
+    ).toMatch(/500/);
     // Within the limit of polling starting, the error shows but doesn't fail yet (a retry may succeed).
     const early = await health({ service } as unknown as AppDeps);
-    expect(early.checks.tripUpdates?.ok).toBe(true);
-    expect(early.checks.tripUpdates?.detail).toMatch(/last error: .*500/);
+    expect(early.checks["translink/tripUpdates"]?.ok).toBe(true);
+    expect(early.checks["translink/tripUpdates"]?.detail).toMatch(
+      /last error: .*500/,
+    );
     // Three hours later (beyond 3 × any trip-updates interval) with still no success, it fails.
     const now = Date.now();
     vi.spyOn(Date, "now").mockReturnValue(now + 3 * 3_600_000);
     const h = await health({ service } as unknown as AppDeps);
     expect(h.ok).toBe(false);
-    expect(h.checks.tripUpdates?.ok).toBe(false);
-    expect(h.checks.tripUpdates?.detail).toMatch(
+    expect(h.checks["translink/tripUpdates"]?.ok).toBe(false);
+    expect(h.checks["translink/tripUpdates"]?.detail).toMatch(
       /no successful poll since polling started \d+ s ago .*; last error/,
     );
   });
@@ -393,8 +410,9 @@ describe("RtService", () => {
     dir = await mkdtemp(join(tmpdir(), "rt-test-"));
     // The previous leader polled everything 10 s ago, so this one continues the schedule from there.
     const before = Date.now() - 10_000;
+    await mkdir(join(dir, "translink"));
     await writeFile(
-      join(dir, "requests.json"),
+      join(dir, "translink", "requests.json"),
       JSON.stringify({
         requests: [
           [before, "tripUpdates"],
@@ -416,8 +434,8 @@ describe("RtService", () => {
     await service.start(0);
     const h = await health({ service } as unknown as AppDeps);
     expect(upstream).not.toHaveBeenCalled();
-    expect(h.checks.tripUpdates?.ok).toBe(true);
-    expect(h.checks.tripUpdates?.detail).toMatch(
+    expect(h.checks["translink/tripUpdates"]?.ok).toBe(true);
+    expect(h.checks["translink/tripUpdates"]?.detail).toMatch(
       /no successful poll since polling started \d+ s ago \(limit \d+ s\); next poll in \d+ s/,
     );
   });
@@ -450,14 +468,18 @@ describe("RtService", () => {
           (await service!.handle("/rt/status", new URLSearchParams())).body,
         ),
       );
-      expect(st.feeds.tripUpdates.lastOkAgeS).not.toBeNull();
+      expect(
+        st.providers.translink.feeds.tripUpdates.lastOkAgeS,
+      ).not.toBeNull();
     });
     await (
-      service as unknown as { pollPositions(): Promise<void> }
+      service.pollers.get("translink") as unknown as {
+        pollPositions(): Promise<void>;
+      }
     ).pollPositions();
     const h = await health({ service } as unknown as AppDeps);
-    expect(h.checks.tripUpdates?.ok).toBe(false);
-    expect(h.checks.tripUpdates?.detail).toMatch(
+    expect(h.checks["translink/tripUpdates"]?.ok).toBe(false);
+    expect(h.checks["translink/tripUpdates"]?.detail).toMatch(
       /0 % of vehicles have a delay/,
     );
   });
@@ -488,13 +510,13 @@ describe("RtService", () => {
       expect(service!.liveResponse().snapshot).not.toBeNull(),
     );
     // The first trip-updates poll may have come before any positions: poll again now.
-    const internals = service as unknown as {
+    const internals = service.pollers.get("translink") as unknown as {
       pollTripUpdates(): Promise<number>;
     };
     expect(await internals.pollTripUpdates()).toBeGreaterThan(0);
     const { tripFeed } = JSON.parse(
       String((await service.handle("/rt/status", new URLSearchParams())).body),
-    );
+    ).providers.translink;
     expect(tripFeed).toMatchObject({
       trips: 1,
       withStopDelays: 1,

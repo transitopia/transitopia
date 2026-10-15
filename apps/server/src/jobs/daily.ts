@@ -1,10 +1,15 @@
-// The daily statistics job for one finished service date (docs/DESIGN.md#retention-and-statistics): observed stop times from
-// the raw positions (while they exist: 60 days), then per-route statistics from those. Every route
-// TransLink reports, not just the ones we draw.
+// The daily statistics job for one feed's finished service date (docs/DESIGN.md#retention-and-statistics): observed stop
+// times from the raw positions (while they exist: 60 days), then per-route statistics from those.
+// Every route the feed reports, not just the ones we draw.
 
-import { recordingConfig as recording, rtConfig } from "../config.ts";
+import { recordingConfig as recording } from "../config.ts";
+import type {
+  FeedInfo,
+  FeedRealtime,
+} from "@transitopia/transit-core/config.ts";
 import type { Db } from "@transitopia/db/connect.ts";
 import { ensurePartitionsFor } from "@transitopia/db/partitions.ts";
+import { isoDate } from "../dates.ts";
 import {
   feedZipFor,
   loadDayTimetable,
@@ -21,14 +26,14 @@ import {
   STATS_VERSION,
   type ObservedRow,
 } from "@transitopia/transit-core/rt/stats.ts";
-import { serviceDayStart } from "@transitopia/transit-core/time.ts";
+import {
+  serviceDayStart,
+  type ServiceDate,
+} from "@transitopia/transit-core/time.ts";
 
-const CADENCE = cadence(rtConfig);
 const CHUNK = 2000;
 /** Positions this long after the service day's start can still belong to it (ms). */
 const DAY_SPAN_MS = 32 * 3_600_000;
-
-const iso = (d: string) => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
 
 export interface DailyResult {
   feedVersion: string;
@@ -37,16 +42,22 @@ export interface DailyResult {
   statsRows: number;
 }
 
-/** Observed stop times and statistics for a service date (YYYYMMDD). Replaces earlier results. */
+/** A feed with real-time data, whose statistics can be computed. */
+export type RealtimeFeed = Pick<FeedInfo, "id"> & {
+  realtime: FeedRealtime;
+};
+
+/** A feed's observed stop times and statistics for a service date (YYYYMMDD). Replaces earlier results. */
 export async function dailyStats(
   db: Db,
-  regionId: string,
-  date: string,
+  feed: RealtimeFeed,
+  date: ServiceDate,
   log: (msg: string) => void = () => {},
 ): Promise<DailyResult> {
-  const feed = await feedZipFor(date);
-  if (!feed) throw new Error(`no archived GTFS feed covers ${date}`);
-  const tt = await loadDayTimetable(feed, date);
+  const zip = await feedZipFor(feed.id, date);
+  if (!zip) throw new Error(`no archived ${feed.id} GTFS feed covers ${date}`);
+  const tt = await loadDayTimetable(zip, date);
+  const coverageGapMs = cadence(feed.realtime).coverageGapMs;
   const dayStart = serviceDayStart(date);
   const from = new Date(dayStart);
   const to = new Date(dayStart + DAY_SPAN_MS);
@@ -78,7 +89,7 @@ export async function dailyStats(
         "stop_seq",
       ])
       .distinct()
-      .where("region_id", "=", regionId)
+      .where("feed_id", "=", feed.id)
       .where("fetched_at", ">=", from)
       .where("fetched_at", "<", to)
       .where(
@@ -121,23 +132,23 @@ export async function dailyStats(
     }
   }
   log(
-    `${date}: ${observed.length} observed stop times from ${tripsWithFixes} trips (feed ${tt.feedVersion})`,
+    `${feed.id} ${date}: ${observed.length} observed stop times from ${tripsWithFixes} trips (feed ${tt.feedVersion})`,
   );
 
   await ensurePartitionsFor(db, dayStart, dayStart);
   await db.transaction().execute(async (tx) => {
     await tx
       .deleteFrom("observed_stop_times")
-      .where("region_id", "=", regionId)
-      .where("service_date", "=", iso(date))
+      .where("feed_id", "=", feed.id)
+      .where("service_date", "=", isoDate(date))
       .execute();
     for (let i = 0; i < observed.length; i += CHUNK)
       await tx
         .insertInto("observed_stop_times")
         .values(
           observed.slice(i, i + CHUNK).map((o) => ({
-            region_id: regionId,
-            service_date: iso(date),
+            feed_id: feed.id,
+            service_date: isoDate(date),
             trip_id: o.tripId,
             stop_sequence: o.seq,
             stop_id: o.stopId,
@@ -159,7 +170,7 @@ export async function dailyStats(
   const polls = await db
     .selectFrom("rt_polls")
     .select("fetched_at")
-    .where("region_id", "=", regionId)
+    .where("feed_id", "=", feed.id)
     .where("source", "=", "gtfs-rt")
     .where("fetched_at", ">=", from)
     .where("fetched_at", "<", to)
@@ -168,13 +179,13 @@ export async function dailyStats(
   const coverage: [number, number][] = [];
   for (const p of polls) {
     const t = p.fetched_at.getTime();
-    extendCoverage(coverage, t, CADENCE.coverageGapMs(t));
+    extendCoverage(coverage, t, coverageGapMs(t));
   }
   const changes = await db
     .selectFrom("trip_changes")
     .select(["trip_id", "cancelled", "skipped_stop_ids"])
-    .where("region_id", "=", regionId)
-    .where("service_date", "=", iso(date))
+    .where("feed_id", "=", feed.id)
+    .where("service_date", "=", isoDate(date))
     .execute();
   const stats = routeStats(
     {
@@ -208,16 +219,16 @@ export async function dailyStats(
   await db.transaction().execute(async (tx) => {
     await tx
       .deleteFrom("route_stats_daily")
-      .where("region_id", "=", regionId)
-      .where("service_date", "=", iso(date))
+      .where("feed_id", "=", feed.id)
+      .where("service_date", "=", isoDate(date))
       .execute();
     for (let i = 0; i < stats.length; i += CHUNK)
       await tx
         .insertInto("route_stats_daily")
         .values(
           stats.slice(i, i + CHUNK).map((s) => ({
-            region_id: regionId,
-            service_date: iso(date),
+            feed_id: feed.id,
+            service_date: isoDate(date),
             route_id: s.routeId,
             route_short_name: s.routeShortName ?? null,
             direction_id: s.directionId,
@@ -237,17 +248,17 @@ export async function dailyStats(
   };
 }
 
-/** Whether any positions poll was recorded during a service date (YYYYMMDD). */
+/** Whether any positions poll of a feed was recorded during a service date (YYYYMMDD). */
 export async function hasRecording(
   db: Db,
-  regionId: string,
-  date: string,
+  feedId: string,
+  date: ServiceDate,
 ): Promise<boolean> {
   const start = serviceDayStart(date);
   const row = await db
     .selectFrom("rt_polls")
     .select("fetched_at")
-    .where("region_id", "=", regionId)
+    .where("feed_id", "=", feedId)
     .where("source", "=", "gtfs-rt")
     .where("fetched_at", ">=", new Date(start))
     .where("fetched_at", "<", new Date(start + DAY_SPAN_MS))

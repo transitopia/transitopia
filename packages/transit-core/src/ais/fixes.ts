@@ -3,7 +3,7 @@
 // which fixes belong to a service date. Shared by the RT service and the browser (packages/transit-core/DESIGN.md#seabus-ais).
 
 import type { RtVehicle } from "../rt/types.ts";
-import { serviceDayStart } from "../time.ts";
+import { serviceDayStart, type ServiceDate } from "../time.ts";
 import type { AisFix } from "./match.ts";
 
 const KN = 1852 / 3600;
@@ -69,7 +69,7 @@ export function parseAisTime(s: string | undefined): number | undefined {
 }
 
 /** Fixes that can belong to a service date's trips: 03:00 that day to 03:00 the next (local). */
-export function serviceDateWindow(serviceDate: string): [number, number] {
+export function serviceDateWindow(serviceDate: ServiceDate): [number, number] {
   const start = serviceDayStart(serviceDate);
   return [start + 3 * 3_600_000, start + 27 * 3_600_000];
 }
@@ -113,7 +113,7 @@ export interface AisFixesResponse {
 }
 
 /**
- * Response of GET /regions/<id>/days/<YYYYMMDD>/seabus/ais: the fixes recorded for a service date so
+ * Response of GET /regions/<id>/days/<YYYYMMDD>/<feed>/ais: the fixes recorded for a service date so
  * far. Shared by every visitor (cached at the edge); the live endpoint's AIS section continues it.
  */
 export interface AisDayResponse {

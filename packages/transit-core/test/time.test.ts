@@ -8,6 +8,9 @@ import {
   parseGtfsTime,
   serviceDayStart,
   toWallTime,
+  serviceDate,
+  isServiceDate,
+  isoToServiceDate,
 } from "../src/time.ts";
 
 describe("parseGtfsTime", () => {
@@ -29,19 +32,19 @@ describe("parseGtfsTime", () => {
 
 describe("service dates", () => {
   it("does date arithmetic across month and year boundaries", () => {
-    expect(addDays("20260930", 1)).toBe("20261001");
-    expect(addDays("20270101", -1)).toBe("20261231");
+    expect(addDays(serviceDate("20260930"), 1)).toBe(serviceDate("20261001"));
+    expect(addDays(serviceDate("20270101"), -1)).toBe(serviceDate("20261231"));
   });
   it("computes day of week with Monday = 0", () => {
-    expect(dayOfWeek("20260925")).toBe(4); // Friday
-    expect(dayOfWeek("20260927")).toBe(6); // Sunday
-    expect(dayOfWeek("20260928")).toBe(0); // Monday
+    expect(dayOfWeek(serviceDate("20260925"))).toBe(4); // Friday
+    expect(dayOfWeek(serviceDate("20260927"))).toBe(6); // Sunday
+    expect(dayOfWeek(serviceDate("20260928"))).toBe(0); // Monday
   });
 });
 
 describe("serviceDayStart (noon minus 12h)", () => {
   it("equals local midnight on ordinary days", () => {
-    const t = serviceDayStart("20260925");
+    const t = serviceDayStart(serviceDate("20260925"));
     expect(new Date(t).toISOString()).toBe("2026-09-25T07:00:00.000Z"); // UTC−7
     expect(toWallTime(t)).toMatchObject({ hour: 0, minute: 0 });
   });
@@ -50,13 +53,13 @@ describe("serviceDayStart (noon minus 12h)", () => {
   // 2026-11-01 and fail here: update Node. TZDB models the change as 2026-11-01 02:00 until CLDR
   // catches up, which gives the same results as the legal date for everything after that.
   it("stays on UTC−7 on 2026-11-01: BC no longer falls back", () => {
-    const t = serviceDayStart("20261101");
+    const t = serviceDayStart(serviceDate("20261101"));
     expect(new Date(t).toISOString()).toBe("2026-11-01T07:00:00.000Z");
     expect(toWallTime(t)).toMatchObject({ hour: 0, minute: 0 });
     expect(toWallTime(t + 5 * 3600_000)).toMatchObject({ hour: 5, minute: 0 });
   });
   it("has no spring-forward in 2027", () => {
-    const t = serviceDayStart("20270314");
+    const t = serviceDayStart(serviceDate("20270314"));
     expect(new Date(t).toISOString()).toBe("2027-03-14T07:00:00.000Z");
     expect(toWallTime(t)).toMatchObject({ hour: 0 });
     expect(toWallTime(Date.parse("2027-01-15T20:00:00Z"))).toMatchObject({
@@ -68,7 +71,7 @@ describe("serviceDayStart (noon minus 12h)", () => {
     const LA = "America/Los_Angeles";
     it("is 01:00 PDT on the fall-back day, so 05:00 service time is 05:00 PST", () => {
       // DST ends 2026-11-01 at 02:00 PDT.
-      const t = serviceDayStart("20261101", LA);
+      const t = serviceDayStart(serviceDate("20261101"), LA);
       expect(new Date(t).toISOString()).toBe("2026-11-01T08:00:00.000Z");
       expect(toWallTime(t + 5 * 3600_000, LA)).toMatchObject({
         hour: 5,
@@ -77,15 +80,19 @@ describe("serviceDayStart (noon minus 12h)", () => {
     });
     it("is 23:00 PST the previous evening on the spring-forward day", () => {
       // DST starts 2027-03-14 at 02:00 PST.
-      const t = serviceDayStart("20270314", LA);
+      const t = serviceDayStart(serviceDate("20270314"), LA);
       expect(new Date(t).toISOString()).toBe("2027-03-14T07:00:00.000Z");
       expect(toWallTime(t, LA)).toMatchObject({ hour: 23 });
       expect(toWallTime(t + 12 * 3600_000, LA)).toMatchObject({ hour: 12 });
     });
   });
   it("maps instants back to local dates", () => {
-    expect(localDate(Date.parse("2026-09-26T06:59:00Z"))).toBe("20260925");
-    expect(localDate(Date.parse("2026-09-26T07:01:00Z"))).toBe("20260926");
+    expect(localDate(Date.parse("2026-09-26T06:59:00Z"))).toBe(
+      serviceDate("20260925"),
+    );
+    expect(localDate(Date.parse("2026-09-26T07:01:00Z"))).toBe(
+      serviceDate("20260926"),
+    );
   });
 });
 
@@ -165,5 +172,20 @@ describe("checkTimezoneData", () => {
     expect(problems).toEqual([
       "America/Los_Angeles at 2026-11-02T20:00:00Z is UTC−8, expected UTC−7: British Columbia's permanent UTC-7",
     ]);
+  });
+});
+
+describe("ServiceDate", () => {
+  it("accepts real YYYYMMDD dates only", () => {
+    expect(isServiceDate("20261015")).toBe(true);
+    expect(isServiceDate("20240229")).toBe(true);
+    for (const bad of ["2026-10-15", "20261399", "20250229", "2026101", ""])
+      expect(isServiceDate(bad), bad).toBe(false);
+    expect(() => serviceDate("20261399")).toThrow(/Bad service date/);
+  });
+
+  it("converts an ISO date", () => {
+    expect(isoToServiceDate("2026-10-15")).toBe("20261015");
+    expect(() => isoToServiceDate("20261015")).toThrow(/Bad ISO date/);
   });
 });
