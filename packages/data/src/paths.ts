@@ -11,10 +11,15 @@ import {
 import {
   parseConfig,
   parseFeed,
+  parseOperator,
   parseRegion,
+  parseRegionRt,
+  resolveKinematics,
+  resolveRt,
   type Config,
   type ConfigName,
   type FeedInfo,
+  type OperatorInfo,
   type RegionInfo,
 } from "@transitopia/transit-core/config.ts";
 import {
@@ -30,10 +35,14 @@ export const ROOT = join(
   "..",
 );
 
-// Committed, curated inputs: regions (region.json, config, infrastructure, scenarios, corrections) and
-// the feeds they show (feed.json, routes.json). docs/DESIGN.md#regions-and-feeds.
-export const REGIONS_DIR = join(ROOT, "regions");
-export const FEEDS_DIR = join(ROOT, "feeds");
+// Committed, curated inputs (config/, docs/DESIGN.md#regions-and-feeds): global defaults, operators,
+// the feeds they run (feed.json, routes.json) and regions (region.json and settings, infrastructure,
+// scenarios, corrections).
+export const CONFIG_ROOT = join(ROOT, "config");
+export const DEFAULTS_DIR = join(CONFIG_ROOT, "defaults");
+export const OPERATORS_DIR = join(CONFIG_ROOT, "operators");
+export const FEEDS_DIR = join(CONFIG_ROOT, "feeds");
+export const REGIONS_DIR = join(CONFIG_ROOT, "regions");
 
 /**
  * The region with track-level rail: its track infrastructure, run inference, dispatcher, scenarios
@@ -43,7 +52,6 @@ export const RAIL_REGION = "metro-vancouver";
 /** The feed whose trains the rail pipelines model (SkyTrain, in TransLink's feed). */
 export const RAIL_FEED = "translink";
 export const REGION_DIR = join(REGIONS_DIR, RAIL_REGION);
-export const CONFIG_DIR = join(REGION_DIR, "config");
 export const INFRA_DIR = join(REGION_DIR, "infrastructure");
 export const SCENARIOS_DIR = join(REGION_DIR, "scenarios");
 // Corrections: the committed files, or on the server an export of the confirmed ones from its
@@ -75,7 +83,7 @@ export const PUBLIC_DATA_DIR = join(PUBLIC_DIR, "data");
 
 /** Where a feed's files are, on disk. */
 export function feedPaths(feed: string): {
-  /** feeds/<feed>: feed.json, routes.json. */
+  /** config/feeds/<feed>: feed.json, routes.json. */
   dir: string;
   /** Archived GTFS zips, one directory per version. */
   raw: string;
@@ -126,7 +134,7 @@ export async function readRegion(id: string): Promise<RegionInfo> {
   );
 }
 
-/** Every region (regions/*), checked. */
+/** Every region (config/regions/*), checked. */
 export async function readRegions(): Promise<RegionInfo[]> {
   return Promise.all((await subdirs(REGIONS_DIR)).map(readRegion));
 }
@@ -157,7 +165,7 @@ export async function readManifest(feed: string): Promise<FeedManifest> {
   return readJson<FeedManifest>(path);
 }
 
-/** A feed's routes.json: which of its routes are drawn (feeds/<feed>/routes.json). */
+/** A feed's routes.json: which of its routes are drawn (config/feeds/<feed>/routes.json). */
 export async function readFeedRoutes(feed: string): Promise<Config<"routes">> {
   return parseConfig(
     "routes",
@@ -165,17 +173,56 @@ export async function readFeedRoutes(feed: string): Promise<Config<"routes">> {
   );
 }
 
-/** A region config file (regions/<region>/config/), checked against its schema (packages/transit-core/src/config.ts). */
-export async function readConfig<N extends ConfigName>(
-  name: N,
-  region: string = RAIL_REGION,
-): Promise<Config<N>> {
+/**
+ * A region's settings file (config/regions/<region>/<name>.json: dispatch, operations, recording,
+ * seabus), checked against its schema (packages/transit-core/src/config.ts). Vehicle and real-time
+ * settings come in layers: readFeedConfig.
+ */
+export async function readConfig<
+  N extends Exclude<ConfigName, "kinematics" | "rt" | "routes">,
+>(name: N, region: string = RAIL_REGION): Promise<Config<N>> {
   return parseConfig(
     name,
-    await readJson<unknown>(
-      join(REGIONS_DIR, region, "config", `${name}.json`),
-    ),
+    await readJson<unknown>(join(REGIONS_DIR, region, `${name}.json`)),
   );
+}
+
+/** The rail feed's settings in the rail region (track-level rail: run inference, dispatch). */
+export function railFeedConfig(): ReturnType<typeof readFeedConfig> {
+  return readFeedConfig(RAIL_FEED, RAIL_REGION);
+}
+
+/** An operator's operator.json, checked. */
+export async function readOperator(id: string): Promise<OperatorInfo> {
+  return parseOperator(
+    await readJson<unknown>(join(OPERATORS_DIR, id, "operator.json")),
+  );
+}
+
+/**
+ * A feed's vehicle and real-time settings as a region shows it: config/defaults/, then its
+ * operator's overrides, its routes' (kinematics) and the region's (rt.json, where it has one).
+ */
+export async function readFeedConfig(
+  feed: string,
+  region: string,
+): Promise<{ kinematics: Config<"kinematics">; rt: Config<"rt"> }> {
+  const op = await readOperator((await readFeed(feed)).operator);
+  const regionRt = join(REGIONS_DIR, region, "rt.json");
+  return {
+    kinematics: resolveKinematics(
+      await readJson<unknown>(join(DEFAULTS_DIR, "kinematics.json")),
+      op,
+      (await readFeedRoutes(feed)).routes,
+    ),
+    rt: resolveRt(
+      await readJson<unknown>(join(DEFAULTS_DIR, "rt.json")),
+      op,
+      (await exists(regionRt)) ?
+        parseRegionRt(await readJson<unknown>(regionRt))
+      : undefined,
+    ),
+  };
 }
 
 export async function exists(p: string): Promise<boolean> {

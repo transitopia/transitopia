@@ -1,6 +1,6 @@
 // Publish dispatch patches for dates with inputs (packages/transit-core/DESIGN.md#dispatcher): re-dispatch each date that has
 // observations or disruptions and write what changed against its base plan.
-//   var/public/data/regions/<rail region>/observations/*.json (from build:observations) + regions/metro-vancouver/disruptions/*.json
+//   var/public/data/regions/<rail region>/observations/*.json (from build:observations) + config/regions/metro-vancouver/disruptions/*.json
 //     → var/public/data/regions/<rail region>/dispatch/<date>.json + index.json
 //
 //   npm run build:dispatch

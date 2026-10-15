@@ -16,7 +16,7 @@ PostgreSQL (18, with PostGIS) for the Transitopia server: SQL migrations, [Kysel
 
 | Table | What | Kept |
 |---|---|---|
-| `regions`, `feeds` | Region and feed records, upserted from `regions/*/region.json` and `feeds/*/feed.json` when the server starts ([docs/DESIGN.md → Regions and feeds](../../docs/DESIGN.md#regions-and-feeds)). What comes from a feed is keyed by `feed_id` (polls, positions, trip changes, alerts, GTFS feeds, observed stop times, statistics); corrections, dispatch versions and AIS fixes by `region_id`. | |
+| `regions`, `feeds` | Region and feed records, upserted from `config/regions/*/region.json` and `config/feeds/*/feed.json` when the server starts ([docs/DESIGN.md → Regions and feeds](../../docs/DESIGN.md#regions-and-feeds)). What comes from a feed is keyed by `feed_id` (polls, positions, trip changes, alerts, GTFS feeds, observed stop times, statistics); corrections, dispatch versions and AIS fixes by `region_id`. | |
 | `service_leader` | Where followers forward `/rt/*`. Leadership itself is a session advisory lock. | |
 | `upstream_requests` | Every upstream request, successful or not, by `provider` (the feed id): each feed's daily cap is enforced against it, so restarts and retries count | |
 | `rt_polls` | One row per poll or AIS batch: the coverage record | |

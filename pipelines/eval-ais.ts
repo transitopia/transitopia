@@ -9,6 +9,7 @@ import {
   AIS_HISTORY_DIR,
   readConfig,
   readJson,
+  railFeedConfig,
 } from "@transitopia/data/paths.ts";
 import { loadLatestPlan } from "@transitopia/data/infra.ts";
 import { Recorder } from "@transitopia/server/rt/recorder.ts";
@@ -26,7 +27,7 @@ import {
   TIMEZONE,
 } from "@transitopia/transit-core/time.ts";
 
-const kin = await readConfig("kinematics");
+const kin = (await railFeedConfig()).kinematics;
 const seabus = await readConfig("seabus");
 const infra = await readJson<any>(join(INFRA_DIR, "seabus.json"));
 const cfg: AisMatchConfig = seabus.ais.match;

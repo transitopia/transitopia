@@ -2,7 +2,7 @@ name: Build Transit Data
 
 # Published transit data for /transit: the service plans, track network and platform mapping,
 # dispatched movements, observations and dispatch patches, served from https://data.transitopia.org/
-# (the site's VITE_TRANSIT_DATA). It downloads every feed's GTFS static (feeds/*/feed.json), not
+# (the site's VITE_TRANSIT_DATA). It downloads every feed's GTFS static (config/feeds/*/feed.json), not
 # TransLink's rate-limited Open API.
 #
 # The server builds and publishes this daily itself (apps/server/src/jobs/data-build.ts),

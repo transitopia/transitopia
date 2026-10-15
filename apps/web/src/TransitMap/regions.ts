@@ -1,67 +1,119 @@
-// The regions /transit can show, each with its config and feed for the transit engine, checked as the
-// transit chunk loads (packages/transit-core/src/config.ts; docs/DESIGN.md#regions-and-feeds). The map
-// shows one region at a time: the one in view (TransitMap.tsx).
+// The regions /transit can show, found in config/ (docs/DESIGN.md#regions-and-feeds), each with its
+// feed and that feed's settings resolved from the defaults, its operator and the region
+// (packages/transit-core/src/config.ts), checked as the transit chunk loads. Adding a region is data
+// only. The map shows one region at a time: the one in view (TransitMap.tsx).
 
 import {
   parseConfig,
   parseFeed,
+  parseOperator,
   parseRegion,
+  parseRegionRt,
+  resolveKinematics,
+  resolveRt,
   type RegionInfo,
 } from "@transitopia/transit-core/config.ts";
 import type { RegionConfig } from "@transitopia/transit-map/engine.ts";
-import mvRegion from "@transitopia/region-metro-vancouver/region.json";
-import mvKinematics from "@transitopia/region-metro-vancouver/config/kinematics.json";
-import mvOperations from "@transitopia/region-metro-vancouver/config/operations.json";
-import mvRt from "@transitopia/region-metro-vancouver/config/rt.json";
-import mvSeabus from "@transitopia/region-metro-vancouver/config/seabus.json";
-import gvRegion from "@transitopia/region-greater-victoria/region.json";
-import gvKinematics from "@transitopia/region-greater-victoria/config/kinematics.json";
-import gvRt from "@transitopia/region-greater-victoria/config/rt.json";
-import coRegion from "@transitopia/region-central-okanagan/region.json";
-import coKinematics from "@transitopia/region-central-okanagan/config/kinematics.json";
-import coRt from "@transitopia/region-central-okanagan/config/rt.json";
-import translink from "@transitopia/feeds/translink/feed.json";
-import bcTransitVictoria from "@transitopia/feeds/bc-transit-victoria/feed.json";
-import bcTransitKelowna from "@transitopia/feeds/bc-transit-kelowna/feed.json";
+
+/** Where /transit opens without a map position. */
+const DEFAULT_REGION_ID = "metro-vancouver";
+
+type Files = Record<string, unknown>;
+const json = { eager: true, import: "default" } as const;
+// Keys are paths: …/config/<kind>/<id>/<file>.json.
+const regionFiles: Files = import.meta.glob(
+  "../../../../config/regions/*/region.json",
+  json,
+);
+const regionSettings: Files = import.meta.glob(
+  "../../../../config/regions/*/{rt,operations,seabus}.json",
+  json,
+);
+const feedFiles: Files = import.meta.glob(
+  "../../../../config/feeds/*/{feed,routes}.json",
+  json,
+);
+const operatorFiles: Files = import.meta.glob(
+  "../../../../config/operators/*/operator.json",
+  json,
+);
+const defaults: Files = import.meta.glob(
+  "../../../../config/defaults/{kinematics,rt}.json",
+  json,
+);
+
+/** The file `<kind>/<id>/<name>.json` among `files`, if there is one. */
+function file(files: Files, kind: string, id: string, name: string): unknown {
+  const suffix = `/config/${kind}/${id}/${name}.json`;
+  return Object.entries(files).find(([path]) => path.endsWith(suffix))?.[1];
+}
+
+function defaultsFile(name: string): unknown {
+  const f = Object.entries(defaults).find(([path]) =>
+    path.endsWith(`/config/defaults/${name}.json`),
+  )?.[1];
+  if (f === undefined) throw new Error(`config/defaults/${name}.json missing`);
+  return f;
+}
 
 export interface SiteRegion {
   info: RegionInfo;
   config: RegionConfig;
 }
 
-function region(
-  json: unknown,
-  feeds: unknown[],
-  config: Omit<RegionConfig, "feed">,
-): SiteRegion {
-  const info = parseRegion(json);
-  const parsed = feeds.map(parseFeed);
-  const feed = parsed.find((f) => f.id === info.feeds[0]);
+function siteRegion(info: RegionInfo): SiteRegion {
   // The engine draws one feed per region for now (RegionConfig.feed).
-  if (!feed || info.feeds.length !== 1)
+  if (info.feeds.length !== 1)
     throw new Error(`Region ${info.id}: the site shows exactly one feed`);
-  return { info, config: { ...config, feed } };
+  const feedId = info.feeds[0]!;
+  const feed = parseFeed(file(feedFiles, "feeds", feedId, "feed"));
+  const routes = parseConfig(
+    "routes",
+    file(feedFiles, "feeds", feedId, "routes"),
+  );
+  const op = parseOperator(
+    file(operatorFiles, "operators", feed.operator, "operator"),
+  );
+  const rt = file(regionSettings, "regions", info.id, "rt");
+  const operations = file(regionSettings, "regions", info.id, "operations");
+  const seabus = file(regionSettings, "regions", info.id, "seabus");
+  return {
+    info,
+    config: {
+      feed,
+      kinematics: resolveKinematics(
+        defaultsFile("kinematics"),
+        op,
+        routes.routes,
+      ),
+      rt: resolveRt(
+        defaultsFile("rt"),
+        op,
+        rt === undefined ? undefined : parseRegionRt(rt),
+      ),
+      ...(operations === undefined ?
+        {}
+      : { operations: parseConfig("operations", operations) }),
+      ...(seabus === undefined ?
+        {}
+      : { seabus: parseConfig("seabus", seabus) }),
+    },
+  };
 }
 
-export const REGIONS: readonly SiteRegion[] = [
-  region(mvRegion, [translink], {
-    kinematics: parseConfig("kinematics", mvKinematics),
-    operations: parseConfig("operations", mvOperations),
-    rt: parseConfig("rt", mvRt),
-    seabus: parseConfig("seabus", mvSeabus),
-  }),
-  region(gvRegion, [bcTransitVictoria], {
-    kinematics: parseConfig("kinematics", gvKinematics),
-    rt: parseConfig("rt", gvRt),
-  }),
-  region(coRegion, [bcTransitKelowna], {
-    kinematics: parseConfig("kinematics", coKinematics),
-    rt: parseConfig("rt", coRt),
-  }),
-];
+/** Every region: the default first, then by name. */
+export const REGIONS: readonly SiteRegion[] = Object.values(regionFiles)
+  .map((json) => siteRegion(parseRegion(json)))
+  .sort(
+    (a, b) =>
+      Number(b.info.id === DEFAULT_REGION_ID)
+        - Number(a.info.id === DEFAULT_REGION_ID)
+      || a.info.name.localeCompare(b.info.name),
+  );
 
 /** Where /transit opens without a map position. */
-export const DEFAULT_REGION: SiteRegion = REGIONS[0]!;
+export const DEFAULT_REGION: SiteRegion =
+  REGIONS.find((r) => r.info.id === DEFAULT_REGION_ID) ?? REGIONS[0]!;
 
 /** [[west, south], [east, north]] for MapLibre. */
 export function lngLatBounds(

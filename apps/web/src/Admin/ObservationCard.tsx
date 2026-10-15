@@ -15,7 +15,7 @@ import {
 } from "./Review.tsx";
 import { card } from "./styles.ts";
 
-/** An observation set (regions/metro-vancouver/observations/README.md) to review, or reviewed. */
+/** An observation set (config/regions/metro-vancouver/observations/README.md) to review, or reviewed. */
 export function ObservationCard({ row }: { row: ObservationRow }) {
   const review = useReview("observations", row.id);
   const [editing, setEditing] = React.useState(false);

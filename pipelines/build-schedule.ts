@@ -1,7 +1,8 @@
 // Build the compact service plan for each archived version of each feed, and each feed's manifest.
-// Input:  var/raw/gtfs/<feed>/<version dir>/google_transit.zip, feeds/<feed>/{feed,routes}.json,
+// Input:  var/raw/gtfs/<feed>/<version dir>/google_transit.zip, config/feeds/<feed>/{feed,routes}.json,
+//         its operator's config/operators/<id>/operator.json (the name plans record),
 //         and for a region showing the feed with SeaBus berths and lanes:
-//         regions/<region>/infrastructure/seabus.json + regions/<region>/config/seabus.json
+//         config/regions/<region>/infrastructure/seabus.json + config/regions/<region>/seabus.json
 // Output: var/public/data/feeds/<feed>/<version dir>/plan.json, var/public/data/feeds/<feed>/manifest.json
 // See packages/transit-core/DESIGN.md#timetables.
 //
@@ -17,6 +18,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { readCsv, readCsvAll, type Row } from "@transitopia/data/gtfs-zip.ts";
 import {
+  OPERATORS_DIR,
   REGIONS_DIR,
   exists,
   feedPaths,
@@ -26,6 +28,7 @@ import {
   readFeedRoutes,
   readFeeds,
   readJson,
+  readOperator,
   readRegions,
   writeJson,
 } from "@transitopia/data/paths.ts";
@@ -82,7 +85,7 @@ const STATION_MERGE_M = 400;
 /**
  * Bump when this script writes something different from the same feed and config (a new field,
  * different filtering), so plans already built are rebuilt. 2: route catalogue and its bays.
- * 3: plans record their feed (feeds/<feed>/), and go to its directory. 4: and its agency, and how
+ * 3: plans record their feed (config/feeds/<feed>/), and go to its directory. 4: and its agency, and how
  * its ids are shown.
  */
 const PLAN_FORMAT = 4;
@@ -104,14 +107,16 @@ async function ferryRegions(feed: string): Promise<string[]> {
 /** What a feed's plans are built from besides the GTFS: PLAN_FORMAT and the files buildPlan reads. */
 async function inputsHash(feed: string): Promise<string> {
   const h = createHash("sha256").update(`plan format ${PLAN_FORMAT}\n`);
+  const info = await readFeed(feed);
   const files = [
     join(feedPaths(feed).dir, "feed.json"),
     join(feedPaths(feed).dir, "routes.json"),
+    join(OPERATORS_DIR, info.operator, "operator.json"),
   ];
   for (const r of await ferryRegions(feed))
     files.push(
       join(REGIONS_DIR, r, "infrastructure", "seabus.json"),
-      join(REGIONS_DIR, r, "config", "seabus.json"),
+      join(REGIONS_DIR, r, "seabus.json"),
     );
   for (const f of files) h.update(await readFile(f));
   return h.digest("hex").slice(0, 16);
@@ -567,7 +572,7 @@ export async function buildPlan(
   const plan: ServicePlan = {
     schema: 1,
     feed: feed.id,
-    agency: feed.agency,
+    agency: (await readOperator(feed.operator)).name,
     feedLabel: shortId(feed.display?.feedVersion, info.feed_version!),
     ...(feed.display?.tripId ? { tripIdPattern: feed.display.tripId } : {}),
     feedVersion: info.feed_version!,

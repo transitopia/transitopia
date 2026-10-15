@@ -12,10 +12,7 @@
   "dependencies": {
     "@tanstack/react-query": "^5.104.1",
     "@transitopia/map-style": "*",
-    "@transitopia/feeds": "*",
-    "@transitopia/region-central-okanagan": "*",
-    "@transitopia/region-greater-victoria": "*",
-    "@transitopia/region-metro-vancouver": "*",
+    "@transitopia/config": "*",
     "@transitopia/shared": "*",
     "@transitopia/transit-core": "*",
     "@transitopia/transit-map": "*",

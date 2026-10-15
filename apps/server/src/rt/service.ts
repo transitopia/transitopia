@@ -27,7 +27,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import translinkFeed from "@transitopia/feeds/translink/feed.json" with { type: "json" };
+import translinkFeed from "@transitopia/config/feeds/translink/feed.json" with { type: "json" };
 import { rtConfig, seabusConfig } from "../config.ts";
 import {
   parseFeed,
@@ -152,7 +152,7 @@ export interface RtServiceOptions {
   /** Override the aisstream.io key lookup; null means no key (no AIS feed). */
   aisApiKey?: string | null;
   aisHistoryDir?: string;
-  /** Where confirmed disruptions live and alert drafts are written (default regions/metro-vancouver/disruptions). */
+  /** Where confirmed disruptions live and alert drafts are written (default config/regions/metro-vancouver/disruptions). */
   disruptionsDir?: string;
   /** Live dispatch (apps/server/README.md#live-dispatch-and-previews): on by default; false disables it, an object configures it. */
   dispatch?: boolean | LiveDispatchOptions;

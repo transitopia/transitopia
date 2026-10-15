@@ -15,7 +15,7 @@ create table feeds (
   agency text not null,
   timezone text not null
 );
--- The server upserts every feed (feeds/*/feed.json) and region (regions/*/region.json) when it starts.
+-- The server upserts every feed (config/feeds/*/feed.json) and region (config/regions/*/region.json) when it starts.
 insert into feeds (id, name, agency, timezone)
 values ('translink', 'TransLink', 'TransLink', 'America/Vancouver');
 

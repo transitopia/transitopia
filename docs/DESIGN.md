@@ -10,8 +10,8 @@ How Transitopia fits together, and the decisions behind it. Each part has its ow
 | The transit engine (`packages/transit-core`): track graph, run inference, dispatcher, buses, SeaBus AIS | [packages/transit-core/DESIGN.md](../packages/transit-core/DESIGN.md) |
 | The transit engine on the map (`packages/transit-map`) | [packages/transit-map/README.md](../packages/transit-map/README.md) |
 | Pipelines and validators | [pipelines/README.md](../pipelines/README.md) |
-| Metro Vancouver: what we know about operations, and what we don't | [regions/metro-vancouver/README.md](../regions/metro-vancouver/README.md), [OPEN-QUESTIONS.md](../regions/metro-vancouver/OPEN-QUESTIONS.md) |
-| Greater Victoria and Central Okanagan (BC Transit) | [regions/greater-victoria/README.md](../regions/greater-victoria/README.md), [regions/central-okanagan/README.md](../regions/central-okanagan/README.md) |
+| Metro Vancouver: what we know about operations, and what we don't | [config/regions/metro-vancouver/README.md](../regions/metro-vancouver/README.md), [OPEN-QUESTIONS.md](../regions/metro-vancouver/OPEN-QUESTIONS.md) |
+| Greater Victoria and Central Okanagan (BC Transit) | [config/regions/greater-victoria/README.md](../regions/greater-victoria/README.md), [config/regions/central-okanagan/README.md](../regions/central-okanagan/README.md) |
 | Hosting, deployment and operations | [deployment/README.md](../deployment/README.md) |
 | Data licenses and sources | [DATA-LICENSES.md](../DATA-LICENSES.md) |
 
@@ -36,11 +36,11 @@ Desktop-first, but the map and time controls must work on phones, with minimal c
 3. **Upstream APIs are polled centrally,** within each provider's limits and on an explicit request budget ([below](#upstream-request-budget)). Client requests never trigger calls to TransLink, aisstream.io or OSM, and neither do development machines.
 4. **Shared state is computed centrally.** The dispatcher and disruption parsing run on the server or at build time, and every visitor sees the same versioned result.
 5. **Secrets never reach the browser or the app bundle.**
-6. **Infrastructure is data.** OSM first, fixed upstream where possible. Our own fixes are reviewable data (`regions/*/infrastructure/overrides.json`).
+6. **Infrastructure is data.** OSM first, fixed upstream where possible. Our own fixes are reviewable data (`config/regions/*/infrastructure/overrides.json`).
 7. **Nothing untrusted reaches the public map or the dispatcher without review.** Drafts can be previewed, but only confirmed inputs are published ([below](#corrections-and-previews)).
 8. **Static first, dynamic where needed.** Anything that can be an immutable file behind a CDN is one. The server handles live data, writes and moderation. If the server is down, the site degrades to schedule estimates instead of breaking.
 9. **Licensing is tracked per dataset** ([DATA-LICENSES.md](../DATA-LICENSES.md)). Every dataset records its source and license, and publishing respects them.
-10. **Every assumption is config.** Operating assumptions live in `regions/<region>/config/` with a source or "guess", and a cross-reference to the region's open questions. No magic numbers in code. Every config file has a schema (`packages/transit-core/src/config.ts`), checked wherever it's loaded, so a mistyped setting fails instead of reading as undefined.
+10. **Every assumption is config.** Operating assumptions live in `config/regions/<region>/` with a source or "guess", and a cross-reference to the region's open questions. No magic numbers in code. Every config file has a schema (`packages/transit-core/src/config.ts`), checked wherever it's loaded, so a mistyped setting fails instead of reading as undefined.
 
 ## Architecture
 
@@ -84,7 +84,7 @@ packages/db/               PostgreSQL: SQL migrations, Kysely types, partitions,
 packages/shared/           shared by web and server: the dataset registry
 pipelines/                 build-time pipelines and validators
 feeds/                     the feeds regions show: feed.json (sources, request budget), routes.json (what's drawn)
-regions/<id>/              committed, curated inputs: region.json, config/, and in Metro Vancouver infrastructure/, scenarios/, observations/, disruptions/
+config/regions/<id>/              committed, curated inputs: region.json, config/, and in Metro Vancouver infrastructure/, scenarios/, observations/, disruptions/
 map-layers/                Planetiler (Java) profile for the cycling layer
 infra/                     production Compose stack, server image, Caddy, backups, firewall; the local database
 deployment/                setup and operations notes, the tile worker
@@ -96,7 +96,7 @@ var/                       gitignored: downloads, recordings, build output (var/
 | Data | Where | Kept |
 |---|---|---|
 | Scenarios, infrastructure overrides, operations config | Git (`regions/`), checked by the validators | |
-| Observations and disruptions | Database, with review states and an export to the file format in `regions/*/observations/` and `regions/*/disruptions/` ([below](#corrections-and-previews)) | indefinitely |
+| Observations and disruptions | Database, with review states and an export to the file format in `config/regions/*/observations/` and `config/regions/*/disruptions/` ([below](#corrections-and-previews)) | indefinitely |
 | Raw real-time data: GTFS-RT positions and AIS fixes | Database (partitioned by day) and hourly NDJSON.gz files, copied to the archive bucket | **60 days** |
 | Observed stop times per trip and stop | Database (partitioned by month) | indefinitely |
 | Per-route daily statistics | Database (`route_stats_daily`) | indefinitely |
@@ -109,7 +109,7 @@ Tables and migrations are described in [packages/db/README.md](../packages/db/RE
 
 ## Retention and statistics
 
-Raw real-time data is deleted after 60 days (`regions/metro-vancouver/config/recording.json`). Any statistic we haven't computed by then can never be computed for that period, so:
+Raw real-time data is deleted after 60 days (`config/regions/metro-vancouver/recording.json`). Any statistic we haven't computed by then can never be computed for that period, so:
 
 - **Observed stop times are the atom.** From each vehicle's fixes we derive, per trip and stop, the observed (interpolated) arrival and departure, its precision (the time between the fixes it came from), and the scheduled time. Nearly every statistic can be recomputed from them, including ones we haven't thought of yet. They're kept indefinitely.
 - **A daily job** computes statistics for each finished service date while the raw data is still there, and catches up after downtime: per route, direction, day and time band, trips scheduled, observed and cancelled, skipped stops, on-time performance at timepoints (on time = **1 minute early to 3 minutes late**), delay percentiles, delivered versus scheduled headways, and bunching. `npm run stats -- <YYYYMMDD>` recomputes a date.
@@ -121,7 +121,7 @@ Kept in Postgres, observed stop times grow by about 78 GB a year ([deployment/RE
 
 ## Upstream request budget
 
-Every feed is polled within a budget of its own (`feeds/<feed>/feed.json` → `realtime.poll`: a daily cap and a time-of-day schedule), whatever its provider allows. TransLink's terms give an API key "a maximum of 1,000 requests per day". Until TransLink approves more, the leader stays under that across `gtfsposition`, `gtfsrealtime` (trip updates) and `gtfsalerts`, polling more often at peak and less off-peak:
+Every feed is polled within a budget of its own (`config/feeds/<feed>/feed.json` → `realtime.poll`: a daily cap and a time-of-day schedule), whatever its provider allows. TransLink's terms give an API key "a maximum of 1,000 requests per day". Until TransLink approves more, the leader stays under that across `gtfsposition`, `gtfsrealtime` (trip updates) and `gtfsalerts`, polling more often at peak and less off-peak:
 
 | Weekday band | Positions | Trip updates | Alerts |
 |---|---|---|---|
@@ -145,7 +145,7 @@ Observations (sightings of a train or vessel at a stop at a time, consists, canc
 - In production they live in the database, each with a review state: `draft → previewing → confirmed | discarded`. The server drafts disruptions from TransLink alerts; admins edit them at `/admin`.
 - **Preview**: an admin dispatches the dates a draft touches (within a week of today) with the draft added. The result is a **preview version**: an immutable dispatch patch like any other, but not advertised by the live endpoint. `/admin` links to `/transit?preview=<YYYYMMDD>:<version>`, and the time bar says it's showing unconfirmed corrections. Preview versions hold nothing private, so anyone with the link can see one.
 - **Confirm** publishes the input, and the next regular dispatch includes it. A disruption can't be confirmed without saying which track stays open. Editing a confirmed input sends it back to draft.
-- The files under `regions/metro-vancouver/{observations,disruptions}/` are imported into a new database, and are what local runs without a database use. `npm run corrections -- export|import|pull` moves corrections between the two.
+- The files under `config/regions/metro-vancouver/{observations,disruptions}/` are imported into a new database, and are what local runs without a database use. `npm run corrections -- export|import|pull` moves corrections between the two.
 - Precedence, shown as provenance: manual observation > live sensor (GTFS-RT, AIS) > confirmed disruption or alert > schedule.
 
 ## Attribution
@@ -158,7 +158,7 @@ Required legends, such as TransLink's ("Some of the data used in this product or
 
 ## Regions and feeds
 
-A **region** is a place on the map: `regions/<id>/region.json` holds its bbox, time zone, first view, time zone checks, and the **feeds** it shows. A **feed** is one agency's published data: `feeds/<id>/feed.json` says where its GTFS static and GTFS-realtime are, the request budget and poll schedule, and its dataset for credits; `feeds/<id>/routes.json` which of its routes are drawn (by name). Both have schemas in `packages/transit-core/src/config.ts`, checked by a test over every committed file. Agencies shape their ids differently, so a feed also says how riders see them (`feed.json` → `display`: a regex each for trip ids and versions, whose first group is the short form; `packages/transit-core/src/plan/display.ts`). A vehicle card shows "Trip 08:05 from Langford Exchange · 11898518" (where riders can first board it, and the short id) and "Source: BC Transit timetable (202610140)"; links, observations and recordings keep the full GTFS ids.
+A **region** is a place on the map: `config/regions/<id>/region.json` holds its bbox, time zone, first view, time zone checks, and the **feeds** it shows. A **feed** is one agency's published data: `config/feeds/<id>/feed.json` says where its GTFS static and GTFS-realtime are, the request budget and poll schedule, and its dataset for credits; `config/feeds/<id>/routes.json` which of its routes are drawn (by name). Both have schemas in `packages/transit-core/src/config.ts`, checked by a test over every committed file. Agencies shape their ids differently, so a feed also says how riders see them (`feed.json` → `display`: a regex each for trip ids and versions, whose first group is the short form; `packages/transit-core/src/plan/display.ts`). A vehicle card shows "Trip 08:05 from Langford Exchange · 11898518" (where riders can first board it, and the short id) and "Source: BC Transit timetable (202610140)"; links, observations and recordings keep the full GTFS ids.
 
 | Region | Feeds | Drawn |
 |---|---|---|

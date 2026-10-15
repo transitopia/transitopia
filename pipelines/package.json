@@ -11,8 +11,7 @@
   },
   "dependencies": {
     "@transitopia/data": "*",
-    "@transitopia/feeds": "*",
-    "@transitopia/region-metro-vancouver": "*",
+    "@transitopia/config": "*",
     "@transitopia/server": "*",
     "@transitopia/transit-core": "*",
     "gtfs-realtime-bindings": "^2.2.0",

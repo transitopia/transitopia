@@ -3,7 +3,7 @@
 //
 //   DATABASE_URL=postgres://… npm run db:import-history [-- --var <dir>]
 //
-// For each feed with real time (feeds/<feed>/feed.json):
+// For each feed with real time (config/feeds/<feed>/feed.json):
 //   var/rt-history/<feed>/<date>/<HH>.ndjson[.gz]  → rt_polls + rt_positions
 //   var/rt-history/<feed>/changes/<date>.json      → trip_changes (drawn routes only, as recorded)
 //   var/rt-history/<feed>/requests.json            → upstream_requests (the 24-hour ledger)
@@ -11,7 +11,7 @@
 // and:
 //   var/ais-history/<date>/<HH>.ndjson[.gz] → rt_polls + ais_fixes
 //   var/dispatch-history/<date>/<v>.json    → dispatch_versions
-//   regions/metro-vancouver/{observations,disruptions} → corrections (as on every start)
+//   config/regions/metro-vancouver/{observations,disruptions} → corrections (as on every start)
 //
 // The files themselves stay where they are: the server keeps serving /rt/history, /rt/changes and
 // dispatch versions from them. Alerts (alerts.ndjson, and the bus alerts inside changes/) aren't

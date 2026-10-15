@@ -9,9 +9,9 @@ import type { AisFix } from "@transitopia/transit-core/ais/match.ts";
 import type { LiveTransitResponse } from "@transitopia/transit-core/rt/live.ts";
 import { preparePlan } from "@transitopia/transit-core/schedule/engine.ts";
 import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
-import kinematics from "@transitopia/region-metro-vancouver/config/kinematics.json";
-import rt from "@transitopia/region-metro-vancouver/config/rt.json";
-import seabus from "@transitopia/region-metro-vancouver/config/seabus.json";
+import kinematics from "@transitopia/config/defaults/kinematics.json";
+import rt from "@transitopia/config/defaults/rt.json";
+import seabus from "@transitopia/config/regions/metro-vancouver/seabus.json";
 import { AisClient } from "../src/ais.ts";
 
 const config = {
@@ -33,7 +33,10 @@ const plan: ServicePlan = {
   trips: [],
   calendar: { calendar: [], exceptions: [] },
 };
-const pp = preparePlan(plan, parseConfig("kinematics", kinematics));
+const pp = preparePlan(
+  plan,
+  parseConfig("kinematics", { ...kinematics, routes: {} }),
+);
 const DATE = "20261014";
 const [start] = serviceDateWindow(DATE);
 const fix = (ts: number): AisFix => ({

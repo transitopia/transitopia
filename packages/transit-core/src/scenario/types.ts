@@ -1,5 +1,5 @@
 // Scenario definitions (packages/transit-core/DESIGN.md#scenarios): alternate infrastructure and/or service, as config files in
-// regions/metro-vancouver/scenarios/<name>/scenario.json, built by `npm run scenario <name>`.
+// config/regions/metro-vancouver/scenarios/<name>/scenario.json, built by `npm run scenario <name>`.
 
 import type { LonLat } from "../geo.ts";
 import type { LineKey, SegmentKind } from "../infra/types.ts";
@@ -8,7 +8,7 @@ export interface ScenarioSpec {
   name: string;
   description: string;
   infrastructure?: {
-    /** Include OSM track with a future opening_date (regions/metro-vancouver/infrastructure/future.generated.geojson). */
+    /** Include OSM track with a future opening_date (config/regions/metro-vancouver/infrastructure/future.generated.geojson). */
     includeFuture?: boolean;
     /** Lines to assign to included future track. */
     futureLines?: LineKey[];

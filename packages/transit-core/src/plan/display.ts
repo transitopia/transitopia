@@ -1,6 +1,6 @@
 // How a feed's identifiers are shown to riders (docs/DESIGN.md#regions-and-feeds). Each agency
 // shapes its trip ids and feed versions differently, so a feed says how to shorten them
-// (feeds/<feed>/feed.json → display: a regex whose first group is the short form), and the plan
+// (config/feeds/<feed>/feed.json → display: a regex whose first group is the short form), and the plan
 // carries that (ServicePlan.agency, feedLabel, tripIdPattern). Internally the full ids are kept.
 
 import { busStopLabel } from "./bus-stops.ts";

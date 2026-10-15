@@ -1,5 +1,5 @@
 import React from "react";
-import region from "@transitopia/region-metro-vancouver/region.json";
+import region from "@transitopia/config/regions/metro-vancouver/region.json";
 import type { Disruption } from "@transitopia/transit-core/disruption/types.ts";
 import {
   disruption,
@@ -15,7 +15,7 @@ import {
 } from "./Review.tsx";
 import { button, card } from "./styles.ts";
 
-/** A disruption (regions/metro-vancouver/disruptions/README.md) to review, or reviewed. */
+/** A disruption (config/regions/metro-vancouver/disruptions/README.md) to review, or reviewed. */
 export function DisruptionCard({ row }: { row: DisruptionRow }) {
   const d = row.body;
   const review = useReview("disruptions", row.id);

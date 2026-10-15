@@ -11,6 +11,7 @@ import {
   RAIL_FEED,
   feedVersionFile,
   readConfig,
+  railFeedConfig,
 } from "@transitopia/data/paths.ts";
 import { feedDataPath } from "@transitopia/transit-core/plan/types.ts";
 import { loadAllPlans, loadGraph } from "@transitopia/data/infra.ts";
@@ -19,7 +20,7 @@ import { mapPlatforms } from "@transitopia/transit-core/infra/platforms.ts";
 
 async function main() {
   const { graph, overrides } = await loadGraph();
-  const kin = await readConfig("kinematics");
+  const kin = (await railFeedConfig()).kinematics;
   const ops = await readConfig("operations");
   const dispatchCfg =
     process.argv.includes("--no-dispatch") ?

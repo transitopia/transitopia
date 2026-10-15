@@ -2,7 +2,7 @@
 //   var/rt-history/<feed>/**  →  var/public/data/feeds/<feed>/<version>/rt-profile.json (one per version with data)
 //
 //   npm run build:rt-profile [-- --feed <id>]
-// Prediction settings are those of the first region showing the feed (config/rt.json → prediction).
+// Prediction settings are those of the first region showing the feed (config/defaults/rt.json → prediction).
 // The live view uses the profile to predict buses between fixes; without one it falls back to the
 // timetable. Rebuild as history accumulates. Check the effect with `npx tsx pipelines/eval-rt.ts`.
 
@@ -14,18 +14,20 @@ import type { PreparedPlan } from "@transitopia/transit-core/schedule/engine.ts"
 import {
   feedVersionFile,
   log,
-  readConfig,
   readFeed,
   readFeeds,
   regionOfFeed,
   writeJson,
+  readFeedConfig,
 } from "@transitopia/data/paths.ts";
 import type { FeedInfo } from "@transitopia/transit-core/config.ts";
 import { eachRecordedHour, planLoader } from "./lib/rt-history.ts";
 import { addDays, localDate } from "@transitopia/transit-core/time.ts";
 
 async function buildFeed(feed: FeedInfo): Promise<void> {
-  const rtConfig = await readConfig("rt", (await regionOfFeed(feed.id)).id);
+  const rtConfig = (
+    await readFeedConfig(feed.id, (await regionOfFeed(feed.id)).id)
+  ).rt;
   const cfg: PredictionConfig = rtConfig.prediction;
   const since = addDays(
     localDate(Date.now()),

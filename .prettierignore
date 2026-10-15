@@ -6,8 +6,7 @@ package-lock.json
 map-layers/
 # Vendored Protomaps tile worker
 deployment/worker.js
-# Curated region and feed data: hand-laid-out JSON, generated GeoJSON, recorded GPX
-regions/
-feeds/
+# Curated config and region data: hand-laid-out JSON, generated GeoJSON, recorded GPX
+config/
 # Prose is wrapped by hand
 *.md

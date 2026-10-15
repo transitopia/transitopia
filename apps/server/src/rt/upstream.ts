@@ -1,4 +1,4 @@
-// Fetch and decode a feed's GTFS-realtime (feeds/<feed>/feed.json → realtime.urls), reduced to the
+// Fetch and decode a feed's GTFS-realtime (config/feeds/<feed>/feed.json → realtime.urls), reduced to the
 // fields we use. The URLs may carry an API key: they never appear in errors or logs.
 
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";

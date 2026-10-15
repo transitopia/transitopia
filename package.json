@@ -13,8 +13,7 @@
     "apps/server",
     "packages/*",
     "pipelines",
-    "feeds",
-    "regions/*"
+    "config"
   ],
   "scripts": {
     "dev": "npm run dev -w @transitopia/web",

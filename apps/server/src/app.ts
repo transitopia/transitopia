@@ -277,7 +277,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
   return app;
 }
 
-/** What the disruption format requires (regions/metro-vancouver/disruptions/README.md). */
+/** What the disruption format requires (config/regions/metro-vancouver/disruptions/README.md). */
 export function disruptionProblems(
   d: Disruption,
   id: string,

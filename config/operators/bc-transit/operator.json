@@ -1,0 +1,5 @@
+{
+  "$comment": "BC Transit: the operator of the bc-transit-* feeds (config/feeds/), one per transit system, in several regions. No overrides of the defaults (config/defaults/) yet: its buses are standard 12 m buses (Kelowna has no articulated buses: config/regions/central-okanagan/README.md → Buses), and prediction uses the defaults, untested on its data (config/regions/greater-victoria/OPEN-QUESTIONS.md #3).",
+  "id": "bc-transit",
+  "name": "BC Transit"
+}

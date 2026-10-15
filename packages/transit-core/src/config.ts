@@ -1,5 +1,7 @@
-// The region's config files (regions/<region>/config/*.json), its record (region.json) and the feeds
-// it shows (feeds/<feed>/feed.json and routes.json; docs/DESIGN.md#regions-and-feeds): one schema each,
+// The committed config (config/: docs/DESIGN.md#regions-and-feeds): global defaults
+// (config/defaults/), operators (config/operators/<id>/operator.json), feeds
+// (config/feeds/<id>/feed.json, routes.json) and regions (config/regions/<id>/region.json and its
+// settings files): one schema each,
 // checked wherever a file is loaded (site, server, pipelines) and by a test over every committed file,
 // so a misspelled or mistyped setting fails loudly instead of reading as undefined. Keys starting with
 // "$" are comments (the files cite their sources there) and are dropped before checking, at any depth.
@@ -148,7 +150,7 @@ const recording = z.strictObject({
   dataBuildAt: hhmm,
 });
 
-// --- feeds/<feed>/routes.json ---
+// --- config/feeds/<feed>/routes.json ---
 
 const routeKinds = ["skytrain", "shape", "bus"] as const satisfies RouteKind[];
 const routeModes = [
@@ -184,6 +186,8 @@ const route = z.strictObject({
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, "expected #rrggbb")
     .exactOptional(),
+  /** Overrides of its mode's vehicle settings (config/defaults/kinematics.json, then its operator's). */
+  kinematics: kinematicsOverride.exactOptional(),
 });
 
 const routes = z.strictObject({
@@ -257,13 +261,15 @@ const prediction = z.strictObject({
   profileHistoryDays: z.number().int().positive(),
 }) satisfies z.ZodType<PredictionConfig>;
 
-const carry: z.ZodType<CarryConfig> = z.strictObject({
+const carryShape = z.strictObject({
   minLayoverS: nonNeg,
   maxTrips: count,
 });
+const carry: z.ZodType<CarryConfig> = carryShape;
 
-// How a region's map uses real-time data. How often each feed is polled, and the thresholds that
-// follow from it, are the feed's (feed.json → realtime).
+// How the map uses real-time data, resolved from config/defaults/rt.json, an operator's overrides
+// and a region's (resolveRt). How often each feed is polled, and the thresholds that follow from it,
+// are the feed's (feed.json → realtime).
 const rt = z.strictObject({
   clientPollS: pos,
   clientPollMaxS: pos,
@@ -325,7 +331,7 @@ const seabus = z.strictObject({
   }),
 });
 
-// --- feeds/<feed>/feed.json ---
+// --- config/feeds/<feed>/feed.json ---
 
 /** Ids of regions and feeds: they name directories, URL segments and database keys. */
 const slug = z
@@ -377,8 +383,8 @@ const feed = z.strictObject({
   id: slug,
   /** How the site names the feed, e.g. "BC Transit (Victoria)". */
   name: z.string().min(1),
-  /** Who runs the service. */
-  agency: z.string().min(1),
+  /** Who runs the service (config/operators/<id>/operator.json). */
+  operator: slug,
   /** Must match the regions' showing it, and the feed's agency_timezone. */
   timezone: z.string().min(1),
   /** The dataset registry id of its schedules (packages/shared/src/datasets.ts); real time is that dataset's `realtime`. */
@@ -400,7 +406,33 @@ const feed = z.strictObject({
     .exactOptional(),
 });
 
-// --- regions/<region>/region.json ---
+// --- config/operators/<id>/operator.json ---
+
+const operator = z.strictObject({
+  id: slug,
+  /** How riders know it ("BC Transit"): plans record it, and sources name it. */
+  name: z.string().min(1),
+  /** Overrides of config/defaults/kinematics.json: any of a mode's settings. */
+  kinematics: z
+    .strictObject({ modes: z.record(z.string(), kinematicsOverride) })
+    .exactOptional(),
+  /** Overrides of config/defaults/rt.json that depend on its vehicles and data. */
+  rt: z
+    .strictObject({
+      prediction: prediction.partial().exactOptional(),
+      carry: carryShape.partial().exactOptional(),
+      detourNearM: pos.exactOptional(),
+    })
+    .exactOptional(),
+});
+
+/** A region's rt.json: any of the real-time settings, over the defaults and its feeds' operators'. */
+const regionRt = rt.partial().extend({
+  prediction: prediction.partial().exactOptional(),
+  carry: carryShape.partial().exactOptional(),
+});
+
+// --- config/regions/<id>/region.json ---
 
 const lon = num.min(-180).max(180);
 const lat = num.min(-90).max(90);
@@ -414,7 +446,7 @@ const region = z.strictObject({
   name: z.string().min(1),
   timezone: z.string().min(1),
   /**
-   * The feeds whose transit the region shows (feeds/<id>/). A feed can be in several regions (a
+   * The feeds whose transit the region shows (config/feeds/<id>/). A feed can be in several regions (a
    * ferry between two), and it is fetched, built, polled and recorded once whichever regions show it.
    */
   feeds: z
@@ -435,6 +467,8 @@ const region = z.strictObject({
 });
 
 export type FeedInfo = z.output<typeof feed>;
+export type OperatorInfo = z.output<typeof operator>;
+export type RegionRt = z.output<typeof regionRt>;
 export type FeedRealtime = z.output<typeof feedRealtime>;
 export type RegionInfo = z.output<typeof region>;
 
@@ -445,6 +479,67 @@ function parsed<T>(schema: z.ZodType<T>, file: string, json: unknown): T {
     (i) => `${i.path.length ? i.path.join(".") : "(top level)"}: ${i.message}`,
   );
   throw new Error(`Bad ${file}: ${problems.join("; ")}`);
+}
+
+/** An operator's operator.json, checked. */
+export function parseOperator(json: unknown): OperatorInfo {
+  return parsed(operator, "operator.json", json);
+}
+
+/** A region's rt.json (overrides of the defaults), checked. */
+export function parseRegionRt(json: unknown): RegionRt {
+  return parsed(regionRt, "region rt.json", json);
+}
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** `over` laid over `base`, objects merged key by key, anything else (arrays too) replaced. */
+function mergeLayers(base: unknown, over: unknown): unknown {
+  if (!isPlainObject(base) || !isPlainObject(over))
+    return over === undefined ? base : over;
+  const out: Record<string, unknown> = { ...base };
+  for (const [k, v] of Object.entries(over)) out[k] = mergeLayers(base[k], v);
+  return out;
+}
+
+/**
+ * A feed's vehicle settings: config/defaults/kinematics.json, its operator's overrides per mode,
+ * and its routes' (routes.json → kinematics). The result is checked whole.
+ */
+export function resolveKinematics(
+  defaults: unknown,
+  op: OperatorInfo,
+  routeConfigs: readonly RouteConfig[],
+): Config<"kinematics"> {
+  const d = stripComments(defaults) as Record<string, unknown>;
+  return parseConfig("kinematics", {
+    ...d,
+    modes: mergeLayers(d["modes"], op.kinematics?.modes ?? {}),
+    routes: Object.fromEntries(
+      routeConfigs.flatMap((r) =>
+        r.kinematics ? [[r.key, r.kinematics]] : [],
+      ),
+    ),
+  });
+}
+
+/**
+ * Real-time settings for a region's feed: config/defaults/rt.json, the feed's operator's overrides,
+ * then the region's (its rt.json, if it has one). The result is checked whole.
+ */
+export function resolveRt(
+  defaults: unknown,
+  op: OperatorInfo,
+  region?: RegionRt,
+): Config<"rt"> {
+  return parseConfig(
+    "rt",
+    mergeLayers(
+      mergeLayers(stripComments(defaults), op.rt ?? {}),
+      region ?? {},
+    ),
+  );
 }
 
 /** A feed's feed.json, checked. */

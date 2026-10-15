@@ -9,6 +9,7 @@ import {
   readConfig,
   readJson,
   readManifest,
+  railFeedConfig,
 } from "./paths.ts";
 import { loadGraph } from "./infra.ts";
 import { dispatchDebugFromEnv } from "./dispatch-debug.ts";
@@ -62,7 +63,7 @@ export class DispatchContexts {
 
   private loadConfigs() {
     return (this.configs ??= Promise.all([
-      readConfig("kinematics"),
+      railFeedConfig().then((c) => c.kinematics),
       readConfig("operations"),
       readConfig("dispatch"),
     ]).then(([kin, ops, dispatch]) => ({ kin, ops, dispatch })));

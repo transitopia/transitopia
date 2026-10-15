@@ -14,6 +14,6 @@ The DOM-free transit engine, shared by the pipelines, the server, tests and the 
 | `src/rt/` | Bus real-time data: snapshots, the request budget, prediction profiles, delay carry-forward, service changes, observed stop times, daily statistics | [Buses](DESIGN.md#buses), [docs/DESIGN.md → Retention and statistics](../../docs/DESIGN.md#retention-and-statistics) |
 | `src/ais/` | SeaBus AIS: fixes, matching to the timetable, smoothing | [SeaBus AIS](DESIGN.md#seabus-ais) |
 | `src/scenario/` | Scenario infrastructure and service operations | [Scenarios](DESIGN.md#scenarios) |
-| `src/config.ts` | A schema for each region config file (`regions/<region>/config/*.json`), checked by `parseConfig` wherever one is loaded and by a test over every committed file. Settings are strict: a new one goes in its schema too. | [docs/DESIGN.md → Principles](../../docs/DESIGN.md) |
+| `src/config.ts` | A schema for each region config file (`config/regions/<region>/*.json`), checked by `parseConfig` wherever one is loaded and by a test over every committed file. Settings are strict: a new one goes in its schema too. | [docs/DESIGN.md → Principles](../../docs/DESIGN.md) |
 
 Import modules by path from other workspaces, e.g. `@transitopia/transit-core/infra/graph.ts`. Tests: `npm test` (vitest, `test/`).

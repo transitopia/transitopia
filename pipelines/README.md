@@ -8,8 +8,8 @@ Build-time data pipelines, validators and tools, run from the repo root (`npm ru
 
 | Command | Script | What |
 |---|---|---|
-| `npm run data:gtfs` | `fetch-gtfs.ts`, `build-schedule.ts` | Fetch every feed's latest GTFS (`feeds/*/feed.json`; `--feed <id>`, and `--history <date>` for a dated snapshot where the feed has them), archive it by feed version (skipping a download with the same files as the newest archived), build a service plan per version and each feed's manifest ([Timetables](../packages/transit-core/DESIGN.md#timetables)). One feed failing doesn't stop the others. |
-| `npm run data:osm` | `fetch-osm.ts`, `import-osm.ts` | Fetch SkyTrain track from OSM (Overpass) and import it into `regions/metro-vancouver/infrastructure/*.generated.geojson` ([Track graph](../packages/transit-core/DESIGN.md#track-graph)) |
+| `npm run data:gtfs` | `fetch-gtfs.ts`, `build-schedule.ts` | Fetch every feed's latest GTFS (`config/feeds/*/feed.json`; `--feed <id>`, and `--history <date>` for a dated snapshot where the feed has them), archive it by feed version (skipping a download with the same files as the newest archived), build a service plan per version and each feed's manifest ([Timetables](../packages/transit-core/DESIGN.md#timetables)). One feed failing doesn't stop the others. |
+| `npm run data:osm` | `fetch-osm.ts`, `import-osm.ts` | Fetch SkyTrain track from OSM (Overpass) and import it into `config/regions/metro-vancouver/infrastructure/*.generated.geojson` ([Track graph](../packages/transit-core/DESIGN.md#track-graph)) |
 | `npm run build:infra` | `build-infra.ts` | Publish Metro Vancouver's track network and the per-version platform mapping of TransLink's feed |
 | `npm run build:movements` | `build-movements.ts` | Infer runs and dispatch them, per service-day type (`--verbose`, `--no-dispatch`) ([Run inference](../packages/transit-core/DESIGN.md#run-inference), [Dispatcher](../packages/transit-core/DESIGN.md#dispatcher)) |
 | `npm run build:observations` | `build-observations.ts` | Validate and publish observation files |
@@ -35,6 +35,6 @@ What they check is in [packages/transit-core/DESIGN.md → Validation](../packag
 | `npm run snapshot:pull -- --from <date> --to <date> [--db]` | Pull production recordings (and a database snapshot) into `var/` ([deployment/README.md → Snapshots](../deployment/README.md#snapshots-for-development)) |
 | `npx tsx pipelines/eval-rt.ts` | Replay recorded RT data as the live view would: prediction error and jumps (`--feed <id>`, default TransLink; `--subsample schedule` thins it to the feed's poll schedule) |
 | `npx tsx pipelines/probe-ais.ts` | Record raw aisstream.io messages for the SeaBus fleet and summarise them |
-| `npx tsx pipelines/eval-gpx.ts [<file.gpx> ...]` | GPX ridden on a bus (`regions/metro-vancouver/observations/gpx/*-B<bus>-<trip_id>.gpx`) as ground truth: GTFS-RT fix accuracy and staleness, real dwells vs the profile, live view and playback error |
+| `npx tsx pipelines/eval-gpx.ts [<file.gpx> ...]` | GPX ridden on a bus (`config/regions/metro-vancouver/observations/gpx/*-B<bus>-<trip_id>.gpx`) as ground truth: GTFS-RT fix accuracy and staleness, real dwells vs the profile, live view and playback error |
 | `npx tsx pipelines/eval-ais.ts [YYYYMMDD]` | Recorded SeaBus AIS against the timetable |
 | `npx tsx pipelines/screenshot.ts out.png "<path>"` | Screenshot the running site with the local Chrome (`--mobile`, `--dark`, `--pick <route>`) |

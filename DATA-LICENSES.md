@@ -4,7 +4,7 @@ The code in this repository is [MIT](LICENSE) licensed. Data has its own license
 
 | Dataset | License |
 |---|---|
-| Derived from OpenStreetMap: SkyTrain track infrastructure (`regions/*/infrastructure/`), station facts from OSM, the cycling layer, basemap tiles | [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/), © OpenStreetMap contributors (required, since these are derivative databases of OSM) |
+| Derived from OpenStreetMap: SkyTrain track infrastructure (`config/regions/*/infrastructure/`), station facts from OSM, the cycling layer, basemap tiles | [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/), © OpenStreetMap contributors (required, since these are derivative databases of OSM) |
 | Our own content: observations, disruptions, scenarios, config, annotations, fleet records, frequency scores, per-route statistics, observed stop times | [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/), © Transitopia contributors. Individual contents under the [DbCL 1.0](https://opendatacommons.org/licenses/dbcl/1-0/). Statistics and stop times derived from TransLink's feeds are our own analysis, but also subject to TransLink's terms (below). |
 | Photos we host | Chosen per photo by the uploader: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) or [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) (both accepted by Wikimedia Commons). Photos are creative works, not databases, so ODbL doesn't fit them. |
 | Third-party data we republish | Its own terms, never relicensed |

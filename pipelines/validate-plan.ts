@@ -10,6 +10,7 @@ import {
   feedVersionFile,
   readConfig,
   readJson,
+  railFeedConfig,
 } from "@transitopia/data/paths.ts";
 import { loadAllPlans, loadGraph } from "@transitopia/data/infra.ts";
 import { dispatchSummary } from "./lib/movements.ts";
@@ -29,7 +30,7 @@ const arg = (name: string) => {
 
 async function main() {
   const { graph } = await loadGraph();
-  const kin = await readConfig("kinematics");
+  const kin = (await railFeedConfig()).kinematics;
   const ops = await readConfig("operations");
   const step = Number(arg("--step") ?? 5);
   let failures = 0;

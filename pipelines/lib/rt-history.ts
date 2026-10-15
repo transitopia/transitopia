@@ -22,10 +22,10 @@ import { localDate } from "@transitopia/transit-core/time.ts";
 import {
   PUBLIC_DIR,
   feedPaths,
-  readConfig,
   readJson,
   readManifest,
   regionOfFeed,
+  readFeedConfig,
 } from "@transitopia/data/paths.ts";
 import { migrateLegacyFiles } from "@transitopia/data/legacy.ts";
 
@@ -79,7 +79,8 @@ export async function* eachRecordedHour(
 /** A feed's prepared plans by version, loaded on demand; `forTime` picks the version for an instant. */
 export async function planLoader(feed: string) {
   const manifest = await readManifest(feed);
-  const kin = await readConfig("kinematics", (await regionOfFeed(feed)).id);
+  const kin = (await readFeedConfig(feed, (await regionOfFeed(feed)).id))
+    .kinematics;
   const cache = new Map<string, PreparedPlan>();
   return {
     kin,

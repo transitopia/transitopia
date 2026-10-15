@@ -2,12 +2,12 @@
 // reproducible bug reports. /admin is where they're reviewed; this is for moving them around.
 //
 //   DATABASE_URL=… npm run corrections -- export <dir>   # confirmed ones → <dir>/{observations,disruptions}/*.json
-//   DATABASE_URL=… npm run corrections -- import [<dir>] # files → database (default: regions/metro-vancouver); existing ids are kept
+//   DATABASE_URL=… npm run corrections -- import [<dir>] # files → database (default: config/regions/metro-vancouver); existing ids are kept
 //   npm run corrections -- pull [<api>] [<dir>]          # a server's confirmed ones (admin token in ADMIN_TOKEN) → <dir>
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import region from "@transitopia/region-metro-vancouver/region.json" with { type: "json" };
+import region from "@transitopia/config/regions/metro-vancouver/region.json" with { type: "json" };
 import { createDb } from "@transitopia/db/connect.ts";
 import { migrate } from "@transitopia/db/migrate.ts";
 import { CorrectionsRepo } from "../corrections.ts";

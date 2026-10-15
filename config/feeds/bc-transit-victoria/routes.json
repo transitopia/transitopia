@@ -1,0 +1,29 @@
+{
+  "$comment": "Routes shown on the map, matched against GTFS routes.txt by name (never route_id); format in config/feeds/translink/routes.json. No 'color': BC Transit's GTFS gives every route its own. The 95 is Blink RapidBus (frequent); the 15 and 70 are regular routes, drawn to try a region with more than its frequent network (the user's call, 2026-10-14). The feed's other routes are listed on cards from the plan's catalogue.",
+  "routes": [
+    {
+      "key": "95",
+      "label": "95 Blink RapidBus",
+      "match": { "route_short_name": "95" },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "frequent"
+    },
+    {
+      "key": "15",
+      "label": "15 Esquimalt / UVic",
+      "match": { "route_short_name": "15" },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular"
+    },
+    {
+      "key": "70",
+      "label": "70 Swartz Bay / Downtown",
+      "match": { "route_short_name": "70" },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular"
+    }
+  ]
+}

@@ -5,13 +5,13 @@
 //   npm run disruptions -- confirm <id> [--keep "<platform stop>"]
 //   npm run disruptions -- discard <id>
 //
-// The RT service drafts disruptions from TransLink alerts into regions/metro-vancouver/disruptions/drafts/ (gitignored).
-// A draft applies only once confirmed: that writes regions/metro-vancouver/disruptions/<id>.json with status "confirmed"
+// The RT service drafts disruptions from TransLink alerts into config/regions/metro-vancouver/disruptions/drafts/ (gitignored).
+// A draft applies only once confirmed: that writes config/regions/metro-vancouver/disruptions/<id>.json with status "confirmed"
 // (commit it), after checking which track stays open, which alerts rarely say.
 
 import { readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
+import rtConfig from "@transitopia/config/regions/metro-vancouver/rt.json" with { type: "json" };
 import { RAIL_FEED, feedPaths, log } from "@transitopia/data/paths.ts";
 import {
   DISRUPTIONS_DIR,

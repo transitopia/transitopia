@@ -1,6 +1,6 @@
 // The server's deployment settings, from environment variables (infra/.env.example lists them for
 // production). Everything that differs between environments is here; region assumptions stay in
-// regions/metro-vancouver/config/.
+// config/regions/metro-vancouver/.
 
 import { rtConfig } from "./config.ts";
 

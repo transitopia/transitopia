@@ -95,7 +95,7 @@ async function main() {
   if (works.length) {
     const ways = [...new Set(works.map((s) => s.osmWay))];
     warn(
-      `${works.length} in-service segments are tagged construction/disused in OSM (ways ${ways.join(", ")}); see regions/metro-vancouver/README.md, "Braid and the OMC4 works"`,
+      `${works.length} in-service segments are tagged construction/disused in OSM (ways ${ways.join(", ")}); see config/regions/metro-vancouver/README.md, "Braid and the OMC4 works"`,
     );
   }
 

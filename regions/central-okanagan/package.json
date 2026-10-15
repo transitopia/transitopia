@@ -1,9 +1,0 @@
-{
-  "name": "@transitopia/region-central-okanagan",
-  "private": true,
-  "description": "Curated inputs for Central Okanagan: config, and what we know about its transit.",
-  "type": "module",
-  "exports": {
-    "./*": "./*"
-  }
-}

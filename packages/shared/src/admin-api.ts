@@ -88,7 +88,7 @@ export type ProviderStatus = z.infer<typeof providerStatus>;
 /** The parts of /rt/status the health checks and /admin read; the rest passes through. */
 export const rtStatus = z.looseObject({
   leader: z.boolean(),
-  /** Each real-time feed's poller, by feed id (feeds/<id>/feed.json). */
+  /** Each real-time feed's poller, by feed id (config/feeds/<id>/feed.json). */
   providers: z.record(z.string(), providerStatus),
   ais: z
     .object({

@@ -2,7 +2,7 @@
 // the buttons that move it along, and links to previews.
 
 import React from "react";
-import region from "@transitopia/region-metro-vancouver/region.json";
+import region from "@transitopia/config/regions/metro-vancouver/region.json";
 import type { Previews, ReviewState } from "@transitopia/shared/admin-api.ts";
 import { useWrite } from "./api.ts";
 import { button, errorText, primary } from "./styles.ts";

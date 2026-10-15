@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
-import translinkFeed from "@transitopia/feeds/translink/feed.json" with { type: "json" };
+import translinkFeed from "@transitopia/config/feeds/translink/feed.json" with { type: "json" };
 import { parseFeed } from "@transitopia/transit-core/config.ts";
 import {
   fetchAlerts,

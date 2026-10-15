@@ -10,14 +10,14 @@
 //
 //   npx tsx pipelines/eval-gpx.ts [<file.gpx> ...] [--set key=value[,key=value]] [--quiet]
 //
-// GPX files are named <date>-<route>-<from>-<to>-B<bus label>-<trip_id>.gpx (regions/metro-vancouver/observations/gpx/);
+// GPX files are named <date>-<route>-<from>-<to>-B<bus label>-<trip_id>.gpx (config/regions/metro-vancouver/observations/gpx/);
 // with no files, every such file there. The profile is trained on recorded hours before the GPX's day
 // (var/rt-history/, e.g. from npm run snapshot:pull).
 
 import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import translinkFeed from "@transitopia/feeds/translink/feed.json" with { type: "json" };
-import rtJson from "@transitopia/region-metro-vancouver/config/rt.json" with { type: "json" };
+import translinkFeed from "@transitopia/config/feeds/translink/feed.json" with { type: "json" };
+import rtJson from "@transitopia/config/regions/metro-vancouver/rt.json" with { type: "json" };
 import { parseConfig, parseFeed } from "@transitopia/transit-core/config.ts";
 import {
   cumulativeLengths,
@@ -41,7 +41,7 @@ import { log, ROOT } from "@transitopia/data/paths.ts";
 const FEED = "translink";
 const rtConfig = parseConfig("rt", rtJson);
 const CADENCE = cadence(parseFeed(translinkFeed).realtime!);
-const GPX_DIR = join(ROOT, "regions/metro-vancouver/observations/gpx");
+const GPX_DIR = join(ROOT, "config/regions/metro-vancouver/observations/gpx");
 /** The live client keeps at least this much history per timeline (as eval-rt.ts). */
 const HISTORY_MS = 10 * 60_000;
 /** Ground truth is standing below this speed (m/s); GPS speed on a stopped phone is ~0.1–0.5. */

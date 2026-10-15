@@ -1,5 +1,5 @@
 // Validate and publish observation files (packages/transit-core/DESIGN.md#corrections):
-//   regions/metro-vancouver/observations/*.json → var/public/data/regions/metro-vancouver/observations/<name>.json + index.json (by service date)
+//   config/regions/metro-vancouver/observations/*.json → var/public/data/regions/metro-vancouver/observations/<name>.json + index.json (by service date)
 //
 //   npm run build:observations
 

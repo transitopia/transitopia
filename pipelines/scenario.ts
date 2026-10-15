@@ -1,5 +1,5 @@
 // Build a scenario (packages/transit-core/DESIGN.md#scenarios): alternate track and/or service defined in
-// regions/metro-vancouver/scenarios/<name>/scenario.json, run through the same pipeline as the base network:
+// config/regions/metro-vancouver/scenarios/<name>/scenario.json, run through the same pipeline as the base network:
 // compose tracks → modify service → map platforms → infer runs → movements. Output:
 //   var/public/data/regions/metro-vancouver/scenarios/<name>/{manifest.json, plan.json, tracks.geojson, movements/}
 // View with ?scenario=<name>.
@@ -16,6 +16,7 @@ import {
   readConfig,
   readJson,
   writeJson,
+  railFeedConfig,
 } from "@transitopia/data/paths.ts";
 import {
   INFRA_DIR,
@@ -45,7 +46,7 @@ async function main() {
     );
   const dir = join(SCENARIOS_DIR, name);
   const spec = await readJson<ScenarioSpec>(join(dir, "scenario.json"));
-  const kin = await readConfig("kinematics");
+  const kin = (await railFeedConfig()).kinematics;
   const ops = await readConfig("operations");
   const overrides = await loadOverrides();
   const rel = regionDataPath(RAIL_REGION, `scenarios/${name}`);

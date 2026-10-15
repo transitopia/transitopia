@@ -1,5 +1,5 @@
 // One feed's GTFS-realtime on the leader (apps/server/README.md#real-time-service): polls its positions,
-// trip updates and alerts on the feed's schedule within its daily cap (feeds/<feed>/feed.json →
+// trip updates and alerts on the feed's schedule within its daily cap (config/feeds/<feed>/feed.json →
 // realtime.poll, packages/transit-core/src/rt/budget.ts), records every route, keeps the service
 // changes, and serves what the live endpoint, /rt/history and /rt/status need. RtService runs one per
 // feed, whichever regions show it, so a feed in two regions is polled and recorded once.

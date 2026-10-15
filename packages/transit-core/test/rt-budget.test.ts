@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import translink from "@transitopia/feeds/translink/feed.json" with { type: "json" };
-import victoria from "@transitopia/feeds/bc-transit-victoria/feed.json" with { type: "json" };
-import kelowna from "@transitopia/feeds/bc-transit-kelowna/feed.json" with { type: "json" };
+import translink from "@transitopia/config/feeds/translink/feed.json" with { type: "json" };
+import victoria from "@transitopia/config/feeds/bc-transit-victoria/feed.json" with { type: "json" };
+import kelowna from "@transitopia/config/feeds/bc-transit-kelowna/feed.json" with { type: "json" };
 import { parseFeed } from "../src/config.ts";
 import {
   bandAt,

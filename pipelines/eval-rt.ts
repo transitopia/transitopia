@@ -11,7 +11,7 @@
 //                              [--no-live] [--subsample <seconds>|schedule] [--train-days weekday|weekend]
 // Default: TransLink's recordings; test on the last 3 complete hours, train on all other complete
 // hours. --subsample replays the live view as if positions had been polled only this often (or on
-// the feed's poll schedule, feeds/<feed>/feed.json → realtime.poll, packages/transit-core/src/rt/budget.ts),
+// the feed's poll schedule, config/feeds/<feed>/feed.json → realtime.poll, packages/transit-core/src/rt/budget.ts),
 // still scoring it against every recorded fix. Prediction settings: the first region showing the feed.
 //
 // Then replays the test hours as the live view sees them (each fix known only from the snapshot that
@@ -40,9 +40,9 @@ import {
 } from "./lib/rt-history.ts";
 import {
   log,
-  readConfig,
   readFeed,
   regionOfFeed,
+  readFeedConfig,
 } from "@transitopia/data/paths.ts";
 import { cadence, pollIntervalS } from "@transitopia/transit-core/rt/budget.ts";
 import type { RtSnapshot } from "@transitopia/transit-core/rt/types.ts";
@@ -58,7 +58,7 @@ const feedRt =
   ?? (() => {
     throw new Error(`Feed ${FEED} has no real-time data`);
   })();
-const rtConfig = await readConfig("rt", (await regionOfFeed(FEED)).id);
+const rtConfig = (await readFeedConfig(FEED, (await regionOfFeed(FEED)).id)).rt;
 const CADENCE = cadence(feedRt);
 /** An hour counts as complete when its snapshots span at least this long (two 300 s polls short of an hour). */
 const COMPLETE_HOUR_SPAN_MS = 50 * 60_000;

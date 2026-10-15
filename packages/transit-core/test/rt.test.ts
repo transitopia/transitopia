@@ -18,7 +18,7 @@ import {
   projectOnto,
   type LonLat,
 } from "../src/geo.ts";
-import rtConfig from "@transitopia/region-metro-vancouver/config/rt.json";
+import rtConfig from "@transitopia/config/defaults/rt.json";
 import { delayCorrections } from "../src/rt/carry.ts";
 import {
   changesView,

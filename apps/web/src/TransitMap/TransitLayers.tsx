@@ -34,7 +34,7 @@ const CATEGORIES: {
   { id: "regular", title: "Regular Bus", description: "Every other route" },
 ];
 
-// Plans built before routes had categories are all rapid transit (feeds/<feed>/routes.json → category).
+// Plans built before routes had categories are all rapid transit (config/feeds/<feed>/routes.json → category).
 const categoryOf = (r: PlanRoute): RouteCategory => r.category ?? "rapid";
 
 /** A few of the category's route colours, as line samples (thinner for buses). */

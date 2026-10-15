@@ -1,6 +1,6 @@
 // Corrections: observations and disruptions (docs/DESIGN.md#corrections-and-previews). With a database they live in the
 // observation_sets and disruptions tables with a review state (draft → previewing → confirmed |
-// discarded); without one, in the files under regions/metro-vancouver/ as before. The live
+// discarded); without one, in the files under config/regions/metro-vancouver/ as before. The live
 // dispatcher reads whichever applies through `Corrections`; `export` writes the confirmed ones back
 // to the file format (for tests, reproducible bug reports and the static build).
 
@@ -320,7 +320,7 @@ export class CorrectionsRepo implements Corrections {
 
   /**
    * Write the confirmed corrections as files: <dir>/observations/<id>.json and
-   * <dir>/disruptions/<id>.json (the formats in regions/metro-vancouver/*\/README.md). The
+   * <dir>/disruptions/<id>.json (the formats in config/regions/metro-vancouver/*\/README.md). The
    * directories are replaced, so they hold exactly what's confirmed.
    */
   async exportFiles(

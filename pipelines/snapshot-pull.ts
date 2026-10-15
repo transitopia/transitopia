@@ -13,7 +13,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
-import seabusJson from "@transitopia/region-metro-vancouver/config/seabus.json" with { type: "json" };
+import seabusJson from "@transitopia/config/regions/metro-vancouver/seabus.json" with { type: "json" };
 import { parseConfig } from "@transitopia/transit-core/config.ts";
 import { cadence } from "@transitopia/transit-core/rt/budget.ts";
 import { extendCoverage } from "@transitopia/transit-core/rt/types.ts";

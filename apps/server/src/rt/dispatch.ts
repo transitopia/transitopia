@@ -1,7 +1,7 @@
 // Live dispatch (apps/server/README.md#live-dispatch-and-previews): one dispatcher per deployment, shared by every client.
 //
 // Every `dispatchCheckS` it reads the confirmed corrections (the database, or without one
-// regions/metro-vancouver/observations/*.json and disruptions/*.json) and, for each service date near
+// config/regions/metro-vancouver/observations/*.json and disruptions/*.json) and, for each service date near
 // today whose inputs changed, re-dispatches that date and publishes a new patch version. Clients
 // learn the current versions from the live endpoint (or /rt/dispatch) and fetch
 // /rt/dispatch/<date>/<version>.json, which never changes. Client requests never start a dispatch.
@@ -37,7 +37,7 @@ import { FileCorrections, type Corrections } from "../corrections.ts";
 import type { Store } from "../store.ts";
 
 export interface LiveDispatchOptions {
-  /** Where confirmed corrections come from (default: the files under regions/metro-vancouver). */
+  /** Where confirmed corrections come from (default: the files under config/regions/metro-vancouver). */
   corrections?: Corrections;
   observationsDir?: string;
   disruptionsDir?: string;

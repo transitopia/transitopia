@@ -33,7 +33,7 @@ var/
 # API keys (TRANSLINK_API_KEY=…, AISSTREAM_API_KEY=…); read only by the server and pipelines
 .secrets
 .wrangler/
-regions/*/disruptions/drafts/
+config/regions/*/disruptions/drafts/
 # Server deployment secrets (from infra/.env.example)
 infra/.env
 infra/certs/

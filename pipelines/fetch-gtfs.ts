@@ -1,4 +1,4 @@
-// Download each feed's latest GTFS static zip (feeds/<feed>/feed.json → static.url), or a dated
+// Download each feed's latest GTFS static zip (config/feeds/<feed>/feed.json → static.url), or a dated
 // snapshot where the provider keeps them, and archive it by feed_version under
 // var/raw/gtfs/<feed>/<version dir>/google_transit.zip. Idempotent: an already-archived version is
 // left alone, and so is a download whose files are the same as the newest archived version's (BC

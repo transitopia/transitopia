@@ -28,7 +28,7 @@ import { syncSources } from "./sources.ts";
 
 const log = (m: string) => console.log(`[server] ${m}`);
 
-// Every region (regions/*/region.json) and the feeds they show (feeds/*/feed.json), checked.
+// Every region (config/regions/*/region.json) and the feeds they show (config/feeds/*/feed.json), checked.
 const regions = await readRegions();
 const feeds = await readFeeds();
 // Recordings and downloads from before feeds had ids move into TransLink's directories, once.

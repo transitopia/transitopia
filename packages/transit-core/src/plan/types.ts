@@ -6,7 +6,7 @@ import type { LonLat } from "../geo.ts";
 
 export type RouteKind = "skytrain" | "shape" | "bus";
 export type RouteMode = "skytrain" | "ferry" | "rail" | "bus";
-/** The route's layer in the site's layers panel (feeds/<feed>/routes.json → category). */
+/** The route's layer in the site's layers panel (config/feeds/<feed>/routes.json → category). */
 export type RouteCategory = "rapid" | "frequent" | "regular";
 
 export interface PlanRoute {
@@ -115,7 +115,7 @@ export interface PlanTrip {
 export interface ServicePlan {
   schema: 1;
   /**
-   * The feed it was built from (feeds/<id>/feed.json): its files are under feedDataPath(feed, …).
+   * The feed it was built from (config/feeds/<id>/feed.json): its files are under feedDataPath(feed, …).
    * Absent in plans built before feeds had ids, which were all TransLink's.
    */
   feed?: string | undefined;

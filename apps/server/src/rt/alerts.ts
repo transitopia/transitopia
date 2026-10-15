@@ -1,6 +1,6 @@
 // Alert drafts (packages/transit-core/DESIGN.md#disruptions-and-alerts): TransLink alerts for our rail lines → draft
 // disruptions, which a person confirms: in the database's review queue (/admin) when there is one,
-// else in regions/metro-vancouver/disruptions/drafts/ for `npm run disruptions -- confirm <id>`.
+// else in config/regions/metro-vancouver/disruptions/drafts/ for `npm run disruptions -- confirm <id>`.
 // Every change to the alert set is appended to the rail feed's var/rt-history/<feed>/alerts.ndjson.
 
 import { appendFile, mkdir, open, readFile, writeFile } from "node:fs/promises";

@@ -1,5 +1,5 @@
 // Rebuild all data in order (pipelines/README.md): latest GTFS → service plans → track network → platform
-// mapping → movements → validation. OSM tracks are committed (regions/metro-vancouver/infrastructure/), so they are only
+// mapping → movements → validation. OSM tracks are committed (config/regions/metro-vancouver/infrastructure/), so they are only
 // re-fetched with --osm.
 //
 //   npm run data            # typical: new timetable, same tracks

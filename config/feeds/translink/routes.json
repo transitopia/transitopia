@@ -1,0 +1,149 @@
+{
+  "$comment": "TransLink routes shown on the map. Matched against GTFS routes.txt by name (never route_id, which changes between feeds). 'kind' drives how vehicles are modelled: 'skytrain' = track-level (packages/transit-core/DESIGN.md#track-graph–4.4), 'shape' = interpolated along GTFS shapes, 'bus' = GTFS-RT with schedule fallback. 'kinematics' overrides the vehicle settings of the route's mode (config/defaults/kinematics.json, then its operator's). 'color' is optional; when omitted the GTFS route_color is used. GTFS has no colours for buses, so each gets a distinct colour for legibility. 'category' is the layer the route belongs to in the site's layers panel: 'rapid' (dedicated right of way: SkyTrain, SeaBus, West Coast Express), 'frequent' (the 99 B-Line and RapidBus R1–R6: frequent, but not true BRT, without dedicated right of way) or 'regular' (every other bus: the feed's other bus routes, listed on cards from the plan's catalogue but not drawn). Set by hand for now (the user's call, 2026-10-14); 'frequent' vs 'regular' should later be computed from scheduled frequency when the plan is built.",
+  "routes": [
+    {
+      "key": "expo",
+      "label": "Expo Line",
+      "match": {
+        "route_long_name": "Expo Line"
+      },
+      "kind": "skytrain",
+      "mode": "skytrain",
+      "category": "rapid",
+      "kinematics": {
+        "length": 80,
+        "$comment": "guess: mix of 4/6-car Mk I, 4-car Mk III and 5-car Mk V (~85 m, 12 sets in service Sep 2026; CPTDB). OPEN-QUESTIONS #9"
+      }
+    },
+    {
+      "key": "millennium",
+      "label": "Millennium Line",
+      "match": {
+        "route_long_name": "Millennium Line"
+      },
+      "kind": "skytrain",
+      "mode": "skytrain",
+      "category": "rapid",
+      "kinematics": {
+        "length": 68,
+        "$comment": "guess: 4-car Mk II (Millennium runs Mk II only, 2 or 4 cars; CPTDB). OPEN-QUESTIONS #9"
+      }
+    },
+    {
+      "key": "canada",
+      "label": "Canada Line",
+      "match": {
+        "route_long_name": "Canada Line"
+      },
+      "kind": "skytrain",
+      "mode": "skytrain",
+      "category": "rapid",
+      "kinematics": {
+        "length": 41,
+        "decel": 1.3,
+        "$comment": "2-car Hyundai Rotem EMU, the only Canada Line stock (CPTDB). OPEN-QUESTIONS #9"
+      }
+    },
+    {
+      "key": "seabus",
+      "label": "SeaBus",
+      "match": {
+        "route_long_name": "SeaBus"
+      },
+      "kind": "shape",
+      "mode": "ferry",
+      "category": "rapid"
+    },
+    {
+      "key": "wce",
+      "label": "West Coast Express",
+      "match": {
+        "route_short_name": "WCE"
+      },
+      "kind": "shape",
+      "mode": "rail",
+      "category": "rapid",
+      "kinematics": {
+        "length": 130,
+        "$comment": "guess: typical 5-car consist plus locomotive"
+      }
+    },
+    {
+      "key": "99",
+      "label": "99 B-Line",
+      "match": {
+        "route_short_name": "099"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "frequent",
+      "color": "#f76707"
+    },
+    {
+      "key": "R1",
+      "label": "R1 King George Blvd",
+      "match": {
+        "route_short_name": "R1"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "frequent",
+      "color": "#2b8a3e"
+    },
+    {
+      "key": "R2",
+      "label": "R2 Marine-Willingdon",
+      "match": {
+        "route_short_name": "R2"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "frequent",
+      "color": "#e64980"
+    },
+    {
+      "key": "R3",
+      "label": "R3 Lougheed Hwy",
+      "match": {
+        "route_short_name": "R3"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "frequent",
+      "color": "#a0522d"
+    },
+    {
+      "key": "R4",
+      "label": "R4 41st Avenue",
+      "match": {
+        "route_short_name": "R4"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "frequent",
+      "color": "#74b816"
+    },
+    {
+      "key": "R5",
+      "label": "R5 Hastings St",
+      "match": {
+        "route_short_name": "R5"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "frequent",
+      "color": "#c92a2a"
+    },
+    {
+      "key": "R6",
+      "label": "R6 Scott Road",
+      "match": {
+        "route_short_name": "R6"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "frequent",
+      "color": "#5c7cfa"
+    }
+  ]
+}
