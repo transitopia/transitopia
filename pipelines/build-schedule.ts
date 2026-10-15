@@ -30,6 +30,7 @@ import {
   writeJson,
 } from "@transitopia/data/paths.ts";
 import { migrateLegacyFiles } from "@transitopia/data/legacy.ts";
+import { shortId } from "@transitopia/transit-core/plan/display.ts";
 import type {
   FeedInfo,
   RouteConfig,
@@ -81,9 +82,10 @@ const STATION_MERGE_M = 400;
 /**
  * Bump when this script writes something different from the same feed and config (a new field,
  * different filtering), so plans already built are rebuilt. 2: route catalogue and its bays.
- * 3: plans record their feed (feeds/<feed>/), and go to its directory.
+ * 3: plans record their feed (feeds/<feed>/), and go to its directory. 4: and its agency, and how
+ * its ids are shown.
  */
-const PLAN_FORMAT = 3;
+const PLAN_FORMAT = 4;
 
 /** Regions showing the feed with SeaBus berths and lanes (infrastructure/seabus.json): build-schedule applies them. */
 async function ferryRegions(feed: string): Promise<string[]> {
@@ -565,6 +567,9 @@ export async function buildPlan(
   const plan: ServicePlan = {
     schema: 1,
     feed: feed.id,
+    agency: feed.agency,
+    feedLabel: shortId(feed.display?.feedVersion, info.feed_version!),
+    ...(feed.display?.tripId ? { tripIdPattern: feed.display.tripId } : {}),
     feedVersion: info.feed_version!,
     feedStart: info.feed_start_date!,
     feedEnd: info.feed_end_date!,

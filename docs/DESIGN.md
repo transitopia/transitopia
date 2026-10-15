@@ -158,7 +158,7 @@ Required legends, such as TransLink's ("Some of the data used in this product or
 
 ## Regions and feeds
 
-A **region** is a place on the map: `regions/<id>/region.json` holds its bbox, time zone, first view, time zone checks, and the **feeds** it shows. A **feed** is one agency's published data: `feeds/<id>/feed.json` says where its GTFS static and GTFS-realtime are, the request budget and poll schedule, and its dataset for credits; `feeds/<id>/routes.json` which of its routes are drawn (by name). Both have schemas in `packages/transit-core/src/config.ts`, checked by a test over every committed file.
+A **region** is a place on the map: `regions/<id>/region.json` holds its bbox, time zone, first view, time zone checks, and the **feeds** it shows. A **feed** is one agency's published data: `feeds/<id>/feed.json` says where its GTFS static and GTFS-realtime are, the request budget and poll schedule, and its dataset for credits; `feeds/<id>/routes.json` which of its routes are drawn (by name). Both have schemas in `packages/transit-core/src/config.ts`, checked by a test over every committed file. Agencies shape their ids differently, so a feed also says how riders see them (`feed.json` → `display`: a regex each for trip ids and versions, whose first group is the short form; `packages/transit-core/src/plan/display.ts`). A vehicle card shows "Trip 08:05 from Langford Exchange · 11898518" (where riders can first board it, and the short id) and "Source: BC Transit timetable (202610140)"; links, observations and recordings keep the full GTFS ids.
 
 | Region | Feeds | Drawn |
 |---|---|---|

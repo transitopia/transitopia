@@ -119,6 +119,11 @@ export interface ServicePlan {
    * Absent in plans built before feeds had ids, which were all TransLink's.
    */
   feed?: string | undefined;
+  /** Who runs it ("TransLink"), and the version as shown (feed.json → display.feedVersion; plan/display.ts). */
+  agency?: string | undefined;
+  feedLabel?: string | undefined;
+  /** How its trip ids are shortened for display (feed.json → display.tripId; plan/display.ts). */
+  tripIdPattern?: string | undefined;
   feedVersion: string;
   feedStart: string;
   feedEnd: string;

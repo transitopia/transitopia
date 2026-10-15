@@ -7,7 +7,7 @@ import type { VehicleState } from "@transitopia/transit-core/schedule/engine.ts"
 import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
 import { creditsFor, legendsFor } from "@transitopia/shared/datasets.ts";
 
-import { timeState } from "./format.ts";
+import { clockMinutes, timeState } from "./format.ts";
 import {
   CardRow,
   CardSection,
@@ -192,7 +192,13 @@ export const VehicleCard: React.FC<{
       },
   ];
   const details: [string, string | undefined][] = [
-    ["Trip", v.tripId || undefined],
+    // "08:05 from Langford Exchange · 11898518": as a rider names it, with the agency's short id.
+    [
+      "Trip",
+      sel.trip ?
+        `${clockMinutes(sel.trip.start)} from ${sel.trip.from} · ${sel.trip.shortId}`
+      : v.tripId || undefined,
+    ],
     ["Train (inferred run)", v.runId],
     ["Vehicle", v.label],
     ["Name", v.consist?.name],

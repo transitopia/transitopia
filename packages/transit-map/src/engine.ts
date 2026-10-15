@@ -22,6 +22,11 @@ import {
   LEGACY_FEED,
   type PlanRoute,
 } from "@transitopia/transit-core/plan/types.ts";
+import {
+  firstBoarding,
+  placeName,
+  shortId,
+} from "@transitopia/transit-core/plan/display.ts";
 import type {
   PreparedPlan,
   ScheduleCorrections,
@@ -112,6 +117,11 @@ export interface SelectedVehicle {
   /** Undefined when the vehicle isn't in service at the shown time. */
   vehicle: VehicleState | undefined;
   route: PlanRoute | undefined;
+  /**
+   * Its trip as a rider would name it: when and where it starts, and the trip id as its agency's
+   * riders see it (packages/transit-core/src/plan/display.ts). Undefined when the trip isn't in the plan.
+   */
+  trip: { start: number; from: string; shortId: string } | undefined;
   /** Registry ids of the data behind it (@transitopia/shared/datasets.ts), for its card's credits. */
   datasets: string[];
 }
@@ -1001,6 +1011,7 @@ export class TransitEngine {
             id: this.selectedId,
             vehicle: v,
             route,
+            trip: v && this.tripSummary(v),
             datasets: this.datasetsOf([
               [route, v !== undefined && v.provenance !== "estimated"],
             ]),
@@ -1057,6 +1068,19 @@ export class TransitEngine {
    * Departures from the selected place after the shown time, from the timetable shifted by the
    * real-time corrections the vehicles use (packages/transit-core/DESIGN.md#departures).
    */
+  /** The selected vehicle's trip: where and when riders can first board it (epoch ms), and its short id. */
+  private tripSummary(v: VehicleState): SelectedVehicle["trip"] {
+    const pp = this.store.planFor(v.serviceDate);
+    const pt = pp?.tripIndex.get(v.tripId);
+    if (!pp || !pt) return undefined;
+    const i = firstBoarding(pt.pattern);
+    return {
+      start: serviceDayStart(v.serviceDate) + pt.dep[i]! * 1000,
+      from: placeName(pp.plan, pt.pattern.stops[i]!),
+      shortId: shortId(pp.plan.tripIdPattern, v.tripId),
+    };
+  }
+
   private placeSnapshot(t: number): PlaceSnapshot | RouteSnapshot | undefined {
     const pp = this.shownFeed;
     if (!this.place || !pp) return undefined;

@@ -364,6 +364,15 @@ const feedRealtime = z
     `every URL has ${API_KEY_SLOT} when apiKey is set, and none without it`,
   ) satisfies z.ZodType<CadenceConfig>;
 
+/** A regular expression whose first group is the short form of an id (packages/transit-core/src/plan/display.ts). */
+const shortPattern = z.string().refine((p) => {
+  try {
+    return new RegExp(`${p}|`).exec("")!.length > 1;
+  } catch {
+    return false;
+  }
+}, "expected a regular expression with a group");
+
 const feed = z.strictObject({
   id: slug,
   /** How the site names the feed, e.g. "BC Transit (Victoria)". */
@@ -382,6 +391,13 @@ const feed = z.strictObject({
   }),
   /** GTFS-realtime, polled by the server's leader only (docs/DESIGN.md#upstream-request-budget). */
   realtime: feedRealtime.exactOptional(),
+  /** How its ids are shown to riders: a regex each, whose first group is the short form; absent, the whole id. */
+  display: z
+    .strictObject({
+      tripId: shortPattern.exactOptional(),
+      feedVersion: shortPattern.exactOptional(),
+    })
+    .exactOptional(),
 });
 
 // --- regions/<region>/region.json ---

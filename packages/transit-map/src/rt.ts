@@ -237,7 +237,7 @@ export class RtClient {
       timeline = new RtTimeline(snapshots, pp, this.config.kinematics, {
         maxInterpolateS: this.cadence.maxInterpolateS,
         maxExtrapolateS: this.cadence.maxExtrapolateS,
-        source: live ? "GTFS-RT live" : "GTFS-RT recorded",
+        source: `${pp?.plan.agency ? `${pp.plan.agency} ` : ""}GTFS-RT ${live ? "live" : "recorded"}`,
         changes: this.changesView(),
         detourNearM: this.config.rt.detourNearM,
         ...(predictor ?

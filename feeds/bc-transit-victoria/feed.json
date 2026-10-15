@@ -38,5 +38,11 @@
     "extrapolateSlackS": 45,
     "$tripUpdatesMinCoverage": "/healthz fails below this share of buses on a trip with a delay from trip updates (guess, as TransLink's; OPEN-QUESTIONS #2).",
     "tripUpdatesMinCoverage": 0.2
+  },
+  "display": {
+    "$tripId": "Trip ids are three internal ids, <journey>:<variant>:<block> (e.g. 11898518:14545024:14591755); the journey alone is unique on any date (feed of 2026-10-14: a journey appears in at most two trips, never running the same day).",
+    "tripId": "^([^:]+):",
+    "$feedVersion": "Versions look like \"202610140/20261013 21:00:00/20261014 04:00:00\": the export date and a sequence number, then the export window.",
+    "feedVersion": "^([^/ ]+)"
   }
 }
