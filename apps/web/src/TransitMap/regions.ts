@@ -19,27 +19,27 @@ import type { RegionConfig } from "@transitopia/transit-map/engine.ts";
 const DEFAULT_REGION_ID = "metro-vancouver";
 
 type Files = Record<string, unknown>;
-const json = { eager: true, import: "default" } as const;
+// Glob options are inline: Vite reads them statically.
 // Keys are paths: …/config/<kind>/<id>/<file>.json.
 const regionFiles: Files = import.meta.glob(
   "../../../../config/regions/*/region.json",
-  json,
+  { eager: true, import: "default" },
 );
 const regionSettings: Files = import.meta.glob(
   "../../../../config/regions/*/{rt,operations}.json",
-  json,
+  { eager: true, import: "default" },
 );
 const feedFiles: Files = import.meta.glob(
   "../../../../config/feeds/*/{feed,routes}.json",
-  json,
+  { eager: true, import: "default" },
 );
 const operatorFiles: Files = import.meta.glob(
   "../../../../config/operators/*/operator.json",
-  json,
+  { eager: true, import: "default" },
 );
 const defaults: Files = import.meta.glob(
   "../../../../config/defaults/{kinematics,rt}.json",
-  json,
+  { eager: true, import: "default" },
 );
 
 /** The file `<kind>/<id>/<name>.json` among `files`, if there is one. */
