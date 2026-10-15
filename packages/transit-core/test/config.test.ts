@@ -72,7 +72,7 @@ describe("config files", () => {
   it("rejects a misspelled setting in any layer, naming where", () => {
     const op = operator("translink");
     expect(() =>
-      resolveRt(defaults("rt"), op, { clientPollSecs: 5 } as never),
+      resolveRt(defaults("rt"), op, {}, { clientPollSecs: 5 } as never),
     ).toThrow(/Bad config rt\.json: .*clientPollSecs/s);
     expect(() => parseRegionRt({ clientPollSecs: 5 })).toThrow(
       /Bad region rt\.json: .*clientPollSecs/,
@@ -80,6 +80,10 @@ describe("config files", () => {
     expect(() =>
       parseOperator({ id: "x", name: "X", rt: { carry: { maxTrip: 1 } } }),
     ).toThrow(/rt\.carry/);
+    // A region's rt.json is about the place: prediction settings are its feeds'.
+    expect(() => parseRegionRt({ prediction: { binM: 25 } })).toThrow(
+      /Bad region rt\.json: .*prediction/s,
+    );
   });
 
   it("rejects a setting of the wrong type", () => {
@@ -114,7 +118,7 @@ describe("config files", () => {
     ).toThrow(/routes\.0\.kinematics/);
   });
 
-  it("lays operator and route settings over the defaults", () => {
+  it("lays operator, feed, route and region settings over the defaults", () => {
     const routes = parseConfig(
       "routes",
       readJson(join(FEEDS, "translink", "routes.json")),
@@ -122,6 +126,7 @@ describe("config files", () => {
     const k = resolveKinematics(
       defaults("kinematics"),
       operator("translink"),
+      {},
       routes,
     );
     // TransLink's drawn buses are articulated; BC Transit's the default 12 m.
@@ -129,14 +134,25 @@ describe("config files", () => {
     expect(k.modes["bus"]!.width).toBe(2.6);
     expect(k.routes["expo"]!.length).toBe(80);
     expect(
-      resolveKinematics(defaults("kinematics"), operator("bc-transit"), [])
+      resolveKinematics(defaults("kinematics"), operator("bc-transit"), {}, [])
         .modes["bus"]!.length,
     ).toBe(12);
-    // Region overrides go last, and nested settings merge.
-    const rt = resolveRt(defaults("rt"), operator("translink"), {
-      clientPollS: 5,
-      prediction: { binM: 25 },
-    });
+    // A feed's overrides go over its operator's.
+    expect(
+      resolveKinematics(
+        defaults("kinematics"),
+        operator("translink"),
+        { kinematics: { modes: { bus: { length: 12 } } } },
+        [],
+      ).modes["bus"]!.length,
+    ).toBe(12);
+    // Then the region's; nested settings merge.
+    const rt = resolveRt(
+      defaults("rt"),
+      operator("translink"),
+      { rt: { prediction: { binM: 25 } } },
+      { clientPollS: 5 },
+    );
     expect(rt.clientPollS).toBe(5);
     expect(rt.prediction.binM).toBe(25);
     expect(rt.prediction.stopZoneM).toBe(
@@ -178,20 +194,22 @@ describe("regions and feeds", () => {
         const feed = feeds.find((x) => x.id === f)?.feed;
         expect(feed, f).toBeDefined();
         expect(feed!.timezone).toBe(region.timezone);
-        // Every layer together: the defaults, the operator, the routes and the region.
+        // Every layer together: the defaults, the operator, the feed, the routes and the region.
         const op = operator(feed!.operator);
         const routes = parseConfig(
           "routes",
           readJson(join(FEEDS, f, "routes.json")),
         ).routes;
         expect(() =>
-          resolveKinematics(defaults("kinematics"), op, routes),
+          resolveKinematics(defaults("kinematics"), op, feed!, routes),
         ).not.toThrow();
         const regionRt =
           settingsFiles.some((x) => x.region === id && x.name === "rt") ?
             parseRegionRt(readJson(join(REGIONS, id, "rt.json")))
           : undefined;
-        expect(() => resolveRt(defaults("rt"), op, regionRt)).not.toThrow();
+        expect(() =>
+          resolveRt(defaults("rt"), op, feed!, regionRt),
+        ).not.toThrow();
       }
     });
 

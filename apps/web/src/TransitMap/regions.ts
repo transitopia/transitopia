@@ -83,11 +83,13 @@ function siteRegion(info: RegionInfo): SiteRegion {
       kinematics: resolveKinematics(
         defaultsFile("kinematics"),
         op,
+        feed,
         routes.routes,
       ),
       rt: resolveRt(
         defaultsFile("rt"),
         op,
+        feed,
         rt === undefined ? undefined : parseRegionRt(rt),
       ),
       ...(operations === undefined ?

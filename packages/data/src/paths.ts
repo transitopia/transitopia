@@ -248,23 +248,26 @@ export async function readOperator(id: string): Promise<OperatorInfo> {
 
 /**
  * A feed's vehicle and real-time settings as a region shows it: config/defaults/, then its
- * operator's overrides, its routes' (kinematics) and the region's (rt.json, where it has one).
+ * operator's overrides, its own, its routes' (kinematics) and the region's (rt.json, where it has one).
  */
 export async function readFeedConfig(
   feed: string,
   region: string,
 ): Promise<{ kinematics: Config<"kinematics">; rt: Config<"rt"> }> {
-  const op = await readOperator((await readFeed(feed)).operator);
+  const info = await readFeed(feed);
+  const op = await readOperator(info.operator);
   const regionRt = join(REGIONS_DIR, region, "rt.json");
   return {
     kinematics: resolveKinematics(
       await readJson<unknown>(join(DEFAULTS_DIR, "kinematics.json")),
       op,
+      info,
       (await readFeedRoutes(feed)).routes,
     ),
     rt: resolveRt(
       await readJson<unknown>(join(DEFAULTS_DIR, "rt.json")),
       op,
+      info,
       (await exists(regionRt)) ?
         parseRegionRt(await readJson<unknown>(regionRt))
       : undefined,

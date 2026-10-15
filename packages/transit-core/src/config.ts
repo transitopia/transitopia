@@ -335,6 +335,20 @@ const feedAis = z.strictObject({
   glide,
 });
 
+// --- layers over the defaults: an operator's and a feed's overrides ---
+
+/** Overrides of config/defaults/kinematics.json: any of a mode's settings. */
+const kinematicsLayer = z.strictObject({
+  modes: z.record(z.string(), kinematicsOverride),
+});
+
+/** Overrides of config/defaults/rt.json that depend on the vehicles and data: prediction, carried delays, detours. */
+const rtLayer = z.strictObject({
+  prediction: prediction.partial().exactOptional(),
+  carry: carryShape.partial().exactOptional(),
+  detourNearM: pos.exactOptional(),
+});
+
 // --- config/feeds/<feed>/feed.json ---
 
 /** Ids of regions and feeds: they name directories, URL segments and database keys. */
@@ -403,6 +417,13 @@ const feed = z.strictObject({
   realtime: feedRealtime.exactOptional(),
   /** Its vessels' AIS positions, streamed by the server's leader (aisstream.io). */
   ais: feedAis.exactOptional(),
+  /** Overrides of its operator's vehicle settings, for this system's buses (e.g. a fleet of double-deckers). */
+  kinematics: kinematicsLayer.exactOptional(),
+  /**
+   * Overrides of its operator's settings for using its real-time data (prediction tuned on this
+   * system's recordings). Not to be confused with `realtime`, where the data comes from.
+   */
+  rt: rtLayer.exactOptional(),
   /** How its ids are shown to riders: a regex each, whose first group is the short form; absent, the whole id. */
   display: z
     .strictObject({
@@ -418,25 +439,24 @@ const operator = z.strictObject({
   id: slug,
   /** How riders know it ("BC Transit"): plans record it, and sources name it. */
   name: z.string().min(1),
-  /** Overrides of config/defaults/kinematics.json: any of a mode's settings. */
-  kinematics: z
-    .strictObject({ modes: z.record(z.string(), kinematicsOverride) })
-    .exactOptional(),
-  /** Overrides of config/defaults/rt.json that depend on its vehicles and data. */
-  rt: z
-    .strictObject({
-      prediction: prediction.partial().exactOptional(),
-      carry: carryShape.partial().exactOptional(),
-      detourNearM: pos.exactOptional(),
-    })
-    .exactOptional(),
+  kinematics: kinematicsLayer.exactOptional(),
+  rt: rtLayer.exactOptional(),
 });
 
-/** A region's rt.json: any of the real-time settings, over the defaults and its feeds' operators'. */
-const regionRt = rt.partial().extend({
-  prediction: prediction.partial().exactOptional(),
-  carry: carryShape.partial().exactOptional(),
-});
+/**
+ * A region's rt.json: settings about the place only (how its map polls, live dispatch), never about
+ * the vehicles or their data, which are the feeds' and operators' (a region can show several).
+ */
+const regionRt = rt
+  .pick({
+    clientPollS: true,
+    clientPollMaxS: true,
+    clientPollSlackS: true,
+    dispatchCheckS: true,
+    dispatchWindowDays: true,
+    serverPort: true,
+  })
+  .partial();
 
 // --- config/regions/<id>/region.json ---
 
@@ -511,18 +531,22 @@ function mergeLayers(base: unknown, over: unknown): unknown {
 }
 
 /**
- * A feed's vehicle settings: config/defaults/kinematics.json, its operator's overrides per mode,
- * and its routes' (routes.json → kinematics). The result is checked whole.
+ * A feed's vehicle settings: config/defaults/kinematics.json, its operator's overrides per mode, its
+ * own (feed.json → kinematics), and its routes' (routes.json → kinematics). The result is checked whole.
  */
 export function resolveKinematics(
   defaults: unknown,
   op: OperatorInfo,
+  feed: Pick<FeedInfo, "kinematics">,
   routeConfigs: readonly RouteConfig[],
 ): Config<"kinematics"> {
   const d = stripComments(defaults) as Record<string, unknown>;
   return parseConfig("kinematics", {
     ...d,
-    modes: mergeLayers(d["modes"], op.kinematics?.modes ?? {}),
+    modes: mergeLayers(
+      mergeLayers(d["modes"], op.kinematics?.modes ?? {}),
+      feed.kinematics?.modes ?? {},
+    ),
     routes: Object.fromEntries(
       routeConfigs.flatMap((r) =>
         r.kinematics ? [[r.key, r.kinematics]] : [],
@@ -532,21 +556,20 @@ export function resolveKinematics(
 }
 
 /**
- * Real-time settings for a region's feed: config/defaults/rt.json, the feed's operator's overrides,
- * then the region's (its rt.json, if it has one). The result is checked whole.
+ * Real-time settings for a feed in a region: config/defaults/rt.json, the feed's operator's
+ * overrides, the feed's, then the region's (its rt.json, if it has one: settings about the place
+ * only, so they never collide with the others). The result is checked whole.
  */
 export function resolveRt(
   defaults: unknown,
   op: OperatorInfo,
+  feed: Pick<FeedInfo, "rt">,
   region?: RegionRt,
 ): Config<"rt"> {
-  return parseConfig(
-    "rt",
-    mergeLayers(
-      mergeLayers(stripComments(defaults), op.rt ?? {}),
-      region ?? {},
-    ),
-  );
+  let merged = stripComments(defaults);
+  for (const layer of [op.rt, feed.rt, region])
+    merged = mergeLayers(merged, layer ?? {});
+  return parseConfig("rt", merged);
 }
 
 /** A feed's feed.json, checked. */
