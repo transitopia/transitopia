@@ -4,7 +4,7 @@
 // and destination, with how often each group runs and the stretches groups share.
 
 import { STOP_NO_PICKUP, type ServicePlan } from "../plan/types.ts";
-import { busStopLabel } from "../plan/bus-stops.ts";
+import { placeName as stopName } from "../plan/display.ts";
 import { bayNumber } from "../plan/exchanges.ts";
 import { serviceDayStart } from "../time.ts";
 import {
@@ -184,17 +184,10 @@ export function minutesBetween(
   return n ? 60 / n : undefined;
 }
 
-/** A stop's name for "to …": the station ("Columbia"), or a street stop's cross street ("Renfrew St"). */
+/** A stop's name for "to …" (plan/display.ts → placeName): the station ("Columbia"), exchange, or cross street ("Renfrew St"). */
 export function placeName(plan: ServicePlan, stopId: string): string {
-  const stop = plan.stops.find((s) => s.id === stopId);
-  if (!stop) return stopId;
-  const station =
-    stop.parent && plan.stations.find((s) => s.id === stop.parent);
-  const name = station ? station.name : stop.name;
-  return (busStopLabel(name) ?? name.split("@")[0]!.trim()).replace(
-    /\s+Station$/i,
-    "",
-  );
+  const i = plan.stops.findIndex((s) => s.id === stopId);
+  return i < 0 ? stopId : stopName(plan, i);
 }
 
 export interface SharedStretch {
@@ -204,13 +197,19 @@ export interface SharedStretch {
   departures: Departure[];
 }
 
-/** Shared stretches need at least this many stops in common after this one. */
+/**
+ * Shared stretches need at least this many stops in common after this one, or this long in
+ * common: routes running together only to the next corner aren't one service, but a short-turn of
+ * a rapid route with stops kilometres apart is (the 97's Queensway short-turns at Westside Rd: one
+ * stop, 4.8 km). Product choices, not operating assumptions.
+ */
 const MIN_SHARED_STOPS = 2;
+const MIN_SHARED_M = 500;
 
 /**
  * Groups that run the same way from here: the same next stops, in order, for at least a couple of
- * stops (e.g. both Expo Line branches to Columbia, or the R5 and 14 along Hastings to Renfrew).
- * Each stretch runs to where they split. Stations are compared by station, not platform.
+ * stops or MIN_SHARED_M (e.g. both Expo Line branches to Columbia, or the R5 and 14 along Hastings
+ * to Renfrew). Each stretch runs to where they split. Stations are compared by station, not platform.
  */
 export function sharedStretches(
   plan: ServicePlan,
@@ -220,13 +219,14 @@ export function sharedStretches(
     const s = plan.stops[stopIndex]!;
     return s.parent ?? s.id;
   };
-  // Each group's onward stops, from its soonest departure's pattern.
+  // Each group's onward stops (and how far along its shape each is), from its soonest departure's pattern.
   const onward = groups.map((g) => {
     const d = g.departures[0]!;
     const p = plan.patterns[d.pattern]!;
-    return p.stops.slice(d.index + 1).map((si) => ({
+    return p.stops.slice(d.index + 1).map((si, k) => ({
       key: keyOf(si),
       id: plan.stops[si]!.id,
+      m: p.dist[d.index + 1 + k]! - p.dist[d.index]!,
     }));
   });
   const byNext = new Map<string, number[]>();
@@ -244,7 +244,8 @@ export function sharedStretches(
       if (!k || !members.every((m) => onward[m]![n]?.key === k)) break;
       n++;
     }
-    if (n < MIN_SHARED_STOPS) continue;
+    if (n < MIN_SHARED_STOPS && onward[members[0]!]![n - 1]!.m < MIN_SHARED_M)
+      continue;
     const gs = members.map((m) => groups[m]!);
     out.push({
       groups: gs,

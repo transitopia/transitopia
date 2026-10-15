@@ -219,6 +219,57 @@ describe("grouping, frequency and shared stretches", () => {
   });
 });
 
+describe("shared stretches of short-turns", () => {
+  // A route to UBCO, and a short-turn of it ending one stop on (the 97 at Westside Rd).
+  const shortTurn = (gapM: number) => {
+    const stops = ["here", "queensway", "richter"].map((id) => ({
+      id,
+      name: id,
+      lon: 0,
+      lat: 0,
+    }));
+    const base = { route: "97", direction: 0, shape: "s" };
+    const plan = {
+      stops,
+      stations: [],
+      patterns: [
+        { ...base, id: 0, stops: [0, 1, 2], dist: [0, gapM, gapM + 900] },
+        { ...base, id: 1, stops: [0, 1], dist: [0, gapM] },
+      ],
+    } as unknown as ServicePlan;
+    const dep = (pattern: number, headsign: string, t: number) => ({
+      tripId: `${headsign}${t}`,
+      routeKey: "97",
+      headsign,
+      stopId: "here",
+      pattern,
+      index: 0,
+      serviceDate: DATE,
+      t,
+      sched: t,
+      source: "schedule" as const,
+      cancelled: false,
+    });
+    return sharedStretches(
+      plan,
+      groupDepartures([
+        dep(0, "UBCO", at(H8)),
+        dep(1, "Downtown", at(H8 + 300)),
+      ]),
+    );
+  };
+
+  it("shares a single stop that's far enough on", () => {
+    const [s] = shortTurn(4800);
+    expect(s?.groups.map((g) => g.headsign)).toEqual(["UBCO", "Downtown"]);
+    expect(s?.toStopId).toBe("queensway");
+  });
+
+  it("doesn't share a single stop just around the corner", () => {
+    expect(shortTurn(300)).toEqual([]);
+  });
+});
+
 describe("groupDepartures order", () => {
   const dep = (routeKey: string, t: number, platform?: string) => ({
     tripId: `${routeKey}${t}`,

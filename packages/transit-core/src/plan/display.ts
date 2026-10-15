@@ -3,6 +3,7 @@
 // (feeds/<feed>/feed.json → display: a regex whose first group is the short form), and the plan
 // carries that (ServicePlan.agency, feedLabel, tripIdPattern). Internally the full ids are kept.
 
+import { busStopLabel } from "./bus-stops.ts";
 import { baseName, isBay } from "./exchanges.ts";
 import { STOP_NO_PICKUP, type PlanPattern, type ServicePlan } from "./types.ts";
 
@@ -34,8 +35,9 @@ export function firstBoarding(pattern: PlanPattern): number {
 }
 
 /**
- * A stop as a rider would name it: its station, its exchange, or the stop without a direction
- * prefix ("Westbound Lougheed Hwy @ Boundary Loop" → "Lougheed Hwy @ Boundary Loop").
+ * A stop as a rider would name it: its station ("Waterfront"), its exchange ("Langford Exchange",
+ * from TransLink's "… @ Bay 7" and BC Transit's "… Exch Bay D" alike), or for a street stop its
+ * cross street ("Westbound W Broadway @ Alma St" → "Alma St"; names without "@" stay whole).
  */
 export function placeName(
   plan: Pick<ServicePlan, "stops" | "stations">,
@@ -44,7 +46,9 @@ export function placeName(
   const stop = plan.stops[stopIndex]!;
   const station =
     stop.parent && plan.stations.find((s) => s.id === stop.parent);
-  if (station) return station.name;
-  if (isBay(stop.name)) return baseName(stop.name);
-  return stop.name.replace(/^(North|South|East|West)bound\s+/i, "");
+  const name =
+    station ? station.name
+    : isBay(stop.name) ? baseName(stop.name)
+    : (busStopLabel(stop.name) ?? stop.name.split("@")[0]!.trim());
+  return name.replace(/\s+Station$/i, "");
 }

@@ -67,7 +67,7 @@ describe("ids as riders see them", () => {
       "Waterfront",
       "Langford Exchange",
       "Douglas St at Bay St",
-      "Lougheed Hwy @ Boundary Loop",
+      "Boundary Loop",
     ]);
   });
 
