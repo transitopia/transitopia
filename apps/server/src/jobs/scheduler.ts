@@ -7,6 +7,7 @@
 //   daily:<feed>:<service date>   a feed's observed stop times + route statistics, for each finished
 //                            service date still within the retention period (catch-up included)
 //   data:<local date>        build and publish the transit data (BUILD_DATA=1), at dataBuildAt
+//   data:<local date>-initial  the same, at once, while a feed has nothing published (dueDataBuilds)
 //   archive:<local hour>     copy closed recordings to the archive (ARCHIVE_REMOTE)
 
 import { existsSync } from "node:fs";
@@ -32,6 +33,22 @@ import { buildData } from "./data-build.ts";
 const TICK_MS = 5 * 60_000;
 /** A daily job whose last success is older than this is reported unhealthy (h). */
 const STALE_DAILY_H = 36;
+
+/**
+ * The data builds due this tick, by job key: the day's build once dataBuildAt has passed, then an
+ * initial build whenever a feed still has nothing published (a new server, a feed just added, or a
+ * deploy that changed where data is published), whatever the time. The day's build having run
+ * already doesn't stand in for it.
+ */
+export async function dueDataBuilds(opts: {
+  today: string;
+  due: boolean;
+  missing: () => boolean;
+  run: (key: string) => Promise<void>;
+}): Promise<void> {
+  if (opts.due) await opts.run(opts.today);
+  if (opts.missing()) await opts.run(`${opts.today}-initial`);
+}
 
 export class Jobs {
   private timer: ReturnType<typeof setTimeout> | undefined;
@@ -131,24 +148,22 @@ export class Jobs {
         }),
       );
     }
-    // Build first when a feed has nothing to serve yet (a fresh server, or a feed just added), else
-    // at the set time.
     if (this.env.buildData) {
       const [h, m] = recording.dataBuildAt.split(":").map(Number);
-      const due = wall.hour * 60 + wall.minute >= h! * 60 + m!;
-      const missing = this.feeds.some(
-        (f) => !existsSync(feedPaths(f.id).manifest),
-      );
-      if (missing || due) {
-        const key = missing && !due ? `${today}-initial` : today;
-        if (
-          !db
-          && this.lastDataBuild
-          && localDate(this.lastDataBuild) === today
-          && !missing
-        ) {
-          // Built today already (no job_runs without a database).
-        } else
+      await dueDataBuilds({
+        today,
+        due: wall.hour * 60 + wall.minute >= h! * 60 + m!,
+        missing: () =>
+          this.feeds.some((f) => !existsSync(feedPaths(f.id).manifest)),
+        run: async (key) => {
+          // Without a database there's no job_runs: the day's build runs once per process.
+          if (
+            !db
+            && key === today
+            && this.lastDataBuild
+            && localDate(this.lastDataBuild) === today
+          )
+            return;
           await this.job("data", key, async () => {
             const r = await buildData({
               db,
@@ -161,7 +176,8 @@ export class Jobs {
             this.lastDataBuild = Date.now();
             return r;
           });
-      }
+        },
+      });
     }
     if (db) {
       const realtime = this.feeds.filter((f): f is FeedInfo & RealtimeFeed =>
