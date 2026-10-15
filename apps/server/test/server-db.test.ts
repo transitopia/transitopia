@@ -139,10 +139,12 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
     // Clients only see routes we draw (none here).
     expect(service.liveResponse().snapshot?.vehicles).toEqual([]);
     // The hour file has every vehicle; /rt/history serves only drawn routes.
-    const day = (await readdir(dir)).find((d) => /^\d{4}-/.test(d))!;
-    const [hourFile] = await readdir(join(dir, day));
+    // Each feed records under its own directory.
+    const feedDir = join(dir, "translink");
+    const day = (await readdir(feedDir)).find((d) => /^\d{4}-/.test(d))!;
+    const [hourFile] = await readdir(join(feedDir, day));
     const recorded = JSON.parse(
-      (await readFile(join(dir, day, hourFile!), "utf8")).split("\n")[0]!,
+      (await readFile(join(feedDir, day, hourFile!), "utf8")).split("\n")[0]!,
     );
     expect(recorded.v.length).toBe(2);
     const hist = await service.handle(
@@ -163,8 +165,10 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
     const status = JSON.parse(
       String((await service.handle("/rt/status", new URLSearchParams())).body),
     );
-    expect(status.budget.used24h).toBe(3);
-    expect(status.budget.nextPollInS.positions).toBeGreaterThan(0);
+    expect(status.providers.translink.budget.used24h).toBe(3);
+    expect(
+      status.providers.translink.budget.nextPollInS.positions,
+    ).toBeGreaterThan(0);
   });
 
   it("elects one leader, and a follower forwards to it and takes over when it goes", async () => {

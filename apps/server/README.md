@@ -109,7 +109,7 @@ From the environment (`src/env.ts`; production values in `infra/.env.example`):
 | `BUILD_DATA=1`, `DATA_PUBLISH_REMOTE`, `ARCHIVE_REMOTE` | Build and publish the transit data; rclone destinations for it and the archive |
 | `TRANSLINK_API_KEY`, `AISSTREAM_API_KEY` | Upstream keys (or `.secrets`); used only with `RT_POLL=1` |
 
-The server refuses to start on outdated time zone data (`timezoneChecks` in each `region.json`). It upserts the `regions` and `feeds` tables from the files when it starts, and moves files recorded before feeds had ids into TransLink's directories (`packages/data/src/legacy.ts`). Its own settings (port, recording, live dispatch) are still read from Metro Vancouver's `config/`.
+The server refuses to start on outdated time zone data (`timezoneChecks` in each `region.json`). It upserts the `regions` and `feeds` tables from the files when it starts (`src/sources.ts`; the import and statistics tools do too, since rows of a feed reference it), and moves files recorded before feeds had ids into TransLink's directories (`packages/data/src/legacy.ts`). Its own settings (port, recording, live dispatch) are still read from Metro Vancouver's `config/`.
 
 ## Command-line tools
 

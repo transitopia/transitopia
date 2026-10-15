@@ -24,6 +24,7 @@ import { CorrectionsRepo } from "./corrections.ts";
 import { Auth } from "./auth.ts";
 import { createApp } from "./app.ts";
 import { Jobs } from "./jobs/scheduler.ts";
+import { syncSources } from "./sources.ts";
 
 const log = (m: string) => console.log(`[server] ${m}`);
 
@@ -68,23 +69,7 @@ if (env.databaseUrl) {
   const applied = await migrate(db.pool, log);
   if (!applied.length) log("database schema up to date");
   await ensurePartitions(db.db);
-  // The regions and feeds tables follow the files.
-  for (const r of regions)
-    await db.db
-      .insertInto("regions")
-      .values({ id: r.id, name: r.name, timezone: r.timezone })
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({ name: r.name, timezone: r.timezone }),
-      )
-      .execute();
-  for (const f of feeds) {
-    const row = { name: f.name, agency: f.agency, timezone: f.timezone };
-    await db.db
-      .insertInto("feeds")
-      .values({ id: f.id, ...row })
-      .onConflict((oc) => oc.column("id").doUpdateSet(row))
-      .execute();
-  }
+  await syncSources(db.db, regions, feeds);
 }
 const store = db ? new Store(db.db, RAIL_REGION) : undefined;
 const repo = db ? new CorrectionsRepo(db.db, RAIL_REGION) : undefined;

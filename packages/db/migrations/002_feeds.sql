@@ -62,3 +62,7 @@ alter table route_stats_daily alter column feed_id drop default;
 alter table route_stats_daily drop constraint route_stats_daily_pkey;
 alter table route_stats_daily add primary key (feed_id, service_date, route_id, direction_id, band);
 alter table route_stats_daily drop column region_id;
+
+-- The daily statistics job runs per feed now (key "<feed>:<service date>"): TransLink's runs so far
+-- keep counting as done, so the dates they cover aren't recomputed.
+update job_runs set key = 'translink:' || key where job = 'daily' and key !~ ':';

@@ -45,6 +45,7 @@ import type { DispatchPatch } from "@transitopia/transit-core/dispatch/patch.ts"
 import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
 import { Store } from "../store.ts";
 import { CorrectionsRepo } from "../corrections.ts";
+import { syncSources } from "../sources.ts";
 
 const args = process.argv.slice(2);
 const varDir =
@@ -57,6 +58,7 @@ if (!url) {
 const log = (m: string) => console.log(`[import] ${m}`);
 const { db, pool } = createDb(url);
 await migrate(pool, log);
+await syncSources(db);
 const store = new Store(db, RAIL_REGION);
 if (varDir === VAR_DIR) await migrateLegacyFiles();
 /** AIS fixes' polls are recorded under TransLink's feed (Store). */

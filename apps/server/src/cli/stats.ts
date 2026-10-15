@@ -10,6 +10,7 @@ import { readFeed, readFeeds } from "@transitopia/data/paths.ts";
 import { createDb } from "@transitopia/db/connect.ts";
 import { migrate } from "@transitopia/db/migrate.ts";
 import { dailyStats, type RealtimeFeed } from "../jobs/daily.ts";
+import { syncSources } from "../sources.ts";
 
 const url = process.env.DATABASE_URL;
 const args = process.argv.slice(2);
@@ -27,6 +28,7 @@ const feeds = (only ? [await readFeed(only)] : await readFeeds()).filter(
 );
 const { db, pool } = createDb(url);
 await migrate(pool);
+await syncSources(db);
 for (const feed of feeds)
   for (const date of dates) {
     const t0 = Date.now();
