@@ -361,12 +361,13 @@ export async function health({ service, db, jobs }: AppDeps): Promise<Health> {
       ].join("; "),
     };
   }
-  if (status.leader && status.ais) {
-    const age = status.ais.lastMessageAgeS;
-    checks.ais = {
+  for (const [feed, ais] of Object.entries(status.ais)) {
+    if (!status.leader || !ais) continue;
+    const age = ais.lastMessageAgeS;
+    checks[`${feed}/ais`] = {
       // Moored vessels still report every few minutes.
-      ok: status.ais.connected && age !== null && age <= 1800,
-      detail: `${status.ais.connected ? "connected" : "disconnected"}, last message ${age ?? "never"} s ago`,
+      ok: ais.connected && age !== null && age <= 1800,
+      detail: `${ais.connected ? "connected" : "disconnected"}, last message ${age ?? "never"} s ago`,
     };
   }
   if (jobs) Object.assign(checks, await jobs.health());

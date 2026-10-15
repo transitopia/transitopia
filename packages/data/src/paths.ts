@@ -92,6 +92,8 @@ export function feedPaths(feed: string): {
   manifest: string;
   /** Real-time recordings (hour files, service changes, alerts, coverage, the request ledger). */
   rtHistory: string;
+  /** AIS recordings of its vessels (hour files, coverage), where it has them (feed.json → ais). */
+  aisHistory: string;
 } {
   return {
     dir: join(FEEDS_DIR, feed),
@@ -99,6 +101,7 @@ export function feedPaths(feed: string): {
     out: join(PUBLIC_DIR, feedDataPath(feed)),
     manifest: join(PUBLIC_DIR, feedDataPath(feed, undefined, "manifest.json")),
     rtHistory: join(RT_HISTORY_DIR, feed),
+    aisHistory: join(AIS_HISTORY_DIR, feed),
   };
 }
 

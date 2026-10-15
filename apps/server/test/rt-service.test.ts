@@ -156,7 +156,7 @@ describe("RtService", () => {
       status: "ok",
       encoding: "rt-snapshot/1",
     });
-    expect(body.sources["seabus/ais"]).toMatchObject({
+    expect(body.sources["translink/ais"]).toMatchObject({
       kind: "ais",
       status: "unavailable",
       data: [],
@@ -200,7 +200,7 @@ describe("RtService", () => {
     ).toBe(404);
 
     // The SeaBus day file says why there are no fixes.
-    const ais = await get(`/regions/test-region/days/${date}/seabus/ais`);
+    const ais = await get(`/regions/test-region/days/${date}/translink/ais`);
     expect(JSON.parse(String(ais.body))).toMatchObject({
       status: "unavailable",
       fixes: [],

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseConfig } from "@transitopia/transit-core/config.ts";
+import { parseConfig, parseFeed } from "@transitopia/transit-core/config.ts";
 import {
   encodeFixes,
   serviceDateWindow,
@@ -11,12 +11,12 @@ import { preparePlan } from "@transitopia/transit-core/schedule/engine.ts";
 import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
 import kinematics from "@transitopia/config/defaults/kinematics.json";
 import rt from "@transitopia/config/defaults/rt.json";
-import seabus from "@transitopia/config/regions/metro-vancouver/seabus.json";
+import translink from "@transitopia/config/feeds/translink/feed.json";
 import { AisClient } from "../src/ais.ts";
 
 const config = {
   rt: parseConfig("rt", rt),
-  seabus: parseConfig("seabus", seabus),
+  feed: parseFeed(translink),
 };
 const plan: ServicePlan = {
   schema: 1,
@@ -59,7 +59,7 @@ const live = (
   schema: 1,
   nextAt: null,
   sources: {
-    "seabus/ais": {
+    "translink/ais": {
       kind: "ais",
       encoding: "ais-fixes/1",
       route: "seabus",
@@ -89,7 +89,7 @@ describe("AisClient", () => {
     const state = () => (client as any).dates.get(DATE);
 
     client.pairFor(DATE, pp);
-    expect(urls).toEqual(["https://api/regions/r/days/20261014/seabus/ais"]);
+    expect(urls).toEqual(["https://api/regions/r/days/20261014/translink/ais"]);
     await vi.waitFor(() => expect(state().loading).toBe(false));
     expect(state().fixes).toHaveLength(1);
     expect(state().syncedTo).toBe(t0);

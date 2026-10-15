@@ -1,13 +1,13 @@
 // Evaluate recorded SeaBus AIS fixes against the timetable (packages/transit-core/DESIGN.md#seabus-ais): how many fixes match a
 // trip, how late each vessel ran, which vessel ran which block, and which berths were used.
 //
-//   npx tsx pipelines/eval-ais.ts [YYYYMMDD]      # default: today's service date
+//   npx tsx pipelines/eval-ais.ts [YYYYMMDD] [--feed translink]     # default: today's service date
 
 import { join } from "node:path";
 import {
   INFRA_DIR,
-  AIS_HISTORY_DIR,
-  readConfig,
+  feedPaths,
+  readFeed,
   readJson,
   railFeedConfig,
 } from "@transitopia/data/paths.ts";
@@ -28,26 +28,33 @@ import {
 } from "@transitopia/transit-core/time.ts";
 
 const kin = (await railFeedConfig()).kinematics;
-const seabus = await readConfig("seabus");
+const feedArg = process.argv.indexOf("--feed");
+const FEED = feedArg >= 0 ? process.argv[feedArg + 1]! : "translink";
+const ais = (await readFeed(FEED)).ais;
+if (!ais)
+  throw new Error(`Feed ${FEED} has no vessels with AIS (feed.json → ais)`);
 const infra = await readJson<any>(join(INFRA_DIR, "seabus.json"));
-const cfg: AisMatchConfig = seabus.ais.match;
-const names = new Map(seabus.ais.vessels.map((v) => [v.mmsi, v.name]));
+const cfg: AisMatchConfig = ais.match;
+const names = new Map(ais.vessels.map((v) => [v.mmsi, v.name]));
 
 const now = Temporal.Now.zonedDateTimeISO(TIMEZONE);
 const date =
-  process.argv[2]
+  process.argv.slice(2).find((a) => /^\d{8}$/.test(a))
   ?? localDate(
     (now.hour < 3 ? now.subtract({ days: 1 }) : now).epochMilliseconds,
   );
 const pp = preparePlan(await loadLatestPlan(), kin);
 const fixes = (
-  await readRecordedFixes(new Recorder(AIS_HISTORY_DIR, 75_000), date)
+  await readRecordedFixes(
+    new Recorder(feedPaths(FEED).aisHistory, ais.coverageGapS * 1000),
+    date,
+  )
 ).map((f) => ({ ...f, name: names.get(f.mmsi) ?? f.name }));
 if (!fixes.length) {
-  console.log(`No recorded AIS fixes for ${date} (var/ais-history/).`);
+  console.log(`No recorded AIS fixes for ${date} (var/ais-history/${FEED}/).`);
   process.exit(0);
 }
-const r = aisCorrections(pp, date, fixes, "seabus", cfg);
+const r = aisCorrections(pp, date, fixes, ais.route, cfg);
 const dayStart = serviceDayStart(date);
 const hm = (ms: number) => formatServiceTime((ms - dayStart) / 1000, true);
 console.log(

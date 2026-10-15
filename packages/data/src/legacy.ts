@@ -1,12 +1,17 @@
 // Files from before feeds had ids (docs/DESIGN.md#regions-and-feeds), all TransLink's, moved once
-// into TransLink's directories: archived GTFS zips (var/raw/gtfs/<version>/) and real-time
-// recordings (var/rt-history/<date>/, changes/, alerts.ndjson, coverage.json, requests.json). The
-// leader's lock file stays where it is. Idempotent and cheap, so everything that reads these calls it.
+// into TransLink's directories: archived GTFS zips (var/raw/gtfs/<version>/), real-time recordings
+// (var/rt-history/<date>/, changes/, alerts.ndjson, coverage.json, requests.json) and SeaBus AIS
+// recordings (var/ais-history/<date>/, coverage.json). The leader's lock file stays where it is. Idempotent and cheap, so everything that reads these calls it.
 
 import { existsSync } from "node:fs";
 import { mkdir, readdir, rename } from "node:fs/promises";
 import { join } from "node:path";
-import { GTFS_RAW_DIR, RT_HISTORY_DIR, feedPaths } from "./paths.ts";
+import {
+  AIS_HISTORY_DIR,
+  GTFS_RAW_DIR,
+  RT_HISTORY_DIR,
+  feedPaths,
+} from "./paths.ts";
 import { LEGACY_FEED } from "@transitopia/transit-core/plan/types.ts";
 
 const RT_FILES = new Set([
@@ -46,8 +51,14 @@ export async function migrateLegacyFiles(): Promise<string[]> {
     feedPaths(LEGACY_FEED).rtHistory,
     (n) => /^\d{4}-\d{2}-\d{2}$/.test(n) || RT_FILES.has(n),
   );
+  const ais = await moveInto(
+    AIS_HISTORY_DIR,
+    feedPaths(LEGACY_FEED).aisHistory,
+    (n) => /^\d{4}-\d{2}-\d{2}$/.test(n) || n === "coverage.json",
+  );
   return [
     ...gtfs.map((v) => `var/raw/gtfs/${v}`),
     ...rt.map((n) => `var/rt-history/${n}`),
+    ...ais.map((n) => `var/ais-history/${n}`),
   ];
 }

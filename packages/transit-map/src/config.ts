@@ -17,6 +17,4 @@ export interface RegionConfig {
    * region's tracks, movements, dispatch patches and observations. Absent: timetables and real time only.
    */
   operations?: Config<"operations"> | undefined;
-  /** SeaBus AIS, in a region that has it. */
-  seabus?: Config<"seabus"> | undefined;
 }

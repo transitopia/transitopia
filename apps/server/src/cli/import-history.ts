@@ -9,7 +9,7 @@
 //   var/rt-history/<feed>/requests.json            → upstream_requests (the 24-hour ledger)
 //   var/raw/gtfs/<feed>/<version>/                 → gtfs_feeds (without archive keys; the data job uploads them)
 // and:
-//   var/ais-history/<date>/<HH>.ndjson[.gz] → rt_polls + ais_fixes
+//   var/ais-history/<feed>/<date>/<HH>.ndjson[.gz] → rt_polls + ais_fixes, for each feed with vessels
 //   var/dispatch-history/<date>/<v>.json    → dispatch_versions
 //   config/regions/metro-vancouver/{observations,disruptions} → corrections (as on every start)
 //
@@ -61,8 +61,6 @@ await migrate(pool, log);
 await syncSources(db);
 const store = new Store(db, RAIL_REGION);
 if (varDir === VAR_DIR) await migrateLegacyFiles();
-/** AIS fixes' polls are recorded under TransLink's feed (Store). */
-const AIS_FEED = "translink";
 
 /** Our route key → GTFS route_id, from a feed's built plans (the newest version wins). */
 async function routeIds(feed: string): Promise<Map<string, string>> {
@@ -257,26 +255,28 @@ for (const feed of (await readFeeds()).filter((f) => f.realtime)) {
       .execute();
 }
 
-// AIS.
-let batches = 0;
-for await (const h of hourFiles(join(varDir, "ais-history"))) {
-  if (
-    !h.snapshots.length
-    || (await imported(AIS_FEED, "ais", h.snapshots[0]!.fetchedAt))
-  )
-    continue;
-  await ensurePartitionsFor(
-    db,
-    h.snapshots[0]!.fetchedAt,
-    h.snapshots[h.snapshots.length - 1]!.fetchedAt,
-  );
-  for (const s of h.snapshots) {
-    if (await imported(AIS_FEED, "ais", s.fetchedAt)) continue;
-    await store.recordAis(s.fetchedAt, s.vehicles.map(vehicleToFix));
-    batches++;
+// AIS, per feed with vessels.
+for (const feed of (await readFeeds()).filter((f) => f.ais)) {
+  let batches = 0;
+  for await (const h of hourFiles(join(varDir, "ais-history", feed.id))) {
+    if (
+      !h.snapshots.length
+      || (await imported(feed.id, "ais", h.snapshots[0]!.fetchedAt))
+    )
+      continue;
+    await ensurePartitionsFor(
+      db,
+      h.snapshots[0]!.fetchedAt,
+      h.snapshots[h.snapshots.length - 1]!.fetchedAt,
+    );
+    for (const s of h.snapshots) {
+      if (await imported(feed.id, "ais", s.fetchedAt)) continue;
+      await store.recordAis(feed.id, s.fetchedAt, s.vehicles.map(vehicleToFix));
+      batches++;
+    }
   }
+  log(`${feed.id} AIS: ${batches} batches`);
 }
-log(`AIS: ${batches} batches`);
 
 // Dispatch versions.
 const dispatchDir = join(varDir, "dispatch-history");

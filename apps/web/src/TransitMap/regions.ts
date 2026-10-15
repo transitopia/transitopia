@@ -26,7 +26,7 @@ const regionFiles: Files = import.meta.glob(
   json,
 );
 const regionSettings: Files = import.meta.glob(
-  "../../../../config/regions/*/{rt,operations,seabus}.json",
+  "../../../../config/regions/*/{rt,operations}.json",
   json,
 );
 const feedFiles: Files = import.meta.glob(
@@ -76,7 +76,6 @@ function siteRegion(info: RegionInfo): SiteRegion {
   );
   const rt = file(regionSettings, "regions", info.id, "rt");
   const operations = file(regionSettings, "regions", info.id, "operations");
-  const seabus = file(regionSettings, "regions", info.id, "seabus");
   return {
     info,
     config: {
@@ -94,9 +93,6 @@ function siteRegion(info: RegionInfo): SiteRegion {
       ...(operations === undefined ?
         {}
       : { operations: parseConfig("operations", operations) }),
-      ...(seabus === undefined ?
-        {}
-      : { seabus: parseConfig("seabus", seabus) }),
     },
   };
 }

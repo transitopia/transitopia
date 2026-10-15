@@ -1,5 +1,5 @@
 // The settings the server uses, checked when it starts (packages/transit-core/src/config.ts): its
-// rail region's (SeaBus AIS, live dispatch, recording, and its port), real-time settings resolved
+// rail region's (live dispatch, recording, and its port), real-time settings resolved
 // from config/defaults/rt.json, TransLink's overrides and Metro Vancouver's. Each feed's polling is
 // in its feed.json (readFeeds in main.ts).
 
@@ -13,7 +13,6 @@ import defaultRt from "@transitopia/config/defaults/rt.json" with { type: "json"
 import translink from "@transitopia/config/operators/translink/operator.json" with { type: "json" };
 import recordingJson from "@transitopia/config/regions/metro-vancouver/recording.json" with { type: "json" };
 import rtJson from "@transitopia/config/regions/metro-vancouver/rt.json" with { type: "json" };
-import seabusJson from "@transitopia/config/regions/metro-vancouver/seabus.json" with { type: "json" };
 
 function required<T>(value: T | undefined, name: string): T {
   if (value === undefined)
@@ -35,4 +34,3 @@ export const rtConfig = {
   dispatchWindowDays: required(rt.dispatchWindowDays, "dispatchWindowDays"),
   serverPort: required(rt.serverPort, "serverPort"),
 };
-export const seabusConfig = parseConfig("seabus", seabusJson);

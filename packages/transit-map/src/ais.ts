@@ -1,5 +1,5 @@
 // Browser side of SeaBus AIS (packages/transit-core/DESIGN.md#seabus-ais): a service date's fixes come from its day file
-// (GET /regions/<id>/days/<YYYYMMDD>/seabus/ais, shared by every visitor), then from the live
+// (GET /regions/<id>/days/<YYYYMMDD>/<feed>/ais, shared by every visitor), then from the live
 // endpoint's trailing window while the clock is near now (acceptLive). Both are by batch time on the
 // server, so a window that starts before what the day file reached continues it; one that doesn't
 // (the tab slept) refetches the day file. Fixes become schedule corrections with the core matcher.
@@ -13,7 +13,7 @@ import {
   type AisDayResponse,
 } from "@transitopia/transit-core/ais/fixes.ts";
 import {
-  sectionsOfKind,
+  sectionOf,
   type LiveTransitResponse,
 } from "@transitopia/transit-core/rt/live.ts";
 import {
@@ -34,7 +34,6 @@ import type {
 import { serviceDayStart } from "@transitopia/transit-core/time.ts";
 import type { RegionConfig } from "./config.ts";
 
-const ROUTE = "seabus";
 const MAX_DATES = 4;
 
 interface DateFixes {
@@ -71,6 +70,9 @@ export class AisClient {
   error: string | undefined;
   /** URL prefix of the region on the RT service (…/regions/<id>/), or undefined for schedules only. */
   private readonly base: string | undefined;
+  /** The feed whose vessels these are, and their route. */
+  private readonly feed: string;
+  private readonly route: string;
   private readonly match: AisMatchConfig | undefined;
   private readonly glide: GlideConfig | undefined;
   /** Vessel names by MMSI. */
@@ -82,17 +84,19 @@ export class AisClient {
 
   constructor(
     base: string | undefined,
-    config: Pick<RegionConfig, "rt" | "seabus">,
+    config: Pick<RegionConfig, "rt" | "feed">,
     liveFresh: () => boolean,
   ) {
     this.base = base;
-    const ais = config.seabus?.ais;
+    const ais = config.feed.ais;
+    this.feed = config.feed.id;
+    this.route = ais?.route ?? "";
     this.match = ais?.match;
     this.glide = ais?.glide;
     this.names = new Map(ais?.vessels.map((v) => [v.mmsi, v.name]));
     this.refreshS = config.rt.clientPollMaxS;
     this.liveFresh = liveFresh;
-    // A region without SeaBus (config.seabus) has nothing to match.
+    // A feed without vessels (feed.json → ais) has nothing to match.
     this.available = base !== undefined && ais !== undefined;
   }
 
@@ -152,7 +156,7 @@ export class AisClient {
     if (!d.fixes.length) return undefined;
     if (d.memo?.pp !== pp || d.memo.n !== d.fixes.length) {
       const prev = d.memo?.pp === pp ? d.memo : undefined;
-      const day = aisCorrections(pp, date, d.fixes, ROUTE, this.match!);
+      const day = aisCorrections(pp, date, d.fixes, this.route, this.match!);
       let glide: (Glide & { from: number }) | undefined;
       if (prev && d.arrivedAt !== undefined) {
         // Glide from what was on screen when the fixes arrived (mid-glide, if one was running).
@@ -164,7 +168,7 @@ export class AisClient {
         const g = glideCorrections(
           pp,
           date,
-          ROUTE,
+          this.route,
           shown,
           day.corrections,
           k,
@@ -181,7 +185,7 @@ export class AisClient {
   /** The SeaBus window of a live response: new fixes for the dates loaded, and how far they reach. */
   acceptLive(r: LiveTransitResponse): void {
     if (!this.available) return;
-    const live = sectionsOfKind(r, "ais").find((x) => x.route === ROUTE);
+    const live = sectionOf(r, `${this.feed}/ais`, "ais");
     if (!live) return;
     this.error = live.error;
     if (live.status === "unavailable") return;
@@ -220,7 +224,7 @@ export class AisClient {
     d.gap = false;
     try {
       // Revalidated with the ETag: an unchanged day file is a 304.
-      const res = await fetch(`${this.base}days/${date}/seabus/ais`, {
+      const res = await fetch(`${this.base}days/${date}/${this.feed}/ais`, {
         cache: "no-cache",
       });
       if (res.status === 404) {

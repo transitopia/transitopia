@@ -4,7 +4,7 @@
 // The live endpoint and the per-date files it points to (apps/server/README.md#live-endpoint):
 //
 //   GET /regions/<id>/live/transit                          every live source in one shared, edge-cached response
-//   GET /regions/<id>/days/<YYYYMMDD>/seabus/ais            SeaBus AIS fixes recorded for a service date so far
+//   GET /regions/<id>/days/<YYYYMMDD>/<feed>/ais            a feed's vessels' AIS fixes recorded for a service date so far
 //   GET /regions/<id>/days/<YYYYMMDD>/<feed>/changes        a service date's bus service changes in a feed (current)
 //   GET /regions/<id>/days/<YYYYMMDD>/<feed>/changes/<v>.json   a version of them (immutable)
 //
@@ -28,9 +28,10 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import translinkFeed from "@transitopia/config/feeds/translink/feed.json" with { type: "json" };
-import { rtConfig, seabusConfig } from "../config.ts";
+import { rtConfig } from "../config.ts";
 import {
   parseFeed,
+  type FeedAis,
   type FeedInfo,
   type RegionInfo,
 } from "@transitopia/transit-core/config.ts";
@@ -126,9 +127,8 @@ export function notModified(
   return Boolean(hash && ifNoneMatch?.includes(hash));
 }
 
-/** How long the edge may keep a day file of a date still in progress (s); see seabus.json → ais.liveWindowS. */
+/** How long the edge may keep a day file of a date still in progress (s); see feed.json → ais.liveWindowS. */
 const AIS_DAY_MAX_AGE_S = 60;
-const SEABUS_ROUTE = "seabus";
 
 /** A region as the service needs it: its id and the feeds it shows. */
 export type ServedRegion = Pick<RegionInfo, "id" | "feeds">;
@@ -151,6 +151,7 @@ export interface RtServiceOptions {
   apiKey?: string | null;
   /** Override the aisstream.io key lookup; null means no key (no AIS feed). */
   aisApiKey?: string | null;
+  /** Where AIS fixes go: each feed's under <aisHistoryDir>/<feed>/. */
   aisHistoryDir?: string;
   /** Where confirmed disruptions live and alert drafts are written (default config/regions/metro-vancouver/disruptions). */
   disruptionsDir?: string;
@@ -185,7 +186,14 @@ export class RtService {
   private running = false;
   private startedAt = Date.now();
   readonly dispatcher: LiveDispatcher | undefined;
-  readonly ais: AisFeed | undefined;
+  /**
+   * Feeds whose vessels report AIS (feed.json → ais), by feed id, each with its stream when this
+   * process streams (a key, RT_POLL). aisstream.io allows 3 connections per account: one per feed.
+   */
+  readonly aisFeeds = new Map<
+    string,
+    { cfg: FeedAis; stream: AisFeed | undefined }
+  >();
   private log: (msg: string) => void;
   private record: boolean;
   private historyDir: string;
@@ -255,24 +263,30 @@ export class RtService {
       opts.aisApiKey === null || opts.forwardTo || !poll ?
         undefined
       : (opts.aisApiKey ?? aisstreamApiKey());
-    if (aisKey) {
-      this.ais = new AisFeed({
-        apiKey: aisKey,
-        cfg: seabusConfig.ais,
-        route: SEABUS_ROUTE,
-        recorder: new Recorder(
-          opts.aisHistoryDir ?? AIS_HISTORY_DIR,
-          seabusConfig.ais.coverageGapS * 1000,
-        ),
-        record: this.record,
-        log: (m) => this.log(`AIS: ${m}`),
-        ...(opts.store ?
-          {
-            onBatch: (at: number, fixes: AisFix[]) =>
-              opts.store!.recordAis(at, fixes),
-          }
-        : {}),
-      });
+    for (const feed of opts.feeds ?? [parseFeed(translinkFeed)]) {
+      const cfg = feed.ais;
+      if (!cfg) continue;
+      const stream =
+        aisKey ?
+          new AisFeed({
+            apiKey: aisKey,
+            cfg,
+            route: cfg.route,
+            recorder: new Recorder(
+              join(opts.aisHistoryDir ?? AIS_HISTORY_DIR, feed.id),
+              cfg.coverageGapS * 1000,
+            ),
+            record: this.record,
+            log: (m) => this.log(`${feed.id} AIS: ${m}`),
+            ...(opts.store ?
+              {
+                onBatch: (at: number, fixes: AisFix[]) =>
+                  opts.store!.recordAis(feed.id, at, fixes),
+              }
+            : {}),
+          })
+        : undefined;
+      this.aisFeeds.set(feed.id, { cfg, stream });
     }
     // Alert drafts and their history go with the rail region's (first) feed's recordings.
     const draftsFeed = [...railFeeds][0] ?? LEGACY_FEED;
@@ -282,6 +296,11 @@ export class RtService {
       historyDir: join(this.historyDir, draftsFeed),
       log: this.log,
     });
+  }
+
+  /** TransLink's AIS stream (GET /rt/ais/fixes, from before feeds had ids). */
+  get ais(): AisFeed | undefined {
+    return this.aisFeeds.get(LEGACY_FEED)?.stream;
   }
 
   /** Whether TransLink's key is configured (the poller /rt/live serves). */
@@ -368,7 +387,8 @@ export class RtService {
       return;
     }
     const polls = [...this.pollers.values()].some((p) => p.polling);
-    if (polls || this.ais || this.store) {
+    const streams = [...this.aisFeeds.values()].some((a) => a.stream);
+    if (polls || streams || this.store) {
       await mkdir(this.historyDir, { recursive: true });
       if (!(await this.acquireLeadership())) return;
     }
@@ -382,13 +402,16 @@ export class RtService {
     this.onLead?.();
     // The leader (or a standalone process without a key) dispatches; followers forward to it.
     this.dispatcher?.start();
-    if (this.ais) {
-      this.log("Streaming SeaBus positions from aisstream.io");
-      await this.ais.start();
-    } else
-      this.log(
-        "No AISSTREAM_API_KEY (env or .secrets): SeaBus positions estimated from the schedule.",
-      );
+    for (const [id, a] of this.aisFeeds) {
+      if (!a.stream) {
+        this.log(
+          `No AISSTREAM_API_KEY (env or .secrets), or not polling: ${id}'s vessels estimated from the schedule.`,
+        );
+        continue;
+      }
+      this.log(`Streaming ${id}'s vessel positions from aisstream.io`);
+      await a.stream.start();
+    }
     // The last alerts, so /rt/alerts and /admin aren't empty until the first alerts poll.
     if (this.pollers.size)
       this.alerts = await this.alertDrafts.restore().catch((e: Error) => {
@@ -402,7 +425,7 @@ export class RtService {
     this.running = false;
     this.isLeader = false;
     this.dispatcher?.stop();
-    this.ais?.stop();
+    for (const a of this.aisFeeds.values()) a.stream?.stop();
     for (const p of this.pollers.values()) p.stop();
     if (this.leaderRetry) clearTimeout(this.leaderRetry);
     void this.leaderLock?.release();
@@ -473,10 +496,14 @@ export class RtService {
       const next = p.nextDataAt();
       if (next !== undefined) due.push(next);
     }
-    if (region.id === this.railRegion) {
-      r.sources["seabus/ais"] = this.aisSection();
-      const next = this.ais?.nextBatchAt();
+    for (const feed of region.feeds) {
+      const a = this.aisFeeds.get(feed);
+      if (!a) continue;
+      r.sources[`${feed}/ais`] = this.aisSection(a);
+      const next = a.stream?.nextBatchAt();
       if (next !== undefined) due.push(next);
+    }
+    if (region.id === this.railRegion) {
       if (this.dispatcher)
         r.sources["dispatch"] = {
           kind: "dispatch",
@@ -487,24 +514,27 @@ export class RtService {
     return r;
   }
 
-  private aisSection(): LiveAisSection {
-    if (!this.ais)
+  private aisSection(a: {
+    cfg: FeedAis;
+    stream: AisFeed | undefined;
+  }): LiveAisSection {
+    if (!a.stream)
       return {
         kind: "ais",
         encoding: "ais-fixes/1",
-        route: SEABUS_ROUTE,
+        route: a.cfg.route,
         status: "unavailable",
         error: "No aisstream.io API key configured",
         from: 0,
         to: 0,
         data: [],
       };
-    const st = this.ais.status();
-    const w = this.ais.liveWindow(seabusConfig.ais.liveWindowS * 1000);
+    const st = a.stream.status();
+    const w = a.stream.liveWindow(a.cfg.liveWindowS * 1000);
     const ais: LiveAisSection = {
       kind: "ais",
       encoding: "ais-fixes/1",
-      route: SEABUS_ROUTE,
+      route: a.cfg.route,
       status: st.connected ? "ok" : "stale",
       from: w.from,
       to: w.to,
@@ -534,13 +564,17 @@ export class RtService {
           );
       return tagged(JSON.stringify(r), `public, max-age=${maxAge}`);
     }
-    const ais = /^\/days\/(\d{8})\/seabus\/ais$/.exec(rest);
-    if (ais && region.id === this.railRegion) {
-      const date = ais[1]!;
+    const aisDay = /^\/days\/(\d{8})\/([a-z0-9-]+)\/ais$/.exec(rest);
+    const ais =
+      aisDay && region.feeds.includes(aisDay[2]!) ?
+        this.aisFeeds.get(aisDay[2]!)
+      : undefined;
+    if (aisDay && ais) {
+      const date = aisDay[1]!;
       let body: AisDayResponse;
-      if (this.ais) {
-        const st = this.ais.status();
-        const day = await this.ais.dayFile(date, now);
+      if (ais.stream) {
+        const st = ais.stream.status();
+        const day = await ais.stream.dayFile(date, now);
         body = {
           status: st.connected ? "ok" : "stale",
           to: day.to,
@@ -693,7 +727,9 @@ export class RtService {
       providers: Object.fromEntries(
         [...this.pollers].map(([id, p]) => [id, p.status(now)]),
       ),
-      ais: this.ais?.status() ?? null,
+      ais: Object.fromEntries(
+        [...this.aisFeeds].map(([id, a]) => [id, a.stream?.status() ?? null]),
+      ),
     };
   }
 

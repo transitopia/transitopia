@@ -68,13 +68,15 @@ export async function expireRawData(opts: {
       .execute();
   const dirs: string[] = [];
   const oldest = localDay(cutoff);
-  // Each feed's recordings (var/rt-history/<feed>/<date>/), and AIS's.
-  const feedDirs = (
-    await readdir(RT_HISTORY_DIR, { withFileTypes: true }).catch(() => [])
-  )
-    .filter((d) => d.isDirectory() && !/^\d{4}-\d{2}-\d{2}$/.test(d.name))
-    .map((d) => join(RT_HISTORY_DIR, d.name));
-  for (const base of [...feedDirs, AIS_HISTORY_DIR]) {
+  // Each feed's recordings (var/rt-history/<feed>/<date>/, var/ais-history/<feed>/<date>/).
+  const feedDirs: string[] = [];
+  for (const root of [RT_HISTORY_DIR, AIS_HISTORY_DIR])
+    for (const d of await readdir(root, { withFileTypes: true }).catch(
+      () => [],
+    ))
+      if (d.isDirectory() && !/^\d{4}-\d{2}-\d{2}$/.test(d.name))
+        feedDirs.push(join(root, d.name));
+  for (const base of feedDirs) {
     let days: string[] = [];
     try {
       days = await readdir(base);

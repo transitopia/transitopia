@@ -43,9 +43,13 @@ export function Status() {
         ))}
         <li>
           {s.rt.leader ? "Leader" : "Follower"}
-          {s.rt.ais ?
-            `; AIS ${s.rt.ais.connected ? "connected" : "disconnected"}`
-          : ""}
+          {Object.entries(s.rt.ais)
+            .filter(([, a]) => a)
+            .map(
+              ([id, a]) =>
+                `; ${id} AIS ${a!.connected ? "connected" : "disconnected"}`,
+            )
+            .join("")}
         </li>
       </ul>
       <details>

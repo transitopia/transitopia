@@ -61,7 +61,7 @@ export interface Database {
     delay: number | null;
   };
   ais_fixes: {
-    region_id: string;
+    feed_id: string;
     received_at: Timestamp;
     mmsi: string;
     name: string | null;

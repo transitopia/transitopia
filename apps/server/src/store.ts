@@ -42,9 +42,6 @@ const CHUNK = 2000;
 export const isoDate = (yyyymmdd: string) =>
   Temporal.PlainDate.from(yyyymmdd).toString();
 
-/** AIS fixes are of TransLink's SeaBus: their polls are recorded as its feed's. */
-const AIS_FEED = "translink";
-
 export class Store {
   readonly db: Db;
   /** The rail region: AIS fixes and dispatch versions are its. */
@@ -157,15 +154,19 @@ export class Store {
     );
   }
 
-  /** One batch of AIS fixes (an empty batch still marks coverage). */
-  async recordAis(receivedAt: number, fixes: AisFix[]): Promise<void> {
+  /** One batch of a feed's AIS fixes (an empty batch still marks coverage). */
+  async recordAis(
+    feedId: string,
+    receivedAt: number,
+    fixes: AisFix[],
+  ): Promise<void> {
     const at = new Date(receivedAt);
     await this.partitioned(receivedAt, () =>
       this.db.transaction().execute(async (tx) => {
         await tx
           .insertInto("rt_polls")
           .values({
-            feed_id: AIS_FEED,
+            feed_id: feedId,
             source: "ais",
             fetched_at: at,
             header_ts: null,
@@ -178,7 +179,7 @@ export class Store {
             .insertInto("ais_fixes")
             .values(
               fixes.map((f) => ({
-                region_id: this.regionId,
+                feed_id: feedId,
                 received_at: at,
                 mmsi: f.mmsi,
                 name: f.name ?? null,

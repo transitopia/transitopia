@@ -90,12 +90,16 @@ export const rtStatus = z.looseObject({
   leader: z.boolean(),
   /** Each real-time feed's poller, by feed id (config/feeds/<id>/feed.json). */
   providers: z.record(z.string(), providerStatus),
-  ais: z
-    .object({
-      connected: z.boolean(),
-      lastMessageAgeS: z.number().nullable(),
-    })
-    .nullable(),
+  /** Each feed with vessels' AIS stream, by feed id: null where this process doesn't stream. */
+  ais: z.record(
+    z.string(),
+    z
+      .object({
+        connected: z.boolean(),
+        lastMessageAgeS: z.number().nullable(),
+      })
+      .nullable(),
+  ),
 });
 export type RtStatus = z.infer<typeof rtStatus>;
 

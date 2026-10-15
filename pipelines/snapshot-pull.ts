@@ -13,13 +13,10 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
-import seabusJson from "@transitopia/config/regions/metro-vancouver/seabus.json" with { type: "json" };
-import { parseConfig } from "@transitopia/transit-core/config.ts";
 import { cadence } from "@transitopia/transit-core/rt/budget.ts";
 import { extendCoverage } from "@transitopia/transit-core/rt/types.ts";
 import { join } from "node:path";
 import {
-  AIS_HISTORY_DIR,
   DISPATCH_HISTORY_DIR,
   ROOT,
   VAR_DIR,
@@ -31,8 +28,9 @@ import {
 import { migrateLegacyFiles } from "@transitopia/data/legacy.ts";
 import { LEGACY_FEED } from "@transitopia/transit-core/plan/types.ts";
 
-const seabus = parseConfig("seabus", seabusJson);
-const feeds = (await readFeeds()).filter((f) => f.realtime);
+const allFeeds = await readFeeds();
+const feeds = allFeeds.filter((f) => f.realtime);
+const aisFeeds = allFeeds.filter((f) => f.ais);
 await migrateLegacyFiles();
 
 const args = process.argv.slice(2);
@@ -92,7 +90,14 @@ for (const d of dates) {
       );
     }
   }
-  rclone("copy", `${remote}/ais-history/${d}`, join(AIS_HISTORY_DIR, d));
+  for (const feed of aisFeeds) {
+    const local = feedPaths(feed.id).aisHistory;
+    // Before feeds had ids, TransLink's AIS was archived at the top of ais-history/.
+    for (const a of feed.id === LEGACY_FEED ?
+      ["ais-history", `ais-history/${feed.id}`]
+    : [`ais-history/${feed.id}`])
+      rclone("copy", `${remote}/${a}/${d}`, join(local, d));
+  }
   rclone(
     "copy",
     `${remote}/dispatch-history/${compact}`,
@@ -108,7 +113,10 @@ for (const [dir, gapMs] of [
       (t: number) => c.coverageGapMs(t),
     ] as const;
   }),
-  [AIS_HISTORY_DIR, () => seabus.ais.coverageGapS * 1000] as const,
+  ...aisFeeds.map(
+    (f) =>
+      [feedPaths(f.id).aisHistory, () => f.ais!.coverageGapS * 1000] as const,
+  ),
 ]) {
   const intervals: [number, number][] = [];
   if (existsSync(dir))

@@ -311,24 +311,28 @@ const latLon = z.tuple([num.min(-90).max(90), num.min(-180).max(180)]);
 const seabus = z.strictObject({
   /** The berth pair every vessel uses unless AIS shows otherwise (FerryConfig). */
   defaultPair: z.string().min(1),
-  ais: z.strictObject({
-    vessels: z
-      .array(
-        z.strictObject({
-          mmsi: z.string().regex(/^\d{9}$/, "an MMSI is 9 digits"),
-          name: z.string().min(1),
-        }),
-      )
-      .min(1),
-    /** [[lat, lon], [lat, lon]]: opposite corners. */
-    boundingBox: z.tuple([latLon, latLon]),
-    batchS: pos,
-    coverageGapS: pos,
-    liveWindowS: pos,
-    maxBackoffS: pos,
-    match: aisMatch,
-    glide,
-  }),
+});
+
+/** A feed's vessels' AIS positions (feed.json → ais; packages/transit-core/DESIGN.md#seabus-ais). */
+const feedAis = z.strictObject({
+  /** The route (routes.json key) whose vessels these are. */
+  route: z.string().min(1),
+  vessels: z
+    .array(
+      z.strictObject({
+        mmsi: z.string().regex(/^\d{9}$/, "an MMSI is 9 digits"),
+        name: z.string().min(1),
+      }),
+    )
+    .min(1),
+  /** [[lat, lon], [lat, lon]]: opposite corners. */
+  boundingBox: z.tuple([latLon, latLon]),
+  batchS: pos,
+  coverageGapS: pos,
+  liveWindowS: pos,
+  maxBackoffS: pos,
+  match: aisMatch,
+  glide,
 });
 
 // --- config/feeds/<feed>/feed.json ---
@@ -397,6 +401,8 @@ const feed = z.strictObject({
   }),
   /** GTFS-realtime, polled by the server's leader only (docs/DESIGN.md#upstream-request-budget). */
   realtime: feedRealtime.exactOptional(),
+  /** Its vessels' AIS positions, streamed by the server's leader (aisstream.io). */
+  ais: feedAis.exactOptional(),
   /** How its ids are shown to riders: a regex each, whose first group is the short form; absent, the whole id. */
   display: z
     .strictObject({
@@ -468,6 +474,7 @@ const region = z.strictObject({
 
 export type FeedInfo = z.output<typeof feed>;
 export type OperatorInfo = z.output<typeof operator>;
+export type FeedAis = z.output<typeof feedAis>;
 export type RegionRt = z.output<typeof regionRt>;
 export type FeedRealtime = z.output<typeof feedRealtime>;
 export type RegionInfo = z.output<typeof region>;
