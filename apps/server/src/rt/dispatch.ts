@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { rtConfig } from "../config.ts";
 import {
   DISPATCH_HISTORY_DIR,
-  PUBLIC_DATA_DIR,
+  feedPaths,
   regionPaths,
   type RailNetwork,
 } from "@transitopia/data/paths.ts";
@@ -156,7 +156,8 @@ export class LiveDispatcher {
 
   /** A rebuild (npm run data / build:movements) replaces the base plans: start from the new ones. */
   private async refreshBase(): Promise<void> {
-    const built = await stat(join(PUBLIC_DATA_DIR, "manifest.json")).then(
+    // The rail feed's manifest, which every build rewrites (or writes for the first time).
+    const built = await stat(feedPaths(this.contexts.net.feed).manifest).then(
       (s) => s.mtimeMs,
       () => 0,
     );
