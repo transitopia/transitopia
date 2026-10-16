@@ -216,11 +216,12 @@ export const VehicleCard: React.FC<{
     ["Name", v.consist?.name],
     ["Consist", v.consist && consist(v.consist)],
   ];
+  const title = route.mode === "bus" ? busTitle(v, route) : headsign(v);
   return (
     <InfoCard
       tile={{ icon: mode.icon, bg: route.color, fg: route.textColor }}
       eyebrow={mode.eyebrow(route)}
-      title={route.mode === "bus" ? busTitle(v, route) : headsign(v)}
+      title={title}
       subtitle={
         route.mode === "bus" ? undefined
         : v.runId ?
@@ -263,27 +264,22 @@ export const VehicleCard: React.FC<{
         : null}
       </CardSection>
       <CardSection title="Details">
-        {route.mode === "bus" ?
-          <CardRow
-            label="Route"
-            value={
-              // Opens the route card, with a back strip returning here (apps/web/README.md#cross-references).
-              <button
-                type="button"
-                title={`View route: ${route.label}`}
-                className="inline-flex h-[26px] items-center rounded-md px-[9px] text-[13px] font-bold hover:shadow-[inset_0_0_0_100px_rgb(0_0_0/0.12)]"
-                style={{ background: route.color, color: route.textColor }}
-                onClick={() =>
-                  engine.open(
-                    { place: { kind: "route", id: route.key } },
-                    busTitle(v, route),
-                  )
-                }>
-                {route.label}
-              </button>
-            }
-          />
-        : null}
+        <CardRow
+          label="Route"
+          value={
+            // Opens the route card, with a back strip returning here (apps/web/README.md#cross-references).
+            <button
+              type="button"
+              title={`View route: ${route.label}`}
+              className="inline-flex h-[26px] items-center rounded-md px-[9px] text-[13px] font-bold hover:shadow-[inset_0_0_0_100px_rgb(0_0_0/0.12)]"
+              style={{ background: route.color, color: route.textColor }}
+              onClick={() =>
+                engine.open({ place: { kind: "route", id: route.key } }, title)
+              }>
+              {route.label}
+            </button>
+          }
+        />
         {details.map(([label, value]) =>
           value ? <CardRow key={label} label={label} value={value} /> : null,
         )}
