@@ -380,6 +380,14 @@ const PlaceCardBody: React.FC<{
         icon: "bus-stop",
         onSelect: go({ kind: "stop", id: bay.id }),
       });
+    // Where it ends, so a rider new to the route sees which way it goes (and a short turn's end).
+    if (g.terminus)
+      items.push({
+        id: "terminus",
+        label: `View destination: ${g.terminus.name}`,
+        icon: g.terminus.place.kind === "station" ? "station" : "bus-stop",
+        onSelect: go(g.terminus.place),
+      });
     const next = g.departures.find((d) => !d.cancelled);
     const vehicle = g.vehicle;
     if (vehicle && next) {

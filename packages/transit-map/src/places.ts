@@ -8,7 +8,10 @@ import {
   type ServiceDate,
 } from "@transitopia/transit-core/time.ts";
 import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
-import { bayLabel } from "@transitopia/transit-core/plan/exchanges.ts";
+import {
+  bayLabel,
+  type BusHub,
+} from "@transitopia/transit-core/plan/exchanges.ts";
 import type {
   PreparedPlan,
   ScheduleCorrections,
@@ -40,6 +43,11 @@ export interface PlaceGroup {
   stopIds: string[];
   /** The vehicle on the map running its next departure, if that trip is drawn yet. */
   vehicle: string | undefined;
+  /**
+   * Where its next departure ends ("Boundary Loop"): the station or exchange that stop belongs to,
+   * else the stop. Absent when that's this place (a loop).
+   */
+  terminus: { place: Place; name: string } | undefined;
 }
 
 /** The selected route line: how often it runs now and how many of its vehicles are out. */
@@ -205,6 +213,28 @@ export function placeSnapshot(
   const stopName = (id: string) => pp.stopById.get(id)?.name ?? id;
   const parent =
     p.kind === "stop" ? hubs.find((h) => h.bays.includes(p.id)) : undefined;
+  // A trip's last stop as a card: its station, its exchange (or station's bays), or the stop.
+  const terminusOf = (d: Departure): PlaceGroup["terminus"] => {
+    const stops = plan.patterns[d.pattern]!.stops;
+    const stop = plan.stops[stops[stops.length - 1]!]!;
+    const hub = hubs.find((h) => h.bays.includes(stop.id));
+    const place: Place =
+      stop.parent && plan.stations.some((s) => s.id === stop.parent) ?
+        { kind: "station", id: stop.parent }
+      : hub ? parentPlace(hub)
+      : { kind: "stop", id: stop.id };
+    const here = [p, ...(parent ? [parentPlace(parent)] : [])];
+    return here.some((h) => h.kind === place.kind && h.id === place.id) ?
+        undefined
+      : {
+          place,
+          // A street stop in full ("Boundary Rd @ Lougheed Hwy"): its cross street alone is no name.
+          name:
+            place.kind === "stop" ?
+              stop.name.replace(/^(North|South|East|West)bound\s+/i, "")
+            : placeName(plan, stop.id),
+        };
+  };
   return {
     ...p,
     kind: p.kind,
@@ -250,6 +280,9 @@ export function placeSnapshot(
         const next = g.departures.find((d) => !d.cancelled);
         return next && drawn.get(`${next.serviceDate}|${next.tripId}`);
       })(),
+      terminus: terminusOf(
+        g.departures.find((d) => !d.cancelled) ?? g.departures[0]!,
+      ),
     })),
     shared: sharedStretches(plan, groups).map((s) => ({
       routes: [...new Set(s.groups.map((g) => g.routeKey))].map(routeOf),
@@ -259,4 +292,11 @@ export function placeSnapshot(
       minutes: minutesBetween(s.departures, t),
     })),
   };
+}
+
+/** The card for a station's bus bays or an exchange. */
+function parentPlace(hub: BusHub): Place {
+  return hub.station ?
+      { kind: "station", id: hub.station }
+    : { kind: "exchange", id: hub.id };
 }
