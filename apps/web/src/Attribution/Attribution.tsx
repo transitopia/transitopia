@@ -65,6 +65,28 @@ export const AttributionControl: React.FC = () => {
         <div
           id="attribution-details"
           className="pointer-events-auto m-2 mb-0 max-w-md max-h-[60dvh] overflow-y-auto rounded-md border border-gray-300 bg-white p-3 shadow-md dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100">
+          <h2 className="mb-1 font-semibold">About Transitopia</h2>
+          <p className="my-2">
+            Transitopia is a mapping project that aims to provide high-quality
+            real-time public transit and micromobility maps. The source is on
+            GitHub:{" "}
+            <a
+              href="https://github.com/transitopia/transitopia"
+              className="underline"
+              target="_blank"
+              rel="noreferrer">
+              Transitopia source
+            </a>
+            . Created by{" "}
+            <a
+              href="https://www.bradenmacdonald.com"
+              className="underline"
+              target="_blank"
+              rel="noreferrer">
+              Braden MacDonald
+            </a>
+            .
+          </p>
           <h2 className="mb-1 font-semibold">Data on this map</h2>
           <ul className="space-y-1">
             {datasets.map((d) => (
@@ -76,18 +98,20 @@ export const AttributionControl: React.FC = () => {
                   rel="noreferrer">
                   {d.credit}
                 </a>
-                <span className="text-gray-500 dark:text-gray-400">
-                  {" · "}
-                  {d.license.url ?
-                    <a
-                      href={d.license.url}
-                      className="underline"
-                      target="_blank"
-                      rel="noreferrer">
-                      {d.license.name}
-                    </a>
-                  : d.license.name}
-                </span>
+                {d.license && (
+                  <span className="text-gray-500 dark:text-gray-400">
+                    {" · "}
+                    {d.license.url ?
+                      <a
+                        href={d.license.url}
+                        className="underline"
+                        target="_blank"
+                        rel="noreferrer">
+                        {d.license.name}
+                      </a>
+                    : d.license.name}
+                  </span>
+                )}
               </li>
             ))}
           </ul>

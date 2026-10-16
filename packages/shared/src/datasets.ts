@@ -19,7 +19,8 @@ export interface Dataset {
   /** Full text for the expanded control, when the license asks for more than the credit. */
   legend?: string;
   url: string;
-  license: { name: string; url?: string };
+  /** Omitted when the provider publishes no terms or license to cite. */
+  license?: { name: string; url?: string };
   /** A schedule's real-time companion from the same provider (its GTFS-RT). */
   realtime?: DatasetId;
 }
@@ -100,7 +101,6 @@ export const DATASETS: Record<DatasetId, Dataset> = {
     id: "aisstream",
     credit: "Vessel positions: aisstream.io",
     url: "https://aisstream.io",
-    license: { name: "aisstream.io terms" },
   },
 };
 
