@@ -27,7 +27,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import translinkFeed from "@transitopia/config/feeds/translink/feed.json" with { type: "json" };
-import { rtConfig } from "../config.ts";
+import { rtDefaults } from "../config.ts";
 import {
   parseFeed,
   type FeedAis,
@@ -537,9 +537,9 @@ export class RtService {
       // The edge keeps it until new data is due, and never longer than clients poll.
       const maxAge =
         r.nextAt === null ?
-          rtConfig.clientPollS
+          rtDefaults.clientPollS
         : Math.min(
-            rtConfig.clientPollS,
+            rtDefaults.clientPollS,
             Math.max(1, Math.ceil((r.nextAt - now) / 1000)),
           );
       return tagged(JSON.stringify(r), `public, max-age=${maxAge}`);

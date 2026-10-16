@@ -66,7 +66,7 @@ avoid that ([#8](https://github.com/transitopia/transitopia/issues/8)).
 and each region's `data/regions/<id>/` track network and dispatch patches;
 [docs/DESIGN.md → Regions and feeds](../docs/DESIGN.md#regions-and-feeds)) from `https://data.transitopia.org/`.
 Uploads copy, never sync, so files a build no longer writes stay until deleted by hand. The server builds it daily (its `data` job, at
-`dataBuildAt` in `config/regions/metro-vancouver/recording.json`) and uploads it to the R2 bucket
+`dataBuildAt` in `config/server/recording.json`) and uploads it to the R2 bucket
 `transitopia-data`, so its live dispatch patches fit the published plans.
 `.github/workflows/build_transit_data.yml` is a manual fallback only (see the comment at its top).
 

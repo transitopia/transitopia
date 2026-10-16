@@ -108,7 +108,7 @@ Tables and migrations are described in [packages/db/README.md](../packages/db/RE
 
 ## Retention and statistics
 
-Raw real-time data is deleted after 60 days (`config/regions/metro-vancouver/recording.json`). Any statistic we haven't computed by then can never be computed for that period, so:
+Raw real-time data is deleted after 60 days (`config/server/recording.json`). Any statistic we haven't computed by then can never be computed for that period, so:
 
 - **Observed stop times are the atom.** From each vehicle's fixes we derive, per trip and stop, the observed (interpolated) arrival and departure, its precision (the time between the fixes it came from), and the scheduled time. Nearly every statistic can be recomputed from them, including ones we haven't thought of yet. They're kept indefinitely.
 - **A daily job** computes statistics for each finished service date while the raw data is still there, and catches up after downtime: per route, direction, day and time band, trips scheduled, observed and cancelled, skipped stops, on-time performance at timepoints (on time = **1 minute early to 3 minutes late**), delay percentiles, delivered versus scheduled headways, and bunching. `npm run stats -- <YYYYMMDD>` recomputes a date.
@@ -162,11 +162,12 @@ Everything committed and curated is under `config/` (one package, `@transitopia/
 ```
 config/
   defaults/        kinematics.json, rt.json: vehicles and real-time use, for every region and operator
+  server/          server.json, recording.json: the server's own (port, live dispatch, retention, statistics)
   operators/<id>/  operator.json: who runs the vehicles (TransLink, BC Transit), and its overrides of the defaults
   feeds/<id>/      feed.json: one agency's published data (GTFS, GTFS-RT, request budget, vessels' AIS),
                    naming its operator; routes.json: which routes are drawn, by name
   regions/<id>/    region.json: a place on the map (bbox, time zone, first view, the feeds it shows);
-                   its settings (rt.json, and for Metro Vancouver operations, dispatch, seabus, recording);
+                   its settings (rt.json where it has one, and for Metro Vancouver operations, dispatch, seabus);
                    infrastructure/, scenarios/, observations/, disruptions/; README, OPEN-QUESTIONS
 ```
 
@@ -178,7 +179,7 @@ config/
 
 Feeds are separate from regions because neither contains the other: a ferry between two regions (Hullo, Vancouver–Victoria) is one feed in both, and a region can show several agencies. Operators are separate from feeds because one operator publishes many: BC Transit has a feed per transit system, in several regions.
 
-**Settings come in layers** (`resolveKinematics`, `resolveRt`): the defaults, then the feed's operator's overrides (a mode's vehicle settings; bus prediction and carried delays, which depend on its buses and data), then the feed's own (`feed.json` → `kinematics`, `rt`: one system of an operator with different buses or data), then for vehicles its routes' (`routes.json` → `kinematics`, e.g. a SkyTrain line's train length), and for real time the region's (`rt.json`). A region's settings are only about the place (how often its map polls, live dispatch, the server's port), never about vehicles or data, since a region can show several feeds. Each layer is partial; the result is checked whole, so a misspelled setting in any layer still fails. Vehicles' minimum drawn size is the defaults' alone, so they look alike everywhere. How often a feed is polled, and the thresholds that follow from it, are the feed's own (`feed.json` → `realtime`).
+**Settings come in layers** (`resolveKinematics`, `resolveRt`): the defaults, then the feed's operator's overrides (a mode's vehicle settings; bus prediction and carried delays, which depend on its buses and data), then the feed's own (`feed.json` → `kinematics`, `rt`: one system of an operator with different buses or data), then for vehicles its routes' (`routes.json` → `kinematics`, e.g. a SkyTrain line's train length), and for real time the region's (`rt.json`). A region's settings are only about the place (how often its map polls), never about vehicles or data, since a region can show several feeds. Each layer is partial; the result is checked whole, so a misspelled setting in any layer still fails. Vehicles' minimum drawn size is the defaults' alone, so they look alike everywhere. How often a feed is polled, and the thresholds that follow from it, are the feed's own (`feed.json` → `realtime`).
 
 Everything that comes from a feed is keyed by the feed, and happens once whichever regions show it:
 

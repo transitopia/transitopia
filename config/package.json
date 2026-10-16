@@ -1,7 +1,7 @@
 {
   "name": "@transitopia/config",
   "private": true,
-  "description": "Committed, curated inputs: global defaults, operators, feeds and regions (config, infrastructure, scenarios, corrections).",
+  "description": "Committed, curated inputs: global defaults, the server's own settings, operators, feeds and regions (config, infrastructure, scenarios, corrections).",
   "type": "module",
   "exports": {
     "./*": "./*"

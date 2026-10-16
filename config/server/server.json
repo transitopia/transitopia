@@ -1,0 +1,9 @@
+{
+  "$comment": "The server's own settings (apps/server/README.md), the same for every region it serves. What it keeps and derives from recordings is in recording.json; deployment settings that differ between environments are environment variables (apps/server/src/env.ts).",
+  "$port": "The port it listens on when PORT isn't set (local runs; the production image sets PORT, infra/server.Dockerfile).",
+  "port": 8787,
+  "$dispatchCheckS": "Live dispatch (apps/server/README.md#live-dispatch-and-previews): how often the leader checks the confirmed observations and disruptions (the database, or config/regions/<rail region>/{observations,disruptions} without one) for changes. Only changed inputs re-dispatch a date; client requests never do.",
+  "dispatchCheckS": 30,
+  "$dispatchWindowDays": "Live dispatch covers service dates this many days either side of today; older and later dates come from build:dispatch.",
+  "dispatchWindowDays": 7
+}

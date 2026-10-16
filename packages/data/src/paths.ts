@@ -179,12 +179,14 @@ export async function readFeedRoutes(feed: string): Promise<Config<"routes">> {
 }
 
 /**
- * A region's settings file (config/regions/<region>/<name>.json: dispatch, operations, recording,
- * seabus), checked against its schema (packages/transit-core/src/config.ts). Vehicle and real-time
+ * A region's settings file (config/regions/<region>/<name>.json: dispatch, operations, seabus), checked against its schema (packages/transit-core/src/config.ts). Vehicle and real-time
  * settings come in layers: readFeedConfig.
  */
 export async function readConfig<
-  N extends Exclude<ConfigName, "kinematics" | "rt" | "routes">,
+  N extends Exclude<
+    ConfigName,
+    "kinematics" | "rt" | "routes" | "recording" | "server"
+  >,
 >(name: N, region: string): Promise<Config<N>> {
   return parseConfig(
     name,

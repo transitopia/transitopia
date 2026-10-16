@@ -1,8 +1,8 @@
 // The server's deployment settings, from environment variables (infra/.env.example lists them for
 // production). Everything that differs between environments is here; region assumptions stay in
-// config/regions/metro-vancouver/.
+// config/regions/ and the server's own in config/server/.
 
-import { rtConfig } from "./config.ts";
+import { serverConfig } from "./config.ts";
 
 const list = (v: string | undefined) =>
   (v ?? "")
@@ -47,7 +47,7 @@ export interface ServerEnv {
 }
 
 export function readEnv(env: NodeJS.ProcessEnv = process.env): ServerEnv {
-  const port = Number(env.PORT ?? rtConfig.serverPort);
+  const port = Number(env.PORT ?? serverConfig.port);
   const clientId = env.GITHUB_CLIENT_ID;
   const clientSecret = env.GITHUB_CLIENT_SECRET;
   const publicUrl = url(env.PUBLIC_URL) ?? `http://localhost:${port}`;

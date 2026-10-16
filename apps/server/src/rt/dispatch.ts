@@ -13,7 +13,7 @@
 
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { rtConfig } from "../config.ts";
+import { serverConfig } from "../config.ts";
 import {
   DISPATCH_HISTORY_DIR,
   feedPaths,
@@ -98,7 +98,7 @@ export class LiveDispatcher {
         this.log(`check failed: ${(e as Error).message}`),
       );
       if (this.running)
-        this.timer = setTimeout(tick, rtConfig.dispatchCheckS * 1000);
+        this.timer = setTimeout(tick, serverConfig.dispatchCheckS * 1000);
     };
     void tick();
   }
@@ -171,8 +171,8 @@ export class LiveDispatcher {
     await this.refreshBase();
     const { observations, disruptions } = await this.corrections.load();
     const today = localDate(this.now());
-    const lo = addDays(today, -rtConfig.dispatchWindowDays);
-    const hi = addDays(today, rtConfig.dispatchWindowDays);
+    const lo = addDays(today, -serverConfig.dispatchWindowDays);
+    const hi = addDays(today, serverConfig.dispatchWindowDays);
     const dates = new Set<ServiceDate>();
     for (const o of observations) {
       const d = isoToServiceDate(o.date);

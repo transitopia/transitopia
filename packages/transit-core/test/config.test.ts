@@ -21,6 +21,7 @@ const REGIONS = join(CONFIG, "regions");
 const FEEDS = join(CONFIG, "feeds");
 const OPERATORS = join(CONFIG, "operators");
 const DEFAULTS = join(CONFIG, "defaults");
+const SERVER = join(CONFIG, "server");
 const dirs = (root: string) =>
   readdirSync(root, { withFileTypes: true })
     .filter((d) => d.isDirectory() && d.name !== "node_modules")
@@ -45,8 +46,15 @@ const operator = (id: string) =>
 
 describe("config files", () => {
   it("finds the committed settings files", () => {
-    expect(settingsFiles.length).toBeGreaterThanOrEqual(5);
+    expect(settingsFiles.length).toBeGreaterThanOrEqual(3);
   });
+
+  for (const name of ["server", "recording"] as const)
+    it(`server/${name}.json matches its schema`, () => {
+      expect(() =>
+        parseConfig(name, readJson(join(SERVER, `${name}.json`))),
+      ).not.toThrow();
+    });
 
   for (const { region, name } of settingsFiles)
     it(`regions/${region}/${name}.json matches its schema`, () => {
@@ -84,6 +92,8 @@ describe("config files", () => {
     expect(() => parseRegionRt({ prediction: { binM: 25 } })).toThrow(
       /Bad region rt\.json: .*prediction/s,
     );
+    // ...and the server's own settings are config/server/'s.
+    expect(() => parseRegionRt({ serverPort: 8787 })).toThrow(/serverPort/);
   });
 
   it("rejects a setting of the wrong type", () => {

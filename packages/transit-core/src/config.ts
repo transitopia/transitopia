@@ -117,7 +117,14 @@ const operations: z.ZodType<OperationsConfig> = z.strictObject({
   }),
 });
 
-// --- recording.json ---
+// --- config/server/: server.json, recording.json ---
+
+const server = z.strictObject({
+  port: z.number().int().min(1).max(65535),
+  /** Live dispatch (apps/server/README.md#live-dispatch-and-previews). */
+  dispatchCheckS: pos,
+  dispatchWindowDays: count,
+});
 
 const observed: z.ZodType<ObservedConfig> = z.strictObject({
   maxOffsetM: pos,
@@ -275,11 +282,6 @@ const rt = z.strictObject({
   clientPollMaxS: pos,
   clientPollSlackS: nonNeg,
   detourNearM: pos,
-  /** Live dispatch, in a region with a dispatcher. */
-  dispatchCheckS: pos.exactOptional(),
-  dispatchWindowDays: count.exactOptional(),
-  /** The server's default port: read from the server's home region (apps/server/src/config.ts). */
-  serverPort: z.number().int().min(1).max(65535).exactOptional(),
   prediction,
   carry,
 });
@@ -444,7 +446,7 @@ const operator = z.strictObject({
 });
 
 /**
- * A region's rt.json: settings about the place only (how its map polls, live dispatch), never about
+ * A region's rt.json: settings about the place only (how its map polls), never about
  * the vehicles or their data, which are the feeds' and operators' (a region can show several).
  */
 const regionRt = rt
@@ -452,9 +454,6 @@ const regionRt = rt
     clientPollS: true,
     clientPollMaxS: true,
     clientPollSlackS: true,
-    dispatchCheckS: true,
-    dispatchWindowDays: true,
-    serverPort: true,
   })
   .partial();
 
@@ -605,6 +604,7 @@ export const CONFIG_SCHEMAS = {
   routes,
   rt,
   seabus,
+  server,
 } as const;
 
 export type ConfigName = keyof typeof CONFIG_SCHEMAS;

@@ -11,7 +11,6 @@
 
 import { readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import rtConfig from "@transitopia/config/regions/metro-vancouver/rt.json" with { type: "json" };
 import {
   feedPaths,
   log,
@@ -19,6 +18,7 @@ import {
   regionPaths,
 } from "@transitopia/data/paths.ts";
 import { loadDisruptions } from "@transitopia/data/disruptions.ts";
+import { serverConfig as server } from "@transitopia/server/config.ts";
 import { AlertDrafts } from "@transitopia/server/rt/alerts.ts";
 import type { ServiceAlert } from "@transitopia/transit-core/disruption/alerts.ts";
 import type {
@@ -100,7 +100,7 @@ async function list() {
 }
 
 async function pull() {
-  const from = opt("--from") ?? `http://localhost:${rtConfig.serverPort}`;
+  const from = opt("--from") ?? `http://localhost:${server.port}`;
   const res = await fetch(`${from.replace(/\/$/, "")}/rt/alerts`);
   if (!res.ok) throw new Error(`${from}/rt/alerts: HTTP ${res.status}`);
   const { alerts } = (await res.json()) as {
@@ -138,7 +138,7 @@ async function confirm(id: string) {
   );
   await rm(path);
   log(
-    `Confirmed ${id} → config/regions/${NET.region}/disruptions/${id}.json (commit it). The RT service applies it within ${rtConfig.dispatchCheckS} s; run npm run build:dispatch for the static site.`,
+    `Confirmed ${id} → config/regions/${NET.region}/disruptions/${id}.json (commit it). The RT service applies it within ${server.dispatchCheckS} s; run npm run build:dispatch for the static site.`,
   );
 }
 
