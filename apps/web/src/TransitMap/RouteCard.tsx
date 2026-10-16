@@ -21,6 +21,18 @@ import { bandKey, bandOf } from "./frequency.ts";
 
 const hh = (h: number) => String(h % 24).padStart(2, "0");
 
+/**
+ * An hour's cell height, as a fraction of the row: the worse the service, the shorter, so the day's
+ * shape shows without the colours. An hour without service is a baseline.
+ */
+const CELL_HEIGHT: Record<string, number> = {
+  good: 1,
+  ok: 0.75,
+  poor: 0.5,
+  bad: 0.25,
+};
+const NO_SERVICE_PX = 2;
+
 /** "Every 4 min", "Every 12 min". */
 const everyMinutes = (m: number) => `Every ${Math.max(1, Math.round(m))} min`;
 
@@ -224,7 +236,7 @@ const RouteCardBody: React.FC<{
               : null}
             </div>
             <div
-              className="flex gap-0.5 px-0.5"
+              className="flex h-6 gap-0.5 px-0.5"
               role="list"
               aria-label="Hourly frequency">
               {day.hours.map((m, i) => {
@@ -235,9 +247,19 @@ const RouteCardBody: React.FC<{
                     key={h}
                     role="listitem"
                     title={`${hh(h)}:00 · ${b && m !== undefined ? `every ${Math.round(m)} min · ${b.name}` : "no service"}`}
-                    className={`h-6 flex-1 rounded ${i === nowIndex ? "shadow-[0_0_0_2px_var(--card-bg),0_0_0_4px_var(--card-text)]" : ""}`}
-                    style={{ background: b?.color ?? "var(--card-chip-bg)" }}
-                  />
+                    // The hour's whole column, so "now" is ringed the same however short its cell.
+                    className={`flex h-full flex-1 items-end rounded`}>
+                    <span
+                      className={`w-full ${b ? "rounded" : "rounded-xs"}`}
+                      style={{
+                        background: b?.color ?? "var(--card-chip-bg)",
+                        height:
+                          b ?
+                            `${(CELL_HEIGHT[b.id] ?? 1) * 100}%`
+                          : NO_SERVICE_PX,
+                      }}
+                    />
+                  </span>
                 );
               })}
             </div>
