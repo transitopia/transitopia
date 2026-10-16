@@ -132,11 +132,19 @@ export const Menu: React.FC<{
               key={item.id}
               type="button"
               role="menuitem"
+              // Like a native menu, the item under the pointer is the active one, so the arrow keys
+              // go on from it and there's one highlight. The opening focus on the first item (for
+              // keyboard and screen reader users) shows only when it came from the keyboard, and a
+              // hovered item only while it's the active one (not once the arrow keys move on).
+              onPointerMove={(e) => {
+                if (document.activeElement !== e.currentTarget)
+                  e.currentTarget.focus();
+              }}
               onClick={() => {
                 setAt(undefined);
                 item.onSelect();
               }}
-              className="flex min-h-11 w-full items-center gap-3 rounded-lg px-2.5 py-1 text-left text-[15px] font-semibold hover:bg-(--card-hover) focus:bg-(--card-hover) focus:outline-none">
+              className="flex min-h-11 w-full items-center gap-3 rounded-lg px-2.5 py-1 text-left text-[15px] font-semibold focus:outline-none focus-visible:bg-(--card-hover) hover:focus:bg-(--card-hover)">
               {leading ?
                 <span className="flex w-8 flex-none items-center justify-center">
                   {item.lead
