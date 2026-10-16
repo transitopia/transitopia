@@ -29,7 +29,6 @@ import {
   readJson,
   readManifest,
 } from "@transitopia/data/paths.ts";
-import { migrateLegacyFiles } from "@transitopia/data/legacy.ts";
 import { archivedFeeds } from "@transitopia/data/gtfs-day.ts";
 import { createDb } from "@transitopia/db/connect.ts";
 import { migrate } from "@transitopia/db/migrate.ts";
@@ -63,7 +62,6 @@ await migrate(pool, log);
 await syncSources(db);
 const rail = await railNetwork();
 const store = new Store(db, rail.region);
-if (varDir === VAR_DIR) await migrateLegacyFiles();
 
 /** Our route key → GTFS route_id, from a feed's built plans (the newest version wins). */
 async function routeIds(feed: string): Promise<Map<string, string>> {

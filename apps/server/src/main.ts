@@ -12,7 +12,6 @@ import {
   readFeeds,
   readRegions,
 } from "@transitopia/data/paths.ts";
-import { migrateLegacyFiles } from "@transitopia/data/legacy.ts";
 import { createDb } from "@transitopia/db/connect.ts";
 import { migrate } from "@transitopia/db/migrate.ts";
 import { ensurePartitions } from "@transitopia/db/partitions.ts";
@@ -33,12 +32,6 @@ const regions = await readRegions();
 const feeds = await readFeeds();
 // Track-level rail: its live dispatch, corrections and /admin support one network so far.
 const rail = await railNetwork();
-// Recordings and downloads from before feeds had ids move into TransLink's directories, once.
-const moved = await migrateLegacyFiles();
-if (moved.length)
-  log(
-    `moved ${moved.length} files and directories into TransLink's directories`,
-  );
 
 // Every local time (service days, recordings, dispatch dates) comes from the runtime's time zone
 // data, so refuse to start on an outdated copy rather than record and dispatch against wrong times.

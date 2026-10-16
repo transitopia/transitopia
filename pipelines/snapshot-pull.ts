@@ -25,13 +25,11 @@ import {
   readFeeds,
   writeJson,
 } from "@transitopia/data/paths.ts";
-import { migrateLegacyFiles } from "@transitopia/data/legacy.ts";
 import { LEGACY_FEED } from "@transitopia/transit-core/plan/types.ts";
 
 const allFeeds = await readFeeds();
 const feeds = allFeeds.filter((f) => f.realtime);
 const aisFeeds = allFeeds.filter((f) => f.ais);
-await migrateLegacyFiles();
 
 const args = process.argv.slice(2);
 const opt = (name: string) => {
