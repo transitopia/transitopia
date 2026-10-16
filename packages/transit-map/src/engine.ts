@@ -3,7 +3,7 @@
 // to a few updates a second, plus every discrete change) with useSyncExternalStore, and call the
 // methods here for controls.
 
-import type { Map as MlMap } from "maplibre-gl";
+import { LngLat, type Map as MlMap } from "maplibre-gl";
 import type { Theme } from "@transitopia/map-style/basemap.ts";
 import { realtimeOf } from "@transitopia/shared/datasets.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
@@ -217,6 +217,8 @@ const REVEAL_PAN_MS = 600;
 const FOLLOW_START_MS = 500;
 /** While following, a change in the chrome's padding eases to the new centre over at least this long. */
 const PADDING_EASE_MS = 300;
+/** A scroll zoom whose camera hasn't moved for this long is finished (see scrollZoomSettled). */
+const SCROLL_ZOOM_SETTLED_MS = 50;
 /** Snapshot refresh while playing (discrete changes publish immediately). */
 const SNAPSHOT_INTERVAL_MS = 200;
 /**
@@ -269,6 +271,8 @@ export class TransitEngine {
   private following = false;
   /** When the ease that starts (or re-aims) follow ends (performance.now()). */
   private followEaseEnds = 0;
+  /** When the camera last moved (performance.now()). */
+  private lastCameraMove = 0;
   /** Follow ended: drop the map padding it set, once the map stops moving (a drag may be under way). */
   private clearPaddingPending = false;
   /** Screen edges covered by the host's chrome (cards, time bar), px: follow keeps clear of them. */
@@ -427,9 +431,14 @@ export class TransitEngine {
     map.on("styledata", onStyleData);
     map.on("click", onClick);
     map.on("mousemove", onMouseMove);
+    const onMove = () => {
+      this.lastCameraMove = performance.now();
+    };
     map.on("dragstart", onDragStart);
+    map.on("move", onMove);
     this.cleanups.push(() => {
       map.off("dragstart", onDragStart);
+      map.off("move", onMove);
       map.off("style.load", onStyleLoad);
       map.off("styledata", onStyleData);
       map.off("click", onClick);
@@ -768,8 +777,8 @@ export class TransitEngine {
   /**
    * Start or stop following (apps/web/README.md#follow). While following, the map's padding is the
    * area the host's chrome leaves clear, so its centre is the visible centre, where the vehicle is
-   * held; and scroll and pinch zoom go around that centre instead of the pointer, so zooming keeps
-   * the vehicle where it is.
+   * held; scroll and pinch zoom go around that centre instead of the pointer, and every frame of
+   * them is re-centred on the vehicle (holdFollowed), so zooming keeps the vehicle where it is.
    */
   private setFollow(on: boolean): void {
     if (on === this.following) return;
@@ -778,10 +787,39 @@ export class TransitEngine {
     const around = on ? { around: "center" as const } : undefined;
     if (map.scrollZoom.isEnabled()) map.scrollZoom.enable(around);
     if (map.touchZoomRotate.isEnabled()) map.touchZoomRotate.enable(around);
+    map.setTransformCameraUpdate(on ? this.holdFollowed : null);
     if (on) {
       this.clearPaddingPending = false;
       this.easeToFollowed(FOLLOW_START_MS);
     } else this.clearPaddingPending = true;
+  }
+
+  /**
+   * While following, a zoom gesture's camera updates are centred on the vehicle as it moves:
+   * keepCentred can't jumpTo during one without cancelling it, so it would drift off and jump back
+   * when the gesture ends. Eases (ours, keyboard zoom) are left alone.
+   */
+  private readonly holdFollowed = (): { center?: LngLat } => {
+    const { map } = this;
+    if (!map.scrollZoom.isActive() && !map.touchZoomRotate.isActive())
+      return {};
+    const v = this.lastVehicles.find((x) => x.id === this.selectedId);
+    return v ? { center: new LngLat(v.lon, v.lat) } : {};
+  };
+
+  /**
+   * A scroll zoom has stopped changing the camera but is still under way: MapLibre ends it 200 ms
+   * after its last frame (ScrollZoomHandler's finish timeout), with no camera updates for
+   * holdFollowed to centre meanwhile. Cutting that short with a jumpTo loses nothing; a pinch is
+   * left alone, since the fingers may still be down.
+   */
+  private scrollZoomSettled(): boolean {
+    const { map } = this;
+    return (
+      map.scrollZoom.isActive()
+      && !map.touchZoomRotate.isActive()
+      && performance.now() - this.lastCameraMove > SCROLL_ZOOM_SETTLED_MS
+    );
   }
 
   /** Ease the followed vehicle to the centre of the area the host's chrome leaves clear. */
@@ -858,13 +896,14 @@ export class TransitEngine {
 
   /**
    * Follow: hold the vehicle exactly at the centre of the visible area, every frame. Not while the
-   * map is moving (an ease, or the user zooming: that zooms around the centre, so the vehicle stays
-   * put anyway), because jumpTo would cancel the gesture.
+   * map is moving (an ease, or the user zooming: holdFollowed centres those frames), because jumpTo
+   * would cancel it.
    */
   private keepCentred(): void {
     const { map } = this;
     const v = this.lastVehicles.find((x) => x.id === this.selectedId);
-    if (!v || map.isMoving()) return; // no vehicle: between trips or out of service, wait for it
+    if (!v) return; // between trips or out of service: wait for it
+    if (map.isMoving() && !this.scrollZoomSettled()) return;
     const want = this.viewPadding;
     const have = this.mapPadding();
     const at = map.project([v.lon, v.lat]);
