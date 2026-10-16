@@ -69,14 +69,14 @@ describe("the real-time API", () => {
     });
     expect(same.status).toBe(304);
     expect(same.headers.get("Cache-Control")).toBe("public, max-age=5");
-    const changed = await app.request("/rt/live", {
+    const changed = await app.request("/rt/status", {
       headers: { "If-None-Match": 'W/"def456"' },
     });
     expect(changed.status).toBe(200);
     expect(paths).toEqual([
       "/regions/r/live/transit",
       "/regions/r/live/transit",
-      "/rt/live",
+      "/rt/status",
     ]);
   });
 });

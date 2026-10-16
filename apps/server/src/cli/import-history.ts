@@ -13,7 +13,7 @@
 //   var/dispatch-history/<date>/<v>.json    → dispatch_versions
 //   config/regions/metro-vancouver/{observations,disruptions} → corrections (as on every start)
 //
-// The files themselves stay where they are: the server keeps serving /rt/history, /rt/changes and
+// The files themselves stay where they are: the server keeps serving /rt/history, service changes and
 // dispatch versions from them. Alerts (alerts.ndjson, and the bus alerts inside changes/) aren't
 // imported into the alerts table: they're in another shape (our route keys, not GTFS ids).
 

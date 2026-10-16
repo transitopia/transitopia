@@ -499,9 +499,6 @@ describe("AisFeed", () => {
             -1,
           )
         : localDate(now.getTime());
-      const all = await feed.fixesFor(date);
-      expect(all.fixes).toHaveLength(1);
-      expect((await feed.fixesFor(date, all.cursor)).fixes).toHaveLength(0);
       // The day file and the live window only hold recorded batches.
       expect((await feed.dayFile(date)).fixes).toHaveLength(0);
       expect(feed.liveWindow(300_000).fixes).toHaveLength(0);
@@ -533,7 +530,7 @@ describe("AisFeed", () => {
         connect: () => socket as any,
       });
       await again.start();
-      expect((await again.fixesFor(date)).fixes.map((f) => f.mmsi)).toEqual([
+      expect((await again.dayFile(date)).fixes.map((f) => f.mmsi)).toEqual([
         "316042365",
       ]);
       again.stop();
