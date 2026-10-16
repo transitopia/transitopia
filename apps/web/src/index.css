@@ -3,6 +3,18 @@
 /* Dark mode follows the site theme (src/Theme/Theme.tsx), not only the system setting. */
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
+/*
+ * Everything clickable shows the pointer on desktop: cards' chips, rows and menus, and the map's
+ * chrome. Tailwind v4's preflight leaves buttons with the default cursor.
+ */
+@layer base {
+  button:not(:disabled),
+  select:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+}
+
 @theme {
   --color-cyclist-green: #5cc88d;
   --color-pedestrian-orange: #eea550;

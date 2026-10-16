@@ -18,7 +18,9 @@ export type ChipTone = "info" | "good" | "warn";
 export interface CardAction {
   id: string;
   label: string;
-  icon: IconId;
+  icon?: IconId | undefined;
+  /** Shown instead of the icon, e.g. a route's badge. */
+  lead?: React.ReactNode;
   /** May resolve to a short confirmation shown under the header ("Link copied"). */
   onSelect: () => void | Promise<string | void>;
 }

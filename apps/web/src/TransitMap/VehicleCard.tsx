@@ -8,6 +8,7 @@ import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
 import { creditsFor, legendsFor } from "@transitopia/shared/datasets.ts";
 
 import { clockMinutes, timeState } from "./format.ts";
+import { RouteBadge } from "./RouteBadge.tsx";
 import {
   CardRow,
   CardSection,
@@ -31,12 +32,12 @@ const STATUS: Record<VehicleState["status"], string> = {
 
 const MODE: Record<
   PlanRoute["mode"],
-  { eyebrow: (r: PlanRoute) => string; icon?: IconId }
+  { eyebrow: (r: PlanRoute) => string; icon: IconId }
 > = {
   skytrain: { eyebrow: (r) => `SkyTrain · ${r.label}`, icon: "train" },
   rail: { eyebrow: (r) => `Commuter rail · ${r.label}`, icon: "train" },
   ferry: { eyebrow: (r) => `Ferry · ${r.label}`, icon: "ferry" },
-  bus: { eyebrow: () => "Bus" },
+  bus: { eyebrow: () => "Bus", icon: "bus-front-fill" },
 };
 
 function cleanStopName(name: string | undefined): string {
@@ -47,6 +48,18 @@ function cleanStopName(name: string | undefined): string {
 
 function headsign(v: VehicleState): string {
   return v.headsign.replace(/^.*?\bTo\s+/i, "To ");
+}
+
+/**
+ * A bus's title, by number and destination: "R4 to Joyce Station" from "R4 41st Avenue/To Joyce
+ * Station", "95 to Langford" from "Blink - to Langford", "R2 to Park Royal" from "R2 Park Royal".
+ */
+function busTitle(v: VehicleState, route: PlanRoute): string {
+  const to = /\bto\s+(.+)$/i.exec(v.headsign)?.[1];
+  const dest = (
+    to ?? v.headsign.replace(new RegExp(`^\\s*${route.key}\\b`), "")
+  ).trim();
+  return dest ? `${route.key} to ${dest}` : route.key;
 }
 
 function seconds(s: number): string {
@@ -138,8 +151,7 @@ export const VehicleCard: React.FC<{
     );
 
   const mode = MODE[route.mode];
-  const others = snap.routes.filter((r) => r.key !== route.key);
-  const onlyThis = others.every((r) => snap.hidden.has(r.key));
+  const title = route.mode === "bus" ? busTitle(v, route) : headsign(v);
   const actions: CardAction[] = [
     snap.following ?
       {
@@ -167,29 +179,13 @@ export const VehicleCard: React.FC<{
       // The URL already names the selected vehicle and the shown time.
       onSelect: () => shareLink(location.href, `${route.label} · Transitopia`),
     },
-    onlyThis ?
-      {
-        id: "only",
-        label: "Show all routes",
-        icon: "filter",
-        onSelect: () =>
-          engine.setRoutesHidden(
-            others.map((r) => r.key),
-            false,
-          ),
-      }
-    : {
-        id: "only",
-        label: `Show only ${route.label}`,
-        icon: "filter",
-        onSelect: () => {
-          engine.setRoutesHidden([route.key], false);
-          engine.setRoutesHidden(
-            others.map((r) => r.key),
-            true,
-          );
-        },
-      },
+    {
+      id: "route",
+      label: `View route: ${route.label}`,
+      lead: <RouteBadge route={route} />,
+      onSelect: () =>
+        engine.open({ place: { kind: "route", id: route.key } }, title),
+    },
   ];
   const details: [string, string | undefined][] = [
     // "08:05 from Langford Exchange · 11898518": as a rider names it, with the agency's short id.
@@ -206,18 +202,11 @@ export const VehicleCard: React.FC<{
   ];
   return (
     <InfoCard
-      tile={
-        mode.icon ?
-          { icon: mode.icon, bg: route.color, fg: route.textColor }
-        : { text: route.key, bg: route.color, fg: route.textColor }
-      }
+      tile={{ icon: mode.icon, bg: route.color, fg: route.textColor }}
       eyebrow={mode.eyebrow(route)}
-      title={route.mode === "bus" ? route.label : headsign(v)}
+      title={title}
       subtitle={
-        route.mode === "bus" ?
-          [headsign(v), v.label ? `vehicle ${v.label}` : ""]
-            .filter(Boolean)
-            .join(" · ")
+        route.mode === "bus" ? undefined
         : v.runId ?
           `Train ${v.runId} (inferred run)`
         : v.consist?.name
@@ -258,6 +247,22 @@ export const VehicleCard: React.FC<{
         : null}
       </CardSection>
       <CardSection title="Details">
+        <CardRow
+          label="Route"
+          value={
+            // Opens the route card, with a back strip returning here (apps/web/README.md#cross-references).
+            <button
+              type="button"
+              title={`View route: ${route.label}`}
+              className="inline-flex h-[26px] items-center rounded-md px-[9px] text-[13px] font-bold hover:shadow-[inset_0_0_0_100px_rgb(0_0_0/0.12)]"
+              style={{ background: route.color, color: route.textColor }}
+              onClick={() =>
+                engine.open({ place: { kind: "route", id: route.key } }, title)
+              }>
+              {route.label}
+            </button>
+          }
+        />
         {details.map(([label, value]) =>
           value ? <CardRow key={label} label={label} value={value} /> : null,
         )}
