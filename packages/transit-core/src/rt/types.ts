@@ -54,18 +54,6 @@ export function trackedOnly(s: RtSnapshot): RtSnapshot {
     : { ...s, vehicles: s.vehicles.filter(isTracked) };
 }
 
-/** Response of GET /rt/live. */
-export interface RtLiveResponse {
-  snapshot: RtSnapshot | null;
-  /** Seconds since the snapshot was fetched, at response time. */
-  ageS: number | null;
-  stale: boolean;
-  /** Why data is unavailable (e.g. no API key), for display. */
-  error?: string;
-  /** Live dispatch (packages/transit-core/DESIGN.md#dispatcher): service date (YYYYMMDD) → current patch version. */
-  dispatch?: Record<string, string>;
-}
-
 /** Response of GET /rt/coverage: recorder coverage as merged [start, end] epoch-ms intervals. */
 export interface RtCoverageResponse {
   intervals: [number, number][];

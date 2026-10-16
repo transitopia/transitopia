@@ -23,7 +23,7 @@ export const basemapAssets: string = absolute(
   env.VITE_BASEMAP_ASSETS ?? "/dev-data/basemap-assets/",
 );
 
-/** Published transit data (…/data/manifest.json), ending in "/". */
+/** Published transit data (…/data/feeds/<feed>/manifest.json), ending in "/". */
 export const transitData: string = env.VITE_TRANSIT_DATA ?? "/dev-data/";
 
 /** The RT service (…/regions/<id>/live/transit), ending in "/"; undefined for schedules only. */

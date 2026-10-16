@@ -28,6 +28,7 @@ import { Auth } from "../src/auth.ts";
 import { createApp } from "../src/app.ts";
 import { readEnv } from "../src/env.ts";
 import type { Disruption } from "@transitopia/transit-core/disruption/types.ts";
+import type { RtSnapshot } from "@transitopia/transit-core/rt/types.ts";
 import {
   correctionsResponse,
   statusResponse,
@@ -137,7 +138,10 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
       expect(rows.every((r) => r.route_key === null)).toBe(true);
     });
     // Clients only see routes we draw (none here).
-    expect(service.liveResponse().snapshot?.vehicles).toEqual([]);
+    const latest = (
+      service.pollers.get("translink") as unknown as { latest: RtSnapshot }
+    ).latest;
+    expect(latest.vehicles).toEqual([]);
     // The hour file has every vehicle; /rt/history serves only drawn routes.
     // Each feed records under its own directory.
     const feedDir = join(dir, "translink");
@@ -149,7 +153,11 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
     expect(recorded.v.length).toBe(2);
     const hist = await service.handle(
       "/rt/history",
-      new URLSearchParams({ date: day, hour: hourFile!.slice(0, 2) }),
+      new URLSearchParams({
+        feed: "translink",
+        date: day,
+        hour: hourFile!.slice(0, 2),
+      }),
     );
     expect(
       JSON.parse(

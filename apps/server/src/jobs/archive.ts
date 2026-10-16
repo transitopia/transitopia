@@ -74,8 +74,7 @@ export async function expireRawData(opts: {
     for (const d of await readdir(root, { withFileTypes: true }).catch(
       () => [],
     ))
-      if (d.isDirectory() && !/^\d{4}-\d{2}-\d{2}$/.test(d.name))
-        feedDirs.push(join(root, d.name));
+      if (d.isDirectory()) feedDirs.push(join(root, d.name));
   for (const base of feedDirs) {
     let days: string[] = [];
     try {
@@ -89,7 +88,7 @@ export async function expireRawData(opts: {
         dirs.push(join(base, d));
       }
   }
-  // The pattern matches at any depth: rt-history/<feed>/<date>/, and the layout before feeds had ids.
+  // Each feed's hour files in the bucket: rt-history/<feed>/<date>/, ais-history/<feed>/<date>/.
   if (opts.archiveRemote)
     for (const sub of ["rt-history", "ais-history"])
       await run(
@@ -100,7 +99,7 @@ export async function expireRawData(opts: {
           "--min-age",
           `${opts.retentionDays}d`,
           "--include",
-          "????-??-??/*.ndjson.gz",
+          "/*/????-??-??/*.ndjson.gz",
         ],
         // 3: directory not found, i.e. nothing archived there yet.
         { okCodes: [0, 3] },

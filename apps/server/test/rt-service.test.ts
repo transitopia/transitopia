@@ -64,6 +64,10 @@ function tripUpdatesFeed(tripIds: string[]): Uint8Array {
 const feedResponse = (body: Uint8Array) =>
   new Response(new Blob([body as Uint8Array<ArrayBuffer>]), { status: 200 });
 
+/** TransLink's latest snapshot, once its first positions poll is in. */
+const latest = (service: RtService) =>
+  (service.pollers.get("translink") as unknown as { latest: unknown }).latest;
+
 describe("RtService", () => {
   let dir: string | undefined;
   let service: RtService | undefined;
@@ -92,18 +96,20 @@ describe("RtService", () => {
       apiKey: "test-key",
       dispatch: false,
       disruptionsDir: dir,
+      regionId: "test-region",
     });
     await service.start(0);
     // Let the first positions + trip-updates + alerts polls complete.
-    await vi.waitFor(() =>
-      expect(service!.liveResponse().snapshot).not.toBeNull(),
-    );
+    await vi.waitFor(() => expect(latest(service!)).not.toBeNull());
     await vi.waitFor(() => expect(upstream.mock.calls.length).toBe(3));
 
     const before = upstream.mock.calls.length;
     const responses = await Promise.all(
       Array.from({ length: 100 }, () =>
-        service!.handle("/rt/live", new URLSearchParams()),
+        service!.handle(
+          "/regions/test-region/live/transit",
+          new URLSearchParams(),
+        ),
       ),
     );
     expect(upstream.mock.calls.length).toBe(before);
@@ -111,7 +117,7 @@ describe("RtService", () => {
     for (const r of responses) {
       expect(r.status).toBe(200);
       expect(r.headers["Access-Control-Allow-Origin"]).toBe("*");
-      expect(r.headers["Cache-Control"]).toMatch(/max-age=10/);
+      expect(r.headers["Cache-Control"]).toMatch(/^public, max-age=\d+$/);
       // The key must never appear in responses.
       expect(String(r.body)).not.toContain("test-key");
     }
@@ -137,9 +143,7 @@ describe("RtService", () => {
     });
     await service.start(0);
     await vi.waitFor(() => expect(upstream.mock.calls.length).toBe(3));
-    await vi.waitFor(() =>
-      expect(service!.liveResponse().snapshot).not.toBeNull(),
-    );
+    await vi.waitFor(() => expect(latest(service!)).not.toBeNull());
 
     const get = (path: string) => service!.handle(path, new URLSearchParams());
     const r = await get("/regions/test-region/live/transit");
@@ -332,19 +336,36 @@ describe("RtService", () => {
       log: () => {},
       apiKey: null,
       dispatch: false,
+      regionId: "test-region",
     });
     await service.start(0);
-    const r = await service.handle("/rt/live", new URLSearchParams());
-    const body = JSON.parse(String(r.body));
-    expect(body.snapshot).toBeNull();
-    expect(body.stale).toBe(true);
-    expect(body.error).toMatch(/API key/);
+    const r = await service.handle(
+      "/regions/test-region/live/transit",
+      new URLSearchParams(),
+    );
+    const body = JSON.parse(String(r.body)) as LiveTransitResponse;
+    expect(body.sources["translink/vehicles"]).toMatchObject({
+      status: "unavailable",
+      data: null,
+      error: expect.stringMatching(/API key/),
+    });
     expect(upstream).not.toHaveBeenCalled();
-    // Live dispatch is off here: no pointer, and its endpoints say so.
-    expect(body.dispatch).toBeUndefined();
+    // Live dispatch is off here: no section, and its endpoints say so.
+    expect(body.sources["dispatch"]).toBeUndefined();
     expect(
       (await service.handle("/rt/dispatch", new URLSearchParams())).status,
     ).toBe(404);
+    // The feed endpoints need a feed that has real time.
+    const coverage = (q: Record<string, string>) =>
+      service!.handle("/rt/coverage", new URLSearchParams(q));
+    expect((await coverage({})).status).toBe(400);
+    expect((await coverage({ feed: "nope" })).status).toBe(404);
+    expect((await coverage({ feed: "translink" })).status).toBe(200);
+    // The endpoints the live endpoint replaced are gone.
+    for (const old of ["/rt/live", "/rt/ais/fixes", "/rt/changes"])
+      expect((await service.handle(old, new URLSearchParams())).status).toBe(
+        404,
+      );
   });
 
   it("keeps a trip-updates failure visible after positions succeed, and fails health", async () => {
@@ -506,9 +527,7 @@ describe("RtService", () => {
       disruptionsDir: dir,
     });
     await service.start(0);
-    await vi.waitFor(() =>
-      expect(service!.liveResponse().snapshot).not.toBeNull(),
-    );
+    await vi.waitFor(() => expect(latest(service!)).not.toBeNull());
     // The first trip-updates poll may have come before any positions: poll again now.
     const internals = service.pollers.get("translink") as unknown as {
       pollTripUpdates(): Promise<number>;

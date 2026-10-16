@@ -57,6 +57,7 @@ const S: [number, number] = [-123.1, 49.28];
 const N: [number, number] = [-123.1, 49.29978];
 const plan: ServicePlan = {
   schema: 1,
+  feed: "translink",
   feedVersion: "test",
   feedStart: serviceDate("20260901"),
   feedEnd: serviceDate("20261231"),
@@ -499,9 +500,6 @@ describe("AisFeed", () => {
             -1,
           )
         : localDate(now.getTime());
-      const all = await feed.fixesFor(date);
-      expect(all.fixes).toHaveLength(1);
-      expect((await feed.fixesFor(date, all.cursor)).fixes).toHaveLength(0);
       // The day file and the live window only hold recorded batches.
       expect((await feed.dayFile(date)).fixes).toHaveLength(0);
       expect(feed.liveWindow(300_000).fixes).toHaveLength(0);
@@ -533,7 +531,7 @@ describe("AisFeed", () => {
         connect: () => socket as any,
       });
       await again.start();
-      expect((await again.fixesFor(date)).fixes.map((f) => f.mmsi)).toEqual([
+      expect((await again.dayFile(date)).fixes.map((f) => f.mmsi)).toEqual([
         "316042365",
       ]);
       again.stop();

@@ -20,7 +20,6 @@ import {
 } from "@transitopia/transit-core/gtfs/describe.ts";
 import {
   feedForDate,
-  LEGACY_FEED,
   type PlanRoute,
 } from "@transitopia/transit-core/plan/types.ts";
 import {
@@ -1119,7 +1118,7 @@ export class TransitEngine {
         const tracks = this.tracks;
         void loadPlatforms(
           this.store.dataBase,
-          plan.feed ?? LEGACY_FEED,
+          plan.feed,
           plan.feedVersion,
         ).then(
           (p) =>

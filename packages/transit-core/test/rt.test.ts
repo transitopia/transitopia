@@ -53,6 +53,7 @@ const kin: KinematicsConfig = {
 const corner: [number, number] = [-123.08625, 49.25];
 const plan: ServicePlan = {
   schema: 1,
+  feed: "translink",
   feedVersion: "t",
   feedStart: serviceDate("20260901"),
   feedEnd: serviceDate("20261231"),

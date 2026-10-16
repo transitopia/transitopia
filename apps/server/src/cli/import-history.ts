@@ -13,7 +13,7 @@
 //   var/dispatch-history/<date>/<v>.json    → dispatch_versions
 //   config/regions/metro-vancouver/{observations,disruptions} → corrections (as on every start)
 //
-// The files themselves stay where they are: the server keeps serving /rt/history, /rt/changes and
+// The files themselves stay where they are: the server keeps serving /rt/history, service changes and
 // dispatch versions from them. Alerts (alerts.ndjson, and the bus alerts inside changes/) aren't
 // imported into the alerts table: they're in another shape (our route keys, not GTFS ids).
 
@@ -29,7 +29,6 @@ import {
   readJson,
   readManifest,
 } from "@transitopia/data/paths.ts";
-import { migrateLegacyFiles } from "@transitopia/data/legacy.ts";
 import { archivedFeeds } from "@transitopia/data/gtfs-day.ts";
 import { createDb } from "@transitopia/db/connect.ts";
 import { migrate } from "@transitopia/db/migrate.ts";
@@ -63,7 +62,6 @@ await migrate(pool, log);
 await syncSources(db);
 const rail = await railNetwork();
 const store = new Store(db, rail.region);
-if (varDir === VAR_DIR) await migrateLegacyFiles();
 
 /** Our route key → GTFS route_id, from a feed's built plans (the newest version wins). */
 async function routeIds(feed: string): Promise<Map<string, string>> {

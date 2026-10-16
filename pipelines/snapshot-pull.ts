@@ -25,13 +25,10 @@ import {
   readFeeds,
   writeJson,
 } from "@transitopia/data/paths.ts";
-import { migrateLegacyFiles } from "@transitopia/data/legacy.ts";
-import { LEGACY_FEED } from "@transitopia/transit-core/plan/types.ts";
 
 const allFeeds = await readFeeds();
 const feeds = allFeeds.filter((f) => f.realtime);
 const aisFeeds = allFeeds.filter((f) => f.ais);
-await migrateLegacyFiles();
 
 const args = process.argv.slice(2);
 const opt = (name: string) => {
@@ -74,29 +71,19 @@ for (const d of dates) {
   log(`${d}: recordings, service changes, dispatch versions`);
   for (const feed of feeds) {
     const local = feedPaths(feed.id).rtHistory;
-    // Before feeds had ids, TransLink's recordings were archived at the top of rt-history/.
-    const archived =
-      feed.id === LEGACY_FEED ?
-        ["rt-history", `rt-history/${feed.id}`]
-      : [`rt-history/${feed.id}`];
-    for (const a of archived) {
-      rclone("copy", `${remote}/${a}/${d}`, join(local, d));
-      rclone(
-        "copy",
-        `${remote}/${a}/changes`,
-        join(local, "changes"),
-        "--include",
-        `${compact}.json`,
-      );
-    }
+    const archived = `rt-history/${feed.id}`;
+    rclone("copy", `${remote}/${archived}/${d}`, join(local, d));
+    rclone(
+      "copy",
+      `${remote}/${archived}/changes`,
+      join(local, "changes"),
+      "--include",
+      `${compact}.json`,
+    );
   }
   for (const feed of aisFeeds) {
     const local = feedPaths(feed.id).aisHistory;
-    // Before feeds had ids, TransLink's AIS was archived at the top of ais-history/.
-    for (const a of feed.id === LEGACY_FEED ?
-      ["ais-history", `ais-history/${feed.id}`]
-    : [`ais-history/${feed.id}`])
-      rclone("copy", `${remote}/${a}/${d}`, join(local, d));
+    rclone("copy", `${remote}/ais-history/${feed.id}/${d}`, join(local, d));
   }
   rclone(
     "copy",

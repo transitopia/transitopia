@@ -16,9 +16,8 @@
 //   GET /rt/alerts                      current alerts for our rail lines (and whether drafted)
 //   GET /rt/dispatch                    live dispatch: current patch per service date (index)
 //   GET /rt/dispatch/<date>/<v>.json    a patch version (immutable)
-//   GET /rt/live, /rt/ais/fixes, /rt/changes   replaced by the live endpoint (issue #178 removes them)
 //
-// `feed` defaults to TransLink's, as before feeds had ids. Client requests never trigger upstream
+// `feed` is required where it's a parameter. Client requests never trigger upstream
 // calls: each feed's rate is fixed by its poll schedule within its daily cap
 // (packages/transit-core/src/rt/budget.ts). Only one process polls and records (the "leader",
 // leader.ts); the others forward /rt/* and /regions/* to it and take over when it goes away. Every
@@ -35,23 +34,18 @@ import {
   type FeedInfo,
   type RegionInfo,
 } from "@transitopia/transit-core/config.ts";
-import type {
-  RtCoverageResponse,
-  RtLiveResponse,
-} from "@transitopia/transit-core/rt/types.ts";
+import type { RtCoverageResponse } from "@transitopia/transit-core/rt/types.ts";
 import {
   regionPaths,
   type RailNetwork,
   RT_HISTORY_DIR,
   AIS_HISTORY_DIR,
 } from "@transitopia/data/paths.ts";
-import { LEGACY_FEED } from "@transitopia/transit-core/plan/types.ts";
 import { aisstreamApiKey, secret } from "../secrets.ts";
 import { AisFeed } from "./ais.ts";
 import {
   encodeFixes,
   type AisDayResponse,
-  type AisFixesResponse,
 } from "@transitopia/transit-core/ais/fixes.ts";
 import type { AisFix } from "@transitopia/transit-core/ais/match.ts";
 import { Recorder } from "./recorder.ts";
@@ -186,7 +180,8 @@ const LEADER_RETRY_MS = 30_000;
 
 export class RtService {
   private alerts: ServiceAlert[] = [];
-  readonly alertDrafts: AlertDrafts;
+  /** Drafts from the rail feed's alerts (none without a rail network). */
+  readonly alertDrafts: AlertDrafts | undefined;
   /** One per feed with real time, by feed id. */
   readonly pollers = new Map<string, FeedPoller>();
   readonly regions: ServedRegion[];
@@ -298,36 +293,21 @@ export class RtService {
       this.aisFeeds.set(feed.id, { cfg, stream });
     }
     // Alert drafts and their history go with the rail feed's recordings.
-    this.alertDrafts = new AlertDrafts({
-      repo: opts.corrections,
-      disruptionsDir:
-        opts.disruptionsDir
-        ?? (this.rail ?
-          regionPaths(this.rail.region).disruptions
-        : join(this.historyDir, "disruptions")),
-      historyDir: join(this.historyDir, this.rail?.feed ?? LEGACY_FEED),
-      log: this.log,
-    });
-  }
-
-  /** TransLink's AIS stream (GET /rt/ais/fixes, from before feeds had ids). */
-  get ais(): AisFeed | undefined {
-    return this.aisFeeds.get(LEGACY_FEED)?.stream;
-  }
-
-  /** Whether TransLink's key is configured (the poller /rt/live serves). */
-  get hasKey(): boolean {
-    return this.pollers.get(LEGACY_FEED)?.hasKey ?? false;
+    this.alertDrafts =
+      this.rail ?
+        new AlertDrafts({
+          repo: opts.corrections,
+          disruptionsDir:
+            opts.disruptionsDir ?? regionPaths(this.rail.region).disruptions,
+          historyDir: join(this.historyDir, this.rail.feed),
+          log: this.log,
+        })
+      : undefined;
   }
 
   /** Whether this process polls, records and dispatches (false while following another). */
   get leading(): boolean {
     return this.isLeader;
-  }
-
-  /** A feed's poller: `feed` from a request, defaulting to TransLink's. */
-  private poller(feed: string | null | undefined): FeedPoller | undefined {
-    return this.pollers.get(feed || LEGACY_FEED);
   }
 
   /** The rail region's lines' alerts: drafts of the ones we can model (packages/transit-core/DESIGN.md#disruptions-and-alerts). */
@@ -353,7 +333,7 @@ export class RtService {
         description: a.description,
       }))
       .filter((a) => a.lines.length > 0);
-    await this.alertDrafts.update(this.alerts);
+    await this.alertDrafts?.update(this.alerts);
   }
 
   /**
@@ -425,7 +405,7 @@ export class RtService {
       await a.stream.start();
     }
     // The last alerts, so /rt/alerts and /admin aren't empty until the first alerts poll.
-    if (this.pollers.size)
+    if (this.alertDrafts)
       this.alerts = await this.alertDrafts.restore().catch((e: Error) => {
         this.log(`could not restore alerts (${e.message})`);
         return [];
@@ -473,18 +453,6 @@ export class RtService {
       // Leader gone: take over on the next start; for now report unavailable.
       return json(503, { error: "Real-time leader process unreachable" });
     }
-  }
-
-  /** TransLink's latest snapshot (GET /rt/live, before the live endpoint), with live dispatch. */
-  liveResponse(now = Date.now()): RtLiveResponse {
-    const r: RtLiveResponse = this.poller(LEGACY_FEED)?.liveResponse(now) ?? {
-      snapshot: null,
-      ageS: null,
-      stale: true,
-      error: "No TransLink feed configured",
-    };
-    if (this.dispatcher) r.dispatch = this.dispatcher.pointer();
-    return r;
   }
 
   /**
@@ -648,25 +616,26 @@ export class RtService {
     if (inRegion) return this.handleRegion(inRegion[1]!, inRegion[2]!);
     if (pathname.startsWith("/rt/dispatch"))
       return this.handleDispatch(pathname);
+    // A feed's poller, for the endpoints that take `feed=<id>`.
+    const feedParam = params.get("feed");
+    const poller = feedParam ? this.pollers.get(feedParam) : undefined;
     const noFeed = () =>
-      json(404, { error: `No real-time feed ${params.get("feed")}` });
+      feedParam ?
+        json(404, { error: `No real-time feed ${feedParam}` })
+      : json(400, { error: "feed=<id> required" });
     switch (pathname) {
-      case "/rt/live":
-        return json(200, this.liveResponse(), {
-          "Cache-Control": "public, max-age=10",
-        });
       case "/rt/coverage": {
-        const p = this.poller(params.get("feed"));
-        if (!p) return noFeed();
+        if (!poller) return noFeed();
         const from = Number(params.get("from") ?? -Infinity);
         const to = Number(params.get("to") ?? Infinity);
-        const body: RtCoverageResponse = { intervals: p.coverage(from, to) };
+        const body: RtCoverageResponse = {
+          intervals: poller.coverage(from, to),
+        };
         return json(200, body, { "Cache-Control": "public, max-age=30" });
       }
       case "/rt/history": {
-        const p = this.poller(params.get("feed"));
-        if (!p) return noFeed();
-        const f = await p.trackedHour(
+        if (!poller) return noFeed();
+        const f = await poller.trackedHour(
           params.get("date") ?? "",
           params.get("hour") ?? "",
         );
@@ -682,36 +651,6 @@ export class RtService {
           },
           body: f.body,
         };
-      }
-      case "/rt/ais/fixes": {
-        const date = params.get("date") ?? "";
-        if (!isServiceDate(date))
-          return json(400, { error: "date=YYYYMMDD required" });
-        const st = this.ais?.status();
-        const r =
-          this.ais ?
-            await this.ais.fixesFor(date, Number(params.get("after") ?? 0) || 0)
-          : { fixes: [], cursor: 0 };
-        const body: AisFixesResponse = {
-          connected: st?.connected ?? false,
-          lastMessageAgeS: st?.lastMessageAgeS ?? null,
-          cursor: r.cursor,
-          epoch: this.ais?.epoch ?? 0,
-          fixes: encodeFixes(r.fixes),
-        };
-        if (!this.ais) body.error = "No aisstream.io API key configured";
-        else if (st?.lastError && !st.connected) body.error = st.lastError;
-        return json(200, body, { "Cache-Control": "no-cache" });
-      }
-      case "/rt/changes": {
-        const p = this.poller(params.get("feed"));
-        if (!p) return noFeed();
-        const date = params.get("date") ?? "";
-        if (!isServiceDate(date))
-          return json(400, { error: "date=YYYYMMDD required" });
-        return json(200, await p.changes.get(date), {
-          "Cache-Control": "public, max-age=30",
-        });
       }
       case "/rt/alerts":
         return json(
@@ -745,11 +684,6 @@ export class RtService {
         [...this.aisFeeds].map(([id, a]) => [id, a.stream?.status() ?? null]),
       ),
     };
-  }
-
-  /** A feed's request budget (TransLink's by default), for tests and scripts. */
-  budgetStatus(feed: string = LEGACY_FEED, now = Date.now()) {
-    return this.pollers.get(feed)?.budgetStatus(now);
   }
 
   /** Live dispatch: the index of current versions, or one immutable patch version. */

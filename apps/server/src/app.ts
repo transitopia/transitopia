@@ -157,7 +157,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
     return c.json({
       disruptions,
       observationSets,
-      unparsedAlerts: service.alertDrafts.unparsed,
+      unparsedAlerts: service.alertDrafts?.unparsed ?? [],
       liveDispatch: service.dispatcher?.pointer() ?? {},
     } satisfies CorrectionsResponse);
   });

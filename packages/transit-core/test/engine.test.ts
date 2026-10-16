@@ -34,6 +34,7 @@ const kin: KinematicsConfig = {
 // A 2 km straight line with stops at 0, 1000, 2000 m; one train out and back in the same block.
 const plan: ServicePlan = {
   schema: 1,
+  feed: "translink",
   feedVersion: "test",
   feedStart: serviceDate("20260901"),
   feedEnd: serviceDate("20261231"),

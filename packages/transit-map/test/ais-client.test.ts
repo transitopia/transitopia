@@ -21,6 +21,7 @@ const config = {
 };
 const plan: ServicePlan = {
   schema: 1,
+  feed: "translink",
   feedVersion: "test",
   feedStart: serviceDate("20260901"),
   feedEnd: serviceDate("20261231"),

@@ -1,6 +1,5 @@
 // AIS fixes: parsing aisstream.io messages, the compact wire format of the day files and the live
-// endpoint (and of GET /rt/ais/fixes, until #178 removes it), and
-// which fixes belong to a service date. Shared by the RT service and the browser (packages/transit-core/DESIGN.md#seabus-ais).
+// endpoint, and which fixes belong to a service date. Shared by the RT service and the browser (packages/transit-core/DESIGN.md#seabus-ais).
 
 import type { RtVehicle } from "../rt/types.ts";
 import { serviceDayStart, type ServiceDate } from "../time.ts";
@@ -95,21 +94,6 @@ export function vehicleToFix(v: RtVehicle): AisFix {
   if (v.bearing !== undefined) f.cog = v.bearing;
   if (v.speed !== undefined) f.sog = Math.round((v.speed / KN) * 10) / 10;
   return f;
-}
-
-/** Response of GET /rt/ais/fixes. */
-export interface AisFixesResponse {
-  /** Whether the upstream stream is connected now. */
-  connected: boolean;
-  /** Seconds since the last message from upstream (any vessel), if any. */
-  lastMessageAgeS: number | null;
-  error?: string;
-  /** Pass as `after` (with the same epoch) to get only fixes received since this response. */
-  cursor: number;
-  /** Changes when the RT service restarts; a client with a cursor from another epoch refetches. */
-  epoch: number;
-  /** Sorted by ts. */
-  fixes: AisRow[];
 }
 
 /**

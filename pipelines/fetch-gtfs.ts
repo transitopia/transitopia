@@ -17,7 +17,6 @@ import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { readCsvAll, zipSignature } from "@transitopia/data/gtfs-zip.ts";
 import { archivedFeeds } from "@transitopia/data/gtfs-day.ts";
-import { migrateLegacyFiles } from "@transitopia/data/legacy.ts";
 import {
   exists,
   feedPaths,
@@ -104,9 +103,6 @@ export async function fetchGtfs(
 }
 
 async function main() {
-  const moved = await migrateLegacyFiles();
-  if (moved.length)
-    log(`Moved into TransLink's directories: ${moved.join(", ")}`);
   const arg = (name: string) => {
     const i = process.argv.indexOf(name);
     return i >= 0 ? process.argv[i + 1] : undefined;

@@ -27,7 +27,6 @@ import {
   regionOfFeed,
   readFeedConfig,
 } from "@transitopia/data/paths.ts";
-import { migrateLegacyFiles } from "@transitopia/data/legacy.ts";
 
 export interface RecordedHour {
   /** "<date>T<HH>" as recorded, e.g. "2026-09-26T17". */
@@ -51,7 +50,6 @@ export async function* eachRecordedHour(
   feed: string,
   sinceDate = "",
 ): AsyncGenerator<RecordedHour> {
-  await migrateLegacyFiles();
   const dir = feedPaths(feed).rtHistory;
   if (!existsSync(dir)) return;
   for (const day of (await readdir(dir))

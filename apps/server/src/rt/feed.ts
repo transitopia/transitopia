@@ -22,7 +22,6 @@ import {
   isTracked,
   trackedOnly,
   untrackedRouteKey,
-  type RtLiveResponse,
   type RtSnapshot,
   type RtVehicle,
 } from "@transitopia/transit-core/rt/types.ts";
@@ -509,22 +508,17 @@ export class FeedPoller {
 
   // --- what clients get ---
 
-  /** The latest snapshot of the routes we draw (GET /rt/live, before the live endpoint). */
-  liveResponse(now = Date.now()): RtLiveResponse {
+  /** Whether the latest snapshot is too old to show, and why data is unavailable, if it is. */
+  private freshness(now: number): { stale: boolean; error?: string } {
     const ageS = this.latest ? (now - this.latest.fetchedAt) / 1000 : null;
-    const r: RtLiveResponse = {
-      snapshot: this.latest,
-      ageS,
-      stale:
-        ageS === null
-        || !this.latest
-        || ageS * 1000 > this.cadence.staleAfterMs(this.latest.fetchedAt),
-    };
-    const reason = this.unavailableReason;
-    if (reason) r.error = reason;
-    else if (this.endpoints.positions.lastError && r.stale)
-      r.error = this.endpoints.positions.lastError;
-    return r;
+    const stale =
+      ageS === null
+      || !this.latest
+      || ageS * 1000 > this.cadence.staleAfterMs(this.latest.fetchedAt);
+    const error =
+      this.unavailableReason
+      ?? (stale ? this.endpoints.positions.lastError : undefined);
+    return error ? { stale, error } : { stale };
   }
 
   /** Its sections of a region's live endpoint: "<feed>/vehicles" and "<feed>/changes". */
@@ -532,7 +526,7 @@ export class FeedPoller {
     regionId: string,
     now = Date.now(),
   ): Promise<Record<string, LiveVehiclesSection | LiveChangesSection>> {
-    const live = this.liveResponse(now);
+    const live = this.freshness(now);
     const vehicles: LiveVehiclesSection = {
       kind: "vehicles",
       encoding: "rt-snapshot/1",

@@ -32,7 +32,6 @@ import {
   readRegions,
   writeJson,
 } from "@transitopia/data/paths.ts";
-import { migrateLegacyFiles } from "@transitopia/data/legacy.ts";
 import { shortId } from "@transitopia/transit-core/plan/display.ts";
 import type {
   FeedInfo,
@@ -703,7 +702,6 @@ async function buildFeed(feed: FeedInfo, force: boolean): Promise<void> {
 }
 
 async function main() {
-  await migrateLegacyFiles();
   const force = process.argv.includes("--force");
   const i = process.argv.indexOf("--feed");
   const only = i >= 0 ? process.argv[i + 1] : undefined;

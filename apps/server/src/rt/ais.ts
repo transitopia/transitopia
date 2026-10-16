@@ -35,8 +35,8 @@ export interface AisConfig {
   maxBackoffS: number;
 }
 
-/** A fix in memory: seq numbers arrivals (the /rt/ais/fixes cursor); `at` is its batch's time, once recorded. */
-type HeldFix = AisFix & { seq: number; at?: number };
+/** A fix in memory: `at` is its batch's time, once recorded. */
+type HeldFix = AisFix & { at?: number };
 
 type Socket = Pick<WebSocket, "send" | "close" | "addEventListener">;
 
@@ -56,9 +56,6 @@ export interface AisFeedOptions {
 export class AisFeed {
   /** Fixes in memory, in arrival order. */
   private fixes: HeldFix[] = [];
-  private seq = 0;
-  /** Identifies this process's numbering: a client whose cursor has another epoch refetches. */
-  readonly epoch = Date.now();
   private pending: HeldFix[] = [];
   /** When the latest batch was recorded, and the latest one with fixes in it. */
   private lastBatchAt: number | undefined;
@@ -95,7 +92,7 @@ export class AisFeed {
       ...(await readRecordedFixes(this.opts.recorder, today)),
     ]);
     // Recorded before this process: older than any live window.
-    this.fixes = resumed.map((f) => ({ ...f, seq: ++this.seq, at: 0 }));
+    this.fixes = resumed.map((f) => ({ ...f, at: 0 }));
     this.lastBatchAt = Date.now();
     this.batchTimer = setInterval(
       () => void this.flush(),
@@ -127,30 +124,16 @@ export class AisFeed {
     };
   }
 
-  /**
-   * Fixes for a service date (YYYYMMDD), sorted by time. `after`: a cursor from an earlier call, to
-   * get only fixes received since (they can arrive out of time order, in bursts).
-   */
-  async fixesFor(
-    serviceDate: ServiceDate,
-    after = 0,
-  ): Promise<{ fixes: AisFix[]; cursor: number }> {
-    const [from, to] = serviceDateWindow(serviceDate);
-    if (after > this.seq) after = 0;
-    if (from < Date.now() - MEMORY_MS) {
-      let cached = this.past.get(serviceDate);
-      if (!cached) {
-        cached = await readRecordedFixes(this.opts.recorder, serviceDate);
-        this.past.set(serviceDate, cached);
-        while (this.past.size > PAST_DATES_CACHED)
-          this.past.delete(this.past.keys().next().value!);
-      }
-      return { fixes: after ? [] : cached, cursor: this.seq };
+  /** A past service date's fixes (YYYYMMDD), sorted by time, read from the recordings. */
+  private async pastFixes(serviceDate: ServiceDate): Promise<AisFix[]> {
+    let cached = this.past.get(serviceDate);
+    if (!cached) {
+      cached = await readRecordedFixes(this.opts.recorder, serviceDate);
+      this.past.set(serviceDate, cached);
+      while (this.past.size > PAST_DATES_CACHED)
+        this.past.delete(this.past.keys().next().value!);
     }
-    const fixes = this.fixes
-      .filter((f) => f.seq > after && f.ts >= from && f.ts < to)
-      .map(strip);
-    return { fixes: fixes.sort((a, b) => a.ts - b.ts), cursor: this.seq };
+    return cached;
   }
 
   /**
@@ -164,10 +147,8 @@ export class AisFeed {
     const [from, to] = serviceDateWindow(serviceDate);
     const complete =
       now > to + COMPLETE_AFTER_BATCHES * this.opts.cfg.batchS * 1000;
-    if (from < now - MEMORY_MS) {
-      const r = await this.fixesFor(serviceDate);
-      return { fixes: r.fixes, to, complete: true };
-    }
+    if (from < now - MEMORY_MS)
+      return { fixes: await this.pastFixes(serviceDate), to, complete: true };
     const fixes = this.fixes
       .filter((f) => f.at !== undefined && f.ts >= from && f.ts < to)
       .map(strip)
@@ -262,9 +243,8 @@ export class AisFeed {
     }
     const fix = parseAisMessage(msg, this.mmsis);
     if (!fix) return;
-    const held: HeldFix = { ...fix, seq: ++this.seq };
-    this.fixes.push(held);
-    this.pending.push(held);
+    this.fixes.push(fix);
+    this.pending.push(fix);
   }
 
   /** Record pending fixes (an empty batch while connected keeps coverage going); prune memory. */
@@ -294,7 +274,7 @@ export class AisFeed {
   }
 }
 
-function strip({ seq: _, at: __, ...f }: HeldFix): AisFix {
+function strip({ at: _, ...f }: HeldFix): AisFix {
   return f;
 }
 

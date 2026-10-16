@@ -103,6 +103,7 @@ describe("applyService extend", () => {
   };
   const plan: ServicePlan = {
     schema: 1,
+    feed: "translink",
     feedVersion: "v",
     feedStart: serviceDate("20260901"),
     feedEnd: serviceDate("20261231"),
@@ -256,6 +257,7 @@ describe("applyService truncate", () => {
   });
   const plan: ServicePlan = {
     schema: 1,
+    feed: "translink",
     feedVersion: "v",
     feedStart: serviceDate("20260901"),
     feedEnd: serviceDate("20261231"),
