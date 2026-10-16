@@ -98,18 +98,20 @@ export const AttributionControl: React.FC = () => {
                   rel="noreferrer">
                   {d.credit}
                 </a>
-                <span className="text-gray-500 dark:text-gray-400">
-                  {" · "}
-                  {d.license.url ?
-                    <a
-                      href={d.license.url}
-                      className="underline"
-                      target="_blank"
-                      rel="noreferrer">
-                      {d.license.name}
-                    </a>
-                  : d.license.name}
-                </span>
+                {d.license && (
+                  <span className="text-gray-500 dark:text-gray-400">
+                    {" · "}
+                    {d.license.url ?
+                      <a
+                        href={d.license.url}
+                        className="underline"
+                        target="_blank"
+                        rel="noreferrer">
+                        {d.license.name}
+                      </a>
+                    : d.license.name}
+                  </span>
+                )}
               </li>
             ))}
           </ul>
