@@ -8,6 +8,7 @@ import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
 import { creditsFor, legendsFor } from "@transitopia/shared/datasets.ts";
 
 import { clockMinutes, timeState } from "./format.ts";
+import { RouteBadge } from "./RouteBadge.tsx";
 import {
   CardRow,
   CardSection,
@@ -150,8 +151,7 @@ export const VehicleCard: React.FC<{
     );
 
   const mode = MODE[route.mode];
-  const others = snap.routes.filter((r) => r.key !== route.key);
-  const onlyThis = others.every((r) => snap.hidden.has(r.key));
+  const title = route.mode === "bus" ? busTitle(v, route) : headsign(v);
   const actions: CardAction[] = [
     snap.following ?
       {
@@ -179,29 +179,13 @@ export const VehicleCard: React.FC<{
       // The URL already names the selected vehicle and the shown time.
       onSelect: () => shareLink(location.href, `${route.label} · Transitopia`),
     },
-    onlyThis ?
-      {
-        id: "only",
-        label: "Show all routes",
-        icon: "filter",
-        onSelect: () =>
-          engine.setRoutesHidden(
-            others.map((r) => r.key),
-            false,
-          ),
-      }
-    : {
-        id: "only",
-        label: `Show only ${route.label}`,
-        icon: "filter",
-        onSelect: () => {
-          engine.setRoutesHidden([route.key], false);
-          engine.setRoutesHidden(
-            others.map((r) => r.key),
-            true,
-          );
-        },
-      },
+    {
+      id: "route",
+      label: `View route: ${route.label}`,
+      lead: <RouteBadge route={route} />,
+      onSelect: () =>
+        engine.open({ place: { kind: "route", id: route.key } }, title),
+    },
   ];
   const details: [string, string | undefined][] = [
     // "08:05 from Langford Exchange · 11898518": as a rider names it, with the agency's short id.
@@ -216,7 +200,6 @@ export const VehicleCard: React.FC<{
     ["Name", v.consist?.name],
     ["Consist", v.consist && consist(v.consist)],
   ];
-  const title = route.mode === "bus" ? busTitle(v, route) : headsign(v);
   return (
     <InfoCard
       tile={{ icon: mode.icon, bg: route.color, fg: route.textColor }}

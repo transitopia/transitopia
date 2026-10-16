@@ -22,6 +22,7 @@ import {
 import { Menu, type MenuItem } from "../components/Menu.tsx";
 import type { IconId } from "../components/Icon.tsx";
 import { clockMinutes, timeState } from "./format.ts";
+import { badge, RouteBadge } from "./RouteBadge.tsx";
 import { bandOf, everyText } from "./frequency.ts";
 
 /** "Eastbound E Hastings St @ Main St" → ["Eastbound", "E Hastings St @ Main St"]. */
@@ -34,11 +35,6 @@ const stationName = (name: string) => name.replace(/\s+Station$/i, "");
 
 /** "To King George" from GTFS headsigns like "Expo Line To King George". */
 const headsign = (h: string) => h.replace(/^.*?\bTo\s+/i, "To ");
-
-/** A route's badge: buses by number, rail and ferries by initial (E, M, C, S, W). */
-function badge(r: PlanRoute): string {
-  return r.mode === "bus" ? r.key : r.label[0]!.toUpperCase();
-}
 
 /** Live green only while live; otherwise recorded (from real-time data) or estimated (timetable). */
 function markOf(d: Departure, live: boolean): Mark {
@@ -68,17 +64,6 @@ function platformsText(platforms: readonly string[], bus: boolean): string {
       `${noun}${platforms.length > 1 ? "s" : ""} ${platforms.join(", ")}`
     : "";
 }
-
-const RouteBadge: React.FC<{ route: PlanRoute; ring?: boolean }> = ({
-  route,
-  ring,
-}) => (
-  <span
-    className={`flex h-[22px] min-w-8 items-center justify-center rounded-[5px] px-[5px] text-xs font-extrabold ${ring ? "-ml-1.5 shadow-[0_0_0_2px_var(--card-combined-bg)] first:ml-0" : ""}`}
-    style={{ background: route.color, color: route.textColor }}>
-    {badge(route)}
-  </span>
-);
 
 const Frequency: React.FC<{
   minutes: number;
