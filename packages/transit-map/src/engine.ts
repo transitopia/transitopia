@@ -519,8 +519,9 @@ export class TransitEngine {
   }
 
   /**
-   * Select a vehicle (or none). A new selection follows it only when asked; closing or choosing
-   * another vehicle stops following. Forgets the cards `open()` came through.
+   * Select a vehicle (or none). A new selection follows it only when asked (easing over from the
+   * one followed before); closing, or choosing another vehicle without asking, stops following.
+   * Forgets the cards `open()` came through.
    */
   select(id: string | undefined, opts?: { follow?: boolean }): void {
     this.trail = [];
@@ -573,7 +574,10 @@ export class TransitEngine {
     if (id !== undefined && changed && !follow)
       this.revealAt = performance.now() + REVEAL_DELAY_MS;
     this.selectedId = this.vehicles.selectedId = id;
-    if (changed) this.setFollow(follow);
+    // Already following: ease to the new vehicle rather than letting keepCentred jump there.
+    if (changed && follow && this.following)
+      this.easeToFollowed(FOLLOW_START_MS);
+    else if (changed) this.setFollow(follow);
     this.place = undefined;
     this.syncPlaceHighlight();
     this.writeUrl();

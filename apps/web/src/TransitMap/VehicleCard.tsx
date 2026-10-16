@@ -31,12 +31,12 @@ const STATUS: Record<VehicleState["status"], string> = {
 
 const MODE: Record<
   PlanRoute["mode"],
-  { eyebrow: (r: PlanRoute) => string; icon?: IconId }
+  { eyebrow: (r: PlanRoute) => string; icon: IconId }
 > = {
   skytrain: { eyebrow: (r) => `SkyTrain · ${r.label}`, icon: "train" },
   rail: { eyebrow: (r) => `Commuter rail · ${r.label}`, icon: "train" },
   ferry: { eyebrow: (r) => `Ferry · ${r.label}`, icon: "ferry" },
-  bus: { eyebrow: () => "Bus" },
+  bus: { eyebrow: () => "Bus", icon: "bus-front-fill" },
 };
 
 function cleanStopName(name: string | undefined): string {
@@ -47,6 +47,18 @@ function cleanStopName(name: string | undefined): string {
 
 function headsign(v: VehicleState): string {
   return v.headsign.replace(/^.*?\bTo\s+/i, "To ");
+}
+
+/**
+ * A bus's title, by number and destination: "R4 to Joyce Station" from "R4 41st Avenue/To Joyce
+ * Station", "95 to Langford" from "Blink - to Langford", "R2 to Park Royal" from "R2 Park Royal".
+ */
+function busTitle(v: VehicleState, route: PlanRoute): string {
+  const to = /\bto\s+(.+)$/i.exec(v.headsign)?.[1];
+  const dest = (
+    to ?? v.headsign.replace(new RegExp(`^\\s*${route.key}\\b`), "")
+  ).trim();
+  return dest ? `${route.key} to ${dest}` : route.key;
 }
 
 function seconds(s: number): string {
@@ -206,18 +218,11 @@ export const VehicleCard: React.FC<{
   ];
   return (
     <InfoCard
-      tile={
-        mode.icon ?
-          { icon: mode.icon, bg: route.color, fg: route.textColor }
-        : { text: route.key, bg: route.color, fg: route.textColor }
-      }
+      tile={{ icon: mode.icon, bg: route.color, fg: route.textColor }}
       eyebrow={mode.eyebrow(route)}
-      title={route.mode === "bus" ? route.label : headsign(v)}
+      title={route.mode === "bus" ? busTitle(v, route) : headsign(v)}
       subtitle={
-        route.mode === "bus" ?
-          [headsign(v), v.label ? `vehicle ${v.label}` : ""]
-            .filter(Boolean)
-            .join(" · ")
+        route.mode === "bus" ? undefined
         : v.runId ?
           `Train ${v.runId} (inferred run)`
         : v.consist?.name
@@ -258,6 +263,27 @@ export const VehicleCard: React.FC<{
         : null}
       </CardSection>
       <CardSection title="Details">
+        {route.mode === "bus" ?
+          <CardRow
+            label="Route"
+            value={
+              // Opens the route card, with a back strip returning here (apps/web/README.md#cross-references).
+              <button
+                type="button"
+                title={`View route: ${route.label}`}
+                className="inline-flex h-[26px] items-center rounded-md px-[9px] text-[13px] font-bold hover:shadow-[inset_0_0_0_100px_rgb(0_0_0/0.12)]"
+                style={{ background: route.color, color: route.textColor }}
+                onClick={() =>
+                  engine.open(
+                    { place: { kind: "route", id: route.key } },
+                    busTitle(v, route),
+                  )
+                }>
+                {route.label}
+              </button>
+            }
+          />
+        : null}
         {details.map(([label, value]) =>
           value ? <CardRow key={label} label={label} value={value} /> : null,
         )}
