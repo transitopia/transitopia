@@ -46,10 +46,7 @@ import {
 } from "@transitopia/transit-core/time.ts";
 import type { RegionConfig } from "./config.ts";
 import { cadence, type Cadence } from "@transitopia/transit-core/rt/budget.ts";
-import {
-  feedDataPath,
-  LEGACY_FEED,
-} from "@transitopia/transit-core/plan/types.ts";
+import { feedDataPath } from "@transitopia/transit-core/plan/types.ts";
 import { LIVE_WINDOW_MS } from "./live.ts";
 
 /** A feed without real-time data: nothing is ever fresh or covered. */
@@ -396,7 +393,7 @@ export class RtClient {
     // Scenario plans ("<version>~<name>") share the base feed's profile.
     const base = version.split("~")[0]!;
     void fetch(
-      `${this.data}${feedDataPath(pp.plan.feed ?? LEGACY_FEED, base, "rt-profile.json")}`,
+      `${this.data}${feedDataPath(pp.plan.feed, base, "rt-profile.json")}`,
     )
       .then((r) => (r.ok ? (r.json() as Promise<RtProfileFile>) : undefined))
       .catch(() => undefined)

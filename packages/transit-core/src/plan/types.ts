@@ -115,11 +115,8 @@ export interface PlanTrip {
 
 export interface ServicePlan {
   schema: 1;
-  /**
-   * The feed it was built from (config/feeds/<id>/feed.json): its files are under feedDataPath(feed, …).
-   * Absent in plans built before feeds had ids, which were all TransLink's.
-   */
-  feed?: string | undefined;
+  /** The feed it was built from (config/feeds/<id>/feed.json): its files are under feedDataPath(feed, …). */
+  feed: string;
   /** Who runs it ("TransLink"), and the version as shown (feed.json → display.feedVersion; plan/display.ts). */
   agency?: string | undefined;
   feedLabel?: string | undefined;
@@ -195,9 +192,6 @@ export interface FeedManifest {
   generatedAt: string;
   feeds: FeedManifestEntry[];
 }
-
-/** The feed id of plans built before plans recorded one (ServicePlan.feed). */
-export const LEGACY_FEED = "translink";
 
 /**
  * A feed version as a directory name: GTFS feed_version can be anything, e.g. BC Transit's

@@ -65,8 +65,7 @@ avoid that ([#8](https://github.com/transitopia/transitopia/issues/8)).
 `/transit` reads its published data (each feed's `data/feeds/<feed>/manifest.json`, plans, movements,
 and each region's `data/regions/<id>/` track network and dispatch patches;
 [docs/DESIGN.md → Regions and feeds](../docs/DESIGN.md#regions-and-feeds)) from `https://data.transitopia.org/`.
-The top-level `data/manifest.json` and `data/feeds/<version>/` of builds from before feeds had ids
-stay in the bucket (uploads copy, never sync) but are no longer updated. The server builds it daily (its `data` job, at
+Uploads copy, never sync, so files a build no longer writes stay until deleted by hand. The server builds it daily (its `data` job, at
 `dataBuildAt` in `config/regions/metro-vancouver/recording.json`) and uploads it to the R2 bucket
 `transitopia-data`, so its live dispatch patches fit the published plans.
 `.github/workflows/build_transit_data.yml` is a manual fallback only (see the comment at its top).
