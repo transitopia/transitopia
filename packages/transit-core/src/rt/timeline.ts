@@ -62,7 +62,7 @@ export interface TimelineOptions {
   source: string;
   /** Profile-based prediction and correction settings; without it, fixed-speed dead reckoning. */
   prediction?: { cfg: PredictionConfig; predictor: Predictor };
-  /** TransLink's cancellations, skipped stops and detour alerts for the days covered. */
+  /** The feed's cancellations, skipped stops and detour alerts for the days covered. */
   changes?: ChangesView;
   /** A detour applies to a bus within this of a stop its alert lists (m); alerts listing none apply route-wide. */
   detourNearM?: number;
@@ -893,6 +893,8 @@ export class RtTimeline {
     let stop = v.stopId ? this.pp?.stopById.get(v.stopId) : undefined;
     let delay = v.delay;
     const notes: string[] = [];
+    /** Whose service changes these are ("TransLink"), as the plan names the feed's agency. */
+    const agency = this.pp?.plan.agency;
     const next = betweenTrips && this.trip(betweenTrips.tripId);
     if (next && this.pp) {
       // Delay means little before the trip starts; say when it's due to leave instead.
@@ -906,11 +908,12 @@ export class RtTimeline {
     }
     if (offRouteM !== undefined && offRouteM >= MAX_SNAP_OFFSET) {
       const detour = this.detourOf(v, t);
-      if (detour)
+      if (detour) {
+        const header = detour.header.replace(/[\s.]+$/, "");
         notes.push(
-          `On detour. TransLink: ${detour.header.replace(/[\s.]+$/, "")}`,
+          agency ? `On detour. ${agency}: ${header}` : `On detour: ${header}`,
         );
-      else {
+      } else {
         notes.push(
           `Not on its route (≈ ${offRouteM >= 1000 ? `${(offRouteM / 1000).toFixed(1)} km` : `${Math.round(offRouteM / 50) * 50} m`} away), possibly not in service`,
         );
@@ -960,7 +963,7 @@ export class RtTimeline {
     if (trip && changes && this.pp) {
       const date = tripServiceDate(trip, basis.v.ts);
       if (changes.cancelled(date, trip.trip.id)) {
-        notes.push("TransLink lists this trip as cancelled");
+        notes.push(`${agency ?? "Its operator"} lists this trip as cancelled`);
         delay = undefined;
       }
       const skip = changes.skipped(date, trip.trip.id);
@@ -978,7 +981,9 @@ export class RtTimeline {
           .filter((id, x) => x >= Math.max(0, k) && skip.has(id))
           .map((id) => this.pp!.stopById.get(id)?.name ?? id);
         if (names.length)
-          notes.push(`Skips ${[...new Set(names)].join(", ")} (TransLink)`);
+          notes.push(
+            `Skips ${[...new Set(names)].join(", ")}${agency ? ` (${agency})` : ""}`,
+          );
       }
     }
     const s: VehicleState = {

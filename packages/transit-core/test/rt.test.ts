@@ -54,6 +54,7 @@ const corner: [number, number] = [-123.08625, 49.25];
 const plan: ServicePlan = {
   schema: 1,
   feed: "translink",
+  agency: "TransLink",
   feedVersion: "t",
   feedStart: serviceDate("20260901"),
   feedEnd: serviceDate("20261231"),
@@ -841,14 +842,14 @@ describe("service changes (GTFS-RT)", () => {
         },
       ],
     });
-  const run = (changes: RtDayChanges, detourNearM = 3000) =>
+  const run = (changes: RtDayChanges, detourNearM = 3000, p = pp) =>
     new RtTimeline(
       [fix(0, pt(100)), fix(30, pt(250, 500)), fix(60, pt(400, 500))],
-      pp,
+      p,
       kin,
       {
         ...opts,
-        prediction: { cfg, predictor: new Predictor(pp, cfg) },
+        prediction: { cfg, predictor: new Predictor(p, cfg) },
         changes: changesView([changes], 300_000),
         detourNearM,
       },
@@ -863,6 +864,17 @@ describe("service changes (GTFS-RT)", () => {
     );
     expect(v.note).not.toMatch(/not in service/);
     expect(v.delay).toBe(1800);
+  });
+
+  it("credits a detour to the plan's agency", () => {
+    const bc = preparePlan({ ...plan, agency: "BC Transit" }, kin);
+    expect(run(detour(), 3000, bc).vehiclesAt(T0 + 30_000)[0]!.note).toBe(
+      "On detour. BC Transit: 8:10am, 99 detour via 1st Ave due to traffic",
+    );
+    const unnamed = preparePlan({ ...plan, agency: undefined }, kin);
+    expect(run(detour(), 3000, unnamed).vehiclesAt(T0 + 30_000)[0]!.note).toBe(
+      "On detour: 8:10am, 99 detour via 1st Ave due to traffic",
+    );
   });
 
   it("ignores a detour for the other direction, or once it is over", () => {
