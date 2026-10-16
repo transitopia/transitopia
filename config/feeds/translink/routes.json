@@ -144,6 +144,2492 @@
       "mode": "bus",
       "category": "frequent",
       "color": "#5c7cfa"
+    },
+    {
+      "key": "256",
+      "label": "256 Whitby Estate/Park Royal/Spuraway",
+      "match": {
+        "route_short_name": "256"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "33",
+      "label": "33 16th & 33rd Avenue",
+      "match": {
+        "route_short_name": "033"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "364",
+      "label": "364 64 Avenue",
+      "match": {
+        "route_short_name": "364"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#8a5fb0"
+    },
+    {
+      "key": "388",
+      "label": "388 88 Avenue",
+      "match": {
+        "route_short_name": "388"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "609",
+      "label": "609 South Delta Exchange/Ladner Exchange",
+      "match": {
+        "route_short_name": "609"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "595",
+      "label": "595 208 Street",
+      "match": {
+        "route_short_name": "595"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "414",
+      "label": "414 Richmond Oval/Brighouse Station",
+      "match": {
+        "route_short_name": "414"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "209",
+      "label": "209 Mountain Hwy",
+      "match": {
+        "route_short_name": "209"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "14",
+      "label": "14 Hastings/UBC Exchange",
+      "match": {
+        "route_short_name": "014"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "109",
+      "label": "109 New West Station/Lougheed Station",
+      "match": {
+        "route_short_name": "109"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "337",
+      "label": "337 Fraser Heights/Surrey Central Station",
+      "match": {
+        "route_short_name": "337"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "231",
+      "label": "231 Harbourside/Lonsdale Quay",
+      "match": {
+        "route_short_name": "231"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "531",
+      "label": "531 White Rock Centre/Willowbrook",
+      "match": {
+        "route_short_name": "531"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "555",
+      "label": "555 Port Mann Express",
+      "match": {
+        "route_short_name": "555"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#8a5fb0"
+    },
+    {
+      "key": "188",
+      "label": "188 Coast Meridian Rd",
+      "match": {
+        "route_short_name": "188"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "227",
+      "label": "227 Lynn Valley/Phibbs Exchange",
+      "match": {
+        "route_short_name": "227"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "503",
+      "label": "503 Fraser Hwy Express",
+      "match": {
+        "route_short_name": "503"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "342",
+      "label": "342 Langley Centre/Newton Exchange",
+      "match": {
+        "route_short_name": "342"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#8a5fb0"
+    },
+    {
+      "key": "864",
+      "label": "864 Lord Tweedsmuir School Special",
+      "match": {
+        "route_short_name": "864"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "840",
+      "label": "840 Brookswood School Special",
+      "match": {
+        "route_short_name": "840"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "170",
+      "label": "170 Port Coquitlam Station/Port Coquitlam South",
+      "match": {
+        "route_short_name": "170"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "171",
+      "label": "171 Coquitlam Central Station/Fremont",
+      "match": {
+        "route_short_name": "171"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "172",
+      "label": "172 Coquitlam Central Station/Riverside",
+      "match": {
+        "route_short_name": "172"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "173",
+      "label": "173 Coquitlam Central Station/Cedar",
+      "match": {
+        "route_short_name": "173"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "174",
+      "label": "174 Coquitlam Central Station/Rocklin",
+      "match": {
+        "route_short_name": "174"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "175",
+      "label": "175 Coquitlam Central Station/Meridian",
+      "match": {
+        "route_short_name": "175"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "180",
+      "label": "180 Moody Centre Station/Lougheed Station",
+      "match": {
+        "route_short_name": "180"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "181",
+      "label": "181 Moody Centre Station/Ioco",
+      "match": {
+        "route_short_name": "181"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "182",
+      "label": "182 Moody Centre Station/Belcarra",
+      "match": {
+        "route_short_name": "182"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "183",
+      "label": "183 Moody Centre Station/Coquitlam Central Station",
+      "match": {
+        "route_short_name": "183"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "184",
+      "label": "184 Moody Centre Station/Noons Creek",
+      "match": {
+        "route_short_name": "184"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "185",
+      "label": "185 Coquitlam Central Station/Lansdowne",
+      "match": {
+        "route_short_name": "185"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "186",
+      "label": "186 Coquitlam Central Station/Hampton Park",
+      "match": {
+        "route_short_name": "186"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "187",
+      "label": "187 Coquitlam Central Station/Parkway",
+      "match": {
+        "route_short_name": "187"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "189",
+      "label": "189 Coquitlam Central Station/Lafarge Park",
+      "match": {
+        "route_short_name": "189"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "23",
+      "label": "23 Pacific",
+      "match": {
+        "route_short_name": "023"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "191",
+      "label": "191 Coquitlam Central Station/Princeton",
+      "match": {
+        "route_short_name": "191"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "360",
+      "label": "360 Ocean Park/Peace Arch Hospital",
+      "match": {
+        "route_short_name": "360"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "361",
+      "label": "361 Ocean Park/White Rock Centre",
+      "match": {
+        "route_short_name": "361"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "362",
+      "label": "362 Seaside/White Rock Centre",
+      "match": {
+        "route_short_name": "362"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "363",
+      "label": "363 Southpoint/Peace Arch Hospital",
+      "match": {
+        "route_short_name": "363"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "372",
+      "label": "372 Clayton Heights/Langley Centre",
+      "match": {
+        "route_short_name": "372"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "733",
+      "label": "733 Rock Ridge/Haney Place",
+      "match": {
+        "route_short_name": "733"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "741",
+      "label": "741 Anderson Creek/Haney Place",
+      "match": {
+        "route_short_name": "741"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "119",
+      "label": "119 Kingsway",
+      "match": {
+        "route_short_name": "119"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "133",
+      "label": "133 Holdom Station/Edmonds Station",
+      "match": {
+        "route_short_name": "133"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "68",
+      "label": "68 UBC Exchange/Wesbrook Village",
+      "match": {
+        "route_short_name": "068"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "745",
+      "label": "745 Haney Place/Cottonwood",
+      "match": {
+        "route_short_name": "745"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "746",
+      "label": "746 Haney Place/Albion",
+      "match": {
+        "route_short_name": "746"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "560",
+      "label": "560 Murrayville/Langley Centre",
+      "match": {
+        "route_short_name": "560"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "561",
+      "label": "561 Langley Centre/Brookswood",
+      "match": {
+        "route_short_name": "561"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "719",
+      "label": "719 Meadowtown/Fraser Way",
+      "match": {
+        "route_short_name": "719"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "722",
+      "label": "722 Meadowtown/Bonson",
+      "match": {
+        "route_short_name": "722"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "406",
+      "label": "406 Railway Ave",
+      "match": {
+        "route_short_name": "406"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "408",
+      "label": "408 Garden City",
+      "match": {
+        "route_short_name": "408"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "282",
+      "label": "282 Mt Gardner/Snug Cove",
+      "match": {
+        "route_short_name": "282"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "249",
+      "label": "249 Lonsdale Quay/Delbrook",
+      "match": {
+        "route_short_name": "249"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "31",
+      "label": "31 Metrotown Station/River District",
+      "match": {
+        "route_short_name": "031"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "245",
+      "label": "245 Phibbs Exchange/Capilano University",
+      "match": {
+        "route_short_name": "245"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#1d5aa6"
+    },
+    {
+      "key": "350",
+      "label": "350 White Rock Centre/Crescent Beach",
+      "match": {
+        "route_short_name": "350"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "900",
+      "label": "900 Bike Bus",
+      "match": {
+        "route_short_name": "900"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "80",
+      "label": "80 Marine Dr Express",
+      "match": {
+        "route_short_name": "080"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "102",
+      "label": "102 New West Station/Victoria  Hill",
+      "match": {
+        "route_short_name": "102"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "338",
+      "label": "338 East Fraser Heights/Guildford",
+      "match": {
+        "route_short_name": "338"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "556",
+      "label": "556 Langley Centre/Gloucester",
+      "match": {
+        "route_short_name": "556"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "2",
+      "label": "2 Macdonald",
+      "match": {
+        "route_short_name": "002"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#1d5aa6"
+    },
+    {
+      "key": "3",
+      "label": "3 Main",
+      "match": {
+        "route_short_name": "003"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "4",
+      "label": "4 Powell/UBC Exchange",
+      "match": {
+        "route_short_name": "004"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "5",
+      "label": "5 Robson",
+      "match": {
+        "route_short_name": "005"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "6",
+      "label": "6 Davie",
+      "match": {
+        "route_short_name": "006"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "7",
+      "label": "7 Nanaimo Station/Dunbar",
+      "match": {
+        "route_short_name": "007"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "8",
+      "label": "8 Fraser",
+      "match": {
+        "route_short_name": "008"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "9",
+      "label": "9 Broadway",
+      "match": {
+        "route_short_name": "009"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#1d5aa6"
+    },
+    {
+      "key": "10",
+      "label": "10 Granville",
+      "match": {
+        "route_short_name": "010"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "15",
+      "label": "15 Cambie",
+      "match": {
+        "route_short_name": "015"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#8a5fb0"
+    },
+    {
+      "key": "16",
+      "label": "16 29th Avenue Station/Arbutus",
+      "match": {
+        "route_short_name": "016"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "17",
+      "label": "17 Oak",
+      "match": {
+        "route_short_name": "017"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "19",
+      "label": "19 Kingsway",
+      "match": {
+        "route_short_name": "019"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "20",
+      "label": "20 Victoria",
+      "match": {
+        "route_short_name": "020"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "22",
+      "label": "22 Knight",
+      "match": {
+        "route_short_name": "022"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "25",
+      "label": "25 King Edward",
+      "match": {
+        "route_short_name": "025"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "26",
+      "label": "26 Joyce Station/29th Avenue Station",
+      "match": {
+        "route_short_name": "026"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#8a5fb0"
+    },
+    {
+      "key": "27",
+      "label": "27 Rupert",
+      "match": {
+        "route_short_name": "027"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#8a5fb0"
+    },
+    {
+      "key": "28",
+      "label": "28 Boundary",
+      "match": {
+        "route_short_name": "028"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "29",
+      "label": "29 Elliott/29th Avenue Station",
+      "match": {
+        "route_short_name": "029"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#8a5fb0"
+    },
+    {
+      "key": "41",
+      "label": "41 41st Avenue",
+      "match": {
+        "route_short_name": "041"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "44",
+      "label": "44 UBC Exchange/Downtown Express",
+      "match": {
+        "route_short_name": "044"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "49",
+      "label": "49 49th Avenue",
+      "match": {
+        "route_short_name": "049"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#1d5aa6"
+    },
+    {
+      "key": "50",
+      "label": "50 Waterfront Station/False Creek South",
+      "match": {
+        "route_short_name": "050"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#8a5fb0"
+    },
+    {
+      "key": "84",
+      "label": "84 4th Avenue Express",
+      "match": {
+        "route_short_name": "084"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "100",
+      "label": "100 Marine Drive",
+      "match": {
+        "route_short_name": "100"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "101",
+      "label": "101 Lougheed Station/22nd St Station",
+      "match": {
+        "route_short_name": "101"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "104",
+      "label": "104 22nd St Station/Annacis Island",
+      "match": {
+        "route_short_name": "104"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "106",
+      "label": "106 6th Street",
+      "match": {
+        "route_short_name": "106"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "110",
+      "label": "110 Lougheed Station/Metrotown Station",
+      "match": {
+        "route_short_name": "110"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "112",
+      "label": "112 12th Street",
+      "match": {
+        "route_short_name": "112"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "116",
+      "label": "116 North Fraser Way",
+      "match": {
+        "route_short_name": "116"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "123",
+      "label": "123 Canada Way",
+      "match": {
+        "route_short_name": "123"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "129",
+      "label": "129 Patterson Station/Holdom Station",
+      "match": {
+        "route_short_name": "129"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "130",
+      "label": "130 Willingdon",
+      "match": {
+        "route_short_name": "130"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "134",
+      "label": "134 Lake City Station/Brentwood Station",
+      "match": {
+        "route_short_name": "134"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "136",
+      "label": "136 Lougheed Station/Brentwood Station",
+      "match": {
+        "route_short_name": "136"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "143",
+      "label": "143 SFU Exchange/Burquitlam Station",
+      "match": {
+        "route_short_name": "143"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "144",
+      "label": "144 SFU Exchange/Metrotown Station",
+      "match": {
+        "route_short_name": "144"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "145",
+      "label": "145 SFU Exchange/Production Station",
+      "match": {
+        "route_short_name": "145"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#1d5aa6"
+    },
+    {
+      "key": "151",
+      "label": "151 Como Lake Ave",
+      "match": {
+        "route_short_name": "151"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "152",
+      "label": "152 Coquitlam Central Station/Lougheed Station",
+      "match": {
+        "route_short_name": "152"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "153",
+      "label": "153 Coquitlam Central Station/Braid Station",
+      "match": {
+        "route_short_name": "153"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "128",
+      "label": "128 8th Avenue",
+      "match": {
+        "route_short_name": "128"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#8a5fb0"
+    },
+    {
+      "key": "155",
+      "label": "155 6th Avenue",
+      "match": {
+        "route_short_name": "155"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "156",
+      "label": "156 Braid Station/Lougheed Station",
+      "match": {
+        "route_short_name": "156"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "157",
+      "label": "157 Burquitlam Station/Lougheed Station",
+      "match": {
+        "route_short_name": "157"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "159",
+      "label": "159 Coquitlam Central Station/Braid Station",
+      "match": {
+        "route_short_name": "159"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "160",
+      "label": "160 Port Coquitlam Station/Kootenay Loop",
+      "match": {
+        "route_short_name": "160"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "169",
+      "label": "169 Coquitlam Central Station/Braid Station",
+      "match": {
+        "route_short_name": "169"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "210",
+      "label": "210 Mountain Hwy Express",
+      "match": {
+        "route_short_name": "210"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "211",
+      "label": "211 Seymour/Phibbs Exchange/Burrard Station",
+      "match": {
+        "route_short_name": "211"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "212",
+      "label": "212 Dollarton Hwy",
+      "match": {
+        "route_short_name": "212"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "214",
+      "label": "214 Blueridge/Phibbs Exchange/Burrard Station",
+      "match": {
+        "route_short_name": "214"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "228",
+      "label": "228 Grand Blvd",
+      "match": {
+        "route_short_name": "228"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "229",
+      "label": "229 Lonsdale Ave",
+      "match": {
+        "route_short_name": "229"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "230",
+      "label": "230 Lonsdale Ave",
+      "match": {
+        "route_short_name": "230"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "232",
+      "label": "232 Grouse Mountain/Phibbs Exchange",
+      "match": {
+        "route_short_name": "232"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "236",
+      "label": "236 Grouse Mountain/Lonsdale Quay",
+      "match": {
+        "route_short_name": "236"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "240",
+      "label": "240 Lynn Valley/Downtown",
+      "match": {
+        "route_short_name": "240"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "241",
+      "label": "241 Upper Lonsdale/Downtown",
+      "match": {
+        "route_short_name": "241"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "246",
+      "label": "246 Highland/Downtown",
+      "match": {
+        "route_short_name": "246"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "247",
+      "label": "247 Grouse Mountain/Downtown",
+      "match": {
+        "route_short_name": "247"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "250",
+      "label": "250 Horseshoe Bay/Dundarave/Vancouver",
+      "match": {
+        "route_short_name": "250"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#1d5aa6"
+    },
+    {
+      "key": "251",
+      "label": "251 Queens/Park Royal",
+      "match": {
+        "route_short_name": "251"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "252",
+      "label": "252 Inglewood/Park Royal",
+      "match": {
+        "route_short_name": "252"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "253",
+      "label": "253 Caulfeild/Vancouver/Park Royal",
+      "match": {
+        "route_short_name": "253"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "254",
+      "label": "254 British Properties/Park Royal/Van",
+      "match": {
+        "route_short_name": "254"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "255",
+      "label": "255 Dundarave/Capilano University",
+      "match": {
+        "route_short_name": "255"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#8a5fb0"
+    },
+    {
+      "key": "257",
+      "label": "257 Horseshoe Bay/Vancouver Express",
+      "match": {
+        "route_short_name": "257"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#8a5fb0"
+    },
+    {
+      "key": "301",
+      "label": "301 Newton Exchange/Brighouse Station Express",
+      "match": {
+        "route_short_name": "301"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "311",
+      "label": "311 Scottsdale/Bridgeport Station",
+      "match": {
+        "route_short_name": "311"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "312",
+      "label": "312 112 Street",
+      "match": {
+        "route_short_name": "312"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "314",
+      "label": "314 Surrey Central Station/Sunbury",
+      "match": {
+        "route_short_name": "314"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "316",
+      "label": "316 116 Street",
+      "match": {
+        "route_short_name": "316"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "319",
+      "label": "319 Scott Road",
+      "match": {
+        "route_short_name": "319"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "320",
+      "label": "320 Langley/Fleetwood/Surrey Central Station",
+      "match": {
+        "route_short_name": "320"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "321",
+      "label": "321 King George Blvd",
+      "match": {
+        "route_short_name": "321"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#1d5aa6"
+    },
+    {
+      "key": "323",
+      "label": "323 128 Street",
+      "match": {
+        "route_short_name": "323"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "324",
+      "label": "324 132 Street",
+      "match": {
+        "route_short_name": "324"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#8a5fb0"
+    },
+    {
+      "key": "325",
+      "label": "325 140 Street",
+      "match": {
+        "route_short_name": "325"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "326",
+      "label": "326 Guildford/Surrey Central Station",
+      "match": {
+        "route_short_name": "326"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "329",
+      "label": "329 Surrey Central Station/Scottsdale",
+      "match": {
+        "route_short_name": "329"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "335",
+      "label": "335 Newton Exchange/Surrey Central Station",
+      "match": {
+        "route_short_name": "335"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "340",
+      "label": "340 Scottsdale/22nd St Station",
+      "match": {
+        "route_short_name": "340"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "345",
+      "label": "345 152 Street",
+      "match": {
+        "route_short_name": "345"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "351",
+      "label": "351 White Rock Centre/Bridgeport Station",
+      "match": {
+        "route_short_name": "351"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "352",
+      "label": "352 White Rock Centre/Bridgeport Station",
+      "match": {
+        "route_short_name": "352"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "354",
+      "label": "354 White Rock South/Bridgeport Station",
+      "match": {
+        "route_short_name": "354"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "391",
+      "label": "391 116 Street",
+      "match": {
+        "route_short_name": "391"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "393",
+      "label": "393 128 Street",
+      "match": {
+        "route_short_name": "393"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "394",
+      "label": "394 White Rock Centre/King George Station",
+      "match": {
+        "route_short_name": "394"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "395",
+      "label": "395 Langley Centre/King George Station",
+      "match": {
+        "route_short_name": "395"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "401",
+      "label": "401 Brighouse Station/One Road",
+      "match": {
+        "route_short_name": "401"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "402",
+      "label": "402 Brighouse Station/Two Road",
+      "match": {
+        "route_short_name": "402"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "403",
+      "label": "403 Bridgeport Station/Three Road",
+      "match": {
+        "route_short_name": "403"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#8a5fb0"
+    },
+    {
+      "key": "404",
+      "label": "404 Brighouse Station/Four Road",
+      "match": {
+        "route_short_name": "404"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "405",
+      "label": "405 Five Road/Cambie",
+      "match": {
+        "route_short_name": "405"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "407",
+      "label": "407 Gilbert/Bridgeport",
+      "match": {
+        "route_short_name": "407"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "410",
+      "label": "410 Brighouse Station/22nd St Station",
+      "match": {
+        "route_short_name": "410"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "430",
+      "label": "430 Metrotown Station/Brighouse Station",
+      "match": {
+        "route_short_name": "430"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#8a5fb0"
+    },
+    {
+      "key": "501",
+      "label": "501 Langley Centre/Surrey Central Station",
+      "match": {
+        "route_short_name": "501"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#8a5fb0"
+    },
+    {
+      "key": "502",
+      "label": "502 Fraser Hwy",
+      "match": {
+        "route_short_name": "502"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "509",
+      "label": "509 Walnut Grove/Surrey Central Station",
+      "match": {
+        "route_short_name": "509"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "601",
+      "label": "601 Bridgeport Station/South Delta",
+      "match": {
+        "route_short_name": "601"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#8a5fb0"
+    },
+    {
+      "key": "602",
+      "label": "602 Bridgeport Station/Tsawwassen Heights",
+      "match": {
+        "route_short_name": "602"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "603",
+      "label": "603 Bridgeport Station/Beach Grove",
+      "match": {
+        "route_short_name": "603"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "604",
+      "label": "604 Bridgeport Station/English Bluff",
+      "match": {
+        "route_short_name": "604"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "606",
+      "label": "606 Ladner Ring",
+      "match": {
+        "route_short_name": "606"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "608",
+      "label": "608 Ladner Ring",
+      "match": {
+        "route_short_name": "608"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "620",
+      "label": "620 Tsawwassen Ferry/Bridgeport Station Exp",
+      "match": {
+        "route_short_name": "620"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "640",
+      "label": "640 River Road",
+      "match": {
+        "route_short_name": "640"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "701",
+      "label": "701 Coquitlam Central Station/Haney Place/Maple Ridge E",
+      "match": {
+        "route_short_name": "701"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "855",
+      "label": "855 Elgin Park School Special",
+      "match": {
+        "route_short_name": "855"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "880",
+      "label": "880 Windsor School Special",
+      "match": {
+        "route_short_name": "880"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "881",
+      "label": "881 Carson Graham School Special",
+      "match": {
+        "route_short_name": "881"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "131",
+      "label": "131 Hastings @ Gilmore/Kootenay Loop",
+      "match": {
+        "route_short_name": "131"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "280",
+      "label": "280 Bluewater/Snug Cove",
+      "match": {
+        "route_short_name": "280"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "281",
+      "label": "281 Eagle Cliff/Snug Cove",
+      "match": {
+        "route_short_name": "281"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "262",
+      "label": "262 Lions Bay/Caulfeild",
+      "match": {
+        "route_short_name": "262"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "215",
+      "label": "215 Indian River/Phibbs Exchange",
+      "match": {
+        "route_short_name": "215"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "103",
+      "label": "103 New West Station/Quayside",
+      "match": {
+        "route_short_name": "103"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "105",
+      "label": "105 New West Station/Uptown",
+      "match": {
+        "route_short_name": "105"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "743",
+      "label": "743 Haney Place/Meadowtown",
+      "match": {
+        "route_short_name": "743"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "744",
+      "label": "744 Haney Place/Meadowtown",
+      "match": {
+        "route_short_name": "744"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "748",
+      "label": "748 Thornhill/Haney Place",
+      "match": {
+        "route_short_name": "748"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "749",
+      "label": "749 Ruskin/Haney Place",
+      "match": {
+        "route_short_name": "749"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "148",
+      "label": "148 Royal Oak Station/Edmonds Station",
+      "match": {
+        "route_short_name": "148"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "146",
+      "label": "146 Metrotown Station/Suncrest",
+      "match": {
+        "route_short_name": "146"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "562",
+      "label": "562 Langley Centre/Walnut Grove",
+      "match": {
+        "route_short_name": "562"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#8a5fb0"
+    },
+    {
+      "key": "563",
+      "label": "563 Langley Centre/Fernridge",
+      "match": {
+        "route_short_name": "563"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "564",
+      "label": "564 Langley Centre/Willowbrook",
+      "match": {
+        "route_short_name": "564"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "147",
+      "label": "147 Metrotown Station/Edmonds Station",
+      "match": {
+        "route_short_name": "147"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "371",
+      "label": "371 Surrey Central Station/Scott Rd Station",
+      "match": {
+        "route_short_name": "371"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "373",
+      "label": "373 Guildford/Surrey Central Station",
+      "match": {
+        "route_short_name": "373"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#8a5fb0"
+    },
+    {
+      "key": "322",
+      "label": "322 Newton Exchange/Scottsdale",
+      "match": {
+        "route_short_name": "322"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#4a7cc4"
+    },
+    {
+      "key": "310",
+      "label": "310 Scottsdale/Ladner",
+      "match": {
+        "route_short_name": "310"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "616",
+      "label": "616 Ladner South/Ladner Exchange",
+      "match": {
+        "route_short_name": "616"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "618",
+      "label": "618 Ladner North/Ladner Exchange",
+      "match": {
+        "route_short_name": "618"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "412",
+      "label": "412 Bridgeport Station/Sea Island South",
+      "match": {
+        "route_short_name": "412"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "413",
+      "label": "413 Riverport/Steveston",
+      "match": {
+        "route_short_name": "413"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "416",
+      "label": "416 East Cambie/Brighouse Station",
+      "match": {
+        "route_short_name": "416"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "N10",
+      "label": "N10 Granville-YVR",
+      "match": {
+        "route_short_name": "N10"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "N15",
+      "label": "N15 Cambie",
+      "match": {
+        "route_short_name": "N15"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "N17",
+      "label": "N17 West Broadway",
+      "match": {
+        "route_short_name": "N17"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "N19",
+      "label": "N19 Kingsway",
+      "match": {
+        "route_short_name": "N19"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "N20",
+      "label": "N20 Victoria",
+      "match": {
+        "route_short_name": "N20"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "N22",
+      "label": "N22 Macdonald",
+      "match": {
+        "route_short_name": "N22"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "N24",
+      "label": "N24 Downtown/Lynn Valley",
+      "match": {
+        "route_short_name": "N24"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "N35",
+      "label": "N35 Hastings St",
+      "match": {
+        "route_short_name": "N35"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "N8",
+      "label": "N8 Fraser",
+      "match": {
+        "route_short_name": "N8"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "N9",
+      "label": "N9 Broadway-Lougheed",
+      "match": {
+        "route_short_name": "N9"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "614",
+      "label": "614 English Bluff/South Delta Exchange",
+      "match": {
+        "route_short_name": "614"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "619",
+      "label": "619 South Delta Exchange/Boundary Bay",
+      "match": {
+        "route_short_name": "619"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "791",
+      "label": "791 Haney Place/Braid Station",
+      "match": {
+        "route_short_name": "791"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "375",
+      "label": "375 152 Street",
+      "match": {
+        "route_short_name": "375"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "132",
+      "label": "132 Capitol Hill/Hastings @ Gilmore",
+      "match": {
+        "route_short_name": "132"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "370",
+      "label": "370 Cloverdale/Willowbrook",
+      "match": {
+        "route_short_name": "370"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "865",
+      "label": "865 Samuel Robertson School Special",
+      "match": {
+        "route_short_name": "865"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
+    },
+    {
+      "key": "341",
+      "label": "341 Guildford/Newton Exchange",
+      "match": {
+        "route_short_name": "341"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#c24a7c"
+    },
+    {
+      "key": "418",
+      "label": "418 Kingswood/22nd St Station",
+      "match": {
+        "route_short_name": "418"
+      },
+      "kind": "bus",
+      "mode": "bus",
+      "category": "regular",
+      "color": "#d63a3a"
     }
   ]
 }
