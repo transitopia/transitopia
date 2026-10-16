@@ -67,6 +67,12 @@ function flavor(theme: Theme): Flavor {
   };
 }
 
+/**
+ * Protomaps layers we leave out: one-way arrows and highway shields only matter to drivers, and a
+ * route number in a white circle reads as a transit stop.
+ */
+const HIDDEN_LAYERS = new Set(["roads_oneway", "roads_shields"]);
+
 export function basemapStyle(o: BasemapOptions): StyleSpecification {
   const sprite: SpriteSpecification = [
     { id: "default", url: `${o.assets}sprites/v4/${SPRITE[o.theme]}` },
@@ -81,7 +87,9 @@ export function basemapStyle(o: BasemapOptions): StyleSpecification {
       // Credits come from the site's attribution control (docs/DESIGN.md#attribution), not the source.
       [BASEMAP_SOURCE]: { type: "vector", url: o.tiles },
     },
-    layers: layers(BASEMAP_SOURCE, flavor(o.theme), { lang: "en" }),
+    layers: layers(BASEMAP_SOURCE, flavor(o.theme), { lang: "en" }).filter(
+      (l) => !HIDDEN_LAYERS.has(l.id),
+    ),
   };
 }
 

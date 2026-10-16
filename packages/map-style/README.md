@@ -1,6 +1,6 @@
 # @transitopia/map-style
 
-The site's basemap style: [Protomaps](https://protomaps.com/) layers (`@protomaps/basemaps`) in light and dark flavours, muted so transit and cycling overlays stand out, over a PMTiles extract of British Columbia.
+The site's basemap style: [Protomaps](https://protomaps.com/) layers (`@protomaps/basemaps`) in light and dark flavours, muted so transit and cycling overlays stand out (without one-way arrows or highway shields, which a route number in a white circle confuses with a stop), over a PMTiles extract of British Columbia.
 
 - `src/basemap.ts`: `basemapStyle({ … })` for a theme, `resolveTheme()`, the font list overlays must use (`FONTS`), and the sprite. Glyphs and sprites are self-hosted (`npm run tiles` copies them into `var/public/basemap-assets/`, and the site's build into `/basemap-assets/`), so the map calls no third-party servers.
 - `src/zoom.ts`: zoom-dependent style helpers shared by the overlays.
