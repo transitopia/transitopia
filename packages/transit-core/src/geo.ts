@@ -171,6 +171,58 @@ export function simplify(coords: LonLat[], toleranceM: number): LonLat[] {
   return coords.filter((_, i) => keep[i]);
 }
 
+export interface StopSpurLimits {
+  /** A vertex on a stop at most this far off the line between its neighbours is the curb (m). */
+  curbM: number;
+  /** Further off, up to this, only with a jog this short to or from a neighbour (m). */
+  spurM: number;
+  /** A vertex this close to a stop is on it (m). */
+  onStopM?: number | undefined;
+}
+
+/**
+ * Drops interior vertices placed on a stop. Some feeds (BC Transit) build sparse shapes with a
+ * vertex at each curbside stop, which draws as a bump to the curb, or as a diagonal to the curb
+ * and a short jog back to the road. A stop on a corner or a curve stays: it is far from the chord
+ * across it, with no short jog.
+ */
+export function removeStopSpurs(
+  coords: LonLat[],
+  stops: LonLat[],
+  { curbM, spurM, onStopM = 1 }: StopSpurLimits,
+): LonLat[] {
+  if (coords.length <= 2 || !stops.length) return coords.slice();
+  const proj = localProjector(coords[0]![1]);
+  const xy = coords.map(proj.toXY);
+  const stopXY = stops.map(proj.toXY);
+  const onStop = (x: number, y: number) =>
+    stopXY.some(([sx, sy]) => Math.hypot(sx - x, sy - y) <= onStopM);
+  const out: LonLat[] = [coords[0]!];
+  let prev = xy[0]!;
+  for (let i = 1; i < coords.length - 1; i++) {
+    const [px, py] = xy[i]!;
+    if (onStop(px, py)) {
+      const [ax, ay] = prev;
+      const [bx, by] = xy[i + 1]!;
+      const dx = bx - ax;
+      const dy = by - ay;
+      const l2 = dx * dx + dy * dy;
+      let f = l2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / l2 : 0;
+      f = Math.min(1, Math.max(0, f));
+      const offset = Math.hypot(ax + dx * f - px, ay + dy * f - py);
+      const jog = Math.min(
+        Math.hypot(px - ax, py - ay),
+        Math.hypot(bx - px, by - py),
+      );
+      if (offset <= curbM || (offset <= spurM && jog <= spurM)) continue;
+    }
+    out.push(coords[i]!);
+    prev = xy[i]!;
+  }
+  out.push(coords[coords.length - 1]!);
+  return out;
+}
+
 export function round(n: number, decimals: number): number {
   const k = 10 ** decimals;
   return Math.round(n * k) / k;

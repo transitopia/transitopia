@@ -41,9 +41,11 @@ import {
   cumulativeLengths,
   distM,
   projectOnto,
+  removeStopSpurs,
   round,
   simplify,
   type LonLat,
+  type StopSpurLimits,
 } from "@transitopia/transit-core/geo.ts";
 import {
   parseGtfsTime,
@@ -81,6 +83,8 @@ import {
 
 /** Shape simplification tolerance (m) by route kind: track-level lines keep more detail. */
 const SIMPLIFY_M: Record<RouteKind, number> = { skytrain: 1, shape: 3, bus: 4 };
+/** Bus shape vertices on a stop that are bumps or spurs to the curb (removeStopSpurs), in metres. */
+const STOP_SPURS: StopSpurLimits = { curbM: 10, spurM: 20 };
 /** Warn when a stop projects further than this from its trip's shape. */
 const STOP_OFFSET_WARN_M = 150;
 /** Same-named stations closer than this are one station on the map. */
@@ -89,9 +93,9 @@ const STATION_MERGE_M = 400;
  * Bump when this script writes something different from the same feed and config (a new field,
  * different filtering), so plans already built are rebuilt. 2: route catalogue and its bays.
  * 3: plans record their feed (config/feeds/<feed>/), and go to its directory. 4: and its agency, and how
- * its ids are shown.
+ * its ids are shown. 5: bus shapes without spurs to their stops.
  */
-const PLAN_FORMAT = 4;
+const PLAN_FORMAT = 5;
 
 /** Regions showing the feed with SeaBus berths and lanes (infrastructure/seabus.json): build-schedule applies them. */
 async function ferryRegions(feed: string): Promise<string[]> {
@@ -363,15 +367,33 @@ export async function buildPlan(
   }
   const shapeKind = new Map<string, RouteKind>();
   for (const t of rawTrips.values()) shapeKind.set(t.shape, t.route.kind);
+  // Stops each shape's trips serve, for removeStopSpurs.
+  const shapeStops = new Map<string, Set<string>>();
+  for (const t of rawTrips.values()) {
+    let set = shapeStops.get(t.shape);
+    if (!set) shapeStops.set(t.shape, (set = new Set()));
+    for (const st of stopTimes.get(t.id) ?? []) set.add(st.stopId);
+  }
   const shapes: Record<string, LonLat[]> = {};
+  let spurs = 0;
   for (const [id, pts] of shapePts) {
     pts.sort((a, b) => a.seq - b.seq);
-    const simplified = simplify(
-      pts.map((x) => x.p),
-      SIMPLIFY_M[shapeKind.get(id) ?? "bus"],
-    );
+    const kind = shapeKind.get(id) ?? "bus";
+    let coords = pts.map((x) => x.p);
+    if (kind === "bus") {
+      const served = [...(shapeStops.get(id) ?? [])].map((sid): LonLat => {
+        const s = stops[stopIndex.get(sid)!]!;
+        return [s.lon, s.lat];
+      });
+      const before = coords.length;
+      coords = removeStopSpurs(coords, served, STOP_SPURS);
+      spurs += before - coords.length;
+    }
+    const simplified = simplify(coords, SIMPLIFY_M[kind]);
     shapes[id] = simplified.map(([lon, lat]) => [round(lon, 6), round(lat, 6)]);
   }
+  if (spurs)
+    log(`Removed ${spurs} shape vertices on stops (spurs to the curb)`);
   const shapeCum = new Map<string, Float64Array>();
   for (const [id, coords] of Object.entries(shapes))
     shapeCum.set(id, cumulativeLengths(coords));
