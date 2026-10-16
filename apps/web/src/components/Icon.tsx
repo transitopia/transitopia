@@ -90,7 +90,18 @@ const icons = {
   ),
   filter: line(<path d="M2 3.333h12l-4.667 5.333v4l-2.667-1.333v-2.667z" />),
   /** Card tiles. */
-  station: line(<circle cx="8" cy="8" r="4.667" />, 2),
+  // A station on its line: an open ring over a thick route line, which stops inside the ring's stroke.
+  station: line(
+    <>
+      <circle cx="8" cy="8" r="4" />
+      <path
+        d="M0.667 6.333H4v3.333H0.667zM12 6.333h3.333v3.333H12z"
+        fill="currentColor"
+        stroke="none"
+      />
+    </>,
+    2,
+  ),
   train: line(
     <>
       <rect x="3.333" y="2" width="9.333" height="9.333" rx="2" />
