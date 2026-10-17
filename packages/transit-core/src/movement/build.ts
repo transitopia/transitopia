@@ -13,6 +13,7 @@ import type {
   TrackGraph,
   TrackPos,
 } from "../infra/graph.ts";
+import { stubsNear as stubsNearStop, terminusBerths } from "../infra/berths.ts";
 import { REVENUE_KIND_PENALTY, routePattern } from "../infra/patterns.ts";
 import type { PlatformAssignment } from "../infra/platforms.ts";
 import type { PreparedPlan, PreparedTrip } from "../schedule/engine.ts";
@@ -29,9 +30,8 @@ import type {
   Run,
   RunEvent,
 } from "./types.ts";
-import type { LineKey, SegmentKind } from "../infra/types.ts";
+import type { SegmentKind } from "../infra/types.ts";
 import type { PlanStop } from "../plan/types.ts";
-import { distM } from "../geo.ts";
 
 export interface OperationsConfig {
   fleets: { groups: string[][] };
@@ -78,12 +78,6 @@ const OFF_PLATFORM_COST_M = 500;
 const BLOCK_MIN_LAYOVER_S = 30;
 /** A berth counts as occupied this long before arrival and after departure (s). */
 const BERTH_MARGIN_S = 20;
-const PLATFORM_KINDS = new Set<SegmentKind>([
-  "main",
-  "pocket",
-  "tail",
-  "siding",
-]);
 
 export function pieceDir(p: PathPiece): Dir {
   return p.to >= p.from ? 1 : -1;
@@ -374,39 +368,12 @@ export function buildMovements({
     return p;
   };
 
-  /** On a dead-ended segment, pull the berth up to the buffer so the train clears the switch behind it. */
-  const pullUp = (pos: TrackPos, len: number): TrackPos => {
-    const s = g.segment(pos.seg);
-    const margin = 10;
-    if (g.isDeadEnd(pos.seg, -1))
-      return {
-        seg: pos.seg,
-        offset: Math.min(s.length - len / 2, len / 2 + margin),
-      };
-    if (g.isDeadEnd(pos.seg, 1))
-      return {
-        seg: pos.seg,
-        offset: Math.max(len / 2, s.length - len / 2 - margin),
-      };
-    return pos;
-  };
-  /** This line's dead-ended running tracks within 150 m of a stop (cached per stop and line). */
+  /** This line's dead-ended running tracks near a stop (cached per stop and line). */
   const stubCache = new Map<string, string[]>();
   const stubsNear = (stop: PlanStop, line: string) => {
     const key = `${stop.id}|${line}`;
     let list = stubCache.get(key);
-    if (!list) {
-      list = [...g.segments.values()]
-        .filter(
-          (sg) =>
-            PLATFORM_KINDS.has(sg.kind)
-            && sg.lines.includes(line as LineKey)
-            && (g.isDeadEnd(sg.id, 1) || g.isDeadEnd(sg.id, -1))
-            && sg.coords.some((c) => distM(c, [stop.lon, stop.lat]) < 150),
-        )
-        .map((sg) => sg.id);
-      stubCache.set(key, list);
-    }
+    if (!list) stubCache.set(key, (list = stubsNearStop(g, stop, line)));
     return list;
   };
   /** Stub terminus: the line has dead-ended platform tracks here, so waiting trains block a berth. */
@@ -725,19 +692,13 @@ export function buildMovements({
     const to = d.dep + BERTH_MARGIN_S;
     const len = trainLen(a.line);
     const defaultDepart = link.berthHop?.startDir ?? d.dir0;
-    // Berths: the default position plus this line's dead-ended tracks at the station (stub
-    // termini), each pulled up to the buffer so the train clears the switch behind it. A buffer
-    // far beyond the platform is closed track, not a berth (Braid), so the train stays at the platform.
-    const up = pullUp(a.pos1, len);
-    const candidates: TrackPos[] = [
-      Math.abs(up.offset - a.pos1.offset) <= ops.turnback.maxPullUpM ?
-        up
-      : a.pos1,
-    ];
-    for (const seg of stubsNear(lastStop, a.line)) {
-      if (!candidates.some((x) => x.seg === seg))
-        candidates.push(pullUp({ seg, offset: 0 }, len));
-    }
+    const candidates = terminusBerths(
+      g,
+      a.pos1,
+      stubsNear(lastStop, a.line),
+      len,
+      ops.turnback.maxPullUpM,
+    );
     let chosen: Visit | undefined;
     for (const pos of candidates) {
       if (!isFree(pos, from, to, len)) continue;

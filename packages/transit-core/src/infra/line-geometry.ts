@@ -1,16 +1,37 @@
 // Line-level geometry for drawing SkyTrain (packages/transit-map/README.md#rendering), derived from the
 // track network:
-// - centrelines: every main track moved halfway towards its parallel partner, measured per point and
-//   smoothed, so both tracks of a pair become (nearly) one line and junctions join cleanly. Drawn as a
-//   stroke at city zoom.
-// - ribbons: per line, the union of a band RIBBON_M wide around each of its tracks, as one polygon per
-//   line (the shared Expo/Millennium section cut along its centreline, one line each side). Drawn as a
-//   fill from station zoom, where the line has its true width: no overlaps, so it fades evenly, and
-//   widths change smoothly where tracks spread apart or come together.
+// - service track: where passenger trains run, from routing every stop pattern between its platforms,
+//   and where they stand at stops and wait at termini (serviceExtents), plus the crossovers, pockets and sidings joining it at two or more points. Tail
+//   tracks, spurs and main track past the last platform aren't service track: trains turn back or
+//   pull in on them, but they're drawn grey like yards, not in the line's colour.
+// - centrelines: every main service track moved halfway towards its parallel partner, measured per
+//   point and smoothed, so both tracks of a pair become (nearly) one line and junctions join cleanly.
+//   Drawn as a stroke at city zoom.
+// - ribbons: per line, the union of a band RIBBON_M wide around each of its service tracks, as one
+//   polygon per line (the shared Expo/Millennium section cut along its centreline, one line each side).
+//   Drawn as a fill from station zoom, where the line has its true width: no overlaps, so it fades
+//   evenly, and widths change smoothly where tracks spread apart or come together.
+// - tracks: every non-yard track, split into its service and other parts, for hairlines and grey track.
 
 import ClipperLib from "clipper-lib";
-import { localProjector, simplify, round, type LonLat } from "../geo.ts";
-import type { InfraCollection, SegmentProps } from "./types.ts";
+import {
+  cumulativeLengths,
+  localProjector,
+  simplify,
+  sliceLine,
+  round,
+  type LonLat,
+} from "../geo.ts";
+import type { ServicePlan } from "../plan/types.ts";
+import {
+  kinematicsFor,
+  type KinematicsConfig,
+} from "../movement/kinematics.ts";
+import { terminusBerths, trainSpan } from "./berths.ts";
+import type { PathPiece, TrackGraph, TrackPos } from "./graph.ts";
+import { routePattern } from "./patterns.ts";
+import type { PlatformAssignment } from "./platforms.ts";
+import type { InfraCollection, SegmentKind, SegmentProps } from "./types.ts";
 
 /** The guideway's drawn width (m): two tracks ≈4 m apart, with a margin. */
 export const RIBBON_M = 9;
@@ -24,20 +45,77 @@ const STEP_M = 4;
 const SMOOTH_M = 30;
 /** Output geometry tolerance (m). */
 const SIMPLIFY_M = 0.25;
-const RIBBON_KINDS = new Set([
-  "main",
-  "crossover",
-  "pocket",
-  "tail",
-  "siding",
-  "spur",
-]);
+/** Service extents closer than this to a segment's end reach its node (m). */
+const END_M = 1;
+/** Pieces of track shorter than this aren't drawn (m). */
+const MIN_PIECE_M = 0.5;
+/** Track that joins service track at two or more points is drawn with it (crossovers, pockets). */
+const CONNECTOR_KINDS = new Set<SegmentKind>(["crossover", "pocket", "siding"]);
+
+/** The stretch of each segment passenger trains run along or stand on: [from, to] offsets (m). */
+export type ServiceExtents = Map<string, [number, number]>;
+
+export interface ServiceInput {
+  graph: TrackGraph;
+  plan: ServicePlan;
+  /** The rail routes (lines) drawn. */
+  routeKeys: Set<string>;
+  platforms: Map<string, PlatformAssignment>;
+  /** Per-pattern overrides (PlatformReport.patternPositions). */
+  patternPositions?: Map<number, Map<number, TrackPos>> | undefined;
+  /** For train lengths. */
+  kin: KinematicsConfig;
+  /** operations.json → turnback.maxPullUpM. */
+  maxPullUpM: number;
+}
+
+/**
+ * Where passenger trains run: every pattern of `routeKeys` routed between its platforms
+ * (routePattern), with the track a stopped train stands on at each stop and at its last stop's
+ * berth. Each segment's extent is the span of all of these over it. Adds to `into`, so several
+ * plans (feed versions) can be combined.
+ */
+export function serviceExtents(
+  input: ServiceInput,
+  into: ServiceExtents = new Map(),
+): ServiceExtents {
+  const { graph: g, plan } = input;
+  const add = (p: PathPiece) => {
+    const lo = Math.min(p.from, p.to);
+    const hi = Math.max(p.from, p.to);
+    const e = into.get(p.seg);
+    if (e) {
+      e[0] = Math.min(e[0], lo);
+      e[1] = Math.max(e[1], hi);
+    } else into.set(p.seg, [lo, hi]);
+  };
+  for (const pattern of plan.patterns) {
+    if (!input.routeKeys.has(pattern.route)) continue;
+    const { hops, positions } = routePattern(
+      g,
+      plan,
+      input.platforms,
+      pattern,
+      input.patternPositions,
+    );
+    for (const hop of hops) for (const p of hop?.pieces ?? []) add(p);
+    const len = kinematicsFor(input.kin, "skytrain", pattern.route).length;
+    // A train at its last stop may wait pulled up to the buffer (terminusBerths' first choice, as
+    // run inference allocates it). Other stub tracks it may wait on stay grey (Waterfront's Expo tail).
+    const last = positions.at(-1)!;
+    const stands = positions.filter((p) => p.seg);
+    if (last.seg)
+      stands.push(terminusBerths(g, last, [], len, input.maxPullUpM)[0]!);
+    for (const pos of stands) for (const p of trainSpan(g, pos, len)) add(p);
+  }
+  return into;
+}
 
 type XY = [number, number];
 
 export interface LineGeometry {
   type: "FeatureCollection";
-  features: (CentrelineFeature | RibbonFeature)[];
+  features: (CentrelineFeature | RibbonFeature | TrackFeature)[];
 }
 
 export interface CentrelineFeature {
@@ -59,6 +137,20 @@ export interface RibbonFeature {
   geometry:
     | { type: "Polygon"; coordinates: LonLat[][] }
     | { type: "MultiPolygon"; coordinates: LonLat[][][] };
+}
+
+export interface TrackFeature {
+  type: "Feature";
+  properties: {
+    type: "track";
+    /** The line it's drawn in (the first of `lines`). */
+    line: string;
+    lines: string[];
+    kind: SegmentKind;
+    /** Service track (in the line's colour) or not (grey). */
+    service: boolean;
+  };
+  geometry: { type: "LineString"; coordinates: LonLat[] };
 }
 
 interface Track {
@@ -260,7 +352,77 @@ function leftStrip(pts: XY[], w: number): XY[][] {
   return out;
 }
 
-export function lineGeometry(tracks: InfraCollection): LineGeometry {
+/**
+ * Each non-yard track's service and other parts. Service: its extent in `service`, or all of a
+ * connector (CONNECTOR_KINDS) whose connected group touches service track at two or more nodes.
+ */
+function servicePieces(
+  segs: { props: SegmentProps; coords: LonLat[] }[],
+  service: ServiceExtents,
+): { props: SegmentProps; coords: LonLat[]; service: boolean }[] {
+  const cums = segs.map((s) => cumulativeLengths(s.coords));
+  const extent = segs.map((s) => service.get(s.props.id));
+  const servedNodes = new Set<string>();
+  segs.forEach((s, i) => {
+    const e = extent[i];
+    if (!e) return;
+    if (e[0] <= END_M) servedNodes.add(s.props.from);
+    if (e[1] >= cums[i]!.at(-1)! - END_M) servedNodes.add(s.props.to);
+  });
+  // Connected groups of connectors with no service of their own (a pocket and its sidings).
+  const group = new Map<string, number>();
+  const parent: number[] = [];
+  const find = (i: number): number =>
+    parent[i] === i ? i : (parent[i] = find(parent[i]!));
+  segs.forEach((s, i) => {
+    parent[i] = i;
+    if (extent[i] || !CONNECTOR_KINDS.has(s.props.kind)) return;
+    for (const n of [s.props.from, s.props.to]) {
+      const j = group.get(n);
+      if (j === undefined) group.set(n, i);
+      else parent[find(j)] = find(i);
+    }
+  });
+  const touches = new Map<number, Set<string>>();
+  segs.forEach((s, i) => {
+    if (extent[i] || !CONNECTOR_KINDS.has(s.props.kind)) return;
+    const r = find(i);
+    const t = touches.get(r) ?? touches.set(r, new Set()).get(r)!;
+    for (const n of [s.props.from, s.props.to])
+      if (servedNodes.has(n)) t.add(n);
+  });
+  return segs.flatMap((s, i) => {
+    const len = cums[i]!.at(-1)!;
+    let e = extent[i];
+    if (
+      !e
+      && CONNECTOR_KINDS.has(s.props.kind)
+      && touches.get(find(i))!.size >= 2
+    )
+      e = [0, len];
+    const piece = (a: number, b: number, inService: boolean) =>
+      b - a < MIN_PIECE_M ?
+        []
+      : [
+          {
+            props: s.props,
+            coords: sliceLine(s.coords, a, b, cums[i]),
+            service: inService,
+          },
+        ];
+    if (!e) return piece(0, len, false);
+    return [
+      ...piece(0, e[0], false),
+      ...piece(e[0], e[1], true),
+      ...piece(e[1], len, false),
+    ];
+  });
+}
+
+export function lineGeometry(
+  tracks: InfraCollection,
+  service: ServiceExtents,
+): LineGeometry {
   const first = tracks.features.find((f) => f.geometry.type === "LineString");
   if (!first) return { type: "FeatureCollection", features: [] };
   // Metres around the network's first point (rounded to the millimetre, as Clipper works).
@@ -275,24 +437,32 @@ export function lineGeometry(tracks: InfraCollection): LineGeometry {
     },
     toLonLat: (x: number, y: number): LonLat => base.toLonLat(x + ox, y + oy),
   };
-  const all: Track[] = tracks.features.flatMap((f) => {
-    if (f.properties.type !== "segment" || f.geometry.type !== "LineString")
-      return [];
-    const p = f.properties;
-    if (!p.lines.length || p.works || !RIBBON_KINDS.has(p.kind)) return [];
-    let coords = f.geometry.coordinates as LonLat[];
+  const pieces = servicePieces(
+    tracks.features.flatMap((f) => {
+      if (f.properties.type !== "segment" || f.geometry.type !== "LineString")
+        return [];
+      const p = f.properties;
+      if (!p.lines.length || p.works || p.kind === "yard") return [];
+      return [{ props: p, coords: f.geometry.coordinates as LonLat[] }];
+    }),
+    service,
+  ).map((t) => ({
+    ...t,
     // West to east, so a shared track's first line is on its left.
-    if (coords.at(-1)![0] < coords[0]![0]) coords = [...coords].reverse();
-    return [
-      {
-        props: p,
-        pts: densify(
-          coords.map((c) => proj.toXY(c)),
-          STEP_M,
-        ),
-      },
-    ];
-  });
+    coords:
+      t.coords.at(-1)![0] < t.coords[0]![0] ?
+        [...t.coords].reverse()
+      : t.coords,
+  }));
+  const all: Track[] = pieces
+    .filter((t) => t.service)
+    .map((t) => ({
+      props: t.props,
+      pts: densify(
+        t.coords.map((c) => proj.toXY(c)),
+        STEP_M,
+      ),
+    }));
   const main = all.filter((t) => t.props.kind === "main");
   const index = new SegmentIndex(main);
   const centres = main.map((t, i) => centreline(t, index, i));
@@ -371,5 +541,23 @@ export function lineGeometry(tracks: InfraCollection): LineGeometry {
       geometry: { type: "MultiPolygon", coordinates: coords },
     });
   }
+  for (const t of pieces)
+    features.push({
+      type: "Feature",
+      properties: {
+        type: "track",
+        line: t.props.lines[0]!,
+        lines: t.props.lines,
+        kind: t.props.kind,
+        service: t.service,
+      },
+      geometry: {
+        type: "LineString",
+        coordinates: simplify(t.coords, SIMPLIFY_M).map(([lon, lat]) => [
+          round(lon, 6),
+          round(lat, 6),
+        ]),
+      },
+    });
   return { type: "FeatureCollection", features };
 }

@@ -72,6 +72,29 @@ export function pointAlong(
   };
 }
 
+/** The part of a polyline between two distances along it (m). */
+export function sliceLine(
+  coords: LonLat[],
+  from: number,
+  to: number,
+  cum: Float64Array = cumulativeLengths(coords),
+): LonLat[] {
+  if (coords.length < 2) return coords;
+  // Clamped, so neither end repeats a vertex.
+  const len = cum[cum.length - 1]!;
+  from = Math.min(len, Math.max(0, from));
+  to = Math.min(len, Math.max(from, to));
+  const at = (d: number): LonLat => {
+    const p = pointAlong(coords, cum, d);
+    return [p.lon, p.lat];
+  };
+  const out: LonLat[] = [at(from)];
+  for (let i = 0; i < coords.length; i++)
+    if (cum[i]! > from && cum[i]! < to) out.push(coords[i]!);
+  out.push(at(to));
+  return out;
+}
+
 /**
  * Local equirectangular projection around a reference latitude: accurate to well under 0.1% at
  * metro scale, and much cheaper than geodesic maths for projections and offsets.

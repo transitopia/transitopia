@@ -3,8 +3,9 @@
 // lengthwise in both lines' colours where they share track); from it, a ribbon the guideway's true
 // width, one polygon per line, with the tracks as white hairlines inside, fading to half opacity close
 // in so bus stops and streets under or over the guideway show. Both come from lines.geojson
-// (packages/transit-core/src/infra/line-geometry.ts). Yard tracks are grey; track OSM marks as under
-// works is dashed. With ?debug=1: segment ids, node kinds and mapped GTFS platforms.
+// (packages/transit-core/src/infra/line-geometry.ts), which also splits the track into service track and
+// the rest: yards, tail tracks, spurs and track past the last platform are grey; track OSM marks as
+// under works is dashed. With ?debug=1: segment ids, node kinds and mapped GTFS platforms.
 
 import type { FeatureCollection } from "geojson";
 import type { GeoJSONSource, Map as MlMap } from "maplibre-gl";
@@ -24,6 +25,7 @@ export const TRACKS_SOURCE = "tracks";
 export const LINES_SOURCE = "rail-lines";
 const TRACK_LAYERS = [
   "tracks-yard",
+  "tracks-other",
   "rail-casing",
   "tracks-minor",
   "rail-centre",
@@ -190,6 +192,12 @@ export function addTrackLayers(
       hi,
     ] as ExpressionSpecification;
   const centre = ["==", ["get", "type"], "centre"] as ExpressionSpecification;
+  const track = (service: boolean) =>
+    [
+      "all",
+      ["==", ["get", "type"], "track"],
+      ["==", ["get", "service"], service],
+    ] as ExpressionSpecification;
   const shared = ["get", "shared"] as ExpressionSpecification;
   /** The stroke's width below RIBBON_ZOOM (px): thicker than any bus corridor. */
   const STROKE: [number, number][] = [
@@ -219,6 +227,19 @@ export function addTrackLayers(
     },
     before,
   );
+  // Tail tracks, spurs and track past the last platform: drawn like yard track.
+  map.addLayer(
+    {
+      id: "tracks-other",
+      type: "line",
+      source: LINES_SOURCE,
+      minzoom: 12,
+      filter: track(false),
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": yard, "line-width": width(0.5, 1, 3) },
+    },
+    before,
+  );
   map.addLayer(
     {
       id: "rail-casing",
@@ -235,15 +256,10 @@ export function addTrackLayers(
     {
       id: "tracks-minor",
       type: "line",
-      source: TRACKS_SOURCE,
+      source: LINES_SOURCE,
       minzoom: 12.5,
       ...low,
-      filter: [
-        "all",
-        seg,
-        kind("crossover", "pocket", "tail", "siding", "spur"),
-        ["!", ["has", "works"]],
-      ],
+      filter: ["all", track(true), ["!=", ["get", "kind"], "main"]],
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
         "line-color": ["get", "color"],
@@ -320,14 +336,9 @@ export function addTrackLayers(
     {
       id: "tracks-hairline",
       type: "line",
-      source: TRACKS_SOURCE,
+      source: LINES_SOURCE,
       minzoom: RIBBON_ZOOM,
-      filter: [
-        "all",
-        seg,
-        kind("main", "crossover", "pocket", "tail", "siding", "spur"),
-        ["!", ["has", "works"]],
-      ],
+      filter: track(true),
       layout: { "line-cap": "butt", "line-join": "round" },
       paint: {
         "line-color": "#ffffff",
