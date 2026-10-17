@@ -115,6 +115,7 @@ npm run data:gtfs        # fetch every feed's latest GTFS + build plans and mani
 npm run data             # fetch-gtfs, fetch-osm, import-osm, build-schedule, build-infra, build-movements, …
 npm run tiles -- --region bc # the site's basemap, var/public/tiles/protomaps-bc.pmtiles (~2 GB) + fonts/sprites
 npm run data:osm         # fetch OSM tracks + import → config/regions/<rail region>/infrastructure/*.generated.geojson
+npm run data:roads       # fetch OSM roads per feed → var/raw/osm-roads/<feed>/ (build-schedule then matches bus shapes and builds corridors)
 npm run build:infra      # publish tracks + per-feed platform mapping to var/public/data
 npm run validate:infra   # graph / platform / routing / turnback / checklist checks
 npm run build:movements  # infer + dispatch train runs → var/public/data/feeds/translink/<v>/movements/*.json [--verbose] [--no-dispatch]

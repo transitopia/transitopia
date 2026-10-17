@@ -75,7 +75,16 @@ function shownAt(
     : undefined;
 }
 
+/** Ticks per plan: the map's layers and frequencies all ask for them. */
+const ticksOf = new WeakMap<ServicePlan, BusStopTick[]>();
+
 export function busStopTicks(plan: ServicePlan): BusStopTick[] {
+  let ticks = ticksOf.get(plan);
+  if (!ticks) ticksOf.set(plan, (ticks = computeTicks(plan)));
+  return ticks;
+}
+
+function computeTicks(plan: ServicePlan): BusStopTick[] {
   const busRoutes = new Set(
     plan.routes.filter((r) => r.kind === "bus").map((r) => r.key),
   );
@@ -123,21 +132,25 @@ export function busStopTicks(plan: ServicePlan): BusStopTick[] {
 }
 
 export function busStopMarkers(plan: ServicePlan): BusStopMarker[] {
-  const groups: { name: string; ticks: BusStopTick[]; routes: Set<string> }[] =
-    [];
+  type Group = { name: string; ticks: BusStopTick[]; routes: Set<string> };
+  const groups: Group[] = [];
+  const byName = new Map<string, Group[]>();
   for (const t of busStopTicks(plan)) {
     if (!t.name) continue;
     const at: LonLat = [t.lon, t.lat];
-    const g = groups.find(
-      (x) =>
-        x.name === t.name
-        && x.ticks.some((q) => distM([q.lon, q.lat], at) < MERGE_M),
+    let named = byName.get(t.name);
+    if (!named) byName.set(t.name, (named = []));
+    const g = named.find((x) =>
+      x.ticks.some((q) => distM([q.lon, q.lat], at) < MERGE_M),
     );
     if (g) {
       g.ticks.push(t);
       g.routes.add(t.route);
-    } else
-      groups.push({ name: t.name, ticks: [t], routes: new Set([t.route]) });
+    } else {
+      const fresh = { name: t.name, ticks: [t], routes: new Set([t.route]) };
+      groups.push(fresh);
+      named.push(fresh);
+    }
   }
   // Label at the first tick, on its side of the line.
   return groups.map((g) => ({

@@ -2,7 +2,9 @@
 // Input:  var/raw/gtfs/<feed>/<version dir>/google_transit.zip, config/feeds/<feed>/{feed,routes}.json,
 //         its operator's config/operators/<id>/operator.json (the name plans record),
 //         and for a region showing the feed with SeaBus berths and lanes:
-//         config/regions/<region>/infrastructure/seabus.json + config/regions/<region>/seabus.json
+//         config/regions/<region>/infrastructure/seabus.json + config/regions/<region>/seabus.json,
+//         and the feed's OSM roads when fetched (var/raw/osm-roads/<feed>/latest.json, fetch-osm-roads):
+//         bus shapes are matched to them and bus corridors built (packages/transit-core/DESIGN.md#bus-corridors)
 // Output: var/public/data/feeds/<feed>/<version dir>/plan.json, var/public/data/feeds/<feed>/manifest.json
 // See packages/transit-core/DESIGN.md#timetables.
 //
@@ -14,7 +16,7 @@
 // above), so editing routes.json or changing what this writes rebuilds existing plans too.
 
 import { createHash } from "node:crypto";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { open, readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { readCsv, readCsvAll, type Row } from "@transitopia/data/gtfs-zip.ts";
 import {
@@ -53,6 +55,16 @@ import {
   serviceDate,
 } from "@transitopia/transit-core/time.ts";
 import {
+  matchShape,
+  RoadGraph,
+  type MatchPiece,
+  type OsmElement,
+} from "@transitopia/transit-core/plan/road-match.ts";
+import {
+  buildCorridors,
+  mergeCarriageways,
+} from "@transitopia/transit-core/plan/corridors.ts";
+import {
   applyFerryBerths,
   type FerryInfra,
 } from "@transitopia/transit-core/plan/ferry-berths.ts";
@@ -83,6 +95,8 @@ import {
 
 /** Shape simplification tolerance (m) by route kind: track-level lines keep more detail. */
 const SIMPLIFY_M: Record<RouteKind, number> = { skytrain: 1, shape: 3, bus: 4 };
+/** Simplification tolerance for bus shapes matched to roads (m). */
+const MATCHED_SIMPLIFY_M = 1;
 /** Bus shape vertices on a stop that are bumps or spurs to the curb (removeStopSpurs), in metres. */
 const STOP_SPURS: StopSpurLimits = { curbM: 10, spurM: 20 };
 /** Warn when a stop projects further than this from its trip's shape. */
@@ -93,9 +107,10 @@ const STATION_MERGE_M = 400;
  * Bump when this script writes something different from the same feed and config (a new field,
  * different filtering), so plans already built are rebuilt. 2: route catalogue and its bays.
  * 3: plans record their feed (config/feeds/<feed>/), and go to its directory. 4: and its agency, and how
- * its ids are shown. 5: bus shapes without spurs to their stops.
+ * its ids are shown. 5: bus shapes without spurs to their stops. 6: bus shapes matched to OSM roads,
+ * and bus corridors. 7: and overview corridors. 8: matched shapes simplified at 1 m.
  */
-const PLAN_FORMAT = 5;
+const PLAN_FORMAT = 8;
 
 /** Regions showing the feed with SeaBus berths and lanes (infrastructure/seabus.json): build-schedule applies them. */
 async function ferryRegions(feed: string): Promise<string[]> {
@@ -109,6 +124,41 @@ async function ferryRegions(feed: string): Promise<string[]> {
     )
       out.push(r.id);
   return out;
+}
+
+const roadsFile = (feed: string) => join(feedPaths(feed).roads, "latest.json");
+
+/** When the feed's OSM roads were extracted (Overpass's timestamp), or undefined without them. */
+async function roadsStamp(feed: string): Promise<string | undefined> {
+  if (!(await exists(roadsFile(feed)))) return undefined;
+  const handle = await open(roadsFile(feed));
+  try {
+    const { buffer, bytesRead } = await handle.read(
+      Buffer.alloc(1024),
+      0,
+      1024,
+      0,
+    );
+    const head = buffer.subarray(0, bytesRead).toString("utf8");
+    return /"timestamp_osm_base":\s*"([^"]+)"/.exec(head)?.[1] ?? "unknown";
+  } finally {
+    await handle.close();
+  }
+}
+
+async function loadRoads(feed: string): Promise<RoadGraph | undefined> {
+  if (!(await exists(roadsFile(feed)))) {
+    log(
+      `${feed}: no OSM roads (npm run data:roads); bus shapes stay as in the GTFS`,
+    );
+    return undefined;
+  }
+  const osm = JSON.parse(await readFile(roadsFile(feed), "utf8")) as {
+    elements: OsmElement[];
+  };
+  const g = RoadGraph.fromOsm(osm.elements);
+  log(`${feed}: road graph with ${g.edgeCount} directed edges`);
+  return g;
 }
 
 /** What a feed's plans are built from besides the GTFS: PLAN_FORMAT and the files buildPlan reads. */
@@ -126,6 +176,7 @@ async function inputsHash(feed: string): Promise<string> {
       join(REGIONS_DIR, r, "seabus.json"),
     );
   for (const f of files) h.update(await readFile(f));
+  h.update(`roads ${(await roadsStamp(feed)) ?? "none"}\n`);
   return h.digest("hex").slice(0, 16);
 }
 
@@ -165,6 +216,7 @@ interface StopTimeRow {
 export async function buildPlan(
   zipPath: string,
   feed: FeedInfo,
+  roads?: RoadGraph,
 ): Promise<ServicePlan> {
   const { routes: routeCfg } = await readFeedRoutes(feed.id);
   const gtfsDataset = feed.dataset;
@@ -375,6 +427,8 @@ export async function buildPlan(
     for (const st of stopTimes.get(t.id) ?? []) set.add(st.stopId);
   }
   const shapes: Record<string, LonLat[]> = {};
+  const matched = new Map<string, MatchPiece[]>();
+  let matchedShare = 0;
   let spurs = 0;
   for (const [id, pts] of shapePts) {
     pts.sort((a, b) => a.seq - b.seq);
@@ -388,12 +442,27 @@ export async function buildPlan(
       const before = coords.length;
       coords = removeStopSpurs(coords, served, STOP_SPURS);
       spurs += before - coords.length;
+      if (roads) {
+        const m = matchShape(roads, coords);
+        coords = m.coords;
+        matched.set(id, m.pieces);
+        matchedShare += m.matched;
+      }
     }
-    const simplified = simplify(coords, SIMPLIFY_M[kind]);
+    // Shapes matched to roads are road geometry already: simplify them as finely as corridors
+    // (packages/transit-core/src/plan/corridors.ts), so a route's own line and its corridor coincide.
+    const simplified = simplify(
+      coords,
+      matched.has(id) ? MATCHED_SIMPLIFY_M : SIMPLIFY_M[kind],
+    );
     shapes[id] = simplified.map(([lon, lat]) => [round(lon, 6), round(lat, 6)]);
   }
   if (spurs)
     log(`Removed ${spurs} shape vertices on stops (spurs to the curb)`);
+  if (matched.size)
+    log(
+      `Matched ${matched.size} bus shapes to roads (${((100 * matchedShare) / matched.size).toFixed(1)}% of their length)`,
+    );
   const shapeCum = new Map<string, Float64Array>();
   for (const [id, coords] of Object.entries(shapes))
     shapeCum.set(id, cumulativeLengths(coords));
@@ -614,6 +683,19 @@ export async function buildPlan(
     calendar: { calendar, exceptions },
     catalog,
   };
+  if (roads && matched.size) {
+    plan.corridors = buildCorridors(
+      roads,
+      patterns.flatMap((p) => {
+        const pieces = matched.get(p.shape);
+        return pieces ? [{ pattern: p.id, pieces }] : [];
+      }),
+    );
+    plan.overviewCorridors = mergeCarriageways(plan.corridors);
+    log(
+      `Built ${plan.corridors.length} bus corridors (${plan.overviewCorridors.length} with divided roads merged)`,
+    );
+  }
 
   // SeaBus: berth-to-berth paths along the keep-right lanes instead of the GTFS shapes.
   for (const region of await ferryRegions(feed.id)) {
@@ -693,6 +775,7 @@ async function buildFeed(feed: FeedInfo, force: boolean): Promise<void> {
   const versions = (await exists(raw)) ? await readdir(raw) : [];
   const inputs = await inputsHash(feed.id);
   let built = 0;
+  let roads: Promise<RoadGraph | undefined> | undefined;
   for (const v of versions.sort()) {
     const zip = join(raw, v, "google_transit.zip");
     if (!(await exists(zip))) continue;
@@ -709,7 +792,8 @@ async function buildFeed(feed: FeedInfo, force: boolean): Promise<void> {
         : " (config or plan format changed)"
       }`,
     );
-    const plan = await buildPlan(zip, feed);
+    roads ??= loadRoads(feed.id);
+    const plan = await buildPlan(zip, feed, await roads);
     plan.inputs = inputs;
     await writeJson(out, plan);
     const size = (await stat(out)).size;

@@ -96,6 +96,8 @@ export function feedPaths(feed: string): {
   rtHistory: string;
   /** AIS recordings of its vessels (hour files, coverage), where it has them (feed.json → ais). */
   aisHistory: string;
+  /** OSM roads its buses run on (fetch-osm-roads), for matching bus shapes to streets. */
+  roads: string;
 } {
   return {
     dir: join(FEEDS_DIR, feed),
@@ -104,6 +106,7 @@ export function feedPaths(feed: string): {
     manifest: join(PUBLIC_DIR, feedDataPath(feed, undefined, "manifest.json")),
     rtHistory: join(RT_HISTORY_DIR, feed),
     aisHistory: join(AIS_HISTORY_DIR, feed),
+    roads: join(RAW_DIR, "osm-roads", feed),
   };
 }
 

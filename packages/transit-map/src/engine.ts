@@ -60,6 +60,8 @@ import {
   setSelectedPlace,
 } from "./layers/static.ts";
 import { VehicleLayer } from "./layers/vehicles.ts";
+import { BusFrequencyLayer } from "./layers/bus-frequency.ts";
+import type { FrequencyWindow } from "@transitopia/transit-core/plan/bus-frequency.ts";
 import {
   DEBUG_SOURCE,
   TRACKS_SOURCE,
@@ -168,6 +170,10 @@ export interface TransitSnapshot {
   showStops: boolean;
   /** Only vehicles with real positions are drawn (estimates hidden). */
   liveOnly: boolean;
+  /** The shown plan draws bus corridors (packages/transit-map/README.md#bus-corridors). */
+  corridors: boolean;
+  /** What corridor colours count: the hour around the shown time, the day's average, or the night's. */
+  busFrequency: FrequencyWindow;
   /** The camera keeps the selected vehicle in view. */
   following: boolean;
   selected: SelectedVehicle | undefined;
@@ -258,6 +264,8 @@ export class TransitEngine {
   private hidden: Set<string>;
   private showStops: boolean;
   private liveOnly: boolean;
+  private busFrequency: FrequencyWindow;
+  private frequencyLayer: BusFrequencyLayer | undefined;
   private selectedId: string | undefined;
   /** The selected vehicle's route, once seen: computed even while its route is hidden. */
   private selectedRoute: string | undefined;
@@ -347,6 +355,7 @@ export class TransitEngine {
     this.hidden = new Set(loadPref<string[]>("hiddenRoutes", []));
     this.showStops = loadPref("showStops", true);
     this.liveOnly = loadPref("liveOnly", false);
+    this.busFrequency = loadPref<FrequencyWindow>("busFrequency", "now");
 
     this.vehicles = new VehicleLayer(map, opts.config.kinematics.sizing);
     this.vehicles.selectedId = this.selectedId;
@@ -517,6 +526,13 @@ export class TransitEngine {
     this.showStops = shown;
     savePref("showStops", shown);
     if (this.styleReady) applyStopsVisibility(this.map, shown);
+    this.publish();
+  }
+
+  /** What bus corridors and stops are coloured by: now, the day's average or the night's. */
+  setBusFrequency(window: FrequencyWindow): void {
+    this.busFrequency = window;
+    savePref("busFrequency", window);
     this.publish();
   }
 
@@ -1089,6 +1105,8 @@ export class TransitEngine {
       hidden: this.hidden,
       showStops: this.showStops,
       liveOnly: this.liveOnly,
+      corridors: Boolean(this.shownFeed?.plan.corridors?.length),
+      busFrequency: this.busFrequency,
       following: this.following,
       selected,
       place: this.placeSnapshot(t),
@@ -1148,6 +1166,10 @@ export class TransitEngine {
     this.shownFeed = pp;
     addStaticLayers(map, pp.plan, this.theme, this.hidden);
     applyStopsVisibility(map, this.showStops);
+    if (!pp.plan.corridors?.length) this.frequencyLayer = undefined;
+    else if (!this.frequencyLayer || this.frequencyLayer.plan !== pp.plan)
+      this.frequencyLayer = new BusFrequencyLayer(pp.plan);
+    this.frequencyLayer?.invalidate();
     this.syncPlaceHighlight();
     this.ferryPair = undefined;
     if (this.tracks) {
@@ -1215,6 +1237,16 @@ export class TransitEngine {
       }
     }
     this.syncStatic();
+    if (this.frequencyLayer && this.styleReady) {
+      const date = displayServiceDate(t);
+      this.frequencyLayer.update(
+        map,
+        date,
+        (t - serviceDayStart(date)) / 1000,
+        this.busFrequency,
+        this.hidden,
+      );
+    }
     if (this.following && this.styleReady) this.keepCentred();
     else if (this.clearPaddingPending && !map.isMoving())
       this.clearMapPadding();

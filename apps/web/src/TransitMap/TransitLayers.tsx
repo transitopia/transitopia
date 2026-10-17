@@ -34,6 +34,30 @@ const CATEGORIES: {
   { id: "regular", title: "Regular Bus", description: "Every other route" },
 ];
 
+/** Bus corridor frequency tiers, as packages/transit-map/src/layers/static.ts draws them. */
+const TIERS: { label: string; className: string; height: string }[] = [
+  {
+    label: "Every 6 min or better",
+    className: "bg-[#1660d8] dark:bg-[#6aa5ff]",
+    height: "h-[5px]",
+  },
+  {
+    label: "Every 15 min or better",
+    className: "bg-[#5b9be6] dark:bg-[#4a86d6]",
+    height: "h-[4px]",
+  },
+  {
+    label: "Every 30 min or better",
+    className: "bg-[#a05a9c] dark:bg-[#b77cc0]",
+    height: "h-[2px]",
+  },
+  {
+    label: "Less often",
+    className: "bg-[#d9443a] dark:bg-[#ef6b5f]",
+    height: "h-[1.5px]",
+  },
+];
+
 // Plans built before routes had categories are all rapid transit (config/feeds/<feed>/routes.json → category).
 const categoryOf = (r: PlanRoute): RouteCategory => r.category ?? "rapid";
 
@@ -86,6 +110,18 @@ export const TransitLayers: React.FC<{
         />
       );
     })}
+    {snap.corridors ?
+      <SegmentedChoice
+        label="Bus frequency"
+        value={snap.busFrequency}
+        options={[
+          { value: "now", label: "Now" },
+          { value: "day", label: "Day" },
+          { value: "night", label: "Night" },
+        ]}
+        onChange={(v) => engine.setBusFrequency(v)}
+      />
+    : null}
     <PanelDivider />
     <SegmentedChoice
       label="Vehicles"
@@ -103,6 +139,26 @@ export const TransitLayers: React.FC<{
     />
     <PanelDivider />
     <dl className="grid grid-cols-[2.125rem_1fr] items-center gap-x-2 gap-y-2 px-4 pt-1 text-[13px] text-gray-700 dark:text-gray-300">
+      {snap.corridors ?
+        TIERS.map((t) => (
+          <React.Fragment key={t.label}>
+            <dt>
+              <span
+                aria-hidden="true"
+                className={`block w-7 rounded-full ${t.height} ${t.className}`}
+              />
+            </dt>
+            <dd>
+              {t.label}
+              {snap.busFrequency === "now" ?
+                ""
+              : snap.busFrequency === "day" ?
+                " (06:00–24:00 average)"
+              : " (00:00–06:00 average)"}
+            </dd>
+          </React.Fragment>
+        ))
+      : null}
       <dt>
         <ProvenanceSwatch estimated={false} />
       </dt>
