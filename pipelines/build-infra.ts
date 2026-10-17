@@ -1,5 +1,6 @@
 // Publish the track network and per-feed platform mapping for the browser (packages/transit-core/DESIGN.md#track-graph):
 //   var/public/data/regions/<rail region>/infra/tracks.geojson   segments, nodes, stop positions
+//   var/public/data/regions/<rail region>/infra/lines.geojson    line centrelines and ribbons, for drawing
 //   var/public/data/feeds/<rail feed>/<version>/platforms.json   GTFS stop_id → track position
 //
 //   npm run build:infra
@@ -15,6 +16,7 @@ import {
 } from "@transitopia/data/paths.ts";
 import { loadAllPlans, loadGraph } from "@transitopia/data/infra.ts";
 import { mapPlatforms } from "@transitopia/transit-core/infra/platforms.ts";
+import { lineGeometry } from "@transitopia/transit-core/infra/line-geometry.ts";
 
 export interface PlatformsFile {
   feedVersion: string;
@@ -32,6 +34,11 @@ async function buildNetwork(net: RailNetwork) {
     tracks,
   );
   log(`Wrote infra/tracks.geojson (${graph.segments.size} segments)`);
+  await writeJson(
+    join(regionDataDir(net.region), "infra", "lines.geojson"),
+    lineGeometry(tracks),
+  );
+  log("Wrote infra/lines.geojson");
   for (const plan of await loadAllPlans(net.feed)) {
     const railKeys = new Set(
       plan.routes.filter((r) => r.kind === "skytrain").map((r) => r.key),

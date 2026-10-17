@@ -8,6 +8,7 @@ import type { Theme } from "@transitopia/map-style/basemap.ts";
 import { realtimeOf } from "@transitopia/shared/datasets.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
 import type { InfraCollection } from "@transitopia/transit-core/infra/types.ts";
+import type { LineGeometry } from "@transitopia/transit-core/infra/line-geometry.ts";
 import {
   addDays,
   localDate,
@@ -69,7 +70,9 @@ import {
   addTrackLayers,
   applyTrackFilter,
   loadPlatforms,
+  loadLines,
   loadTracks,
+  PICKABLE_TRACK_LAYERS,
   setDebugPlatforms,
 } from "./layers/tracks.ts";
 import { readUrl, writeUrl, type Place, type UrlState } from "./url.ts";
@@ -287,6 +290,8 @@ export class TransitEngine {
   /** Screen edges covered by the host's chrome (cards, time bar), px: follow keeps clear of them. */
   private viewPadding = { top: 0, right: 0, bottom: 0, left: 0 };
   private tracks: InfraCollection | undefined;
+  /** Line centrelines and ribbons for drawing SkyTrain (lines.geojson). */
+  private lines: LineGeometry | undefined;
   private shownFeed: PreparedPlan | undefined;
   /** False from a style swap until 'style.load': our layers are gone until then. */
   private styleReady = true;
@@ -390,10 +395,12 @@ export class TransitEngine {
     // SkyTrain falls back to GTFS shapes).
     const tracksPath = store.tracksPath;
     if (tracksPath)
-      void loadTracks(opts.dataBase, tracksPath).then((t) => {
+      void loadTracks(opts.dataBase, tracksPath).then(async (t) => {
         if (this.disposed) return;
         this.tracks = t;
         if (t) store.setTrackGraph(TrackGraph.fromCollection(t));
+        if (t) this.lines = await loadLines(opts.dataBase, tracksPath);
+        if (this.disposed) return;
         this.syncStatic(true);
       });
     this.syncStatic(true);
@@ -663,10 +670,7 @@ export class TransitEngine {
       "routes-shape",
       "routes-shape-inactive",
       "routes-skytrain",
-      "tracks-main",
-      "tracks-pair",
-      "tracks-shared-a",
-      "tracks-shared-b",
+      ...PICKABLE_TRACK_LAYERS,
     ].filter((id) => map.getLayer(id));
     const brands = this.shownFeed ? brandedRoutes(this.shownFeed.plan) : [];
     if (!layers.length) return undefined;
@@ -1190,8 +1194,15 @@ export class TransitEngine {
     this.frequencyLayer?.invalidate();
     this.syncPlaceHighlight();
     this.ferryPair = undefined;
-    if (this.tracks) {
-      addTrackLayers(map, this.tracks, pp.plan, this.theme, this.debug);
+    if (this.tracks && this.lines) {
+      addTrackLayers(
+        map,
+        this.tracks,
+        this.lines,
+        pp.plan,
+        this.theme,
+        this.debug,
+      );
       applyTrackFilter(map, this.hidden);
       // Tracks replace the GTFS SkyTrain shapes.
       for (const id of ["routes-skytrain", "routes-skytrain-casing"])

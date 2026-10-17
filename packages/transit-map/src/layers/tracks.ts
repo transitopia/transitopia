@@ -1,17 +1,17 @@
-// SkyTrain track layers from the infrastructure model (packages/transit-map/README.md#rendering): every track, switch
-// and pocket at true geometry. At city zoom parallel tracks (≈4 m apart) merge into one line, split
-// lengthwise in both lines' colours where lines share track. From station zoom the line widens into a
-// ribbon the width of the guideway with the tracks as white hairlines inside, fading to half opacity
-// close in so bus stops and streets under or over the guideway show. Yard tracks are grey; track OSM
-// marks as under works is dashed.
-// With ?debug=1: segment ids, node kinds and mapped GTFS platforms.
+// SkyTrain track layers from the infrastructure model (packages/transit-map/README.md#rendering). Below
+// RIBBON_ZOOM each line is a stroke along its centreline (both tracks of a pair as one line, split
+// lengthwise in both lines' colours where they share track); from it, a ribbon the guideway's true
+// width, one polygon per line, with the tracks as white hairlines inside, fading to half opacity close
+// in so bus stops and streets under or over the guideway show. Both come from lines.geojson
+// (packages/transit-core/src/infra/line-geometry.ts). Yard tracks are grey; track OSM marks as under
+// works is dashed. With ?debug=1: segment ids, node kinds and mapped GTFS platforms.
 
 import type { FeatureCollection } from "geojson";
 import type { GeoJSONSource, Map as MlMap } from "maplibre-gl";
 import type { ExpressionSpecification } from "@maplibre/maplibre-gl-style-spec";
 import type { InfraCollection } from "@transitopia/transit-core/infra/types.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
-import { localProjector, type LonLat } from "@transitopia/transit-core/geo.ts";
+import type { LineGeometry } from "@transitopia/transit-core/infra/line-geometry.ts";
 import {
   feedDataPath,
   type PlanRoute,
@@ -21,19 +21,27 @@ import type { Theme } from "@transitopia/map-style/basemap.ts";
 import { VEHICLES_BEFORE_LAYER } from "./static.ts";
 
 export const TRACKS_SOURCE = "tracks";
+export const LINES_SOURCE = "rail-lines";
 const TRACK_LAYERS = [
   "tracks-yard",
-  "tracks-casing",
+  "rail-casing",
   "tracks-minor",
-  "tracks-main",
-  "tracks-pair",
-  "tracks-shared-a",
-  "tracks-shared-b",
+  "rail-centre",
+  "rail-shared-a",
+  "rail-shared-b",
+  "rail-ribbon",
   "tracks-works",
   "tracks-hairline",
 ];
-/** The guideway ribbon at station zoom is this wide (m): two tracks ≈4 m apart, with a margin. */
-const RIBBON_M = 9;
+/** SkyTrain layers a tap on the map can pick a line from. */
+export const PICKABLE_TRACK_LAYERS = [
+  "rail-centre",
+  "rail-shared-a",
+  "rail-shared-b",
+  "rail-ribbon",
+];
+/** From this zoom the line is its ribbon (true width), below it a stroke: where the two are as wide. */
+export const RIBBON_ZOOM = 15.3;
 /** Each track layer's own filter, so line visibility can be combined with it. */
 const baseFilters = new Map<string, ExpressionSpecification>();
 export const DEBUG_SOURCE = "tracks-debug";
@@ -58,6 +66,24 @@ export async function loadTracks(
   }
 }
 
+/**
+ * The line geometry published next to the tracks (lines.geojson, by build-infra and scenarios), or
+ * undefined without it: SkyTrain then falls back to the GTFS shapes, as without tracks.
+ */
+export async function loadLines(
+  base: string,
+  tracksPath: string,
+): Promise<LineGeometry | undefined> {
+  try {
+    const res = await fetch(
+      `${base}${tracksPath.replace(/tracks\.geojson$/, "lines.geojson")}`,
+    );
+    return res.ok ? ((await res.json()) as LineGeometry) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function loadPlatforms(
   base: string,
   feed: string,
@@ -73,129 +99,58 @@ export async function loadPlatforms(
   }
 }
 
-/**
- * A main track's parallel partner is within this distance (m): wide enough for twin bored tunnels
- * and island platforms, whose tracks then draw a half-width band each rather than overlapping.
- */
-const PARTNER_M = 25;
-
-/**
- * For each main track, which side of its parallel partner it's on (-1: left of its west-to-east
- * direction, 1: right, 0: no partner) and half the distance between them (m). Each of a pair draws
- * its half of the line (on shared track, one line's half), meeting at the pair's centreline, so
- * nothing overlaps and the ribbon fades evenly.
- */
-function pairSides(
-  segs: { id: string; coords: LonLat[] }[],
-): Map<string, { side: -1 | 0 | 1; halfSep: number }> {
-  const out = new Map<string, { side: -1 | 0 | 1; halfSep: number }>();
-  if (!segs.length) return out;
-  const proj = localProjector(segs[0]!.coords[0]![1]);
-  const xy = segs.map((s) => s.coords.map((c) => proj.toXY(c)));
-  segs.forEach((s, i) => {
-    const pts = xy[i]!;
-    const m = Math.floor((pts.length - 1) / 2);
-    const a = pts[m]!;
-    const b = pts[Math.min(pts.length - 1, m + 1)]!;
-    const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    let best = { d: Infinity, cross: 0 };
-    xy.forEach((other, j) => {
-      if (j === i) return;
-      for (let k = 0; k + 1 < other.length; k++) {
-        const [px, py] = other[k]!;
-        const [qx, qy] = other[k + 1]!;
-        const dx = qx - px;
-        const dy = qy - py;
-        const l2 = dx * dx + dy * dy;
-        const f =
-          l2 > 0 ?
-            Math.max(
-              0,
-              Math.min(1, ((mid[0] - px) * dx + (mid[1] - py) * dy) / l2),
-            )
-          : 0;
-        const cx = px + dx * f - mid[0];
-        const cy = py + dy * f - mid[1];
-        const d = Math.hypot(cx, cy);
-        // Ignore tracks it joins end to end (distance ~0 at a shared node).
-        if (d > 0.5 && d < best.d)
-          best = { d, cross: (b[0] - a[0]) * cy - (b[1] - a[1]) * cx };
-      }
-    });
-    out.set(
-      s.id,
-      best.d <= PARTNER_M ?
-        // Partner to the left (cross > 0 in x-east, y-north): this is the right-hand track.
-        { side: best.cross > 0 ? 1 : -1, halfSep: best.d / 2 }
-      : { side: 0, halfSep: 0 },
-    );
-  });
-  return out;
-}
-
 function colored(
   tracks: InfraCollection,
   routes: PlanRoute[],
   yardColor: string,
 ): FeatureCollection {
   const color = new Map(routes.map((r) => [r.key, r.color]));
-  // Main track is drawn by line-offset, which is relative to the direction of drawing: draw it
-  // west to east, so each half keeps its side.
-  const eastward = (c: LonLat[]) =>
-    c[c.length - 1]![0] < c[0]![0] ? [...c].reverse() : c;
-  const sides = pairSides(
-    tracks.features.flatMap((f) =>
-      (
-        f.properties.type === "segment"
-        && f.properties.kind === "main"
-        && f.geometry.type === "LineString"
-      ) ?
-        [
-          {
-            id: f.properties.id,
-            coords: eastward(f.geometry.coordinates as LonLat[]),
-          },
-        ]
-      : [],
-    ),
-  );
   return {
     type: "FeatureCollection",
     features: tracks.features.map((f) => {
       if (f.properties.type !== "segment") return f as GeoJSON.Feature;
       const p = f.properties;
       const line = p.lines[0];
-      const shared = p.lines.length > 1 && p.kind !== "yard";
-      let geometry = f.geometry;
-      if (p.kind === "main" && geometry.type === "LineString")
-        geometry = {
-          ...geometry,
-          coordinates: eastward(geometry.coordinates as LonLat[]),
-        };
-      const pair = sides.get(p.id) ?? { side: 0, halfSep: 0 };
       return {
         ...f,
-        geometry,
         properties: {
           ...p,
           line: line ?? "",
-          shared,
           color:
             p.kind === "yard" || !line ?
               yardColor
             : (color.get(line) ?? yardColor),
-          color2: shared ? (color.get(p.lines[1]!) ?? yardColor) : "",
-          side: pair.side,
-          halfSep: pair.halfSep,
         },
       } as GeoJSON.Feature;
     }),
   };
 }
 
+function coloredLines(
+  lines: LineGeometry,
+  routes: PlanRoute[],
+): FeatureCollection {
+  const color = new Map(routes.map((r) => [r.key, r.color]));
+  return {
+    type: "FeatureCollection",
+    features: lines.features.map((f) => ({
+      ...f,
+      properties: {
+        ...f.properties,
+        color: color.get(f.properties.line) ?? "#888",
+        color2:
+          f.properties.type === "centre" && f.properties.shared ?
+            (color.get(f.properties.lines[1]!) ?? "#888")
+          : "",
+      },
+    })) as GeoJSON.Feature[],
+  };
+}
+
 export function addTrackLayers(
   map: MlMap,
   tracks: InfraCollection,
+  lines: LineGeometry,
   plan: ServicePlan,
   theme: Theme,
   debug: boolean,
@@ -204,6 +159,7 @@ export function addTrackLayers(
   const yard = dark ? "#5b636d" : "#a9b0b8";
   const casing = dark ? "#15181c" : "#ffffff";
   const data = colored(tracks, plan.routes, yard);
+  const lineData = coloredLines(lines, plan.routes);
   // Above bus stop ticks, so zoomed out the line hides stops under or over the guideway; they show
   // through once it fades close in. Below exchanges, stations and labels.
   const before =
@@ -212,9 +168,11 @@ export function addTrackLayers(
     : undefined;
   if (map.getSource(TRACKS_SOURCE)) {
     void (map.getSource(TRACKS_SOURCE) as GeoJSONSource).setData(data);
+    void (map.getSource(LINES_SOURCE) as GeoJSONSource).setData(lineData);
     return;
   }
   map.addSource(TRACKS_SOURCE, { type: "geojson", data });
+  map.addSource(LINES_SOURCE, { type: "geojson", data: lineData });
   baseFilters.clear();
   const seg = ["==", ["get", "type"], "segment"] as ExpressionSpecification;
   const kind = (...k: string[]) =>
@@ -231,42 +189,23 @@ export function addTrackLayers(
       18,
       hi,
     ] as ExpressionSpecification;
-
+  const centre = ["==", ["get", "type"], "centre"] as ExpressionSpecification;
   const shared = ["get", "shared"] as ExpressionSpecification;
-  const paired = ["!=", ["get", "side"], 0] as ExpressionSpecification;
-  // The line's width: a line at city zoom, the guideway's true width from station zoom (metres at
-  // this latitude, doubling per zoom level).
-  const mpp15 =
-    (40_075_016.686 * Math.cos((49.25 * Math.PI) / 180)) / (512 * 2 ** 15);
-  const ZOOMS = [10, 12, 14, 15, 16, 17, 18, 19, 20];
-  /** The line's width at a zoom (px): thicker than any bus corridor, then the ribbon. */
-  const lineAt = (z: number) =>
-    z <= 10 ? 3
-    : z <= 12 ? 4.5
-    : z <= 14 ? 6.5
-    : Math.max(7, (RIBBON_M / mpp15) * 2 ** (z - 15));
-  const pxPerM = (z: number) => 2 ** (z - 15) / mpp15;
-  const lineStops = (scale: number, extra = 0): number[] =>
-    ZOOMS.flatMap((z) => [z, lineAt(z) * scale + extra]);
-  const lineWidth = (scale: number, extra = 0) =>
-    [
-      "interpolate",
-      ["exponential", 2],
-      ["zoom"],
-      ...lineStops(scale, extra),
-    ] as ExpressionSpecification;
-  // Close in, the whole line fades to half opacity, so bus stops and streets under or over the
-  // guideway show; zoomed out it's drawn solid everywhere.
-  const fade = (to = 0.5) =>
+  /** The stroke's width below RIBBON_ZOOM (px): thicker than any bus corridor. */
+  const STROKE: [number, number][] = [
+    [10, 3],
+    [12, 4.5],
+    [14, 6.5],
+    [RIBBON_ZOOM, 7.2],
+  ];
+  const stroke = (scale: number, extra = 0) =>
     [
       "interpolate",
       ["linear"],
       ["zoom"],
-      16,
-      1,
-      17,
-      to,
+      ...STROKE.flatMap(([z, w]) => [z, w * scale + extra]),
     ] as ExpressionSpecification;
+  const low = { maxzoom: RIBBON_ZOOM };
 
   map.addLayer(
     {
@@ -280,19 +219,15 @@ export function addTrackLayers(
     },
     before,
   );
-  // The casing goes as the line fades, so what's beneath shows through.
   map.addLayer(
     {
-      id: "tracks-casing",
+      id: "rail-casing",
       type: "line",
-      source: TRACKS_SOURCE,
-      filter: ["all", seg, kind("main")],
+      source: LINES_SOURCE,
+      ...low,
+      filter: centre,
       layout: { "line-cap": "round", "line-join": "round" },
-      paint: {
-        "line-color": casing,
-        "line-width": lineWidth(1, 3),
-        "line-opacity": fade(0),
-      },
+      paint: { "line-color": casing, "line-width": stroke(1, 3) },
     },
     before,
   );
@@ -302,129 +237,70 @@ export function addTrackLayers(
       type: "line",
       source: TRACKS_SOURCE,
       minzoom: 12.5,
+      ...low,
       filter: [
         "all",
         seg,
         kind("crossover", "pocket", "tail", "siding", "spur"),
+        ["!", ["has", "works"]],
       ],
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
         "line-color": ["get", "color"],
-        // A thin line at city zoom, wide enough close in to carry its hairline.
-        "line-width": [
-          "interpolate",
-          ["exponential", 2],
-          ["zoom"],
-          10,
-          0.8,
-          14,
-          1.5,
-          16,
-          4,
-          20,
-          40,
-        ],
-        "line-opacity": fade(0.45),
+        "line-width": width(0.8, 1.5, 3.5),
+        "line-opacity": 0.9,
       },
     },
     before,
   );
-  // Main track without a parallel partner (single track): the whole line on it.
   map.addLayer(
     {
-      id: "tracks-main",
+      id: "rail-centre",
       type: "line",
-      source: TRACKS_SOURCE,
-      filter: [
-        "all",
-        seg,
-        kind("main"),
-        ["!", paired],
-        ["!", shared],
-        ["!", ["has", "works"]],
-      ],
-      layout: { "line-cap": "butt", "line-join": "round" },
-      paint: {
-        "line-color": ["get", "color"],
-        "line-width": lineWidth(1),
-        "line-opacity": fade(),
-      },
+      source: LINES_SOURCE,
+      ...low,
+      filter: ["all", centre, ["!", shared]],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": ["get", "color"], "line-width": stroke(1) },
     },
     before,
   );
-  // A pair of parallel tracks: each draws its own half of the line, offset so the halves meet at
-  // the pair's centreline. On shared track the left one draws the first line's colour and the right
-  // one the second's (packages/transit-map/README.md#rendering).
-  map.addLayer(
-    {
-      id: "tracks-pair",
-      type: "line",
-      source: TRACKS_SOURCE,
-      filter: ["all", seg, kind("main"), paired, ["!", ["has", "works"]]],
-      layout: { "line-cap": "butt", "line-join": "round" },
-      paint: {
-        "line-color": [
-          "case",
-          ["all", shared, [">", ["get", "side"], 0]],
-          ["get", "color2"],
-          ["get", "color"],
-        ],
-        "line-width": lineWidth(0.5),
-        "line-offset": [
-          "interpolate",
-          ["exponential", 2],
-          ["zoom"],
-          ...ZOOMS.flatMap((z) => [
-            z,
-            [
-              "*",
-              ["get", "side"],
-              [
-                "max",
-                0,
-                ["-", lineAt(z) / 4, ["*", ["get", "halfSep"], pxPerM(z)]],
-              ],
-            ],
-          ]),
-        ] as unknown as ExpressionSpecification,
-        "line-opacity": fade(),
-      },
-    },
-    before,
-  );
-  // Single shared track: both halves on it.
+  // Shared track: the first line on the left half of its west-to-east centreline, the second on the right.
   for (const [id, color, sign] of [
-    ["tracks-shared-b", "color2", 1],
-    ["tracks-shared-a", "color", -1],
+    ["rail-shared-b", "color2", 1],
+    ["rail-shared-a", "color", -1],
   ] as const)
     map.addLayer(
       {
         id,
         type: "line",
-        source: TRACKS_SOURCE,
-        filter: [
-          "all",
-          seg,
-          kind("main"),
-          shared,
-          ["!", paired],
-          ["!", ["has", "works"]],
-        ],
-        layout: { "line-cap": "butt", "line-join": "round" },
+        source: LINES_SOURCE,
+        ...low,
+        filter: ["all", centre, shared],
+        layout: { "line-join": "round" },
         paint: {
           "line-color": ["get", color],
-          "line-width": lineWidth(0.5),
-          "line-offset": [
-            "interpolate",
-            ["exponential", 2],
-            ["zoom"],
-            ...lineStops(sign * 0.25),
-          ],
-          "line-opacity": fade(),
+          "line-width": stroke(0.5),
+          "line-offset": stroke(sign * 0.25),
         },
       },
       before,
     );
+  // Close in: the ribbon, one polygon per line, so it fades evenly.
+  map.addLayer(
+    {
+      id: "rail-ribbon",
+      type: "fill",
+      source: LINES_SOURCE,
+      minzoom: RIBBON_ZOOM,
+      filter: ["==", ["get", "type"], "ribbon"],
+      paint: {
+        "fill-color": ["get", "color"],
+        "fill-opacity": ["interpolate", ["linear"], ["zoom"], 16, 1, 17, 0.5],
+      },
+    },
+    before,
+  );
   map.addLayer(
     {
       id: "tracks-works",
@@ -435,22 +311,22 @@ export function addTrackLayers(
         "line-color": ["get", "color"],
         "line-width": width(2, 3, 4),
         "line-dasharray": [2, 1],
-        "line-opacity": fade(),
       },
     },
     before,
   );
-  // The tracks themselves inside the ribbon, from station zoom.
+  // The tracks themselves inside the ribbon.
   map.addLayer(
     {
       id: "tracks-hairline",
       type: "line",
       source: TRACKS_SOURCE,
-      minzoom: 15,
+      minzoom: RIBBON_ZOOM,
       filter: [
         "all",
         seg,
         kind("main", "crossover", "pocket", "tail", "siding", "spur"),
+        ["!", ["has", "works"]],
       ],
       layout: { "line-cap": "butt", "line-join": "round" },
       paint: {
@@ -470,7 +346,7 @@ export function addTrackLayers(
           "interpolate",
           ["linear"],
           ["zoom"],
-          15.3,
+          RIBBON_ZOOM,
           0,
           16,
           1,
