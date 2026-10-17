@@ -112,9 +112,12 @@ describe("lineGeometry", () => {
       )
         .flat(2)
         .map((p) => toM(p));
-    // Line b: only the shared 200 m, on the right (south) half of the west-to-east centreline.
+    // Line b: the shared 200 m, on the right (south) half of the west-to-east centreline, running on
+    // a little past where b ends (as Expo at Production Way–University), never to a's own end.
     const b = ys("b");
-    expect(Math.max(...b.map(([m]) => m!))).toBeLessThan(200 + RIBBON_M);
+    expect(Math.max(...b.map(([m]) => m!))).toBeLessThan(
+      200 + RIBBON_M * 4 + 1,
+    );
     expect(Math.max(...b.map(([, n]) => n!))).toBeLessThan(0.5);
     // Line a: the north half of the shared part and all of its own, full width; the crossover inside.
     const a = ys("a");
@@ -156,5 +159,79 @@ describe("lineGeometry", () => {
     // The south track to 350 m, the rest grey.
     expect(piece("main", true, 300)).toBeDefined();
     expect(piece("main", false, 350)).toBeDefined();
+  });
+
+  it("stripes track shared by several lines, one stripe each, the first on the left", () => {
+    const three = {
+      ...tracks,
+      features: tracks.features.map((f) =>
+        f.properties.type === "segment" && f.properties.lines.length > 1 ?
+          { ...f, properties: { ...f.properties, lines: ["a", "b", "c"] } }
+        : f,
+      ),
+    } as InfraCollection;
+    const g3 = lineGeometry(three, service);
+    const ys = (line: string) =>
+      (
+        g3.features.find(
+          (f) => f.properties.type === "ribbon" && f.properties.line === line,
+        )!.geometry.coordinates as number[][][][]
+      )
+        .flat(2)
+        .map((p) => toM(p))
+        .filter(([m]) => m! > 20 && m! < 180)
+        .map(([, n]) => n!);
+    const third = RIBBON_M / 3;
+    expect(Math.min(...ys("a"))).toBeGreaterThan(third / 2 - 0.5);
+    expect(Math.min(...ys("b"))).toBeGreaterThan(-third / 2 - 0.5);
+    expect(Math.max(...ys("b"))).toBeLessThan(third / 2 + 0.5);
+    expect(Math.max(...ys("c"))).toBeLessThan(-third / 2 + 0.5);
+    const centres = g3.features.filter(
+      (f) => f.properties.type === "centre" && f.properties.shared,
+    );
+    expect(centres.map((f) => f.properties.line)).toEqual(["a", "b", "c"]);
+  });
+
+  it("stripes lines' own tracks side by side, each on the side it leaves on", () => {
+    const side = {
+      ...tracks,
+      features: [
+        seg("a1", ["a"], "main", "A0", "A1", [
+          [0, -2],
+          [300, -2],
+        ]),
+        seg("b1", ["b"], "main", "B0", "B1", [
+          [0, 2],
+          [300, 2],
+        ]),
+      ],
+    } as unknown as InfraCollection;
+    const gs = lineGeometry(
+      side,
+      new Map([
+        ["a1", [0, 1000]],
+        ["b1", [0, 1000]],
+      ]),
+    );
+    const stripes = gs.features.filter(
+      (f) => f.properties.type === "centre" && f.properties.shared,
+    );
+    expect(stripes.length).toBe(2);
+    // Each line on the half of the side it leaves on (a south, though listed first).
+    for (const [line, sign] of [
+      ["a", -1],
+      ["b", 1],
+    ] as const) {
+      const ys = (
+        gs.features.find(
+          (f) => f.properties.type === "ribbon" && f.properties.line === line,
+        )!.geometry.coordinates as number[][][][]
+      )
+        .flat(2)
+        .map((p) => toM(p))
+        .filter(([m]) => m! > 60 && m! < 240)
+        .map(([, n]) => n! * sign);
+      expect(Math.min(...ys)).toBeGreaterThan(-0.5);
+    }
   });
 });

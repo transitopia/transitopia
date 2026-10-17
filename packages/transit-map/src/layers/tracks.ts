@@ -29,8 +29,7 @@ const TRACK_LAYERS = [
   "rail-casing",
   "tracks-minor",
   "rail-centre",
-  "rail-shared-a",
-  "rail-shared-b",
+  "rail-shared",
   "rail-ribbon",
   "tracks-works",
   "tracks-hairline",
@@ -38,8 +37,7 @@ const TRACK_LAYERS = [
 /** SkyTrain layers a tap on the map can pick a line from. */
 export const PICKABLE_TRACK_LAYERS = [
   "rail-centre",
-  "rail-shared-a",
-  "rail-shared-b",
+  "rail-shared",
   "rail-ribbon",
 ];
 /** From this zoom the line is its ribbon (true width), below it a stroke: where the two are as wide. */
@@ -140,10 +138,6 @@ function coloredLines(
       properties: {
         ...f.properties,
         color: color.get(f.properties.line) ?? "#888",
-        color2:
-          f.properties.type === "centre" && f.properties.shared ?
-            (color.get(f.properties.lines[1]!) ?? "#888")
-          : "",
       },
     })) as GeoJSON.Feature[],
   };
@@ -281,27 +275,38 @@ export function addTrackLayers(
     },
     before,
   );
-  // Shared track: the first line on the left half of its west-to-east centreline, the second on the right.
-  for (const [id, color, sign] of [
-    ["rail-shared-b", "color2", 1],
-    ["rail-shared-a", "color", -1],
-  ] as const)
-    map.addLayer(
-      {
-        id,
-        type: "line",
-        source: LINES_SOURCE,
-        ...low,
-        filter: ["all", centre, shared],
-        layout: { "line-join": "round" },
-        paint: {
-          "line-color": ["get", color],
-          "line-width": stroke(0.5),
-          "line-offset": stroke(sign * 0.25),
-        },
+  // Shared track: one stroke per line along the stretch's spine, side by side, the first line on
+  // the left of west to east (stripe 0 of `stripes`).
+  const stripes = ["get", "stripes"] as ExpressionSpecification;
+  map.addLayer(
+    {
+      id: "rail-shared",
+      type: "line",
+      source: LINES_SOURCE,
+      ...low,
+      filter: ["all", centre, shared],
+      layout: { "line-join": "round" },
+      paint: {
+        "line-color": ["get", "color"],
+        "line-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          ...STROKE.flatMap(([z, w]) => [z, ["/", w, stripes]]),
+        ] as ExpressionSpecification,
+        "line-offset": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          ...STROKE.flatMap(([z, w]) => [
+            z,
+            ["*", w, ["-", ["/", ["+", ["get", "stripe"], 0.5], stripes], 0.5]],
+          ]),
+        ] as ExpressionSpecification,
       },
-      before,
-    );
+    },
+    before,
+  );
   // Close in: the ribbon, one polygon per line, so it fades evenly.
   map.addLayer(
     {
