@@ -218,7 +218,7 @@ Made while planning V2 (2026-09-29 to 2026-10-01). Change them deliberately, and
 | Request budget | Stay within **1,000 TransLink requests a day** across all endpoints until TransLink approves more ([above](#upstream-request-budget)). Only production polls. |
 | Retention | Raw real-time data (GTFS-RT, AIS, later GBFS) kept **60 days**. Observed stop times, per-route statistics and GTFS feeds kept **indefinitely**. |
 | Statistics | "On time" is **1 minute early to 3 minutes late** at timepoints. |
-| Frequency metric | The **90th-percentile gap over the upcoming hour** from the time viewed, per service and per shared corridor segment, computed at least every 30 minutes. Thresholds: great < 3 min, good < 6, not so great < 12, bad < 16, poor ≥ 16. |
+| Frequency metric | The **90th-percentile gap over the upcoming hour** from the time viewed, per service and per shared corridor segment, computed at least every 30 minutes. Bands (one definition for cards and map, `packages/shared/src/frequency.ts`): Good ≤ 6 min, OK ≤ 12, Poor ≤ 20, Bad over 20. |
 | Corrections | Observations and disruptions live in the database with review states and previews, with a file export. |
 | Data snapshots | The server records all the time; developers pull snapshots of production data. Whether each dataset can be published depends on its source's license. |
 | Attribution | Shown dynamically: the map credits exactly the datasets visible. |

@@ -1,5 +1,12 @@
-// Service frequency as the site shows it (apps/web/README.md#service-frequency), with colours per
-// theme from the --band-* properties.
+// Service frequency as the site shows it (apps/web/README.md#service-frequency). The bands and their
+// colours are @transitopia/shared/frequency.ts, shared with the map; the colours reach CSS as the
+// --band-* properties, set here per theme.
+
+import {
+  FREQUENCY_BANDS,
+  bandIndex,
+  bandRange,
+} from "@transitopia/shared/frequency.ts";
 
 export interface Band {
   id: string;
@@ -8,34 +15,34 @@ export interface Band {
   color: string;
 }
 
-/**
- * Transitopia's frequency bands, the same for every route in every region: average minutes between
- * departures in an hour, up to and including maxMinutes (the last band has none). A presentation
- * choice, not an operator's standard.
- */
-const BANDS: { id: string; name: string; maxMinutes?: number }[] = [
-  { id: "good", name: "Good", maxMinutes: 6 },
-  { id: "ok", name: "OK", maxMinutes: 12 },
-  { id: "poor", name: "Poor", maxMinutes: 20 },
-  { id: "bad", name: "Bad" },
-];
+// In the browser (tests import this in Node).
+if (typeof document !== "undefined") {
+  const style = document.createElement("style");
+  style.dataset["source"] = "frequency-bands";
+  style.textContent = (["light", "dark"] as const)
+    .map(
+      (theme) =>
+        `${theme === "light" ? ":root" : ':root[data-theme="dark"]'}{${FREQUENCY_BANDS.map(
+          (b) => `--band-${b.id}:${b.color[theme]};`,
+        ).join("")}}`,
+    )
+    .join("\n");
+  document.head.append(style);
+}
 
 /** The band for an average of `minutes` between departures. */
 export function bandOf(minutes: number): Band {
-  const b =
-    BANDS.find((x) => x.maxMinutes !== undefined && minutes <= x.maxMinutes)
-    ?? BANDS[BANDS.length - 1]!;
+  const b = FREQUENCY_BANDS[bandIndex(minutes)]!;
   return { id: b.id, name: b.name, color: `var(--band-${b.id})` };
 }
 
 /** Every band with its range, for keys ("Good ≤6m", …, "Bad >20m"). */
 export function bandKey(): (Band & { range: string })[] {
-  return BANDS.map((b, i) => ({
-    ...bandOf(b.maxMinutes ?? Infinity),
-    range:
-      b.maxMinutes !== undefined ?
-        `≤${b.maxMinutes}m`
-      : `>${BANDS[i - 1]?.maxMinutes ?? 0}m`,
+  return FREQUENCY_BANDS.map((b, i) => ({
+    id: b.id,
+    name: b.name,
+    color: `var(--band-${b.id})`,
+    range: bandRange(i),
   }));
 }
 

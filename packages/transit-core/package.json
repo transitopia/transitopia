@@ -12,9 +12,11 @@
   "devDependencies": {
     "@transitopia/config": "*",
     "@transitopia/shared": "*",
+    "@types/clipper-lib": "^6.4.0",
     "@types/geojson": "^7946.0.16"
   },
   "dependencies": {
+    "clipper-lib": "^6.4.2",
     "zod": "^4.4.3"
   }
 }
