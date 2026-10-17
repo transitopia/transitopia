@@ -5,7 +5,7 @@ import {
   type OsmElement,
 } from "../src/plan/road-match.ts";
 import { buildCorridors, mergeCarriageways } from "../src/plan/corridors.ts";
-import { BusFrequency, frequencyTier } from "../src/plan/bus-frequency.ts";
+import { BusFrequency } from "../src/plan/bus-frequency.ts";
 import type { LonLat } from "../src/geo.ts";
 import type { ServicePlan } from "../src/plan/types.ts";
 import { serviceDate } from "../src/time.ts";
@@ -275,20 +275,48 @@ describe("BusFrequency", () => {
     // Halfway along, buses pass 5 minutes after they start.
     expect(freq.offsetAt(0, 1000)).toBe(300);
     expect(freq.count(at(1000), wed, "now", 12 * 3600, () => true)[0]).toBe(6);
-    expect(frequencyTier(6)).toBe(1);
   });
 
   it("averages over the day and the night after it", () => {
-    // 06:00–24:00: 96 + 2 trips over 18 h.
+    // 06:00–01:00: 96 + the 22:30, 23:30 and 00:30 trips over 19 h.
     expect(freq.count(at(0), wed, "day", 0, () => true)[0]).toBeCloseTo(
-      98 / 18,
+      99 / 19,
       5,
     );
-    // 00:00–06:00 after Wednesday: the 00:30 and 01:30 trips (Wednesday's 24:30 and 25:30).
+    // 01:00–06:00 after Wednesday: the 01:30 trip (Wednesday's 25:30).
     expect(freq.count(at(0), wed, "night", 0, () => true)[0]).toBeCloseTo(
-      2 / 6,
+      1 / 5,
       5,
     );
+  });
+
+  it("counts a trip of the next service day by when it runs", () => {
+    // Thursday's service with one trip at 00:15 (a service day that starts at midnight).
+    const early = {
+      ...plan,
+      trips: [
+        ...plan.trips,
+        {
+          id: "x",
+          pattern: 0,
+          service: "thu",
+          headsign: "",
+          start: 900,
+          arr: [0, 600],
+        },
+      ],
+      calendar: {
+        ...plan.calendar,
+        exceptions: [
+          { serviceId: "thu", date: serviceDate("20261022"), type: 1 as const },
+        ],
+      },
+    } as unknown as ServicePlan;
+    const f = new BusFrequency(early);
+    const one = [[[0, 0, 1] as const]];
+    // Wednesday's day (06:00–01:00) gains it; its night (01:00–06:00) doesn't.
+    expect(f.count(one, wed, "day", 0, () => true)[0]).toBeCloseTo(100 / 19, 5);
+    expect(f.count(one, wed, "night", 0, () => true)[0]).toBeCloseTo(1 / 5, 5);
   });
 
   it("has nothing on days without service, and leaves out excluded patterns", () => {
@@ -302,6 +330,5 @@ describe("BusFrequency", () => {
       )[0],
     ).toBe(0);
     expect(freq.count(at(0), wed, "now", 12 * 3600, () => false)[0]).toBe(0);
-    expect(frequencyTier(0)).toBe(-1);
   });
 });

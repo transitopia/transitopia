@@ -6,9 +6,9 @@
 import type { Map as MlMap } from "maplibre-gl";
 import {
   BusFrequency,
-  frequencyTier,
   type FrequencyWindow,
 } from "@transitopia/transit-core/plan/bus-frequency.ts";
+import { bandIndexPerHour as frequencyTier } from "@transitopia/shared/frequency.ts";
 import type {
   PlanCorridor,
   ServicePlan,

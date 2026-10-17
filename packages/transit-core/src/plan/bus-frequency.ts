@@ -1,6 +1,6 @@
 // How often buses pass along each bus corridor and stop at each stop (packages/transit-core/DESIGN.md#bus-corridors):
 // buses per hour in the busiest direction, for the hour around a time ("now"), or averaged over the
-// day (06:00–24:00) or the night after it (00:00–06:00). Counts use each pattern's trips on the date
+// day (06:00–01:00) or the night after it (01:00–06:00); bands are the site's (@transitopia/shared/frequency.ts). Counts use each pattern's trips on the date
 // and one representative trip's timing along the pattern, so a corridor's count is for when buses
 // pass it, not when they leave their first stop.
 
@@ -10,19 +10,17 @@ import type { ServicePlan } from "./types.ts";
 
 export type FrequencyWindow = "now" | "day" | "night";
 
-/** Lower bounds of the frequency tiers (buses per hour): every 6 min, 15 min, 30 min, less often. */
-export const FREQUENCY_TIERS = [10, 4, 2, 0] as const;
-
-/** Tier of a frequency: 0 (every 6 min or better) to 3 (less often than every 30 min), or -1 for none. */
-export function frequencyTier(perHour: number): number {
-  if (!(perHour > 0)) return -1;
-  return FREQUENCY_TIERS.findIndex((min) => perHour >= min);
-}
-
 const HOUR = 3600;
 const DAY = 24 * HOUR;
-/** The day average covers 06:00–24:00 and the night 00:00–06:00 (the night after the day shown). */
-const DAY_FROM = 6 * HOUR;
+/**
+ * The day and night averages (hours from the shown service day's start; past 24 is after midnight):
+ * the day is 06:00 to 01:00, the night 01:00 to 06:00 after it. Trips are counted by when they run,
+ * whichever service day they belong to.
+ */
+export const FREQUENCY_WINDOWS = {
+  day: { fromH: 6, toH: 25 },
+  night: { fromH: 25, toH: 30 },
+} as const;
 
 /** A time window on one service date (seconds since its service day start). */
 interface Span {
@@ -98,32 +96,29 @@ export class BusFrequency {
     return this.offsets[pattern]?.[stopIndex] ?? 0;
   }
 
+  /**
+   * The window as spans of the shown service day and its neighbours: a service day's trips can run
+   * into the next calendar day (times past 24:00), and the next day's earliest ones before 06:00.
+   */
   private spans(
     date: ServiceDate,
     window: FrequencyWindow,
     t: number,
   ): { spans: Span[]; hours: number } {
-    if (window === "day")
-      return { spans: [{ date, from: DAY_FROM, to: DAY }], hours: 18 };
-    if (window === "night")
-      return {
-        spans: [
-          { date, from: DAY, to: DAY + DAY_FROM },
-          { date: addDays(date, 1), from: 0, to: DAY_FROM },
-        ],
-        hours: 6,
-      };
-    // The hour around t, including trips of the previous service day still running after midnight.
+    const [from, to] =
+      window === "now" ?
+        [t - HOUR / 2, t + HOUR / 2]
+      : [
+          FREQUENCY_WINDOWS[window].fromH * HOUR,
+          FREQUENCY_WINDOWS[window].toH * HOUR,
+        ];
     return {
-      spans: [
-        { date, from: t - HOUR / 2, to: t + HOUR / 2 },
-        {
-          date: addDays(date, -1),
-          from: t + DAY - HOUR / 2,
-          to: t + DAY + HOUR / 2,
-        },
-      ],
-      hours: 1,
+      spans: [-1, 0, 1].map((k) => ({
+        date: addDays(date, k),
+        from: from - k * DAY,
+        to: to - k * DAY,
+      })),
+      hours: (to - from) / HOUR,
     };
   }
 

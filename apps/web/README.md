@@ -76,7 +76,7 @@ Tapping a route line (bus, ferry and rail lines, and SkyTrain track) opens its c
 
 ## Service frequency
 
-How often something runs is shown in bands: Good, OK, Poor, Bad, the same for every route in every region (≤6, ≤12, ≤20 and over 20 minutes between departures; `BANDS` in `src/TransitMap/frequency.ts`) and colours per theme (`--band-*` in `src/index.css`), blue to red, never green (live) or amber (not live). The band's name always shows next to its colour. Helpers: `src/TransitMap/frequency.ts`.
+How often something runs is shown in bands: Good, OK, Poor, Bad, the same for every route in every region (≤6, ≤12, ≤20 and over 20 minutes between departures) and colours per theme, defined once in `packages/shared/src/frequency.ts` and shared with the map's bus corridors (`src/TransitMap/frequency.ts` sets them as the `--band-*` CSS properties), blue to red, never green (live) or amber (not live). The band's name always shows next to its colour. Helpers: `src/TransitMap/frequency.ts`.
 
 ## Feature cards
 

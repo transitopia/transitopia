@@ -20,6 +20,7 @@ import {
   busStopTicks,
 } from "@transitopia/transit-core/plan/bus-stops.ts";
 import type { Theme } from "@transitopia/map-style/basemap.ts";
+import { FREQUENCY_BANDS } from "@transitopia/shared/frequency.ts";
 import { hubsOf } from "../plans.ts";
 
 export const ROUTES_SOURCE = "transit-routes";
@@ -80,8 +81,8 @@ const SHAPE_INACTIVE: ExpressionSpecification = [
 
 /** Frequency tier colours, every 6 min or better first (packages/transit-map/README.md#bus-corridors). */
 const TIER_COLORS = {
-  light: ["#1660d8", "#5b9be6", "#a05a9c", "#d9443a"],
-  dark: ["#6aa5ff", "#4a86d6", "#b77cc0", "#ef6b5f"],
+  light: FREQUENCY_BANDS.map((b) => b.color.light),
+  dark: FREQUENCY_BANDS.map((b) => b.color.dark),
 };
 /** Corridor widths per tier at a few zooms. */
 const TIER_WIDTHS: [number, number[]][] = [

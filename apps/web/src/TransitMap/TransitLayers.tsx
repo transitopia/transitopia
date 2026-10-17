@@ -15,6 +15,8 @@ import {
 } from "../components/LayersPanel.tsx";
 import { SegmentedChoice } from "../components/SegmentedChoice.tsx";
 import { ProvenanceSwatch } from "./Swatches.tsx";
+import { FREQUENCY_BANDS, bandEvery } from "@transitopia/shared/frequency.ts";
+import { FREQUENCY_WINDOWS } from "@transitopia/transit-core/plan/bus-frequency.ts";
 
 const CATEGORIES: {
   id: RouteCategory;
@@ -34,29 +36,15 @@ const CATEGORIES: {
   { id: "regular", title: "Regular Bus", description: "Every other route" },
 ];
 
-/** Bus corridor frequency tiers, as packages/transit-map/src/layers/static.ts draws them. */
-const TIERS: { label: string; className: string; height: string }[] = [
-  {
-    label: "Every 6 min or better",
-    className: "bg-[#1660d8] dark:bg-[#6aa5ff]",
-    height: "h-[5px]",
-  },
-  {
-    label: "Every 15 min or better",
-    className: "bg-[#5b9be6] dark:bg-[#4a86d6]",
-    height: "h-[4px]",
-  },
-  {
-    label: "Every 30 min or better",
-    className: "bg-[#a05a9c] dark:bg-[#b77cc0]",
-    height: "h-[2px]",
-  },
-  {
-    label: "Less often",
-    className: "bg-[#d9443a] dark:bg-[#ef6b5f]",
-    height: "h-[1.5px]",
-  },
-];
+/** Key line heights per band: thicker for more frequent, as bus corridors are drawn. */
+const BAND_HEIGHTS = ["h-[5px]", "h-[4px]", "h-[2px]", "h-[1.5px]"];
+
+/** "(06:00–01:00 average)" for the day and night windows. */
+function windowText(w: "day" | "night"): string {
+  const hh = (h: number) => `${String(h % 24).padStart(2, "0")}:00`;
+  const { fromH, toH } = FREQUENCY_WINDOWS[w];
+  return ` (${hh(fromH)}–${hh(toH)} avg.)`;
+}
 
 // Plans built before routes had categories are all rapid transit (config/feeds/<feed>/routes.json → category).
 const categoryOf = (r: PlanRoute): RouteCategory => r.category ?? "rapid";
@@ -140,21 +128,18 @@ export const TransitLayers: React.FC<{
     <PanelDivider />
     <dl className="grid grid-cols-[2.125rem_1fr] items-center gap-x-2 gap-y-2 px-4 pt-1 text-[13px] text-gray-700 dark:text-gray-300">
       {snap.corridors ?
-        TIERS.map((t) => (
-          <React.Fragment key={t.label}>
+        FREQUENCY_BANDS.map((b, i) => (
+          <React.Fragment key={b.id}>
             <dt>
               <span
                 aria-hidden="true"
-                className={`block w-7 rounded-full ${t.height} ${t.className}`}
+                className={`block w-7 rounded-full ${BAND_HEIGHTS[i]}`}
+                style={{ background: `var(--band-${b.id})` }}
               />
             </dt>
             <dd>
-              {t.label}
-              {snap.busFrequency === "now" ?
-                ""
-              : snap.busFrequency === "day" ?
-                " (06:00–24:00 average)"
-              : " (00:00–06:00 average)"}
+              {bandEvery(i)}
+              {snap.busFrequency === "now" ? "" : windowText(snap.busFrequency)}
             </dd>
           </React.Fragment>
         ))
@@ -162,18 +147,23 @@ export const TransitLayers: React.FC<{
       <dt>
         <ProvenanceSwatch estimated={false} />
       </dt>
-      <dd>Live position (GPS, AIS or a sighting)</dd>
+      <dd>Live position (GPS etc.)</dd>
       <dt>
         <ProvenanceSwatch estimated />
       </dt>
       <dd>Estimated from the schedule</dd>
-      <dt>
-        <span
-          aria-hidden="true"
-          className="block h-[3px] w-7 bg-[repeating-linear-gradient(90deg,currentColor_0_4px,transparent_4px_8px)]"
-        />
-      </dt>
-      <dd>Limited service, or not in service</dd>
+      {/* Plans without corridors (regions without OSM roads yet) still dot limited service. */}
+      {snap.corridors ? null : (
+        <>
+          <dt>
+            <span
+              aria-hidden="true"
+              className="block h-[3px] w-7 bg-[repeating-linear-gradient(90deg,currentColor_0_4px,transparent_4px_8px)]"
+            />
+          </dt>
+          <dd>Limited service, or not in service</dd>
+        </>
+      )}
     </dl>
   </LayersPanel>
 );
