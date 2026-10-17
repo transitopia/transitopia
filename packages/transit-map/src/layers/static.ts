@@ -11,6 +11,7 @@ import type {
 } from "@maplibre/maplibre-gl-style-spec";
 import type {
   PlanCorridor,
+  PlanRoute,
   ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
 import { routeSections } from "@transitopia/transit-core/plan/coverage.ts";
@@ -94,6 +95,18 @@ const TIER = [
   ["feature-state", "tier"],
   -1,
 ] as ExpressionSpecification;
+const BRAND = [
+  "coalesce",
+  ["feature-state", "brand"],
+  -1,
+] as ExpressionSpecification;
+/** Widths of routes with their own colour (cased): thicker than the most frequent tier, which they cover. */
+const BRAND_WIDTHS: [number, number][] = [
+  [10, 2.8],
+  [13, 5.4],
+  [15, 7.6],
+  [17, 10.8],
+];
 
 /** A value per frequency tier (feature state), or `none` without service. */
 function byTier<T extends string | number>(
@@ -115,13 +128,19 @@ function byTier<T extends string | number>(
   ] as ExpressionSpecification;
 }
 
-/** Bus routes drawn as corridors rather than lines of their own: every regular route, when the plan has corridors. */
+/** Bus routes drawn as corridors rather than lines of their own: every bus route, when the plan has corridors. */
 function inCorridors(plan: ServicePlan): Set<string> {
   if (!plan.corridors?.length) return new Set();
-  return new Set(
-    plan.routes
-      .filter((r) => r.kind === "bus" && r.category === "regular")
-      .map((r) => r.key),
+  return new Set(plan.routes.filter((r) => r.kind === "bus").map((r) => r.key));
+}
+
+/**
+ * Bus routes with their own colour (the 99 and RapidBus: category "frequent"), drawn along their
+ * corridors in it; a corridor's `brand` feature state is an index into this list.
+ */
+export function brandedRoutes(plan: ServicePlan): PlanRoute[] {
+  return plan.routes.filter(
+    (r) => r.kind === "bus" && r.category !== "regular",
   );
 }
 
@@ -429,6 +448,11 @@ export function addStaticLayers(
   const halo = dark ? "#111418" : "#ffffff";
   const mutedText = dark ? "#c3c8ce" : "#3d434a";
   const tierColors = TIER_COLORS[dark ? "dark" : "light"];
+  const brands = brandedRoutes(plan);
+  /** The colour of the route with its own colour in feature state `brand`. */
+  const brandColor = (brands.length ?
+    ["match", BRAND, ...brands.flatMap((r, i) => [i, r.color]), "rgba(0,0,0,0)"]
+  : "rgba(0,0,0,0)") as unknown as ExpressionSpecification;
   const tierWidth = (extra: number, tiers: number[]): ExpressionSpecification =>
     [
       "interpolate",
@@ -472,6 +496,38 @@ export function addStaticLayers(
       paint: {
         "line-color": byTier(tierColors, "rgba(0,0,0,0)"),
         "line-width": tierWidth(0, [0, 1, 2, 3]),
+      },
+    });
+    // Routes with their own colour, over the corridors they run along: the busiest one running at
+    // the time shown (feature state `brand`, an index into brandedRoutes), thicker and cased.
+    const brandWidth = (extra: number): ExpressionSpecification =>
+      [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        ...BRAND_WIDTHS.flatMap(([z, w]) => [
+          z,
+          ["case", [">=", BRAND, 0], w + extra, 0],
+        ]),
+      ] as ExpressionSpecification;
+    map.addLayer({
+      id: `${prefix}-brand-casing`,
+      type: "line",
+      source,
+      minzoom: Math.max(12, "minzoom" in zooms ? zooms.minzoom : 0),
+      ...("maxzoom" in zooms ? { maxzoom: zooms.maxzoom } : {}),
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: { "line-color": casing, "line-width": brandWidth(2) },
+    });
+    map.addLayer({
+      id: `${prefix}-brand`,
+      type: "line",
+      source,
+      ...zooms,
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: {
+        "line-color": brandColor,
+        "line-width": brandWidth(0),
       },
     });
   }
@@ -615,16 +671,16 @@ export function addStaticLayers(
       ],
     },
     paint: {
-      // With corridors: the stop's frequency tier, or its routes' colour when only routes drawn on
-      // their own serve it.
+      // With corridors: the colour of the route with its own colour stopping there where it's drawn
+      // in it (only such routes serve the stop, not on a limited stretch), else the frequency tier.
       "icon-color": [
         "case",
         ["!", ["has", "branded"]],
         ["get", "color"],
-        ["get", "branded"],
-        ["get", "color"],
+        [">=", BRAND, 0],
+        brandColor,
         byTier(tierColors, "rgba(0,0,0,0)"),
-      ],
+      ] as ExpressionSpecification,
       "icon-opacity": 0.9,
     },
   });

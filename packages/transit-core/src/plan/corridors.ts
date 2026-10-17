@@ -36,6 +36,9 @@ function chainEdges(
   edges: UsedEdge[],
   at: (node: number) => LonLat,
   simplifyM: number,
+  keep?: ReadonlySet<number>,
+  /** Only continue through edges whose patterns run the same ways (off: geometry only). */
+  byDirection = true,
 ): PlanCorridor[] {
   const out: PlanCorridor[] = [];
   const sig = edges.map((e) =>
@@ -57,6 +60,15 @@ function chainEdges(
     const steps: [number, 1 | -1][] = [];
     let v = start;
     let i = first;
+    // Each pattern's direction along the walk: a corridor's refs come from its first edge, so it
+    // only continues through edges where every pattern runs the same way (a one-way loop joining a
+    // two-way street carries the same patterns but not the same directions).
+    const dirs = (x: number, d: 1 | -1) =>
+      [...edges[x]!.uses]
+        .map(([p, [dir]]) => `${p}${dir * d}`)
+        .sort()
+        .join(",");
+    const firstDirs = dirs(first, edges[first]!.a === start ? 1 : -1);
     for (;;) {
       used.add(i);
       const fwd = edges[i]!.a === v;
@@ -65,15 +77,27 @@ function chainEdges(
       const next = same(v, s).filter((x) => x !== i);
       if (next.length !== 1 || used.has(next[0]!) || same(v, s).length !== 2)
         break;
-      i = next[0]!;
+      const n = next[0]!;
+      if (byDirection && dirs(n, edges[n]!.a === v ? 1 : -1) !== firstDirs)
+        break;
+      i = n;
     }
     const nodes = [
       start,
       ...steps.map(([x, d]) => (d === 1 ? edges[x]!.b : edges[x]!.a)),
     ];
-    const coords = simplify(nodes.map(at), simplifyM).map(
-      ([lon, lat]): LonLat => [round(lon, 6), round(lat, 6)],
-    );
+    // With a shared set of kept nodes, every line along this road keeps the same ones.
+    const kept =
+      keep ?
+        nodes.filter((n, k) => k === 0 || k === nodes.length - 1 || keep.has(n))
+      : undefined;
+    const coords = (
+      kept ?
+        kept.map(at)
+      : simplify(nodes.map(at), simplifyM)).map(([lon, lat]): LonLat => [
+      round(lon, 6),
+      round(lat, 6),
+    ]);
     const [i0, d0] = steps[0]!;
     const [iN] = steps[steps.length - 1]!;
     const refs: CorridorRef[] = [...edges[i0]!.uses].map(([pattern, [dir]]) => {
@@ -102,6 +126,7 @@ export interface PatternMatch {
 export function buildCorridors(
   g: RoadGraph,
   matches: PatternMatch[],
+  keep?: ReadonlySet<number>,
 ): PlanCorridor[] {
   /** Per canonical edge (the lower of an edge and its twin): pattern → [direction, along where it enters]. */
   const uses = new Map<number, Map<number, [1 | -1, number]>>();
@@ -148,8 +173,95 @@ export function buildCorridors(
       })),
       (n) => g.toLonLat(g.x[n]!, g.y[n]!),
       SIMPLIFY_M,
+      keep,
     ),
   );
+  return out;
+}
+
+/** Road nodes along a matched shape, in order, with where its road pieces start and end. */
+function nodePath(g: RoadGraph, pieces: MatchPiece[]): number[] {
+  const out: number[] = [];
+  for (const p of pieces) {
+    if ("raw" in p) continue;
+    if (p.f0 <= 1e-9) out.push(g.edgeFrom[p.edge]!);
+    if (p.f1 >= 1 - 1e-9) out.push(g.edgeTo[p.edge]!);
+  }
+  return out;
+}
+
+/**
+ * The road nodes every line drawn along the matched roads keeps (packages/transit-core/DESIGN.md#bus-corridors):
+ * the roads all shapes use, joined into stretches between junctions and simplified once, so a
+ * route's own line and its corridors, and two shapes of a route, coincide wherever they share a road.
+ */
+export function keptRoadNodes(
+  g: RoadGraph,
+  shapes: MatchPiece[][],
+): Set<number> {
+  const uses = new Map<string, UsedEdge>();
+  shapes.forEach((pieces, i) => {
+    const path = nodePath(g, pieces);
+    for (let k = 1; k < path.length; k++) {
+      const a = Math.min(path[k - 1]!, path[k]!);
+      const b = Math.max(path[k - 1]!, path[k]!);
+      if (a === b) continue;
+      const key = `${a},${b}`;
+      let e = uses.get(key);
+      if (!e) uses.set(key, (e = { a, b, uses: new Map() }));
+      e.uses.set(i, [1, 0]);
+    }
+  });
+  const keep = new Set<number>();
+  // Each stretch's nodes, simplified: chainEdges with node ids as coordinates' tags.
+  const at = (n: number) => g.toLonLat(g.x[n]!, g.y[n]!);
+  const byCoord = new Map<string, number>();
+  for (const e of uses.values())
+    for (const n of [e.a, e.b]) {
+      const [lon, lat] = at(n);
+      byCoord.set(`${round(lon, 6)},${round(lat, 6)}`, n);
+    }
+  // Geometry only: the shapes' directions aren't recorded here.
+  for (const c of chainEdges(
+    [...uses.values()],
+    at,
+    SIMPLIFY_M,
+    undefined,
+    false,
+  ))
+    for (const [lon, lat] of c.coords) {
+      const n = byCoord.get(`${lon},${lat}`);
+      if (n !== undefined) keep.add(n);
+    }
+  return keep;
+}
+
+/** A matched shape's coordinates: the kept road nodes along it, its partial edges' ends, and unmatched stretches as they are. */
+export function roadCoords(
+  g: RoadGraph,
+  pieces: MatchPiece[],
+  keep: ReadonlySet<number>,
+): LonLat[] {
+  const out: LonLat[] = [];
+  const add = (p: LonLat) => {
+    const q: LonLat = [round(p[0], 6), round(p[1], 6)];
+    const l = out[out.length - 1];
+    if (!l || l[0] !== q[0] || l[1] !== q[1]) out.push(q);
+  };
+  pieces.forEach((p, i) => {
+    if ("raw" in p) {
+      p.raw.forEach(add);
+      return;
+    }
+    const first = i === 0 || "raw" in pieces[i - 1]!;
+    const last = i === pieces.length - 1 || "raw" in pieces[i + 1]!;
+    const from = g.edgeFrom[p.edge]!;
+    const to = g.edgeTo[p.edge]!;
+    if (p.f0 > 1e-9 || first || keep.has(from))
+      add(g.toLonLat(...g.at(p.edge, p.f0)));
+    if (p.f1 < 1 - 1e-9 || last || keep.has(to))
+      add(g.toLonLat(...g.at(p.edge, p.f1)));
+  });
   return out;
 }
 

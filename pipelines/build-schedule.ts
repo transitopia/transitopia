@@ -62,7 +62,9 @@ import {
 } from "@transitopia/transit-core/plan/road-match.ts";
 import {
   buildCorridors,
+  keptRoadNodes,
   mergeCarriageways,
+  roadCoords,
 } from "@transitopia/transit-core/plan/corridors.ts";
 import {
   applyFerryBerths,
@@ -95,8 +97,6 @@ import {
 
 /** Shape simplification tolerance (m) by route kind: track-level lines keep more detail. */
 const SIMPLIFY_M: Record<RouteKind, number> = { skytrain: 1, shape: 3, bus: 4 };
-/** Simplification tolerance for bus shapes matched to roads (m). */
-const MATCHED_SIMPLIFY_M = 1;
 /** Bus shape vertices on a stop that are bumps or spurs to the curb (removeStopSpurs), in metres. */
 const STOP_SPURS: StopSpurLimits = { curbM: 10, spurM: 20 };
 /** Warn when a stop projects further than this from its trip's shape. */
@@ -108,9 +108,10 @@ const STATION_MERGE_M = 400;
  * different filtering), so plans already built are rebuilt. 2: route catalogue and its bays.
  * 3: plans record their feed (config/feeds/<feed>/), and go to its directory. 4: and its agency, and how
  * its ids are shown. 5: bus shapes without spurs to their stops. 6: bus shapes matched to OSM roads,
- * and bus corridors. 7: and overview corridors. 8: matched shapes simplified at 1 m.
+ * and bus corridors. 7: and overview corridors. 8: matched shapes simplified at 1 m. 9: matched
+ * shapes and corridors keep the same road nodes.
  */
-const PLAN_FORMAT = 8;
+const PLAN_FORMAT = 9;
 
 /** Regions showing the feed with SeaBus berths and lanes (infrastructure/seabus.json): build-schedule applies them. */
 async function ferryRegions(feed: string): Promise<string[]> {
@@ -444,19 +445,21 @@ export async function buildPlan(
       spurs += before - coords.length;
       if (roads) {
         const m = matchShape(roads, coords);
-        coords = m.coords;
         matched.set(id, m.pieces);
         matchedShare += m.matched;
+        continue;
       }
     }
-    // Shapes matched to roads are road geometry already: simplify them as finely as corridors
-    // (packages/transit-core/src/plan/corridors.ts), so a route's own line and its corridor coincide.
-    const simplified = simplify(
-      coords,
-      matched.has(id) ? MATCHED_SIMPLIFY_M : SIMPLIFY_M[kind],
-    );
+    const simplified = simplify(coords, SIMPLIFY_M[kind]);
     shapes[id] = simplified.map(([lon, lat]) => [round(lon, 6), round(lat, 6)]);
   }
+  // Matched shapes keep the same road nodes as each other and as the corridors, so lines along
+  // the same road coincide (packages/transit-core/DESIGN.md#bus-corridors).
+  const keep =
+    roads ? keptRoadNodes(roads, [...matched.values()]) : new Set<number>();
+  if (roads)
+    for (const [id, pieces] of matched)
+      shapes[id] = roadCoords(roads, pieces, keep);
   if (spurs)
     log(`Removed ${spurs} shape vertices on stops (spurs to the curb)`);
   if (matched.size)
@@ -690,6 +693,7 @@ export async function buildPlan(
         const pieces = matched.get(p.shape);
         return pieces ? [{ pattern: p.id, pieces }] : [];
       }),
+      keep,
     );
     plan.overviewCorridors = mergeCarriageways(plan.corridors);
     log(

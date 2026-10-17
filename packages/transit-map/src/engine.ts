@@ -56,6 +56,7 @@ import {
   addStaticLayers,
   applyRouteFilter,
   applyStopsVisibility,
+  brandedRoutes,
   setFerryPair,
   setSelectedPlace,
 } from "./layers/static.ts";
@@ -657,11 +658,17 @@ export class TransitEngine {
     const layers = [
       "routes-bus",
       "routes-bus-limited",
+      "corridors-brand",
+      "corridors-overview-brand",
       "routes-shape",
       "routes-shape-inactive",
       "routes-skytrain",
       "tracks-main",
+      "tracks-pair",
+      "tracks-shared-a",
+      "tracks-shared-b",
     ].filter((id) => map.getLayer(id));
+    const brands = this.shownFeed ? brandedRoutes(this.shownFeed.plan) : [];
     if (!layers.length) return undefined;
     const d = PLACE_PICK_PX;
     const known = this.shownFeed?.routes;
@@ -672,7 +679,18 @@ export class TransitEngine {
       ],
       { layers },
     )) {
-      const key = String(f.properties["route"] ?? f.properties["line"] ?? "");
+      // Corridors carry the route with its own colour drawn on them as feature state.
+      const brand =
+        f.layer.id.endsWith("-brand") ? f.state["brand"] : undefined;
+      if (
+        f.layer.id.endsWith("-brand")
+        && !(typeof brand === "number" && brand >= 0)
+      )
+        continue;
+      const key =
+        typeof brand === "number" ?
+          (brands[brand]?.key ?? "")
+        : String(f.properties["route"] ?? f.properties["line"] ?? "");
       if (known?.has(key) && !this.hidden.has(key))
         return { kind: "route", id: key };
     }

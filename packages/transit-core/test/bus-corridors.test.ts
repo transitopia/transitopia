@@ -183,6 +183,37 @@ describe("mergeCarriageways", () => {
     expect(dirs[1]![1]).toBeLessThan(10);
   });
 
+  it("doesn't chain a one-way loop into a two-way street with the same routes", () => {
+    // A terminal loop (both patterns run the same way around) joined end to end to a two-way
+    // street where they run opposite ways: same patterns, different directions (the 16 at Arbutus).
+    const merged = mergeCarriageways([
+      {
+        coords: [
+          [x(0), y(0)],
+          [x(300), y(0)],
+        ],
+        refs: [
+          [0, 1, 0],
+          [1, 1, 900],
+        ],
+      },
+      {
+        coords: [
+          [x(300), y(0)],
+          [x(800), y(0)],
+        ],
+        refs: [
+          [0, 1, 300],
+          [1, -1, 0],
+        ],
+      },
+    ]);
+    const street = merged.filter((c) => c.coords.some(([lo]) => lo > x(400)));
+    expect(street.length).toBeGreaterThan(0);
+    for (const c of street)
+      expect(new Set(c.refs.map(([, d]) => d)).size).toBe(2);
+  });
+
   it("leaves other corridors as they are", () => {
     const lone = mergeCarriageways([
       {
