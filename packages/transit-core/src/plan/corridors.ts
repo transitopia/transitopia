@@ -21,6 +21,8 @@ const MERGE_STEP_M = 6;
 const SNAP_M = 3.5;
 /** A pattern on both sides of up to this many stretches of a merged line runs through them. */
 const MAX_GAP_EDGES = 4;
+/** Carriageways apart for up to this long between stretches side by side are still one road (m). */
+const MAX_UNPAIRED_M = 150;
 /** Merged corridors' geometry tolerance (m): they're drawn zoomed out. */
 const MERGED_SIMPLIFY_M = 3;
 
@@ -29,6 +31,21 @@ interface UsedEdge {
   a: number;
   b: number;
   uses: Map<number, [1 | -1, number]>;
+}
+
+function nearestOnSegment(
+  p: [number, number],
+  a: [number, number],
+  b: [number, number],
+): [number, number] {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const l2 = dx * dx + dy * dy;
+  const f =
+    l2 > 0 ?
+      Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2))
+    : 0;
+  return [a[0] + dx * f, a[1] + dy * f];
 }
 
 /** Edges used by the same patterns, joined into corridors through nodes where only they meet. */
@@ -344,20 +361,9 @@ export function mergeCarriageways(corridors: PlanCorridor[]): PlanCorridor[] {
             const u = unit(o, m);
             // The other carriageway runs the opposite way…
             if (t[0] * u[0] + t[1] * u[1] > -0.85) continue;
-            const a = o.pts[m]!;
-            const b = o.pts[m + 1]!;
-            const dx = b[0] - a[0];
-            const dy = b[1] - a[1];
-            const l2 = dx * dx + dy * dy;
-            const f =
-              l2 > 0 ?
-                Math.max(
-                  0,
-                  Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2),
-                )
-              : 0;
-            const ox = a[0] + dx * f - p[0];
-            const oy = a[1] + dy * f - p[1];
+            const q = nearestOnSegment(p, o.pts[m]!, o.pts[m + 1]!);
+            const ox = q[0] - p[0];
+            const oy = q[1] - p[1];
             const d = Math.hypot(ox, oy);
             // …alongside it, not ahead or behind.
             if (d >= bestD || Math.abs(ox * t[0] + oy * t[1]) > 0.4 * d)
@@ -368,6 +374,64 @@ export function mergeCarriageways(corridors: PlanCorridor[]): PlanCorridor[] {
       return best;
     }),
   );
+  // Where a divided road bends, its carriageways spread apart or stop running side by side for a
+  // stretch (the R4's curve onto 16th Avenue at UBC): left unpaired there, each would keep its own
+  // line between merged stretches and draw a loop. A short run of unpaired points with the same
+  // carriageway alongside at both ends pairs with that stretch of it, in proportion to the distance
+  // along each.
+  /** Distance along a line to the point a pairing projects onto (twice its midpoint, less the point). */
+  const alongPartner = (
+    p: [number, number],
+    q: { line: number; seg: number; mid: [number, number] },
+  ) => {
+    const o = lines[q.line]!;
+    const a = o.pts[q.seg]!;
+    return (
+      o.s[q.seg]!
+      + Math.hypot(2 * q.mid[0] - p[0] - a[0], 2 * q.mid[1] - p[1] - a[1])
+    );
+  };
+  lines.forEach((l, i) => {
+    const ps = partner[i]!;
+    let k = 1;
+    while (k < ps.length) {
+      if (ps[k] || !ps[k - 1]) {
+        k++;
+        continue;
+      }
+      const before = ps[k - 1]!;
+      let end = k;
+      while (end < ps.length && !ps[end]) end++;
+      const after = ps[end];
+      const s0 = l.s[k - 1]!;
+      if (after?.line === before.line && l.s[end]! - s0 <= MAX_UNPAIRED_M) {
+        const o = lines[before.line]!;
+        const t0 = alongPartner(l.pts[k - 1]!, before);
+        const t1 = alongPartner(l.pts[end]!, after);
+        let m = before.seg;
+        for (let n = k; n < end; n++) {
+          const p = l.pts[n]!;
+          const t = t0 + ((t1 - t0) * (l.s[n]! - s0)) / (l.s[end]! - s0);
+          // The other carriageway runs the opposite way: back along it.
+          while (m > 0 && o.s[m]! > t) m--;
+          while (m + 2 < o.pts.length && o.s[m + 1]! < t) m++;
+          const a = o.pts[m]!;
+          const b = o.pts[m + 1]!;
+          const f = Math.max(
+            0,
+            Math.min(1, (t - o.s[m]!) / (o.s[m + 1]! - o.s[m]! || 1)),
+          );
+          const q = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+          ps[n] = {
+            line: before.line,
+            seg: m,
+            mid: [(p[0] + q[0]!) / 2, (p[1] + q[1]!) / 2],
+          };
+        }
+      }
+      k = end;
+    }
+  });
 
   // Snap points into nodes, and record which patterns use each stretch between them. Of two
   // carriageways side by side, the one listed first carries the geometry, moved to the centreline;
@@ -473,13 +537,9 @@ export function mergeCarriageways(corridors: PlanCorridor[]): PlanCorridor[] {
       const hit = reached[q.line]![q.seg + 1] ?? reached[q.line]![q.seg];
       if (!hit) return;
       const [e, orient] = hit;
-      // This carriageway runs against the other one's direction of drawing.
-      const t = unit(l, k);
-      const v = [
-        o.pts[q.seg + 1]![0] - o.pts[q.seg]![0],
-        o.pts[q.seg + 1]![1] - o.pts[q.seg]![1],
-      ];
-      const along = t[0] * v[0]! + t[1] * v[1]! > 0 ? 1 : -1;
+      // Paired carriageways run opposite ways: this one's patterns against the other's (its
+      // direction of drawing can be across this one's where the two spread apart round a bend).
+      const along = -o.oneway;
       for (const [pattern, d, entry] of l.refs)
         addUse(
           e,

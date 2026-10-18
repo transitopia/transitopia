@@ -23,6 +23,8 @@ const CANDIDATE_M = 30;
 /** …or this close, when nothing is within CANDIDATE_M (m). */
 const CANDIDATE_FAR_M = 55;
 const MAX_CANDIDATES = 8;
+/** Where no candidates connect, the candidates of up to this many samples back grow. */
+const WIDEN_SAMPLES = 24;
 /** GPS-style emission noise: how far GTFS shapes typically sit from the road centreline (m). */
 const SIGMA_M = 10;
 /** Transition scale: how much longer than the straight line a route between samples may be (m). */
@@ -415,6 +417,8 @@ export function matchShape(g: RoadGraph, shape: LonLat[]): MatchResult {
     if (!c.length) c = g.near(px, py, CANDIDATE_FAR_M);
     return c.slice(0, MAX_CANDIDATES);
   });
+  /** Samples whose candidates have grown. */
+  const widened = new Set<number>();
   const emission = (c: Candidate) => -0.5 * (c.d / SIGMA_M) ** 2;
 
   // Viterbi, in chains broken where no candidates connect.
@@ -425,6 +429,8 @@ export function matchShape(g: RoadGraph, shape: LonLat[]): MatchResult {
     if (i >= samples.length) break;
     const start = i;
     let score = cands[i]!.map(emission);
+    /** Scores at each sample of the chain, to resume from. */
+    const hist: number[][] = [score];
     const back: Int32Array[] = [];
     for (; i + 1 < samples.length; i++) {
       const next = cands[i + 1]!;
@@ -451,8 +457,38 @@ export function matchShape(g: RoadGraph, shape: LonLat[]): MatchResult {
           }
         });
       });
-      if (ns.every((s) => s === -Infinity)) break;
+      if (ns.every((s) => s === -Infinity)) {
+        // Nothing connects: the road the route is on may have been left out of the nearest
+        // candidates, here or a few samples back where it parted from the one taken (beside a
+        // motorway, its ways and links crowd out Phibbs Exchange's bus ramp onto the Ironworkers
+        // bridge; in the exchange, short bay roads crowd out the way out), or the nearer of two roads
+        // one above the other was taken and has just turned off (Granville Street under the Granville
+        // Bridge's deck, 400 m from where they part). Each sample's candidates
+        // can grow once, to every road within CANDIDATE_FAR_M: grow those of the last few samples
+        // and resume before them, and break the chain only when none can.
+        const from = Math.max(start, i - WIDEN_SAMPLES);
+        let grew = false;
+        for (let j = from; j <= i + 1; j++) {
+          if (widened.has(j)) continue;
+          widened.add(j);
+          const [px, py] = samples[j]!;
+          const all = g.near(px, py, CANDIDATE_FAR_M);
+          if (all.length > cands[j]!.length) {
+            cands[j] = all;
+            grew = true;
+          }
+        }
+        if (!grew) break;
+        const r = Math.max(start, from - 1);
+        back.length = r - start;
+        hist.length = r - start + 1;
+        if (r === from) hist[0] = cands[r]!.map(emission);
+        score = hist[r - start]!;
+        i = r - 1;
+        continue;
+      }
       back.push(bp);
+      hist.push(ns);
       score = ns;
     }
     // Backtrack.
@@ -483,15 +519,20 @@ export function matchShape(g: RoadGraph, shape: LonLat[]): MatchResult {
   };
   let matchedSamples = 0;
   let prevEnd = 0;
+  /** Where the last chain ended on the roads. */
+  let prevAt: [number, number] | undefined;
   for (const ch of chains) {
-    if (ch.start > prevEnd)
-      pieces.push({
-        raw: samples
-          .slice(Math.max(0, prevEnd - 1), ch.start + 1)
-          .map(([px, py]) => g.toLonLat(px, py)),
-      });
-    matchedSamples += ch.path.length;
     const at = (k: number) => cands[ch.start + k]![ch.path[k]!]!;
+    // Between chains, the GTFS samples, joined to where the chains end on the roads: also where a
+    // chain broke because no route connects one sample's candidates to the next's, so the line
+    // doesn't jump.
+    if (ch.start > 0) {
+      const raw = samples.slice(Math.max(0, prevEnd - 1), ch.start + 1);
+      if (prevAt) raw[0] = prevAt;
+      raw[raw.length - 1] = g.at(at(0).e, at(0).f);
+      pieces.push({ raw: raw.map(([px, py]) => g.toLonLat(px, py)) });
+    }
+    matchedSamples += ch.path.length;
     let cur = at(0);
     for (let k = 1; k < ch.path.length; k++) {
       const nxt = at(k);
@@ -522,13 +563,13 @@ export function matchShape(g: RoadGraph, shape: LonLat[]): MatchResult {
       cur = nxt;
     }
     prevEnd = ch.start + ch.path.length;
+    prevAt = g.at(cur.e, cur.f);
   }
-  if (prevEnd < samples.length)
-    pieces.push({
-      raw: samples
-        .slice(Math.max(0, prevEnd - 1))
-        .map(([px, py]) => g.toLonLat(px, py)),
-    });
+  if (prevEnd < samples.length) {
+    const raw = samples.slice(Math.max(0, prevEnd - 1));
+    if (prevAt) raw[0] = prevAt;
+    pieces.push({ raw: raw.map(([px, py]) => g.toLonLat(px, py)) });
+  }
 
   const coords: LonLat[] = [];
   const add = (p: LonLat) => {

@@ -81,6 +81,60 @@ describe("matchShape", () => {
     expect(has(lon(2), LAT_B)).toBe(true);
   });
 
+  it("follows a road beside a busier one that crowds it out of the nearest candidates", () => {
+    // A street from the south becomes a one-way ramp east along y = 0. A motorway and its link run
+    // alongside, 10 and 14 m north, in 4 m segments and not connected to the ramp. The shape runs
+    // up the street, then along the motorway (as Phibbs Exchange's buses onto the Ironworkers
+    // bridge): only the ramp continues from the street.
+    const mx = (m: number) =>
+      -123.1 + m / (111_200 * Math.cos((LAT_A * Math.PI) / 180));
+    const my = (m: number) => LAT_A + m / 111_200;
+    const els: OsmElement[] = [
+      { type: "node", id: 1, lon: mx(0), lat: my(-200) },
+      { type: "node", id: 2, lon: mx(0), lat: my(0) },
+      { type: "node", id: 3, lon: mx(400), lat: my(0) },
+      {
+        type: "way",
+        id: 1,
+        nodes: [1, 2],
+        tags: { highway: "service", psv: "yes" },
+      },
+      {
+        type: "way",
+        id: 2,
+        nodes: [2, 3],
+        tags: { highway: "service", psv: "yes", oneway: "yes" },
+      },
+    ];
+    for (const [w, north] of [
+      [3, 10],
+      [4, 14],
+    ] as const) {
+      const ids: number[] = [];
+      for (let m = -100; m <= 500; m += 4) {
+        const id = w * 1000 + ids.length;
+        els.push({ type: "node", id, lon: mx(m), lat: my(north) });
+        ids.push(id);
+      }
+      els.push({
+        type: "way",
+        id: w,
+        nodes: ids,
+        tags: { highway: "motorway" },
+      });
+    }
+    const rg = RoadGraph.fromOsm(els);
+    const m = matchShape(rg, [
+      [mx(0), my(-200)],
+      [mx(20), my(10)],
+      [mx(400), my(10)],
+    ]);
+    expect(m.pieces.some((p) => "raw" in p)).toBe(false);
+    expect(m.coords.at(-1)![0]).toBeCloseTo(mx(400), 6);
+    for (const [lo, la] of m.coords)
+      if (lo > mx(1)) expect(Math.abs(la - my(0))).toBeLessThan(1e-6);
+  });
+
   it("keeps the GTFS geometry where there's no road", () => {
     const far: LonLat[] = [
       [lon(0), 49.26],
@@ -212,6 +266,26 @@ describe("mergeCarriageways", () => {
     expect(street.length).toBeGreaterThan(0);
     for (const c of street)
       expect(new Set(c.refs.map(([, d]) => d)).size).toBe(2);
+  });
+
+  it("keeps one line where the carriageways spread apart for a stretch", () => {
+    // 20 m apart, then 60 m apart for 60 m (round a bend, the R4 onto 16th Avenue at UBC), then 20 m.
+    const spread = (sign: 1 | -1): LonLat[] => [
+      [x(0), y(10 * sign)],
+      [x(300), y(10 * sign)],
+      [x(320), y(30 * sign)],
+      [x(380), y(30 * sign)],
+      [x(400), y(10 * sign)],
+      [x(700), y(10 * sign)],
+    ];
+    const merged = mergeCarriageways([
+      { coords: spread(1), refs: [[0, 1, 0]] },
+      { coords: spread(-1).reverse(), refs: [[1, 1, 0]] },
+    ]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.refs).toHaveLength(2);
+    for (const [, la] of merged[0]!.coords)
+      expect(Math.abs(la - LAT_A) * 111_200).toBeLessThan(2);
   });
 
   it("leaves other corridors as they are", () => {
