@@ -206,52 +206,89 @@ export interface SharedStretch {
 const MIN_SHARED_STOPS = 2;
 const MIN_SHARED_M = 500;
 
+/** A stop after the one a trip leaves from: the plan's stop, its station (or itself) and how far on (m). */
+export interface OnwardStop {
+  stop: number;
+  key: string;
+  m: number;
+}
+
+/** The stops after stop `index` of a pattern. Stations are compared by station, not platform. */
+export function onwardStops(
+  plan: ServicePlan,
+  pattern: number,
+  index: number,
+): OnwardStop[] {
+  const p = plan.patterns[pattern]!;
+  return p.stops.slice(index + 1).map((si, k) => {
+    const s = plan.stops[si]!;
+    return {
+      stop: si,
+      key: s.parent ?? s.id,
+      m: p.dist[index + 1 + k]! - p.dist[index]!,
+    };
+  });
+}
+
 /**
- * Groups that run the same way from here: the same next stops, in order, for at least a couple of
- * stops or MIN_SHARED_M (e.g. both Expo Line branches to Columbia, or the R5 and 14 along Hastings
- * to Renfrew). Each stretch runs to where they split. Stations are compared by station, not platform.
+ * Of the services leaving one stop (each given by its onward stops), those that run the same way
+ * from it: the same next stops, in order, for at least MIN_SHARED_STOPS stops or MIN_SHARED_M.
+ * Services with the same next stop are one run as far as they all go together; when that's too
+ * short, the ones that carry on together past it are tried on their own (three routes to the next
+ * stop, one turning off there: the other two can still share a stretch). Each run lists its
+ * members (indices into `onward`) and how many stops they share. The one definition of a shared
+ * stretch, for the stop cards (`sharedStretches`) and the map's bus corridors
+ * (plan/corridor-frequency.ts), so the map never combines what a card doesn't.
+ */
+export function sharedRuns(
+  onward: readonly (readonly OnwardStop[])[],
+): { members: number[]; stops: number }[] {
+  const out: { members: number[]; stops: number }[] = [];
+  // Members known to share their first `from` stops.
+  const visit = (members: number[], from: number) => {
+    const byNext = new Map<string, number[]>();
+    for (const i of members) {
+      const k = onward[i]![from]?.key;
+      if (k !== undefined) byNext.set(k, [...(byNext.get(k) ?? []), i]);
+    }
+    for (const group of byNext.values()) {
+      if (group.length < 2) continue;
+      let n = from + 1;
+      for (;;) {
+        const k = onward[group[0]!]![n]?.key;
+        if (!k || !group.every((m) => onward[m]![n]?.key === k)) break;
+        n++;
+      }
+      if (n >= MIN_SHARED_STOPS || onward[group[0]!]![n - 1]!.m >= MIN_SHARED_M)
+        out.push({ members: group, stops: n });
+      else visit(group, n);
+    }
+  };
+  visit(
+    onward.map((_, i) => i),
+    0,
+  );
+  return out;
+}
+
+/**
+ * Groups that run the same way from here (`sharedRuns`: e.g. both Expo Line branches to Columbia,
+ * or the R5 and 14 along Hastings to Renfrew). Each stretch runs to where they split.
  */
 export function sharedStretches(
   plan: ServicePlan,
   groups: readonly DepartureGroup[],
 ): SharedStretch[] {
-  const keyOf = (stopIndex: number) => {
-    const s = plan.stops[stopIndex]!;
-    return s.parent ?? s.id;
-  };
-  // Each group's onward stops (and how far along its shape each is), from its soonest departure's pattern.
-  const onward = groups.map((g) => {
-    const d = g.departures[0]!;
-    const p = plan.patterns[d.pattern]!;
-    return p.stops.slice(d.index + 1).map((si, k) => ({
-      key: keyOf(si),
-      id: plan.stops[si]!.id,
-      m: p.dist[d.index + 1 + k]! - p.dist[d.index]!,
-    }));
-  });
-  const byNext = new Map<string, number[]>();
-  onward.forEach((o, i) => {
-    if (!o.length) return;
-    const k = o[0]!.key;
-    byNext.set(k, [...(byNext.get(k) ?? []), i]);
-  });
-  const out: SharedStretch[] = [];
-  for (const members of byNext.values()) {
-    if (members.length < 2) continue;
-    let n = 0;
-    for (;;) {
-      const k = onward[members[0]!]![n]?.key;
-      if (!k || !members.every((m) => onward[m]![n]?.key === k)) break;
-      n++;
-    }
-    if (n < MIN_SHARED_STOPS && onward[members[0]!]![n - 1]!.m < MIN_SHARED_M)
-      continue;
+  // Each group's onward stops, from its soonest departure's pattern.
+  const onward = groups.map((g) =>
+    onwardStops(plan, g.departures[0]!.pattern, g.departures[0]!.index),
+  );
+  return sharedRuns(onward).map(({ members, stops }) => {
     const gs = members.map((m) => groups[m]!);
-    out.push({
+    return {
       groups: gs,
-      toStopId: onward[members[0]!]![n - 1]!.id,
+      toStopId: plan.stops[onward[members[0]!]![stops - 1]!.stop]!.id,
       departures: gs.flatMap((g) => g.departures).sort((a, b) => a.t - b.t),
-    });
-  }
-  return out;
+    };
+  });
 }

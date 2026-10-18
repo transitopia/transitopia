@@ -355,18 +355,15 @@ describe("BusFrequency", () => {
   } as unknown as ServicePlan;
   const freq = new BusFrequency(plan);
   const wed = serviceDate("20261021");
-  const at = (along: number) => [[[0, freq.offsetAt(0, along), 1] as const]];
 
-  it("counts buses passing in the hour from a time", () => {
-    expect(freq.count(at(0), wed, "now", 12 * 3600, () => true)[0]).toBe(6);
-    // Halfway along, buses pass 5 minutes after they start.
-    expect(freq.offsetAt(0, 1000)).toBe(300);
-    expect(freq.count(at(1000), wed, "now", 12 * 3600, () => true)[0]).toBe(6);
+  it("counts trips starting in the hour from a time", () => {
+    expect(freq.perHour(wed, "now", 12 * 3600)[0]).toBe(6);
+    expect(freq.perHour(wed, "now", 12 * 3600 + 60)[0]).toBe(6);
   });
 
   it("averages over the day, 06:00–21:00", () => {
     // Every 10 min from 06:00 to 20:50: 90 trips over 15 h; the evening's hourly trips don't count.
-    expect(freq.count(at(0), wed, "day", 0, () => true)[0]).toBeCloseTo(6, 5);
+    expect(freq.perHour(wed, "day", 0)[0]).toBeCloseTo(6, 5);
   });
 
   it("counts a trip of the next service day by when it runs", () => {
@@ -391,22 +388,11 @@ describe("BusFrequency", () => {
         ],
       },
     } as unknown as ServicePlan;
-    const f = new BusFrequency(early);
-    const one = [[[0, 0, 1] as const]];
     // The hour from Wednesday's 24:00: its 24:30 trip and Thursday's 00:15.
-    expect(f.count(one, wed, "now", 24 * 3600, () => true)[0]).toBe(2);
+    expect(new BusFrequency(early).perHour(wed, "now", 24 * 3600)[0]).toBe(2);
   });
 
-  it("has nothing on days without service, and leaves out excluded patterns", () => {
-    expect(
-      freq.count(
-        at(0),
-        serviceDate("20261024"),
-        "now",
-        12 * 3600,
-        () => true,
-      )[0],
-    ).toBe(0);
-    expect(freq.count(at(0), wed, "now", 12 * 3600, () => false)[0]).toBe(0);
+  it("has nothing on days without service", () => {
+    expect(freq.perHour(serviceDate("20261024"), "now", 12 * 3600)[0]).toBe(0);
   });
 });
