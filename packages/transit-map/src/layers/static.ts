@@ -19,9 +19,10 @@ import {
   busStopMarkers,
   busStopTicks,
 } from "@transitopia/transit-core/plan/bus-stops.ts";
-import type { Theme } from "@transitopia/map-style/basemap.ts";
+import { BACKGROUND, type Theme } from "@transitopia/map-style/basemap.ts";
 import { FREQUENCY_BANDS } from "@transitopia/shared/frequency.ts";
 import { hubsOf } from "../plans.ts";
+import { hexToRgb } from "./vehicle-geometry.ts";
 
 export const ROUTES_SOURCE = "transit-routes";
 export const CORRIDORS_SOURCE = "transit-corridors";
@@ -78,6 +79,92 @@ const SHAPE_INACTIVE: ExpressionSpecification = [
   ["has", "berthPair"],
   ["!=", ["get", "berthPair"], ["global-state", FERRY_PAIR]],
 ];
+
+/**
+ * Map global state: the route whose card is open, or null. Every other route is drawn at
+ * DIM_OPACITY of its usual opacity (packages/transit-map/README.md#route-focus).
+ */
+const FOCUS_ROUTE = "focusRoute";
+export const DIM_OPACITY = 0.2;
+const focusKey = [
+  "coalesce",
+  ["global-state", FOCUS_ROUTE],
+  "",
+] as ExpressionSpecification;
+/** True where a feature's route (`prop`) is the focused one, or nothing is focused. */
+export const onFocus = (prop = "route"): ExpressionSpecification => [
+  "any",
+  ["==", focusKey, ""],
+  ["==", ["get", prop], focusKey],
+];
+/** True where the focused route stops (a stop's `routes`, ",99,R4,"), or nothing is focused. */
+const stopOnFocus: ExpressionSpecification = [
+  "any",
+  ["==", focusKey, ""],
+  ["in", ["concat", ",", focusKey, ","], ["get", "routes"]],
+];
+/** An opacity, dimmed off the focused route (for symbols, which don't overlap themselves). */
+export const focusOpacity = (
+  base: number,
+  on: ExpressionSpecification = onFocus(),
+): ExpressionSpecification => ["case", on, base, base * DIM_OPACITY];
+/** A casing's opacity: none off the focused route. */
+export const casingOpacity = (
+  on: ExpressionSpecification = onFocus(),
+): ExpressionSpecification => ["case", on, 1, 0];
+
+/**
+ * A colour as it looks at DIM_OPACITY over the land, but opaque. Lines are dimmed by colour, not
+ * opacity: where a line's pieces overlap (joins, switches, branches), translucent ones would show
+ * darker dots.
+ */
+export function fadeColor(hex: string, theme: Theme): string {
+  const c = hexToRgb(hex);
+  const bg = hexToRgb(BACKGROUND[theme]);
+  const mix = c.map((v, i) =>
+    Math.round(v * DIM_OPACITY + bg[i]! * (1 - DIM_OPACITY)),
+  );
+  return `#${mix.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** A route's own colour (`color`), faded off the focused route; `prop` names the route. */
+export function focusColor(
+  routes: readonly { key: string; color: string }[],
+  theme: Theme,
+  prop = "route",
+): ExpressionSpecification {
+  const color = ["get", "color"] as ExpressionSpecification;
+  if (!routes.length) return color;
+  return [
+    "case",
+    onFocus(prop),
+    color,
+    [
+      "match",
+      ["get", prop],
+      ...routes.flatMap((r) => [r.key, fadeColor(r.color, theme)]),
+      color,
+    ],
+  ] as unknown as ExpressionSpecification;
+}
+
+/** Corridors are dimmed by feature state (BusFrequencyLayer knows which carry the route). */
+const corridorDim: ExpressionSpecification = [
+  "boolean",
+  ["feature-state", "dim"],
+  false,
+];
+const corridorCasingOpacity: ExpressionSpecification = [
+  "case",
+  corridorDim,
+  0,
+  1,
+];
+
+/** Focus the map on one route (its card is open), dimming the rest, or on none. */
+export function setFocusRoute(map: MlMap, route: string | undefined): void {
+  map.setGlobalStateProperty(FOCUS_ROUTE, route ?? null);
+}
 
 /** Frequency tier colours, every 6 min or better first (packages/transit-map/README.md#bus-corridors). */
 const TIER_COLORS = {
@@ -451,9 +538,18 @@ export function addStaticLayers(
   const tierColors = TIER_COLORS[dark ? "dark" : "light"];
   const brands = brandedRoutes(plan);
   /** The colour of the route with its own colour in feature state `brand`. */
-  const brandColor = (brands.length ?
-    ["match", BRAND, ...brands.flatMap((r, i) => [i, r.color]), "rgba(0,0,0,0)"]
-  : "rgba(0,0,0,0)") as unknown as ExpressionSpecification;
+  const brandColorOf = (color: (r: PlanRoute) => string) =>
+    (brands.length ?
+      [
+        "match",
+        BRAND,
+        ...brands.flatMap((r, i) => [i, color(r)]),
+        "rgba(0,0,0,0)",
+      ]
+    : "rgba(0,0,0,0)") as unknown as ExpressionSpecification;
+  const brandColor = brandColorOf((r) => r.color);
+  const fadedBrandColor = brandColorOf((r) => fadeColor(r.color, theme));
+  const routeColor = focusColor(plan.routes, theme);
   const tierWidth = (extra: number, tiers: number[]): ExpressionSpecification =>
     [
       "interpolate",
@@ -486,7 +582,11 @@ export function addStaticLayers(
       minzoom: Math.max(12, "minzoom" in zooms ? zooms.minzoom : 0),
       ...("maxzoom" in zooms ? { maxzoom: zooms.maxzoom } : {}),
       layout: { "line-join": "round", "line-cap": "round" },
-      paint: { "line-color": casing, "line-width": tierWidth(2, [0, 1]) },
+      paint: {
+        "line-color": casing,
+        "line-width": tierWidth(2, [0, 1]),
+        "line-opacity": corridorCasingOpacity,
+      },
     });
     map.addLayer({
       id: prefix,
@@ -495,7 +595,15 @@ export function addStaticLayers(
       ...zooms,
       layout: { "line-join": "round", "line-cap": "round" },
       paint: {
-        "line-color": byTier(tierColors, "rgba(0,0,0,0)"),
+        "line-color": [
+          "case",
+          corridorDim,
+          byTier(
+            tierColors.map((c) => fadeColor(c, theme)),
+            "rgba(0,0,0,0)",
+          ),
+          byTier(tierColors, "rgba(0,0,0,0)"),
+        ],
         "line-width": tierWidth(0, [0, 1, 2, 3]),
       },
     });
@@ -518,7 +626,11 @@ export function addStaticLayers(
       minzoom: Math.max(12, "minzoom" in zooms ? zooms.minzoom : 0),
       ...("maxzoom" in zooms ? { maxzoom: zooms.maxzoom } : {}),
       layout: { "line-join": "round", "line-cap": "round" },
-      paint: { "line-color": casing, "line-width": brandWidth(2) },
+      paint: {
+        "line-color": casing,
+        "line-width": brandWidth(2),
+        "line-opacity": corridorCasingOpacity,
+      },
     });
     map.addLayer({
       id: `${prefix}-brand`,
@@ -527,7 +639,7 @@ export function addStaticLayers(
       ...zooms,
       layout: { "line-join": "round", "line-cap": "round" },
       paint: {
-        "line-color": brandColor,
+        "line-color": ["case", corridorDim, fadedBrandColor, brandColor],
         "line-width": brandWidth(0),
       },
     });
@@ -540,7 +652,7 @@ export function addStaticLayers(
     filter: BUS_FREQUENT,
     layout: { "line-join": "round", "line-cap": "round" },
     paint: {
-      "line-color": ["get", "color"],
+      "line-color": routeColor,
       "line-opacity": plan.corridors?.length ? 1 : 0.55,
       "line-width":
         plan.corridors?.length ?
@@ -567,7 +679,7 @@ export function addStaticLayers(
     filter: BUS_LIMITED,
     layout: { "line-join": "round" },
     paint: {
-      "line-color": ["get", "color"],
+      "line-color": routeColor,
       "line-opacity": 0.5,
       "line-width": ["interpolate", ["linear"], ["zoom"], 9, 1, 13, 2, 16, 4],
       "line-dasharray": [1, 2],
@@ -580,7 +692,7 @@ export function addStaticLayers(
     filter: SHAPE_INACTIVE,
     layout: { "line-join": "round" },
     paint: {
-      "line-color": ["get", "color"],
+      "line-color": routeColor,
       "line-opacity": 0.6,
       "line-width": ["interpolate", ["linear"], ["zoom"], 9, 1, 13, 2, 16, 3],
       "line-dasharray": [1, 2],
@@ -593,7 +705,7 @@ export function addStaticLayers(
     filter: SHAPE_ACTIVE,
     layout: { "line-join": "round", "line-cap": "round" },
     paint: {
-      "line-color": ["get", "color"],
+      "line-color": routeColor,
       "line-width": ["interpolate", ["linear"], ["zoom"], 9, 1.5, 13, 3, 16, 5],
     },
   });
@@ -605,6 +717,7 @@ export function addStaticLayers(
     layout: { "line-join": "round", "line-cap": "round" },
     paint: {
       "line-color": casing,
+      "line-opacity": casingOpacity(),
       "line-width": [
         "interpolate",
         ["linear"],
@@ -627,7 +740,7 @@ export function addStaticLayers(
     filter: ["==", ["get", "kind"], "skytrain"],
     layout: { "line-join": "round", "line-cap": "round" },
     paint: {
-      "line-color": ["get", "color"],
+      "line-color": routeColor,
       "line-width": [
         "interpolate",
         ["linear"],
@@ -682,7 +795,7 @@ export function addStaticLayers(
         brandColor,
         byTier(tierColors, "rgba(0,0,0,0)"),
       ] as ExpressionSpecification,
-      "icon-opacity": 0.9,
+      "icon-opacity": focusOpacity(0.9, stopOnFocus),
     },
   });
   // Bus exchanges: drawn like stations, in the stop labels' grey, once bus stops show.
@@ -793,6 +906,7 @@ export function addStaticLayers(
         "text-color": mutedText,
         "text-halo-color": halo,
         "text-halo-width": 1.5,
+        "text-opacity": focusOpacity(1, stopOnFocus),
       },
     },
     "stations-label",

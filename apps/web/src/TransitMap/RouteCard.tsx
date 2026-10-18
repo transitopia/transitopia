@@ -72,42 +72,18 @@ const RouteCardBody: React.FC<{
     toWallTime(snap.t).hour + (shownDate !== snap.serviceDate ? 24 : 0);
   const nowIndex = today ? DAY_HOURS.indexOf(hourNow) : -1;
 
-  const others = snap.routes.filter((r) => r.key !== route.key);
-  const onlyThis = others.every((r) => snap.hidden.has(r.key));
   const share: CardAction = {
     id: "share",
     label: "Share link",
     icon: "share",
     onSelect: () => shareLink(location.href, `${route.label} · Transitopia`),
   };
-  // A route the map doesn't draw (the catalogue) has no line to filter to or centre on.
+  // A route the map doesn't draw (the catalogue) has no line to centre on. While the card is open,
+  // the map dims every other route (packages/transit-map/README.md#route-focus).
   const actions: CardAction[] =
     !place.drawn ?
       [share]
     : [
-        onlyThis ?
-          {
-            id: "only",
-            label: "Show all routes",
-            icon: "filter",
-            onSelect: () =>
-              engine.setRoutesHidden(
-                others.map((r) => r.key),
-                false,
-              ),
-          }
-        : {
-            id: "only",
-            label: "Show only this route",
-            icon: "filter",
-            onSelect: () => {
-              engine.setRoutesHidden([route.key], false);
-              engine.setRoutesHidden(
-                others.map((r) => r.key),
-                true,
-              );
-            },
-          },
         {
           id: "centre",
           label: "Centre on map",

@@ -45,6 +45,10 @@ Where the plan has [bus corridors](../transit-core/DESIGN.md#bus-corridors), reg
 
 Tiers are feature state (`src/layers/bus-frequency.ts`), so the sources are never re-tiled: the engine recounts only when the date, the window (`setBusFrequency("now" | "day")`, a per-browser preference, the snapshot's `busFrequency`), the hidden routes or the five-minute step of the shown time change. Hidden routes are left out of the counts.
 
+## Route focus
+
+While a route's card is open (`place` of kind `route`, a route the map draws), the map dims every other route to a fifth (`DIM_OPACITY` in `src/layers/static.ts`), so the route stands out without losing its context: route lines and SkyTrain lines (the map's global state `focusRoute`, set by `setFocusRoute` and read by each layer's paint), bus stop ticks and labels the route doesn't serve, and other routes' vehicles (`VehicleLayer.focusRoute`). Lines are dimmed by colour, not opacity: each is drawn opaque in its colour as it would look at a fifth over the land (`fadeColor`, `BACKGROUND` in `packages/map-style`), and its casing is dropped, since where a translucent line's pieces overlap (joins, switches, branches) they'd show darker dots. The close-in SkyTrain ribbon (one polygon per line), stop ticks and labels are dimmed by opacity. Corridors carry several routes, so `src/layers/bus-frequency.ts` works them out: the corridors the route runs along show its own frequency and colour (feature state `tier` and `brand` from its trips alone), and the rest keep every route's and are faded (feature state `dim`). Stations and exchanges stay as they are. Closing the card or opening another clears it.
+
 ## Real-time data in the browser
 
 - **One live poll**: near "now", `live.ts` polls `/regions/<id>/live/transit` ([apps/server → Live endpoint](../../apps/server/README.md#live-endpoint)) for buses, SeaBus AIS, service changes and live dispatch together (the host passes the region's id as `region`). It waits for the server's `nextAt` plus `clientPollSlackS`, within `clientPollS`–`clientPollMaxS`; the browser revalidates with the ETag, and an unchanged response isn't handed on.

@@ -62,6 +62,7 @@ import {
   applyStopsVisibility,
   brandedRoutes,
   setFerryPair,
+  setFocusRoute,
   setSelectedPlace,
 } from "./layers/static.ts";
 import { VehicleLayer } from "./layers/vehicles.ts";
@@ -529,10 +530,6 @@ export class TransitEngine {
     this.clock.seek(serviceDayStart(d) + sec * 1000);
   }
 
-  setRouteHidden(key: string, hidden: boolean): void {
-    this.setRoutesHidden([key], hidden);
-  }
-
   setRoutesHidden(keys: readonly string[], hidden: boolean): void {
     this.hidden = new Set(this.hidden); // a new identity for the snapshot
     for (const key of keys) {
@@ -724,9 +721,19 @@ export class TransitEngine {
     return pp && this.place ? placeLocation(pp, this.place) : undefined;
   }
 
+  /** The route whose card is open, when the map draws it: the map dims every other route. */
+  private focusRoute(): string | undefined {
+    const id = this.place?.kind === "route" ? this.place.id : undefined;
+    return id !== undefined && routeKeys(this.shownFeed).includes(id) ?
+        id
+      : undefined;
+  }
+
   private syncPlaceHighlight(): void {
-    if (this.styleReady && !this.disposed)
-      setSelectedPlace(this.map, this.placePoint());
+    this.vehicles.focusRoute = this.focusRoute();
+    if (!this.styleReady || this.disposed) return;
+    setSelectedPlace(this.map, this.placePoint());
+    setFocusRoute(this.map, this.focusRoute());
   }
 
   /** Centre the map on the selected vehicle (or station or stop), in the part of the map the host's chrome leaves clear. */
@@ -1316,6 +1323,7 @@ export class TransitEngine {
         (t - serviceDayStart(date)) / 1000,
         this.busFrequency,
         this.hidden,
+        this.focusRoute(),
       );
     }
     if (this.following && this.styleReady) this.keepCentred();
