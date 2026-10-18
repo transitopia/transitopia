@@ -240,6 +240,17 @@ The server's daily data build reconciles every feed version in `gtfs_feeds` not 
 
 A new stop gets its parent from the proposal: a platform its GTFS parent's station; a bay the parent most of its group's existing stops have, "none" included (so a new bay at an exchange an admin dissolved stays an ordinary stop); and only when every stop of a group is new, the station the group is beside or a newly minted exchange (flagged `exchange-replaced` beside an exchange that lost all its stops). An existing stop whose parent differs from the proposal is flagged (`grouping-differs`) and kept. A feature is flagged once per reason. Names and positions follow the newest version, except where an admin set them.
 
+### Published features
+
+The site resolves IDs from published files, without the server (principle: static first):
+
+- **`plan.json` holds no IDs**: it stays a pure function of GTFS and config. A rebuilt plan would need its movement files rebuilt and the day's dispatch patches re-dispatched, and registry edits have to show up within minutes.
+- **A places file per feed version**, `data/feeds/<feed>/<version>/places.<n>.json` (`PlacesFile` in `packages/shared/src/features.ts`, built by `buildPlaces` in `packages/data/src/features.ts`): for the plan's own ids (station ids, `stop_id`s, route keys) their features' keys (IDs with name suffixes), each stop's station or exchange, those places' names and positions, and redirects from merged IDs. `<n>` goes up whenever the content changes, so every file is immutable; `data/feeds/<feed>/places.json` (5-minute cache, like the manifest) names each version's current one. The server writes them after reconciling, and again within one job tick of an admin change (the `places` job), without rebuilding any plan.
+- **The public export**, `data/features/export/<YYYYMMDD>.ndjson.gz`, with `data/features/latest.json` pointing at the newest: every feature (merged ones too, for redirects), its refs, and the feed versions their ranges are over. No authors, users or flags. `npm run features -- pull` loads it into a development setup.
+- **The resolver**, `GET https://api.transitopia.org/features/<key>` ([apps/server → Feature resolver](../apps/server/README.md#feature-resolver)), for what the loaded places files don't have: another region's feature (its bbox moves the map there). Cached for an hour at the edge.
+
+`?select=<key>` on `/transit` names whatever's selected, a place, route or vehicle, in either form ([apps/web → Modes and URL state](../apps/web/README.md#modes-and-url-state)). Older URL forms aren't read (there were few users: nothing from before keeps working).
+
 **Statistics** keep their GTFS keys and record the feed version they were derived from (`feed_version`); the views `route_stats_daily_by_feature` and `observed_stop_times_by_feature` join them to features through the refs, so a route's and a stop's history continue across feed versions.
 
 ## Decisions
@@ -272,7 +283,7 @@ Made while planning V2 (2026-09-29 to 2026-10-01). Change them deliberately, and
 | Next region | Montreal, a long way off. |
 | Regions and feeds | **Feeds are separate from regions** (2026-10-14), and **operators from feeds** (2026-10-15): a region lists the feeds it shows, and a feed (fetched, built, polled, recorded) can be in several; settings come in layers (defaults, operator, feed, then route or region) under `config/`; a region's are only about the place. Greater Victoria and Central Okanagan (a few BC Transit routes) keep the design multi-region and multi-agency before a second big city. The site shows one region at a time, the one in view ([above](#regions-and-feeds)). |
 | Live data | **One poll per map**: `/regions/<id>/live/transit` for transit (later `/regions/<id>/live/cycling` for GBFS), shared by every visitor at the edge, with a section per source (agency or feed) and pointers to immutable per-date files for anything large or slow-changing ([apps/server → Live endpoint](../apps/server/README.md#live-endpoint), issue #177). Polling, not server-sent events or WebSockets: an open connection per visitor would reach the one VM and lose the edge cache. |
-| Feature IDs | **Prefixed random IDs** with a decorative name suffix in URLs, **refs** for source records, **no slugs** (2026-10-18, issue #193). The registry is in the database, GTFS refs hold over ranges of feed versions, containment is the registry's (the heuristics only propose it), and only production mints the IDs that are published ([above](#feature-ids)). |
+| Feature IDs | **Prefixed random IDs** with a decorative name suffix in URLs, **refs** for source records, **no slugs** (2026-10-18, issue #193). The registry is in the database, GTFS refs hold over ranges of feed versions, containment is the registry's (the heuristics only propose it), and only production mints the IDs that are published. Plans hold no IDs: places files beside them do, so registry edits publish in minutes ([above](#feature-ids)). |
 | Environments | Production and local development. A staging environment can be added cheaply later: configuration in env files, hostnames and buckets as config, unattended migrations, a Compose project per environment. Staging would never poll TransLink. |
 
 ## Risks

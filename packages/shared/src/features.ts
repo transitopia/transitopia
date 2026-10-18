@@ -189,3 +189,90 @@ export function nameSuffix(
     return slugifyName(name.replace(/\s+Station\s*$/i, ""));
   return slugifyName(name);
 }
+
+/**
+ * A feed version's places file (data/feeds/<feed>/<version>/places.<n>.json, docs/DESIGN.md#published-features):
+ * the registry's IDs for the plan's own ids, which station or exchange each stop is in, and
+ * redirects. Written from the registry; `n` increments whenever the content changes, so each file
+ * is immutable. `places.json` beside the manifest names each version's current file.
+ */
+export interface PlacesFile {
+  format: 1;
+  feed: string;
+  version: string;
+  n: number;
+  /** Plan station id → the station's key (its ID with its name suffix). */
+  stations: Record<string, string>;
+  /** stop_id → the stop's key. */
+  stops: Record<string, string>;
+  /** Route key (the plan's, and its catalogue's) → the route's key. */
+  routes: Record<string, string>;
+  /** stop_id → the ID of the station or exchange it's in. */
+  parents: Record<string, string>;
+  /** Each station and exchange its stops are in, by ID. */
+  places: Record<
+    string,
+    {
+      kind: "station" | "exchange";
+      key: string;
+      name: string;
+      lon: number;
+      lat: number;
+    }
+  >;
+  /** IDs merged into the features above → the ID they were merged into. */
+  redirects: Record<string, string>;
+}
+
+/** data/feeds/<feed>/places.json: each version's current places file (a path under the data root). */
+export interface PlacesIndex {
+  feed: string;
+  versions: Record<string, string>;
+}
+
+/**
+ * The public registry export (data/features/export/<YYYYMMDD>.ndjson.gz, one JSON object a line),
+ * and the form `npm run features -- pull` loads. Ranges of refs are over `seq`, the export's
+ * numbering of feed versions (its "version" lines).
+ */
+export type ExportLine =
+  | {
+      t: "version";
+      feed: string;
+      version: string;
+      seq: number;
+      start: string;
+      end: string;
+      sha256: string;
+      bytes: number;
+    }
+  | {
+      t: "feature";
+      id: string;
+      kind: FeatureKind;
+      name: string;
+      lon: number | null;
+      lat: number | null;
+      parent: string | null;
+      status: "active" | "retired" | "merged";
+      mergedInto: string | null;
+      operator: string | null;
+      feed: string | null;
+    }
+  | {
+      t: "ref";
+      feature: string;
+      scheme: string;
+      namespace: string;
+      ref: string;
+      /** [from, to) over seq; null for unbounded. */
+      from: number | null;
+      to: number | null;
+    };
+
+/** data/features/latest.json. */
+export interface ExportPointer {
+  path: string;
+  generatedAt: string;
+  features: number;
+}

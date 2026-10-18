@@ -8,6 +8,8 @@
 
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
+import { isServiceDate } from "@transitopia/transit-core/time.ts";
+import { resolveKey } from "./features/registry.ts";
 import { sql } from "kysely";
 import type { Db } from "@transitopia/db/connect.ts";
 import { recentRuns } from "@transitopia/db/jobs.ts";
@@ -80,6 +82,22 @@ export function createApp(deps: AppDeps): Hono<Env> {
       c.req.method === "HEAD" ? null : new Uint8Array(Buffer.from(r.body)),
       { status: r.status, headers: r.headers },
     );
+  });
+
+  // ---- Feature resolver (apps/server/README.md#feature-resolver) -------------------------------
+  app.get("/features/:key", async (c) => {
+    const headers = {
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "public, max-age=3600",
+    };
+    if (!db) return c.json({ error: "No feature registry" }, 503, headers);
+    const date = c.req.query("date");
+    if (date !== undefined && !isServiceDate(date))
+      return c.json({ error: "date is YYYYMMDD" }, 400, headers);
+    const r = await resolveKey(db, c.req.param("key"), date);
+    if (r === "unminted") return c.json({ unminted: true }, 404, headers);
+    if (!r) return c.json({ error: "Unknown feature" }, 404, headers);
+    return c.json(r, 200, headers);
   });
 
   app.get("/healthz", async (c) => {

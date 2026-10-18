@@ -49,24 +49,6 @@ function siteStyle(theme: Theme): StyleSpecification {
   return style as StyleSpecification;
 }
 
-/**
- * Before V2 the map position was in the query string (?z=&lat=&lng=). It's now in the hash
- * (#map=z/lat/lng, shared by every mode), so convert old links.
- */
-function migrateLegacyPosition(): void {
-  const url = new URL(location.href);
-  const z = url.searchParams.get("z");
-  const lat = url.searchParams.get("lat");
-  const lng = url.searchParams.get("lng");
-  if (z === null || lat === null || lng === null) return;
-  for (const k of ["z", "lat", "lng"]) url.searchParams.delete(k);
-  if (!url.hash.includes("map=")) {
-    const n = (s: string) => Number(Number(s).toFixed(5));
-    url.hash = `map=${n(z)}/${n(lat)}/${n(lng)}`;
-  }
-  history.replaceState(history.state, "", url);
-}
-
 export const Map: React.FC<{
   /** The site header: a bar across the top on phones, floating otherwise (src/index.css). */
   header: React.ReactNode;
@@ -92,7 +74,6 @@ export const Map: React.FC<{
       maplibregl.addProtocol("pmtiles", protocol.tile);
       pmTilesInitialized = true;
     }
-    migrateLegacyPosition();
 
     const map = new maplibregl.Map({
       container: "map",

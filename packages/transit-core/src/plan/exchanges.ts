@@ -12,7 +12,7 @@ import {
 } from "./types.ts";
 
 export interface BusHub {
-  /** A slug of the name ("ubc-exchange"), for links (`?place=exchange:<id>`); unique in the plan. */
+  /** A slug of the name ("ubc-exchange"), unique in the plan: the engine's id for it, never in links. */
   id: string;
   /** "UBC Exchange", "Kootenay Loop"; a station's name for its bays ("Joyce-Collingwood"). */
   name: string;

@@ -111,15 +111,19 @@ export default function TransitMap() {
   useInitialView(map);
   const { region, inView, ready } = useRegion(map);
   // The first engine takes its selection from the URL; one for a region panned to later starts
-  // without it (a vehicle or place of another region), at the same time.
+  // without it (a vehicle or place of another region), at the same time, unless the map moved
+  // there to find the selection (`carry`, from the feature resolver).
   const shownRegion = React.useRef<string>(undefined);
+  const carry = React.useRef<string>(undefined);
 
   React.useEffect(() => {
     if (!map || !ready) return;
     let cancelled = false;
     let created: TransitEngine | undefined;
     const params = new URLSearchParams(location.search);
-    const { vehicle: _v, place: _p, ...time } = readUrl();
+    const { select: _s, ...time } = readUrl();
+    const select = carry.current;
+    carry.current = undefined;
     const switched =
       shownRegion.current !== undefined
       && shownRegion.current !== region.info.id;
@@ -134,7 +138,9 @@ export default function TransitMap() {
       debug: params.has("debug"),
       dataset: region.config.feed.dataset,
       config: region.config,
-      ...(switched ? { initial: time } : {}),
+      ...(switched ?
+        { initial: { ...time, ...(select ? { select } : {}) } }
+      : {}),
     }).then(
       (eng) => {
         if (cancelled) {
@@ -198,18 +204,29 @@ export default function TransitMap() {
         </MapOverlayWindow>
       : null}
       {engine ?
-        <EngineControls engine={engine} />
+        <EngineControls
+          engine={engine}
+          onElsewhere={(key, bounds) => {
+            carry.current = key;
+            map?.fitBounds(bounds, { padding: PADDING, maxZoom: 16 });
+          }}
+        />
       : null}
     </>
   );
 }
 
-const EngineControls: React.FC<{ engine: TransitEngine }> = ({ engine }) => {
+const EngineControls: React.FC<{
+  engine: TransitEngine;
+  /** A selected feature is elsewhere: move the map there (another region's engine selects it). */
+  onElsewhere: (key: string, bounds: [number, number, number, number]) => void;
+}> = ({ engine, onElsewhere }) => {
   const snap: TransitSnapshot = React.useSyncExternalStore(
     engine.subscribe,
     engine.getSnapshot,
   );
   useDatasets(snap.datasets);
+  useElsewhere(snap.elsewhere, onElsewhere);
   useOverlayPadding(engine);
   return (
     <>
@@ -227,3 +244,34 @@ const EngineControls: React.FC<{ engine: TransitEngine }> = ({ engine }) => {
     </>
   );
 };
+
+/**
+ * A `?select=` key the region's plan doesn't have: ask the feature resolver where it is
+ * (apps/server/README.md#feature-resolver), so the map can move to its region.
+ */
+function useElsewhere(
+  key: string | undefined,
+  onFound: (key: string, bounds: [number, number, number, number]) => void,
+): void {
+  const found = React.useRef(onFound);
+  found.current = onFound;
+  React.useEffect(() => {
+    if (!key || !transitApi) return;
+    let cancelled = false;
+    fetch(`${transitApi}features/${encodeURIComponent(key)}`)
+      .then((r) =>
+        r.ok ?
+          (r.json() as Promise<{
+            bbox: [number, number, number, number] | null;
+          }>)
+        : null,
+      )
+      .then((f) => {
+        if (!cancelled && f?.bbox) found.current(key, f.bbox);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [key]);
+}

@@ -27,6 +27,7 @@ GET /rt/status                      each feed's poller health and budget, AIS (n
 GET /rt/alerts                      current TransLink alerts for our rail lines, and whether each was drafted
 GET /rt/dispatch                    live dispatch: current patch version per service date
 GET /rt/dispatch/<date>/<v>.json    a patch version (immutable)
+GET /features/<key>[?date=YYYYMMDD]  a feature by ID or ref (below)
 GET /healthz                        data freshness: 503 when polls (or trip updates' delays), AIS, the database or a daily job are stale
 GET /auth/github/login, /auth/github/callback, /auth/me; POST /auth/logout     admin sign-in
 /admin/api/*                        the review queue behind /admin (admins only)
@@ -77,7 +78,8 @@ A patch only fits the build it was dispatched against (`baseBuiltAt`), which is 
 | `partitions` | UTC date | Create the next days' and months' partitions |
 | `retention` | local date | Drop raw data older than `retentionDays` (60): partitions, hour files, and their archive copies |
 | `daily` | feed:service date | A feed's observed stop times and per-route statistics for each finished service date still within retention (`src/jobs/daily.ts`, with `packages/transit-core/src/rt/observed.ts` and `stats.ts`). `npm run stats -- <YYYYMMDD>` reruns one. |
-| `data` | local date | With `BUILD_DATA=1`, at `dataBuildAt`: build the transit data (the pipelines, in a child process) with the confirmed corrections from the database, publish it to `DATA_PUBLISH_REMOTE`, archive new GTFS feeds and reconcile them into the feature registry ([below](#feature-reconciliation)). Also runs at once, under the key `<local date>-initial`, whenever a feed has nothing published (a new server, a feed just added, or a deploy that moved the published data), even if the day's build already ran. |
+| `data` | local date | With `BUILD_DATA=1`, at `dataBuildAt`: build the transit data (the pipelines, in a child process) with the confirmed corrections from the database, publish it to `DATA_PUBLISH_REMOTE`, archive new GTFS feeds, reconcile them into the feature registry ([below](#feature-reconciliation)), and write the places files and the day's public export ([docs/DESIGN.md → Published features](../../docs/DESIGN.md#published-features)) before publishing. Also runs at once, under the key `<local date>-initial`, whenever a feed has nothing published (a new server, a feed just added, or a deploy that moved the published data), even if the day's build already ran. |
+| `places` | registry state | With `BUILD_DATA=1`: whenever the registry changes (an admin's `features` command, a reconciliation), rewrite the places files whose content changed and publish them with their index |
 | `archive` | local hour | Copy closed recordings to `ARCHIVE_REMOTE` |
 
 Backups run in their own container (`infra/backup/`) and record themselves in `job_runs`. `/healthz` fails when a daily job (statistics, data build, backup) failed in the last 3 days or hasn't succeeded for 36 hours.
@@ -89,6 +91,8 @@ Backups run in their own container (`infra/backup/`) and record themselves in `j
 `npm run features` does the same locally, and has the containment tools until `/admin` has them:
 
 ```sh
+npm run features -- pull                                                     # production's registry → local (WIPES the local one)
+npm run features -- places                                                   # the places files from the local registry
 DATABASE_URL=… npm run features -- reconcile [--feed <id>] [--skip-missing]   # IDs minted locally are throwaway
 DATABASE_URL=… npm run features -- show stop:translink:50123                # a feature by ID or ref: refs, parent, stops
 DATABASE_URL=… npm run features -- detach <stop> [<stop> …]                  # e.g. Blanca Loop's bays: not an exchange
@@ -97,6 +101,10 @@ DATABASE_URL=… npm run features -- move <stop> <station or exchange>
 ```
 
 Each change is recorded in `feature_changes`, and later builds keep it.
+
+## Feature resolver
+
+`GET /features/<key>` (`resolveKey` in `src/features/registry.ts`): a feature by ID (its name suffix ignored) or ref (percent-encoded), as JSON: `id`, `kind`, `name`, `suffix` (the canonical key is `<id>-<suffix>`), `status`, `operator`, `feed`, `parent`, `centroid`, `bbox` (of it and the stops inside it), `refs`, and `facts` (empty until facts exist). A merged feature's ID returns the feature it was merged into, with `redirectedFrom`. A ref names the feature it names today, or with `?date=YYYYMMDD` (GTFS refs) in the feed version in use that day. An unknown key is a 404; an OSM ref with no feature is a 404 with `{ "unminted": true }`. Public, with CORS for everyone, `Cache-Control: public, max-age=3600` (Cloudflare needs a Cache Rule for `/features/*` to cache JSON). Without a database, 503.
 
 ## Admin API and sign-in
 
@@ -131,6 +139,6 @@ The server refuses to start on outdated time zone data (`timezoneChecks` in each
 - `npm run db:import-history`: import `var/rt-history/<feed>/`, `var/{ais,dispatch}-history` into the database (idempotent).
 - `npm run stats -- <YYYYMMDD> [--feed <id>]`: recompute a date's observed stop times and statistics (every feed with real time, or one).
 - `npm run corrections -- export <dir> | import [<dir>] | pull`: move corrections between the database and the file format.
-- `npm run features -- reconcile | show | move | detach | retire`: the feature registry ([above](#feature-reconciliation)).
+- `npm run features -- pull | places | reconcile | show | move | detach | retire`: the feature registry ([above](#feature-reconciliation)). `pull` and `places` work without a database too, with `var/features/registry.ndjson.gz`.
 
 Tests (`test/`) use a scratch database when `TEST_DATABASE_URL` is set.

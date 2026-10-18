@@ -8,6 +8,8 @@
 //                            service date still within the retention period (catch-up included)
 //   data:<local date>        build and publish the transit data (BUILD_DATA=1), at dataBuildAt
 //   data:<local date>-initial  the same, at once, while a feed has nothing published (dueDataBuilds)
+//   places:<registry state>  rewrite and publish the places files the registry's changes touch
+//                            (an admin's, docs/DESIGN.md#published-features), within a tick
 //   archive:<local hour>     copy closed recordings to the archive (ARCHIVE_REMOTE)
 
 import { existsSync } from "node:fs";
@@ -28,7 +30,8 @@ import type { CorrectionsRepo } from "../corrections.ts";
 import type { ServerEnv } from "../env.ts";
 import { archiveRecordings, expireRawData } from "./archive.ts";
 import { dailyStats, hasRecording, type RealtimeFeed } from "./daily.ts";
-import { buildData } from "./data-build.ts";
+import { buildData, publishData, writeFeatureData } from "./data-build.ts";
+import { sql } from "kysely";
 
 const TICK_MS = 5 * 60_000;
 /** A daily job whose last success is older than this is reported unhealthy (h). */
@@ -177,6 +180,24 @@ export class Jobs {
             return r;
           });
         },
+      });
+    }
+    if (db && this.env.buildData) {
+      // The registry's state: any change to a feature or by an admin gives a new key.
+      const state = await sql<{ stamp: string }>`
+        select concat_ws(':', (select count(*) from features),
+                              (select extract(epoch from max(updated_at))::bigint from features),
+                              (select max(id) from feature_changes)) as stamp`.execute(
+        db,
+      );
+      // job_runs runs each state once, and retries a failure on the next tick.
+      await this.job("places", state.rows[0]?.stamp ?? "", async () => {
+        const written = await writeFeatureData(db, this.feeds, this.log, {
+          export: false,
+        });
+        if (written.length && this.env.dataPublishRemote)
+          await publishData(this.env.dataPublishRemote, ["places.*.json"]);
+        return { written };
       });
     }
     if (db) {

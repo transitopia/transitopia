@@ -23,6 +23,9 @@ import { run } from "./exec.ts";
 import { isoDate } from "../dates.ts";
 import { reconcileConfig } from "../config.ts";
 import { reconcileFeeds } from "../features/reconcile.ts";
+import { registryFromDb } from "../features/export.ts";
+import { writeExport, writeFeedPlaces } from "@transitopia/data/features.ts";
+import { localDate } from "@transitopia/transit-core/time.ts";
 
 export interface DataBuildResult {
   newFeeds: string[];
@@ -41,7 +44,8 @@ export async function buildData(opts: {
   log: (msg: string) => void;
 }): Promise<DataBuildResult> {
   const { db, repo, env, log } = opts;
-  const childEnv: NodeJS.ProcessEnv = {};
+  // The server writes the places files itself, after reconciling.
+  const childEnv: NodeJS.ProcessEnv = { TRANSITOPIA_SKIP_PLACES: "1" };
   if (repo) {
     // The pipelines read a region's corrections from <dir>/<region>/ (regionPaths).
     const n = await repo.exportFiles(
@@ -78,32 +82,16 @@ export async function buildData(opts: {
       reconcileError = (e as Error).message;
       log(`feature reconciliation failed: ${reconcileError}`);
     }
+  // Places files and the public export, from the registry (docs/DESIGN.md#published-features).
+  if (db)
+    try {
+      await writeFeatureData(db, opts.feeds, log);
+    } catch (e) {
+      log(`writing places files failed: ${(e as Error).message}`);
+    }
   let published = false;
   if (env.dataPublishRemote) {
-    const dest = `${env.dataPublishRemote}/data`;
-    // Everything but the manifests first, so no client reads a manifest pointing at files that
-    // aren't there yet; old files stay for clients holding an older manifest (copy, not sync). The
-    // filter names a file anywhere: every feed's data/feeds/<feed>/manifest.json.
-    await run("rclone", [
-      "copy",
-      PUBLIC_DATA_DIR,
-      dest,
-      "--exclude",
-      "manifest.json",
-      "--header-upload",
-      "Cache-Control: public, max-age=86400",
-      "--s3-no-check-bucket",
-    ]);
-    await run("rclone", [
-      "copy",
-      PUBLIC_DATA_DIR,
-      dest,
-      "--include",
-      "manifest.json",
-      "--header-upload",
-      "Cache-Control: public, max-age=300",
-      "--s3-no-check-bucket",
-    ]);
+    await publishData(env.dataPublishRemote);
     published = true;
     log(`published transit data to ${env.dataPublishRemote}`);
   }
@@ -113,6 +101,63 @@ export async function buildData(opts: {
     ...(reconcileError ? { reconcileError } : {}),
     published,
   };
+}
+
+/** Files clients poll to find the current version of the rest: published last, with a short cache. */
+const POINTERS = ["manifest.json", "places.json", "latest.json"];
+
+/**
+ * Publish var/public/data (or only the files `include` names, as rclone filters) to `remote`.
+ * Everything but the pointers first, so no client reads a manifest or index pointing at files that
+ * aren't there yet; old files stay for clients holding an older pointer (copy, not sync). The
+ * filters name a file anywhere: every feed's data/feeds/<feed>/manifest.json.
+ */
+export async function publishData(
+  remote: string,
+  include?: string[],
+): Promise<void> {
+  const dest = `${remote}/data`;
+  const filters = (names: string[], flag: string) =>
+    names.flatMap((n) => [flag, n]);
+  await run("rclone", [
+    "copy",
+    PUBLIC_DATA_DIR,
+    dest,
+    ...filters(POINTERS, "--exclude"),
+    ...(include ? filters(include, "--include") : []),
+    "--header-upload",
+    "Cache-Control: public, max-age=86400",
+    "--s3-no-check-bucket",
+  ]);
+  await run("rclone", [
+    "copy",
+    PUBLIC_DATA_DIR,
+    dest,
+    ...filters(
+      include ? POINTERS.filter((p) => p !== "manifest.json") : POINTERS,
+      "--include",
+    ),
+    "--header-upload",
+    "Cache-Control: public, max-age=300",
+    "--s3-no-check-bucket",
+  ]);
+}
+
+/** Write every feed's places files (those that changed) and the day's public export from the registry. */
+export async function writeFeatureData(
+  db: Db,
+  feeds: Pick<FeedInfo, "id">[],
+  log: (msg: string) => void,
+  opts: { export?: boolean } = {},
+): Promise<string[]> {
+  const registry = await registryFromDb(db);
+  const written = await writeFeedPlaces(
+    registry,
+    feeds.map((f) => f.id),
+    log,
+  );
+  if (opts.export ?? true) await writeExport(registry, localDate(Date.now()));
+  return written;
 }
 
 /**

@@ -90,6 +90,13 @@ import {
   setDebugPlatforms,
 } from "./layers/tracks.ts";
 import { readUrl, writeUrl, type Place, type UrlState } from "./url.ts";
+import {
+  resolveSelect,
+  selectKey,
+  vehicleKey,
+  vehicleOfKey,
+  type SelectContext,
+} from "./select.ts";
 import { RtClient, type RtMode } from "./rt.ts";
 import { AisClient } from "./ais.ts";
 import { LivePoller } from "./live.ts";
@@ -207,6 +214,11 @@ export interface TransitSnapshot {
   /** Registry ids (@transitopia/shared/datasets.ts) of the data drawn right now. */
   datasets: string[];
   scenario: { name: string; description: string } | undefined;
+  /**
+   * A `?select=` key this region's plan doesn't have (another region's feature, or one only the
+   * resolver knows): the host can look it up (GET /features/<key>) and move the map there.
+   */
+  elsewhere: string | undefined;
 }
 
 const RT_BADGE: Record<RtMode, [string, string]> = {
@@ -325,6 +337,12 @@ export class TransitEngine {
   /** Line centrelines and ribbons for drawing SkyTrain (lines.geojson). */
   private lines: LineGeometry | undefined;
   private shownFeed: PreparedPlan | undefined;
+  /** The feed the engine shows (its vehicles' `rt` refs are in it). */
+  private readonly feed: string;
+  /** A `?select=` key waiting for the plan and its places file. */
+  private pendingSelect: string | undefined;
+  /** A `?select=` key this plan doesn't have (TransitSnapshot.elsewhere). */
+  private elsewhere: string | undefined;
   /** False from a style swap until 'style.load': our layers are gone until then. */
   private styleReady = true;
   /** The SeaBus berth pair last applied to the map (re-applied after the style reloads). */
@@ -388,8 +406,10 @@ export class TransitEngine {
       this.clock.seek(range[0] + 8 * 3600_000);
     if (url.rate !== undefined) this.clock.setRate(url.rate);
     if (url.paused) this.clock.pause();
-    this.selectedId = url.vehicle;
-    this.place = url.place;
+    this.feed = opts.config.feed.id;
+    // A vehicle is selected at once; a place once its plan (and places file) is in.
+    this.selectedId = url.select && vehicleOfKey(url.select, this.feed);
+    if (this.selectedId === undefined) this.pendingSelect = url.select;
     this.hidden = new Set(loadPref<string[]>("hiddenRoutes", []));
     this.showStops = loadPref("showStops", true);
     this.liveOnly = loadPref("liveOnly", false);
@@ -531,6 +551,7 @@ export class TransitEngine {
       store.onChange(() => {
         this.syncStatic();
         this.describers.clear();
+        this.resolveSelection();
         this.invalidate();
       }),
       this.rt.onChange(invalidate),
@@ -538,6 +559,7 @@ export class TransitEngine {
     );
 
     this.raf = requestAnimationFrame(this.frame);
+    this.resolveSelection();
   }
 
   // --- controls ---
@@ -685,12 +707,14 @@ export class TransitEngine {
     else if (changed) this.setFollow(follow);
     this.place = undefined;
     this.pick = undefined;
+    this.pendingSelect = this.elsewhere = undefined;
     this.syncPlaceHighlight();
     this.writeUrl();
     this.publish();
   }
 
   private showPlace(place: Place): void {
+    this.pendingSelect = this.elsewhere = undefined;
     this.selectedId = this.vehicles.selectedId = undefined;
     this.selectedRoute = undefined;
     this.setFollow(false);
@@ -1244,8 +1268,58 @@ export class TransitEngine {
     for (const fn of this.listeners) fn();
   }
 
+  /**
+   * What selection keys are resolved against: the shown plan and its places file (null while it
+   * loads when `waitForPlaces` is false, so the key is a ref until the file is in).
+   */
+  private selectContext(waitForPlaces: boolean): SelectContext | undefined {
+    const pp =
+      this.shownFeed
+      ?? this.store.planFor(displayServiceDate(this.clock.now()));
+    if (!pp) return undefined;
+    const places = this.store.placesFor(pp);
+    if (places === undefined && waitForPlaces) return undefined;
+    return {
+      feed: this.feed,
+      plan: pp.plan,
+      hubs: hubsOf(pp.plan),
+      places: places ?? null,
+    };
+  }
+
+  /** Select what the URL's key names, once its plan and places file are in. */
+  private resolveSelection(): void {
+    const key = this.pendingSelect;
+    if (key === undefined) {
+      // The places file may have arrived: write the canonical key.
+      if (this.place) this.writeUrl();
+      return;
+    }
+    const ctx = this.selectContext(true);
+    if (!ctx) return;
+    this.pendingSelect = undefined;
+    const r = resolveSelect(key, ctx);
+    if (r === "elsewhere") {
+      this.elsewhere = key;
+      this.publish();
+    } else if (!r) this.writeUrl();
+    else if ("vehicle" in r) this.selectVehicle(r.vehicle);
+    else this.showPlace(r.place);
+  }
+
+  /** The selection's key for the URL: canonical once it's resolved, else as given. */
+  private selectionKey(): string | undefined {
+    if (this.selectedId !== undefined)
+      return vehicleKey(this.feed, this.selectedId);
+    if (this.place) {
+      const ctx = this.selectContext(false);
+      return ctx && selectKey({ place: this.place }, ctx);
+    }
+    return this.pendingSelect ?? this.elsewhere;
+  }
+
   private writeUrl(): void {
-    if (!this.disposed) writeUrl(this.clock, this.selectedId, this.place);
+    if (!this.disposed) writeUrl(this.clock, this.selectionKey());
   }
 
   /** Writes the URL once a burst of clock changes settles (URL_WRITE_THROTTLE_MS). */
@@ -1354,6 +1428,7 @@ export class TransitEngine {
             description: this.store.scenario.description,
           }
         : undefined,
+      elsewhere: this.elsewhere,
     };
   }
 

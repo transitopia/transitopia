@@ -1,6 +1,6 @@
-// Shareable view state in the query string: ?date=2026-09-28&t=08:15:00&rate=10&paused=1&select=<vehicle>
-// or &place=station:<id> / exchange:<id> / stop:<id> / route:<key> (apps/web/README.md#modes-and-url-state; `v` is the older name
-// for `select`).
+// Shareable view state in the query string: ?date=2026-09-28&t=08:15:00&rate=10&paused=1&select=<key>
+// (apps/web/README.md#modes-and-url-state). `select` names a station, exchange, stop, route or
+// vehicle by a feature key (packages/shared/src/features.ts, src/select.ts): an ID or a ref.
 // No time parameters means "live". The map position lives in the hash (MapLibre's hash option).
 // `t` is service-day time, so it may exceed 24:00 for after-midnight trips.
 
@@ -10,6 +10,7 @@ import {
   parseGtfsTime,
   serviceDayStart,
 } from "@transitopia/transit-core/time.ts";
+import { parseKey } from "@transitopia/shared/features.ts";
 import { displayServiceDate } from "./plans.ts";
 import type { Clock } from "./clock.ts";
 
@@ -24,8 +25,8 @@ export interface UrlState {
   t?: number;
   rate?: number;
   paused?: boolean;
-  vehicle?: string;
-  place?: Place;
+  /** A feature key (an ID or a ref); invalid ones are dropped. */
+  select?: string;
   /** Dispatch versions to preview, service date (YYYYMMDD) → version (?preview=20260927:15egjb9,…). */
   preview?: Record<string, string>;
 }
@@ -48,13 +49,8 @@ export function readUrl(): UrlState {
   const rate = Number(q.get("rate"));
   if (q.has("rate") && Number.isFinite(rate) && rate !== 0) out.rate = rate;
   if (q.get("paused") === "1") out.paused = true;
-  const v = q.get("select") ?? q.get("v");
-  if (v) out.vehicle = v;
-  const place = /^(station|exchange|stop|route):(.+)$/.exec(
-    q.get("place") ?? "",
-  );
-  if (place && !v)
-    out.place = { kind: place[1] as Place["kind"], id: place[2]! };
+  const select = q.get("select");
+  if (select && parseKey(select)) out.select = select;
   const preview = Object.fromEntries(
     (q.get("preview") ?? "")
       .split(",")
@@ -66,11 +62,7 @@ export function readUrl(): UrlState {
   return out;
 }
 
-export function writeUrl(
-  clock: Clock,
-  vehicle: string | undefined,
-  place?: Place,
-): void {
+export function writeUrl(clock: Clock, select: string | undefined): void {
   const q = new URLSearchParams();
   if (!clock.isLive()) {
     const t = clock.now();
@@ -80,8 +72,7 @@ export function writeUrl(
     if (clock.rate !== 1) q.set("rate", String(clock.rate));
     if (!clock.playing) q.set("paused", "1");
   }
-  if (vehicle) q.set("select", vehicle);
-  else if (place) q.set("place", `${place.kind}:${place.id}`);
+  if (select) q.set("select", select);
   const kept = new URLSearchParams(location.search);
   for (const k of ["scenario", "preview"]) {
     const v = kept.get(k);

@@ -4,5 +4,5 @@
     "lib": ["ES2023", "esnext.temporal"],
     "types": ["node", "geojson"]
   },
-  "include": ["src"]
+  "include": ["src", "test"]
 }

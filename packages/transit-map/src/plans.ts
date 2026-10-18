@@ -23,6 +23,7 @@ import type {
   ObservationFile,
   ObservationIndex,
 } from "@transitopia/transit-core/corrections/types.ts";
+import type { PlacesFile, PlacesIndex } from "@transitopia/shared/features.ts";
 import {
   busHubs,
   type BusHub,
@@ -59,6 +60,9 @@ export class PlanStore {
   private listeners = new Set<() => void>();
   private graph: TrackGraph | undefined;
   private movementIndexes = new Map<string, MovementsIndex | null>();
+  /** The feed's places index (data/feeds/<feed>/places.json) and files, by path. */
+  private placesIndex = new Map<string, PlacesIndex | null>();
+  private placesFiles = new Map<string, PlacesFile | null>();
   private movementFiles = new Map<string, MovementsFile | null>();
   private playbacks = new Map<string, TrainPlayback>();
   private preview: Record<string, string> = {};
@@ -257,6 +261,39 @@ export class PlanStore {
       );
     }
     return this.reconciledScheduled.get(key);
+  }
+
+  /**
+   * A plan version's places file (docs/DESIGN.md#published-features): the registry's IDs for its
+   * stations, stops and routes. Undefined while it loads (a change event fires), null when there's
+   * none (no registry where the data was built, or a version not reconciled yet).
+   */
+  placesFor(pp: PreparedPlan): PlacesFile | null | undefined {
+    if (this.scenario) return null;
+    const indexPath = feedDataPath(
+      this.config.feed.id,
+      undefined,
+      "places.json",
+    );
+    // The index changes with admin edits, not only builds: no build parameter (a short cache).
+    this.fetchOnce(
+      "places:index",
+      `${this.dataBase}${indexPath}`,
+      this.placesIndex,
+      (j) => j as PlacesIndex,
+    );
+    const index = this.placesIndex.get("places:index");
+    if (index === undefined) return undefined;
+    const path = index?.versions[pp.plan.feedVersion];
+    if (!path) return null;
+    // Each file is immutable.
+    this.fetchOnce(
+      `places:${path}`,
+      `${this.dataBase}${path}`,
+      this.placesFiles,
+      (j) => j as PlacesFile,
+    );
+    return this.placesFiles.get(`places:${path}`);
   }
 
   /** Track-level playback for a service date, or undefined (not built / still loading). */

@@ -9,6 +9,7 @@ import type { Db } from "@transitopia/db/connect.ts";
 import {
   kindOfId,
   mintId,
+  nameSuffix,
   parseKey,
   type FeatureKind,
 } from "@transitopia/shared/features.ts";
@@ -492,4 +493,96 @@ export async function retire(
       userId,
     );
   });
+}
+
+/** GET /features/<key> (apps/server/README.md#feature-resolver). */
+export interface ResolvedFeature {
+  id: string;
+  kind: FeatureKind;
+  name: string;
+  /** The URL name suffix: the canonical key is `${id}-${suffix}`. */
+  suffix: string;
+  status: "active" | "retired" | "merged";
+  operator: string | null;
+  feed: string | null;
+  parent: string | null;
+  centroid: [number, number] | null;
+  /** Of the feature and the stops inside it. */
+  bbox: [number, number, number, number] | null;
+  refs: string[];
+  facts: Record<string, never>;
+  redirectedFrom?: string;
+}
+
+/**
+ * Resolve a key: an ID (merged ones redirect) or a ref, the feature it names today, or on a service
+ * date (YYYYMMDD; for GTFS refs, in the feed version in use that day: the newest covering it).
+ */
+export async function resolveKey(
+  db: Db,
+  key: string,
+  date?: string,
+): Promise<ResolvedFeature | "unminted" | undefined> {
+  const k = parseKey(key);
+  if (!k || (k.form === "ref" && k.scheme === "run")) return undefined;
+  let found: FeatureRow | undefined;
+  if (k.form === "ref" && date) {
+    const iso = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
+    const r = await sql<{ feature_id: string }>`
+      select r.feature_id from feature_refs r
+      where r.scheme = ${k.scheme} and r.namespace = ${k.namespace} and r.ref = ${k.value}
+        and (upper_inf(r.versions) and lower_inf(r.versions)
+             or r.versions @> (select g.seq from gtfs_feeds g
+                               where g.feed_id = ${k.namespace}
+                                 and ${iso}::date between g.start_date and g.end_date
+                               order by g.start_date desc, g.version desc limit 1))
+      limit 1`.execute(db);
+    const id = r.rows[0]?.feature_id;
+    found = id ? await findFeature(db, id) : undefined;
+  } else found = await findFeature(db, key);
+  if (!found)
+    return k.form === "ref" && k.scheme.startsWith("osm-") ?
+        "unminted"
+      : undefined;
+  const extent = await sql<{
+    xmin: number | null;
+    ymin: number | null;
+    xmax: number | null;
+    ymax: number | null;
+  }>`
+    select min(ST_X(geom::geometry)) as xmin, min(ST_Y(geom::geometry)) as ymin,
+           max(ST_X(geom::geometry)) as xmax, max(ST_Y(geom::geometry)) as ymax
+    from features where (id = ${found.id} or parent_id = ${found.id}) and geom is not null`.execute(
+    db,
+  );
+  const e = extent.rows[0];
+  const refs = await sql<{ scheme: string; namespace: string; ref: string }>`
+    select distinct scheme, namespace, ref from feature_refs where feature_id = ${found.id}
+    order by scheme, namespace, ref`.execute(db);
+  const f = await db
+    .selectFrom("features")
+    .select(["operator_id"])
+    .where("id", "=", found.id)
+    .executeTakeFirstOrThrow();
+  const code = refs.rows.find((r) => r.scheme === "stop")?.ref;
+  return {
+    id: found.id,
+    kind: found.kind,
+    name: found.name,
+    suffix: nameSuffix(found.kind, found.name, { code }),
+    status: found.status,
+    operator: f.operator_id,
+    feed: found.feedId,
+    parent: found.parentId,
+    centroid:
+      found.lon !== null && found.lat !== null ? [found.lon, found.lat] : null,
+    bbox: e && e.xmin !== null ? [e.xmin, e.ymin!, e.xmax!, e.ymax!] : null,
+    refs: refs.rows.map((r) =>
+      r.namespace ?
+        `${r.scheme}:${r.namespace}:${r.ref}`
+      : `${r.scheme}:${r.ref}`,
+    ),
+    facts: {},
+    ...(found.redirectedFrom ? { redirectedFrom: found.redirectedFrom } : {}),
+  };
 }

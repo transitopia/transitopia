@@ -46,6 +46,7 @@ You need Node.js 26+ (and optionally Java 21+ if you want to build the cycling m
    npm run data:gtfs       # fetch the latest GTFS feed and build the timetable data
    npm run build:infra     # publish the track network and platform mapping
    npm run build:movements # infer train runs and dispatch them, per day type
+   npm run features -- pull # production's feature IDs, for links (?select=)
    ```
 
 4. Run the development server with `npm run dev`, then go to http://localhost:5173/ in your browser.

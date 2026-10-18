@@ -106,7 +106,7 @@ npm run db:up            # the local PostgreSQL (infra/compose.dev.yml); then DA
 npm run db:import-history # var/{rt,ais,dispatch}-history → the database (idempotent)
 npm run stats -- 20260928 # observed stop times + route statistics for a service date (needs DATABASE_URL)
 npm run corrections -- export <dir> | import [<dir>] | pull   # corrections between the database and files
-npm run features -- reconcile | show <key> | move <stop> <place> | detach <stop>… | retire <key>…   # the feature registry (needs DATABASE_URL)
+npm run features -- pull | places | reconcile | show <key> | move <stop> <place> | detach <stop>… | retire <key>…   # the feature registry (pull: production's IDs, wipes the local registry)
 npm run snapshot:pull -- --from 2026-09-20 --to 2026-09-27 [--db]   # production recordings (+ DB snapshot) into var/ (needs rclone access to the archive)
 npm test                 # vitest, every workspace (database tests need TEST_DATABASE_URL=postgres://transitopia:transitopia@localhost:5433/postgres)
 npm run typecheck        # tsc in every workspace

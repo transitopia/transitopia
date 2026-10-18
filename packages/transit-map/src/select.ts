@@ -1,0 +1,156 @@
+// What `?select=` names (apps/web/README.md#modes-and-url-state, docs/DESIGN.md#feature-ids): a
+// feature key, an ID (`sn-k3v9qd7m-waterfront`) or a ref (`stop:translink:50123`), turned into the
+// engine's selection, and back. IDs are found in the plan version's places file; refs in the plan
+// itself. Vehicles are the engine's own refs: `run:<run id>` (inferred runs, timetable vehicles)
+// and `rt:<feed>:<vehicle id>` (GTFS-RT).
+
+import {
+  formatRef,
+  parseKey,
+  type PlacesFile,
+} from "@transitopia/shared/features.ts";
+import type { BusHub } from "@transitopia/transit-core/plan/exchanges.ts";
+import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
+import type { Place } from "./url.ts";
+
+export interface SelectContext {
+  feed: string;
+  plan: Pick<ServicePlan, "stations" | "stops" | "routes" | "catalog">;
+  hubs: readonly BusHub[];
+  /** The plan version's places file; null without one (no registry here). */
+  places: PlacesFile | null;
+}
+
+export type Selection = { place: Place } | { vehicle: string };
+
+/** The engine's id of a GTFS-RT vehicle (`rt:<vehicle id>`) and of everything else (a run id). */
+const RT_PREFIX = "rt:";
+
+/** A vehicle's key: `rt:<feed>:<id>` or `run:<id>`. */
+export function vehicleKey(feed: string, engineId: string): string {
+  return engineId.startsWith(RT_PREFIX) ?
+      formatRef("rt", feed, engineId.slice(RT_PREFIX.length))
+    : formatRef("run", "", engineId);
+}
+
+/** A vehicle key's engine id, if the key names a vehicle (of this feed, for `rt`). */
+export function vehicleOfKey(key: string, feed: string): string | undefined {
+  const k = parseKey(key);
+  if (k?.form !== "ref") return undefined;
+  if (k.scheme === "run") return k.value;
+  if (k.scheme === "rt" && k.namespace === feed)
+    return `${RT_PREFIX}${k.value}`;
+  return undefined;
+}
+
+/**
+ * The selection a key names here, "elsewhere" for a valid key this plan doesn't have (another
+ * region's feature, or one only the resolver knows), or undefined for an invalid key.
+ */
+export function resolveSelect(
+  key: string,
+  ctx: SelectContext,
+): Selection | "elsewhere" | undefined {
+  const k = parseKey(key);
+  if (!k) return undefined;
+  const vehicle = vehicleOfKey(key, ctx.feed);
+  if (vehicle) return { vehicle };
+  const { plan, places } = ctx;
+  if (k.form === "id") {
+    if (!places) return "elsewhere";
+    const id = places.redirects[k.id] ?? k.id;
+    const idOf = (v: string) => {
+      const p = parseKey(v);
+      return p?.form === "id" ? p.id : undefined;
+    };
+    const find = (m: Record<string, string>) =>
+      Object.keys(m).find((x) => idOf(m[x]!) === id);
+    switch (k.kind) {
+      case "station": {
+        const s = find(places.stations);
+        return s ? { place: { kind: "station", id: s } } : "elsewhere";
+      }
+      case "stop": {
+        const s = find(places.stops);
+        return s ? { place: { kind: "stop", id: s } } : "elsewhere";
+      }
+      case "route": {
+        const r = find(places.routes);
+        return r ? { place: { kind: "route", id: r } } : "elsewhere";
+      }
+      case "exchange": {
+        const bays = new Set(
+          Object.keys(places.parents).filter((s) => places.parents[s] === id),
+        );
+        const hub = ctx.hubs.find(
+          (h) => !h.station && h.bays.some((b) => bays.has(b)),
+        );
+        return hub ? { place: { kind: "exchange", id: hub.id } } : "elsewhere";
+      }
+      default:
+        return "elsewhere";
+    }
+  }
+  if (k.namespace !== ctx.feed) return "elsewhere";
+  switch (k.scheme) {
+    case "gtfs-stop":
+      if (plan.stations.some((s) => s.id === k.value))
+        return { place: { kind: "station", id: k.value } };
+      if (plan.stops.some((s) => s.id === k.value))
+        return { place: { kind: "stop", id: k.value } };
+      return "elsewhere";
+    case "stop": {
+      const s = plan.stops.find((x) => x.code === k.value);
+      return s ? { place: { kind: "stop", id: s.id } } : "elsewhere";
+    }
+    case "gtfs-route": {
+      const r = [...plan.routes, ...(plan.catalog ?? [])].find(
+        (x) => x.gtfsRouteId === k.value,
+      );
+      return r ? { place: { kind: "route", id: r.key } } : "elsewhere";
+    }
+    default:
+      return "elsewhere";
+  }
+}
+
+/**
+ * The canonical key of a selection: the feature's ID with its current name suffix where the places
+ * file has it, else a ref (a development machine without a registry). An exchange without one is
+ * named by its first bay.
+ */
+export function selectKey(sel: Selection, ctx: SelectContext): string {
+  if ("vehicle" in sel) return vehicleKey(ctx.feed, sel.vehicle);
+  const { place } = sel;
+  const { places, plan, feed } = ctx;
+  switch (place.kind) {
+    case "station":
+      return (
+        places?.stations[place.id] ?? formatRef("gtfs-stop", feed, place.id)
+      );
+    case "stop": {
+      const key = places?.stops[place.id];
+      if (key) return key;
+      const code = plan.stops.find((s) => s.id === place.id)?.code;
+      return code ?
+          formatRef("stop", feed, code)
+        : formatRef("gtfs-stop", feed, place.id);
+    }
+    case "route": {
+      const key = places?.routes[place.id];
+      if (key) return key;
+      const r = [...plan.routes, ...(plan.catalog ?? [])].find(
+        (x) => x.key === place.id,
+      );
+      return formatRef("gtfs-route", feed, r?.gtfsRouteId ?? place.id);
+    }
+    case "exchange": {
+      const hub = ctx.hubs.find((h) => h.id === place.id);
+      const ex = hub?.bays
+        .map((b) => places?.parents[b])
+        .find((p) => p !== undefined && places?.places[p]?.kind === "exchange");
+      if (ex) return places!.places[ex]!.key;
+      return formatRef("gtfs-stop", feed, hub?.bays[0] ?? place.id);
+    }
+  }
+}
