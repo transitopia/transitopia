@@ -182,6 +182,14 @@ export function createApp(deps: AppDeps): Hono<Env> {
   // ---- Features (docs/DESIGN.md#feature-ids): containment, merges and flags ------------------
   const needDb = (c: Context<Env>) =>
     c.json({ error: "No database: no feature registry" }, 409);
+  /**
+   * Who made a registry change (feature_changes.user_id): a signed-in admin's users row; none for
+   * ADMIN_DEV_TOKEN's local admin, who has no row.
+   */
+  const userId = (c: Context<Env>) => {
+    const id = c.get("user").id;
+    return id > 0 ? id : null;
+  };
   /** Run a registry change, answering its error (a refused change) as a 400. */
   const change = async (c: Context<Env>, fn: () => Promise<unknown>) => {
     try {
@@ -211,13 +219,13 @@ export function createApp(deps: AppDeps): Hono<Env> {
     const body = await parseBody(c, setParentRequest);
     if (!body.ok) return body.response;
     return change(c, () =>
-      setParent(db, c.req.param("id"), body.value.parent, c.get("user").id),
+      setParent(db, c.req.param("id"), body.value.parent, userId(c)),
     );
   });
 
   app.post("/admin/api/features/:id/retire", async (c) => {
     if (!db) return needDb(c);
-    return change(c, () => retire(db, c.req.param("id"), c.get("user").id));
+    return change(c, () => retire(db, c.req.param("id"), userId(c)));
   });
 
   app.post("/admin/api/features/:id/merge", async (c) => {
@@ -225,7 +233,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
     const body = await parseBody(c, mergeRequest);
     if (!body.ok) return body.response;
     return change(c, () =>
-      mergeFeatures(db, c.req.param("id"), body.value.into, c.get("user").id),
+      mergeFeatures(db, c.req.param("id"), body.value.into, userId(c)),
     );
   });
 
@@ -238,7 +246,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
         db,
         body.value.name,
         body.value.stops,
-        c.get("user").id,
+        userId(c),
       );
       return c.json({ id } satisfies z.input<typeof newExchangeResponse>);
     } catch (e) {
@@ -262,7 +270,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
         db,
         Number(c.req.param("id")),
         body.value.resolution,
-        c.get("user").id,
+        userId(c),
       ),
     );
   });

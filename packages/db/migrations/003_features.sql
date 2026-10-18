@@ -48,10 +48,12 @@ create index on features (parent_id);
 create index on features (feed_id, kind);
 
 -- Feed versions in the order we archived them, so refs can hold over a range of them. Existing
--- rows are numbered by start date (the order the feeds were published), then version.
+-- rows are numbered by when they were fetched (a feed's versions can share a start date, and their
+-- names don't sort by time: TransLink's 26DEC_… is before 26SEP_…), then start date and version.
 alter table gtfs_feeds add column seq integer;
 update gtfs_feeds g set seq = n.seq
-from (select feed_id, version, row_number() over (order by start_date, version, feed_id) as seq
+from (select feed_id, version,
+             row_number() over (order by fetched_at, start_date, version, feed_id) as seq
       from gtfs_feeds) n
 where g.feed_id = n.feed_id and g.version = n.version;
 alter table gtfs_feeds alter column seq set not null;
@@ -105,21 +107,33 @@ create table feature_flags (
 );
 create index on feature_flags (feature_id, reason);
 
--- Statistics name the feed version they were derived from (the newest version covering the
--- service date, as feedZipFor in packages/data/src/gtfs-day.ts picks it).
+-- Statistics name the feed version they were derived from. For existing rows, that's the version
+-- the daily job would have picked when it computed them (feedZipFor in packages/data/src/gtfs-day.ts:
+-- the newest covering the service date, by start date then version, among the versions fetched by
+-- then; route_stats_daily.computed_at says when). Versions fetched later can cover the same dates
+-- (TransLink's all start 2026-09-07), so the newest version overall would be wrong for older days.
 alter table observed_stop_times add column feed_version text;
 alter table route_stats_daily add column feed_version text;
+create temporary table stats_versions on commit drop as
+select d.feed_id, d.service_date,
+       coalesce(
+         (select g.version from gtfs_feeds g
+          where g.feed_id = d.feed_id and d.service_date between g.start_date and g.end_date
+            and g.fetched_at <= d.computed_at
+          order by g.start_date desc, g.version desc limit 1),
+         (select g.version from gtfs_feeds g
+          where g.feed_id = d.feed_id and d.service_date between g.start_date and g.end_date
+          order by g.fetched_at, g.start_date desc, g.version desc limit 1)) as version
+from (select k.feed_id, k.service_date, coalesce(c.computed_at, now()) as computed_at
+      from (select distinct feed_id, service_date from observed_stop_times
+            union select feed_id, service_date from route_stats_daily) k
+      left join (select feed_id, service_date, max(computed_at) as computed_at
+                 from route_stats_daily group by feed_id, service_date) c
+        on c.feed_id = k.feed_id and c.service_date = k.service_date) d;
 update observed_stop_times s set feed_version = v.version
-from (select distinct d.feed_id, d.service_date,
-             (select g.version from gtfs_feeds g
-              where g.feed_id = d.feed_id and d.service_date between g.start_date and g.end_date
-              order by g.start_date desc, g.version desc limit 1) as version
-      from (select distinct feed_id, service_date from observed_stop_times) d) v
-where s.feed_id = v.feed_id and s.service_date = v.service_date;
-update route_stats_daily s set feed_version = (
-  select g.version from gtfs_feeds g
-  where g.feed_id = s.feed_id and s.service_date between g.start_date and g.end_date
-  order by g.start_date desc, g.version desc limit 1);
+from stats_versions v where s.feed_id = v.feed_id and s.service_date = v.service_date;
+update route_stats_daily s set feed_version = v.version
+from stats_versions v where s.feed_id = v.feed_id and s.service_date = v.service_date;
 
 -- A route's and a stop's statistics across feed versions, by feature.
 create view route_stats_daily_by_feature as

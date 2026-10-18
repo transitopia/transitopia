@@ -30,8 +30,11 @@ const STATION_M = 400;
 //   BC Transit: "Langford Exch (Jacklin Rd) Bay D", "UBCO Exchange Bay C", "Legislature Exch",
 //               "Swartz Bay Ferry Terminal Bay A"
 
-/** "Bay 7", "Bay 1 Unload Only", "Unloading Only", or "" ("Phibbs Exchange @"): a bay, not a street stop. */
-const BAY = /@\s*(Bay\b.*|Unload.*)?$/i;
+/**
+ * "Bay 7", "Bay 5A", "Bay 1 Unload Only", "Unloading Only", or "" ("Phibbs Exchange @"): a bay, not
+ * a street stop. A bay is a number or one letter: "@ Bay St" and "@ Bay Mill Rd" are streets.
+ */
+const BAY = /@\s*(Bay\s+(?:[0-9]+[A-Z]?|[A-Z])\b.*|Unload.*)?$/i;
 /**
  * An exchange or terminal, optionally the street a group of its bays is on, then a bay letter or
  * number ("Bay St" is a street: a bay is one letter or a number). The exchange itself (no bay) only
@@ -40,17 +43,24 @@ const BAY = /@\s*(Bay\b.*|Unload.*)?$/i;
 const SUFFIX_BAY =
   /^(.*\b(?:Exch|Exchange|Terminal))(?:\s*\([^)]*\))?\s+Bay\s+([0-9]+|[A-Z])\s*$/i;
 const SUFFIX_EXCHANGE = /^(.*\b(?:Exch|Exchange))\s*$/i;
+/** A street stop named for the exchange it's beside ("Cooper Rd at Orchard Park Exchange"). */
+const BESIDE = /\bat\b/i;
+/** A direction before the place ("Southbound White Rock Centre @ Bay 11"). */
+const DIRECTION = /^(?:North|South|East|West)bound\s+/i;
 
 /** Whether a GTFS stop name is an exchange or station bay. */
 export function isBay(name: string): boolean {
   if (name.includes("@")) return BAY.test(name) && !/@\s*Layover\b/i.test(name);
-  return SUFFIX_BAY.test(name) || SUFFIX_EXCHANGE.test(name);
+  return (
+    SUFFIX_BAY.test(name) || (SUFFIX_EXCHANGE.test(name) && !BESIDE.test(name))
+  );
 }
 
 /** The bay's number or letter ("7" for "… @ Bay 7", "D" for "… Exch Bay D"), if it has one. */
 export function bayNumber(name: string): string | undefined {
   return (
-    /@\s*Bay\s+([0-9A-Z]+)\b/i.exec(name)?.[1] ?? SUFFIX_BAY.exec(name)?.[2]
+    /@\s*Bay\s+([0-9]+[A-Z]?|[A-Z])\b/i.exec(name)?.[1]
+    ?? SUFFIX_BAY.exec(name)?.[2]
   );
 }
 
@@ -63,7 +73,8 @@ export function bayLabel(name: string): string {
 
 /**
  * The exchange's or station's name, whitespace tidied: "Oakridge-41st Ave Station  @ Bay 4" →
- * "Oakridge-41st Ave Station", "Langford Exch (Jacklin Rd) Bay D" → "Langford Exchange".
+ * "Oakridge-41st Ave Station", "Langford Exch (Jacklin Rd) Bay D" → "Langford Exchange",
+ * "Southbound White Rock Centre @ Bay 11" → "White Rock Centre".
  */
 export function baseName(name: string): string {
   const base =
@@ -71,6 +82,7 @@ export function baseName(name: string): string {
       name.split("@")[0]!
     : (SUFFIX_BAY.exec(name)?.[1] ?? SUFFIX_EXCHANGE.exec(name)?.[1] ?? name);
   return base
+    .replace(DIRECTION, "")
     .replace(/\bExch$/i, "Exchange")
     .replace(/\s+/g, " ")
     .trim();

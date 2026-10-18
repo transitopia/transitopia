@@ -564,6 +564,9 @@ export class TransitEngine {
 
     this.raf = requestAnimationFrame(this.frame);
     this.resolveSelection();
+    // Drop a `?select=` that isn't a feature key (an old link's form), now rather than at the first
+    // change.
+    this.writeUrl();
   }
 
   // --- controls ---

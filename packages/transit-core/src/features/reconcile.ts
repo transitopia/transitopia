@@ -545,7 +545,15 @@ export function reconcile(input: ReconcileInput): Decisions {
           n.id,
           "disappeared-nearby",
           near.map((f) => f.id),
-          { name: n.name },
+          {
+            name: n.name,
+            // What an admin weighs: the stops that disappeared, and how far away they were.
+            near: near.map((f) => ({
+              id: f.id,
+              name: f.name,
+              m: Math.round(distM(at(f), [n.lon!, n.lat!])),
+            })),
+          },
         );
     }
 

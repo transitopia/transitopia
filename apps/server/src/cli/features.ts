@@ -21,6 +21,7 @@ import { dirname } from "node:path";
 import { readFeed, readFeeds } from "@transitopia/data/paths.ts";
 import {
   decodeRegistry,
+  encodeRegistry,
   EXPORT_POINTER,
   LOCAL_REGISTRY,
   readRegistryFile,
@@ -65,18 +66,6 @@ if (!command || (!url && !local)) {
   process.exit(1);
 }
 
-const conn = url ? createDb(url) : undefined;
-try {
-  if (conn) await migrate(conn.pool);
-  if (local) await localCommand(conn?.db);
-  else await main(conn!.db);
-} catch (e) {
-  console.error((e as Error).message);
-  process.exitCode = 1;
-} finally {
-  await conn?.db.destroy();
-}
-
 /** pull and places, with a database or without one. */
 async function localCommand(db: Db | undefined): Promise<void> {
   const feeds = (await readFeeds()).map((f) => f.id);
@@ -104,7 +93,7 @@ async function localCommand(db: Db | undefined): Promise<void> {
       );
     } else {
       await mkdir(dirname(LOCAL_REGISTRY), { recursive: true });
-      await writeFile(LOCAL_REGISTRY, gz);
+      await writeFile(LOCAL_REGISTRY, encodeRegistry(registry));
       console.log(`wrote ${LOCAL_REGISTRY}`);
     }
   } else if (db) registry = await registryFromDb(db);
@@ -191,4 +180,17 @@ async function main(db: Db): Promise<void> {
     default:
       throw new Error(USAGE);
   }
+}
+
+// Last, so every declaration above is initialised before it runs.
+const conn = url ? createDb(url) : undefined;
+try {
+  if (conn) await migrate(conn.pool);
+  if (local) await localCommand(conn?.db);
+  else await main(conn!.db);
+} catch (e) {
+  console.error((e as Error).message);
+  process.exitCode = 1;
+} finally {
+  await conn?.db.destroy();
 }

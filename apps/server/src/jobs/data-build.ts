@@ -181,7 +181,15 @@ export async function recordFeeds(
     ).map((r) => r.version),
   );
   const added: string[] = [];
-  for (const f of await archivedFeeds(feedId)) {
+  // In the order they were fetched (fetched_at): gtfs_feeds.seq numbers versions as they're recorded.
+  const zips = await Promise.all(
+    (await archivedFeeds(feedId)).map(async (f) => ({
+      ...f,
+      fetchedAt: (await stat(f.path)).mtime,
+    })),
+  );
+  zips.sort((a, b) => a.fetchedAt.getTime() - b.fetchedAt.getTime());
+  for (const f of zips) {
     if (known.has(f.version)) continue;
     // TransLink's zips were archived at gtfs/metro-vancouver/<version>/ before feeds had ids.
     const key = `gtfs/${feedId}/${f.version}/google_transit.zip`;
@@ -197,7 +205,7 @@ export async function recordFeeds(
       version: f.version,
       start_date: isoDate(f.start),
       end_date: isoDate(f.end),
-      fetched_at: (await stat(f.path)).mtime,
+      fetched_at: f.fetchedAt,
       sha256: await sha256File(f.path),
       bytes: (await stat(f.path)).size,
       object_key: archiveRemote ? key : null,

@@ -49,9 +49,17 @@ export function encodeRegistry(r: Registry): Buffer {
   return gzipSync(`${lines.join("\n")}\n`);
 }
 
+/** Gzip's first two bytes. */
+const isGzip = (b: Buffer) => b[0] === 0x1f && b[1] === 0x8b;
+
+/**
+ * An export's registry. Accepts it already gunzipped: a server sending the file with
+ * `Content-Encoding: gzip` (Vite's, some CDN setups) has `fetch` decompress it.
+ */
 export function decodeRegistry(gz: Buffer): Registry {
   const r: Registry = { versions: [], features: [], refs: [] };
-  for (const line of gunzipSync(gz).toString("utf8").split("\n")) {
+  const text = (isGzip(gz) ? gunzipSync(gz) : gz).toString("utf8");
+  for (const line of text.split("\n")) {
     if (!line.trim()) continue;
     const l = JSON.parse(line) as ExportLine;
     if (l.t === "version") r.versions.push(l);

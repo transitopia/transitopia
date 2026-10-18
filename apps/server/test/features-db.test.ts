@@ -106,8 +106,8 @@ describe.skipIf(!TEST_DATABASE_URL)("feature registry", () => {
       records: records(),
       settings: reconcileConfig,
     });
-    // A station, an exchange, five stops and a route.
-    expect(first.minted).toBe(8);
+    // A station, an exchange, four stops and a route.
+    expect(first.minted).toBe(7);
     const blanca = (await findFeature(t.db, "stop:translink:60001"))!;
     expect(blanca.kind).toBe("stop");
     expect(parseKey(blanca.id)).toMatchObject({ form: "id", kind: "stop" });
@@ -245,6 +245,12 @@ describe.skipIf(!TEST_DATABASE_URL)("feature registry", () => {
       /merge into that/,
     );
     await expect(mergeFeatures(t.db, ex, bay1.id)).rejects.toThrow(/exchange/);
+    // Nor into a retired one: its stops would sit in a place that isn't one.
+    const ex3 = await newExchange(t.db, "Spare", [bay2.id]);
+    await setParent(t.db, bay2.id, ex);
+    await retire(t.db, ex3);
+    const ex4 = await newExchange(t.db, "Another", [bay2.id]);
+    await expect(mergeFeatures(t.db, ex4, ex3)).rejects.toThrow(/retired/);
     expect((await searchFeatures(t.db, "blanca")).map((f) => f.kind)).toContain(
       "exchange",
     );

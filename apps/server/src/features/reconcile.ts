@@ -4,6 +4,7 @@
 // comes from var/raw/gtfs/<feed>/<version>/, or the archive when it isn't there.
 
 import { existsSync } from "node:fs";
+import { sql } from "kysely";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { feedPaths, VAR_DIR } from "@transitopia/data/paths.ts";
@@ -102,6 +103,10 @@ export async function reconcileFeeds(opts: {
       }
     }
   }
+  // The first reconciliation adds tens of thousands of refs at once: refresh the planner's
+  // statistics, or the statistics views join as if the tables were empty.
+  if (out.some((r) => r.minted || r.refsAdded))
+    await sql`analyze features, feature_refs`.execute(db);
   return out;
 }
 

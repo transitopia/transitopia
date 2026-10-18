@@ -331,7 +331,7 @@ export async function findFeature(
       .where("scheme", "=", k.scheme)
       .where("namespace", "=", k.namespace)
       .where("ref", "=", k.value)
-      .orderBy(sql`upper(versions)`, sql`desc nulls first`)
+      .orderBy(sql`upper(versions)`, (ob) => ob.desc().nullsFirst())
       .executeTakeFirst();
     id = r?.feature_id;
   }
@@ -613,6 +613,8 @@ export async function mergeFeatures(
       throw new Error(
         `${intoId} was merged into ${into.mergedInto}: merge into that`,
       );
+    if (into.status === "retired")
+      throw new Error(`${intoId} is retired: merge into an active feature`);
     const refs = await tx
       .updateTable("feature_refs")
       .set({ feature_id: intoId })
@@ -822,7 +824,12 @@ export async function featureDetail(db: Db, id: string) {
   return {
     feature: { ...toSummary(f), mergedInto: f.merged_into },
     parent: parent ? toSummary(parent) : null,
-    children: children.map(toSummary),
+    // Bays by number: Bay 2 before Bay 10.
+    children: children
+      .map(toSummary)
+      .sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { numeric: true }),
+      ),
     refs: await refsOf(db, id),
     flags: flags.map(flagRow),
     changes: changes.map((c) => ({

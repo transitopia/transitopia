@@ -101,7 +101,7 @@ export async function loadRegistry(
   features: number;
   refs: number;
 }> {
-  return db.transaction().execute(async (tx) => {
+  const result = await db.transaction().execute(async (tx) => {
     await lockRegistry(tx);
     const cleared: Record<string, number> = {};
     for (const table of [
@@ -112,10 +112,7 @@ export async function loadRegistry(
       cleared[table] = Number(
         (await tx.deleteFrom(table).executeTakeFirst()).numDeletedRows,
       );
-    await tx
-      .updateTable("features")
-      .set({ parent_id: null, merged_into: null })
-      .execute();
+    // One statement: features pointing at each other (parents, merges) go together.
     cleared.features = Number(
       (await tx.deleteFrom("features").executeTakeFirst()).numDeletedRows,
     );
@@ -149,7 +146,7 @@ export async function loadRegistry(
       update gtfs_feeds g set seq = n.seq
       from (select feed_id, version,
                    (select coalesce(max(seq), 0) from gtfs_feeds where seq > 0)
-                   + row_number() over (order by start_date, version, feed_id) as seq
+                   + row_number() over (order by fetched_at, start_date, version, feed_id) as seq
             from gtfs_feeds where seq < 0) n
       where g.feed_id = n.feed_id and g.version = n.version`.execute(tx);
     await sql`select setval(pg_get_serial_sequence('gtfs_feeds', 'seq'),
@@ -204,4 +201,7 @@ export async function loadRegistry(
         .execute();
     return { cleared, features: r.features.length, refs: r.refs.length };
   });
+  // Fresh statistics, or the statistics views plan as if the tables were empty.
+  await sql`analyze features, feature_refs, gtfs_feeds`.execute(db);
+  return result;
 }
