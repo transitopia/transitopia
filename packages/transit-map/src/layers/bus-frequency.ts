@@ -54,6 +54,8 @@ export class BusFrequencyLayer {
   /** Per source, the corridors (or stops) last given a `brand`. */
   private readonly brandShown = new Map<string, Set<number>>();
   private key = "";
+  /** Every shown route's rates, as last applied. */
+  private rates: ComboRates | undefined;
 
   constructor(plan: ServicePlan) {
     this.plan = plan;
@@ -103,6 +105,7 @@ export class BusFrequencyLayer {
     this.key = key;
     const perHour = this.freq.perHour(date, window, step * NOW_STEP_S);
     const all = this.combos.rates(perHour, (route) => !hidden.has(route));
+    this.rates = all;
     const own =
       focus === undefined ? undefined : (
         this.combos.rates(perHour, (route) => route === focus)
@@ -127,6 +130,24 @@ export class BusFrequencyLayer {
       );
       this.applyBrands(map, s, ratesAt);
     }
+  }
+
+  /**
+   * The routes running along a corridor (a feature of CORRIDORS_SOURCE or OVERVIEW_CORRIDORS_SOURCE)
+   * at the time and in the window last applied, busiest first: what a tap on it selects.
+   */
+  routesOn(source: string, id: number): string[] {
+    const s = this.sources.find((x) => x.source === source && !x.stops);
+    const c = s?.combo[id];
+    if (c === undefined || !this.rates) return [];
+    const rates = this.rates.units[c]!;
+    const best = new Map<string, number>();
+    this.combos.combos[c]!.units.forEach((u, k) => {
+      const route = this.combos.routeDirs[u.routeDir]!.route;
+      if (rates[k]! > 0)
+        best.set(route, Math.max(best.get(route) ?? 0, rates[k]!));
+    });
+    return [...best].sort((a, b) => b[1] - a[1]).map(([r]) => r);
   }
 
   /** Whether a combo's buses include the route's. */

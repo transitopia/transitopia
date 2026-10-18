@@ -20,7 +20,7 @@ import {
 } from "../components/InfoCard.tsx";
 import type { IconId } from "../components/Icon.tsx";
 
-const STATUS: Record<VehicleState["status"], string> = {
+export const STATUS: Record<VehicleState["status"], string> = {
   moving: "Next stop",
   dwell: "At",
   layover: "Layover at",
@@ -30,7 +30,7 @@ const STATUS: Record<VehicleState["status"], string> = {
   held: "Held at a signal · next stop",
 };
 
-const MODE: Record<
+export const MODE: Record<
   PlanRoute["mode"],
   { eyebrow: (r: PlanRoute) => string; icon: IconId }
 > = {
@@ -40,7 +40,7 @@ const MODE: Record<
   bus: { eyebrow: () => "Bus", icon: "bus-front-fill" },
 };
 
-function cleanStopName(name: string | undefined): string {
+export function cleanStopName(name: string | undefined): string {
   return (name ?? "")
     .replace(/\s+Station\s+@\s+/i, " · ")
     .replace(/\s+Station$/i, "");

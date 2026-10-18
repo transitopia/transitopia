@@ -220,6 +220,24 @@ export class VehicleLayer {
     this.layer.setGeometry(buf, vi, [ox, oy]);
   }
 
+  /** Vehicles within `px` of a screen point, nearest first (0 for one under it). */
+  pickWithin(x: number, y: number, px: number): VehicleState[] {
+    const ll = this.map.unproject([x, y]);
+    const mx = mercX(ll.lng);
+    const my = mercY(ll.lat);
+    const out: [VehicleState, number][] = [];
+    for (const h of this.hits) {
+      let d: number;
+      if ("poly" in h) {
+        d = pointInConvex(h.poly, mx, my) ? 0 : Infinity;
+        for (let k = 0; d > 0 && k < h.poly.length; k += 2)
+          d = Math.min(d, Math.hypot(h.poly[k]! - mx, h.poly[k + 1]! - my));
+      } else d = Math.max(0, distToPolyline(h.line, mx, my) - h.hw);
+      if (d <= px * this.mercPerPx) out.push([h.v, d]);
+    }
+    return out.sort((a, b) => a[1] - b[1]).map(([v]) => v);
+  }
+
   /** Topmost vehicle under a screen point (within a few pixels), for hover and selection. */
   pickAt(x: number, y: number): VehicleState | undefined {
     const ll = this.map.unproject([x, y]);

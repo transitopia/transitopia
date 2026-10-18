@@ -98,6 +98,57 @@ export interface PlaceSnapshot extends Place {
   }[];
 }
 
+/**
+ * One of the things a map tap could have meant, offered in a menu when there are several
+ * (packages/transit-map/README.md#tap-menu): a vehicle, or a station, exchange, stop or route line.
+ */
+export type PickChoice =
+  | {
+      kind: "vehicle";
+      id: string;
+      vehicle: VehicleState;
+      route: PlanRoute | undefined;
+    }
+  | {
+      kind: "place";
+      place: Place;
+      /** "Commercial-Broadway", "Eastbound E Hastings St @ Main St", "99 B-Line". */
+      name: string;
+      /** A bus stop's number on its sign. */
+      code?: string | undefined;
+      /** A route line's route. */
+      route?: PlanRoute | undefined;
+    };
+
+/** The menu a tap near several things opens, at the tap (viewport px). */
+export interface PickMenu {
+  x: number;
+  y: number;
+  choices: PickChoice[];
+}
+
+/** A station, exchange, stop or route as a menu choice, or undefined if the shown feed hasn't it. */
+export function placeChoice(
+  pp: PreparedPlan,
+  place: Place,
+): PickChoice | undefined {
+  const { plan } = pp;
+  if (place.kind === "route") {
+    const route = pp.routes.get(place.id);
+    return route && { kind: "place", place, name: route.label, route };
+  }
+  if (place.kind === "station") {
+    const s = plan.stations.find((x) => x.id === place.id);
+    return s && { kind: "place", place, name: s.name };
+  }
+  if (place.kind === "exchange") {
+    const h = hubsOf(plan).find((x) => x.id === place.id);
+    return h && { kind: "place", place, name: h.name };
+  }
+  const stop = pp.stopById.get(place.id);
+  return stop && { kind: "place", place, name: stop.name, code: stop.code };
+}
+
 /** Station and stop cards list departures this far ahead of the shown time. */
 const DEPARTURES_AHEAD_MS = 2 * 3600_000;
 /** …showing this many per route and destination. */

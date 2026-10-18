@@ -45,6 +45,7 @@ import {
   PlanStore,
   SERVICE_DAY_ROLLOVER_H,
   displayServiceDate,
+  hubsOf,
   mergeCorrections,
 } from "./plans.ts";
 import {
@@ -54,6 +55,7 @@ import {
   EXCHANGES_SOURCE,
   OVERVIEW_CORRIDORS_SOURCE,
   ROUTES_SOURCE,
+  SELECTED_PLACE_RADIUS_PX,
   SELECTED_PLACE_SOURCE,
   STATIONS_SOURCE,
   VEHICLES_BEFORE_LAYER,
@@ -89,8 +91,11 @@ import { AisClient } from "./ais.ts";
 import { LivePoller } from "./live.ts";
 import { sectionsOfKind } from "@transitopia/transit-core/rt/live.ts";
 import {
+  placeChoice,
   placeLocation,
   placeSnapshot,
+  type PickChoice,
+  type PickMenu,
   type PlaceGroup,
   type PlaceSnapshot,
   type RouteSnapshot,
@@ -142,7 +147,7 @@ export interface SelectedVehicle {
 
 export type { Place };
 export type { Departure };
-export type { PlaceGroup, PlaceSnapshot, RouteSnapshot };
+export type { PickChoice, PickMenu, PlaceGroup, PlaceSnapshot, RouteSnapshot };
 
 /** A card to open: a vehicle's, or a place's (station, exchange, stop or route line). */
 export type CardTarget = { vehicle: string } | { place: Place };
@@ -193,6 +198,8 @@ export interface TransitSnapshot {
   place: PlaceSnapshot | RouteSnapshot | undefined;
   /** The title of the card `back()` returns to, when this one was opened from another card. */
   back: string | undefined;
+  /** A tap near several things: what it might have meant, to choose from (`choose`). */
+  pick: PickMenu | undefined;
   /** Registry ids (@transitopia/shared/datasets.ts) of the data drawn right now. */
   datasets: string[];
   scenario: { name: string; description: string } | undefined;
@@ -262,6 +269,8 @@ const SOURCES = [
 const REVEAL_DELAY_MS = 150;
 /** Tap tolerance around stations and stops (px). */
 const PLACE_PICK_PX = 8;
+/** A tap's menu lists at most this many things (packages/transit-map/README.md#tap-menu). */
+const MAX_PICK_CHOICES = 8;
 const SLIDER_START_S = SERVICE_DAY_ROLLOVER_H * 3600;
 const SLIDER_END_S = (24 + SERVICE_DAY_ROLLOVER_H) * 3600;
 
@@ -285,6 +294,7 @@ export class TransitEngine {
   /** The selected vehicle's route, once seen: computed even while its route is hidden. */
   private selectedRoute: string | undefined;
   private place: Place | undefined;
+  private pick: PickMenu | undefined;
   /** When something was selected: bring it into view once its card is up (performance.now()). */
   private revealAt: number | undefined;
   /** Per feed and route: its day types and hourly frequencies (they don't change with the time). */
@@ -435,7 +445,21 @@ export class TransitEngine {
       if (!map.getSource(ROUTES_SOURCE) && !map.isStyleLoaded())
         this.styleReady = false;
     };
-    const onClick = (e: { point: { x: number; y: number } }) => {
+    const onClick = (e: {
+      point: { x: number; y: number };
+      originalEvent: MouseEvent;
+    }) => {
+      // Near several things: ask which (packages/transit-map/README.md#tap-menu).
+      const choices = this.choicesAt(e.point.x, e.point.y);
+      if (choices.length > 1) {
+        this.pick = {
+          x: e.originalEvent.clientX,
+          y: e.originalEvent.clientY,
+          choices,
+        };
+        this.publish();
+        return;
+      }
       const v = this.vehicles.pickAt(e.point.x, e.point.y);
       if (v) {
         this.select(v.id, {
@@ -447,8 +471,10 @@ export class TransitEngine {
       if (place) this.selectPlace(place);
       else this.select(undefined);
     };
-    // Dragging the map takes the camera back; zooming doesn't.
+    // Dragging the map takes the camera back; zooming doesn't. Either closes a tap's menu.
+    const onGesture = () => this.dismissPick();
     const onDragStart = () => {
+      this.dismissPick();
       if (!this.following) return;
       this.setFollow(false);
       this.publish();
@@ -470,9 +496,13 @@ export class TransitEngine {
       this.lastCameraMove = performance.now();
     };
     map.on("dragstart", onDragStart);
+    map.on("zoomstart", onGesture);
+    map.on("rotatestart", onGesture);
     map.on("move", onMove);
     this.cleanups.push(() => {
       map.off("dragstart", onDragStart);
+      map.off("zoomstart", onGesture);
+      map.off("rotatestart", onGesture);
       map.off("move", onMove);
       map.off("style.load", onStyleLoad);
       map.off("styledata", onStyleData);
@@ -575,6 +605,23 @@ export class TransitEngine {
     this.selectVehicle(id, opts);
   }
 
+  /** Take one of the tap menu's choices (`snapshot.pick`). */
+  choose(choice: PickChoice): void {
+    this.pick = undefined;
+    if (choice.kind === "vehicle")
+      this.select(choice.id, {
+        follow: Math.abs(this.clock.rate) <= FOLLOW_MAX_RATE,
+      });
+    else this.selectPlace(choice.place);
+  }
+
+  /** Close the tap menu without choosing. */
+  dismissPick(): void {
+    if (!this.pick) return;
+    this.pick = undefined;
+    this.publish();
+  }
+
   /** Open a station's or stop's card (closing any vehicle's), forgetting the cards `open()` came through. */
   selectPlace(place: Place): void {
     this.trail = [];
@@ -626,6 +673,7 @@ export class TransitEngine {
       this.easeToFollowed(FOLLOW_START_MS);
     else if (changed) this.setFollow(follow);
     this.place = undefined;
+    this.pick = undefined;
     this.syncPlaceHighlight();
     this.writeUrl();
     this.publish();
@@ -636,6 +684,7 @@ export class TransitEngine {
     this.selectedRoute = undefined;
     this.setFollow(false);
     this.place = place;
+    this.pick = undefined;
     this.revealAt = performance.now() + REVEAL_DELAY_MS;
     this.syncPlaceHighlight();
     this.writeUrl();
@@ -673,23 +722,116 @@ export class TransitEngine {
     return this.routeAt(x, y);
   }
 
+  /**
+   * Everything a tap at a screen point might have meant, within the selected place's ring: vehicles,
+   * then stations, exchanges, stops and route lines. A stop is left out when its exchange or
+   * station is in. A route line that a vehicle, station or stop in the list is on doesn't count
+   * towards asking, so a tap on a bus or a stop along its route doesn't ask; once the menu is asked
+   * for anyway, it's listed too.
+   */
+  private choicesAt(x: number, y: number): PickChoice[] {
+    const { map } = this;
+    const pp = this.shownFeed;
+    if (!pp || !this.styleReady) return [];
+    const r = SELECTED_PLACE_RADIUS_PX;
+    const near = (f: { geometry: GeoJSON.Geometry }) => {
+      if (f.geometry.type !== "Point") return false;
+      const [lon, lat] = f.geometry.coordinates;
+      const p = map.project([lon!, lat!]);
+      return Math.hypot(p.x - x, p.y - y) <= r;
+    };
+    const covered = new Set<string>();
+    const out: PickChoice[] = [];
+    for (const v of this.vehicles.pickWithin(x, y, r)) {
+      covered.add(v.routeKey);
+      out.push({
+        kind: "vehicle",
+        id: v.id,
+        vehicle: v,
+        route: pp.routes.get(v.routeKey),
+      });
+    }
+    const placeLayers = [
+      "stations",
+      "exchanges",
+      "bus-stops",
+      VEHICLES_BEFORE_LAYER,
+    ].filter((id) => map.getLayer(id));
+    const hits =
+      placeLayers.length ?
+        map
+          .queryRenderedFeatures(
+            [
+              [x - r, y - r],
+              [x + r, y + r],
+            ],
+            { layers: placeLayers },
+          )
+          .filter(near)
+      : [];
+    const found = new Map<string, Place>();
+    for (const kind of ["station", "exchange", "stop"] as const)
+      for (const f of hits) {
+        const id =
+          kind === "station" ?
+            f.layer.id === "stations" ?
+              f.properties["id"]
+            : undefined
+          : kind === "exchange" ?
+            f.layer.id === "exchanges" ?
+              f.properties["id"]
+            : undefined
+          : f.properties["stop"];
+        if (id === undefined) continue;
+        found.set(`${kind}:${id}`, { kind, id: String(id) });
+        for (const k of String(f.properties["routes"] ?? "").split(","))
+          if (k) covered.add(k);
+      }
+    // A station's or exchange's bays are on its card.
+    for (const h of hubsOf(pp.plan))
+      if (
+        found.has(`exchange:${h.id}`)
+        || (h.station !== undefined && found.has(`station:${h.station}`))
+      )
+        for (const b of h.bays) found.delete(`stop:${b}`);
+    const routes = this.routesAt(x, y, r);
+    const uncovered = routes.filter((key) => !covered.has(key));
+    const asks = out.length + found.size + uncovered.length > 1;
+    for (const key of asks ? routes : uncovered)
+      found.set(`route:${key}`, { kind: "route", id: key });
+    for (const place of found.values()) {
+      const c = placeChoice(pp, place);
+      if (c) out.push(c);
+    }
+    return out.slice(0, MAX_PICK_CHOICES);
+  }
+
   /** The route line under a screen point (bus, ferry and rail lines, and SkyTrain track). */
   private routeAt(x: number, y: number): Place | undefined {
+    const key = this.routesAt(x, y, PLACE_PICK_PX)[0];
+    return key === undefined ? undefined : { kind: "route", id: key };
+  }
+
+  /** The keys of the route lines within `d` px of a screen point, topmost first. */
+  private routesAt(x: number, y: number, d: number): string[] {
     const { map } = this;
     const layers = [
       "routes-bus",
       "routes-bus-limited",
       "corridors-brand",
       "corridors-overview-brand",
+      // Regular routes, drawn as the corridors they share (packages/transit-map/README.md#bus-corridors).
+      "corridors",
+      "corridors-overview",
       "routes-shape",
       "routes-shape-inactive",
       "routes-skytrain",
       ...PICKABLE_TRACK_LAYERS,
     ].filter((id) => map.getLayer(id));
     const brands = this.shownFeed ? brandedRoutes(this.shownFeed.plan) : [];
-    if (!layers.length) return undefined;
-    const d = PLACE_PICK_PX;
+    if (!layers.length) return [];
     const known = this.shownFeed?.routes;
+    const out = new Set<string>();
     for (const f of map.queryRenderedFeatures(
       [
         [x - d, y - d],
@@ -697,6 +839,14 @@ export class TransitEngine {
       ],
       { layers },
     )) {
+      if (f.layer.id === "corridors" || f.layer.id === "corridors-overview") {
+        for (const key of this.frequencyLayer?.routesOn(
+          f.layer.source,
+          Number(f.id),
+        ) ?? [])
+          if (known?.has(key) && !this.hidden.has(key)) out.add(key);
+        continue;
+      }
       // Corridors carry the route with its own colour drawn on them as feature state.
       const brand =
         f.layer.id.endsWith("-brand") ? f.state["brand"] : undefined;
@@ -709,10 +859,9 @@ export class TransitEngine {
         typeof brand === "number" ?
           (brands[brand]?.key ?? "")
         : String(f.properties["route"] ?? f.properties["line"] ?? "");
-      if (known?.has(key) && !this.hidden.has(key))
-        return { kind: "route", id: key };
+      if (known?.has(key) && !this.hidden.has(key)) out.add(key);
     }
-    return undefined;
+    return [...out];
   }
 
   /** Where the selected place is, for its highlight and "Centre on map". */
@@ -1182,6 +1331,7 @@ export class TransitEngine {
       selected,
       place: this.placeSnapshot(t),
       back: this.trail.at(-1)?.label,
+      pick: this.pick,
       datasets:
         prev && prev.datasets.join() === this.datasets.join() ?
           prev.datasets

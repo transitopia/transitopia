@@ -3,14 +3,20 @@ import type {
   TransitEngine,
   TransitSnapshot,
 } from "@transitopia/transit-map/engine.ts";
+import type { VehicleState } from "@transitopia/transit-core/schedule/engine.ts";
+import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
 
 import { Icon } from "../components/Icon.tsx";
 
-/** "Expo Line train to Waterfront", "99 bus to UBC". */
+/** The selected vehicle, as vehicleLabel names it. */
 export function vehicleName(snap: TransitSnapshot): string {
   const v = snap.selected?.vehicle;
   const r = snap.selected?.route;
-  if (!v || !r) return "vehicle";
+  return v && r ? vehicleLabel(v, r) : "vehicle";
+}
+
+/** "Expo Line train to Waterfront", "99 bus to UBC". */
+export function vehicleLabel(v: VehicleState, r: PlanRoute): string {
   const to = v.headsign.replace(/^.*?\bTo\s+/i, "to ");
   return (
     r.mode === "bus" ? `${r.key} bus ${to}`

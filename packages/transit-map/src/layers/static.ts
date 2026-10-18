@@ -48,6 +48,8 @@ const ANCHORS = [
 /** Vehicles are inserted beneath this layer, so stop and station labels stay readable above them. */
 export const VEHICLES_BEFORE_LAYER = "bus-stops-label";
 export const SELECTED_PLACE_SOURCE = "transit-selected-place";
+/** The ring around a selected place (px); also how far a tap looks for what it might mean. */
+export const SELECTED_PLACE_RADIUS_PX = 20;
 const SELECTED_PLACE_LAYER = "selected-place";
 
 const KIND_ORDER: Record<string, number> = { bus: 0, shape: 1, skytrain: 2 };
@@ -1032,7 +1034,7 @@ export function setSelectedPlace(
         type: "circle",
         source: SELECTED_PLACE_SOURCE,
         paint: {
-          "circle-radius": 20,
+          "circle-radius": SELECTED_PLACE_RADIUS_PX,
           "circle-color": "#31cddc",
           "circle-opacity": 0.28,
           "circle-stroke-color": "#0d98a6",
