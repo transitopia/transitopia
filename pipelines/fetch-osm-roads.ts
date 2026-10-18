@@ -5,10 +5,21 @@
 // so builds are reproducible: var/raw/osm-roads/<feed>/YYYY-MM-DD.json (and latest.json).
 //
 //   tsx pipelines/fetch-osm-roads.ts [--feed <id>]   (default: every feed)
+//   tsx pipelines/fetch-osm-roads.ts --max-age-days 30   (only feeds without roads, or older; the
+//                                                         nightly data build, pipelines/data.ts)
+//
+// The newest KEEP_DATED dated files are kept (TransLink's are about 100 MB each).
 //
 // OSM data © OpenStreetMap contributors, ODbL.
 
-import { copyFile, mkdir, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  readdir,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import {
   feedPaths,
@@ -39,6 +50,8 @@ const ROAD_CLASSES = [
   "busway",
   "bus_guideway",
 ];
+/** Dated extracts kept per feed, newest first; older ones are deleted after a fetch. */
+const KEEP_DATED = 3;
 /** Service roads this close to a bus stop are included (m): exchange loops and bays. */
 const SERVICE_NEAR_STOP_M = 150;
 
@@ -84,6 +97,11 @@ async function fetchFeed(feed: string, bbox: [number, number, number, number]) {
       const counts: Record<string, number> = {};
       for (const e of data.elements) counts[e.type] = (counts[e.type] ?? 0) + 1;
       log(`${feed}: saved ${out}: ${JSON.stringify(counts)}`);
+      const dated = (await readdir(dir))
+        .filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f))
+        .sort()
+        .reverse();
+      for (const f of dated.slice(KEEP_DATED)) await rm(join(dir, f));
       return;
     } catch (e) {
       lastErr = e;
@@ -93,11 +111,31 @@ async function fetchFeed(feed: string, bbox: [number, number, number, number]) {
   throw lastErr;
 }
 
-const feedArg = process.argv.indexOf("--feed");
-const only = feedArg >= 0 ? process.argv[feedArg + 1] : undefined;
+const arg = (name: string) => {
+  const i = process.argv.indexOf(name);
+  return i >= 0 ? process.argv[i + 1] : undefined;
+};
+const only = arg("--feed");
+const maxAgeDays = arg("--max-age-days");
+
+/** Whether the feed's roads were fetched within --max-age-days (always false without it). */
+async function fresh(feed: string): Promise<boolean> {
+  if (maxAgeDays === undefined) return false;
+  try {
+    const { mtimeMs } = await stat(join(feedPaths(feed).roads, "latest.json"));
+    return Date.now() - mtimeMs < Number(maxAgeDays) * 86_400_000;
+  } catch {
+    return false;
+  }
+}
+
 const regions = await readRegions();
 for (const feed of await readFeeds()) {
   if (only && feed.id !== only) continue;
+  if (await fresh(feed.id)) {
+    log(`${feed.id}: roads fetched within ${maxAgeDays} days`);
+    continue;
+  }
   const shown = regions.filter((r) => r.feeds.includes(feed.id));
   if (!shown.length) continue;
   const bbox: [number, number, number, number] = [
