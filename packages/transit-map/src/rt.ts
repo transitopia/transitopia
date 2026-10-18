@@ -126,8 +126,9 @@ export class RtClient {
   private predictors = new Map<string, Predictor | "loading">();
   private listeners = new Set<() => void>();
   available: boolean;
-  /** URL prefixes of the published data and of the RT service (undefined: schedules only). */
-  private readonly data: string;
+  /** The URL of a published file (PlanStore.dataUrl). */
+  private readonly data: (path: string) => string;
+  /** URL prefix of the RT service (undefined: schedules only). */
   private readonly api: string | undefined;
   /** URL prefix of the region on the RT service (…/regions/<id>/). */
   private readonly region: string | undefined;
@@ -139,7 +140,11 @@ export class RtClient {
   private readonly prediction: PredictionConfig;
 
   constructor(
-    urls: { data: string; api: string | undefined; region: string | undefined },
+    urls: {
+      data: (path: string) => string;
+      api: string | undefined;
+      region: string | undefined;
+    },
     config: Pick<RegionConfig, "kinematics" | "rt" | "feed">,
   ) {
     const rt = config.feed.realtime;
@@ -392,9 +397,7 @@ export class RtClient {
     this.predictors.set(version, "loading");
     // Scenario plans ("<version>~<name>") share the base feed's profile.
     const base = version.split("~")[0]!;
-    void fetch(
-      `${this.data}${feedDataPath(pp.plan.feed, base, "rt-profile.json")}`,
-    )
+    void fetch(this.data(feedDataPath(pp.plan.feed, base, "rt-profile.json")))
       .then((r) => (r.ok ? (r.json() as Promise<RtProfileFile>) : undefined))
       .catch(() => undefined)
       .then((profile) => {

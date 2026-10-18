@@ -60,12 +60,15 @@ export interface PlatformsFile {
   >;
 }
 
+/** The URL of a published file, by its path (PlanStore.dataUrl). */
+type DataUrl = (path: string) => string;
+
 export async function loadTracks(
-  base: string,
+  url: DataUrl,
   path: string,
 ): Promise<InfraCollection | undefined> {
   try {
-    const res = await fetch(`${base}${path}`);
+    const res = await fetch(url(path));
     return res.ok ? ((await res.json()) as InfraCollection) : undefined;
   } catch {
     return undefined;
@@ -77,12 +80,12 @@ export async function loadTracks(
  * undefined without it: SkyTrain then falls back to the GTFS shapes, as without tracks.
  */
 export async function loadLines(
-  base: string,
+  url: DataUrl,
   tracksPath: string,
 ): Promise<LineGeometry | undefined> {
   try {
     const res = await fetch(
-      `${base}${tracksPath.replace(/tracks\.geojson$/, "lines.geojson")}`,
+      url(tracksPath.replace(/tracks\.geojson$/, "lines.geojson")),
     );
     return res.ok ? ((await res.json()) as LineGeometry) : undefined;
   } catch {
@@ -91,13 +94,13 @@ export async function loadLines(
 }
 
 export async function loadPlatforms(
-  base: string,
+  url: DataUrl,
   feed: string,
   feedVersion: string,
 ): Promise<PlatformsFile | undefined> {
   try {
     const res = await fetch(
-      `${base}${feedDataPath(feed, feedVersion, "platforms.json")}`,
+      url(feedDataPath(feed, feedVersion, "platforms.json")),
     );
     return res.ok ? ((await res.json()) as PlatformsFile) : undefined;
   } catch {

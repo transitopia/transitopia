@@ -396,7 +396,11 @@ export class TransitEngine {
     const regionBase =
       opts.apiBase ? `${opts.apiBase}regions/${opts.region}/` : undefined;
     this.rt = new RtClient(
-      { data: opts.dataBase, api: opts.apiBase, region: regionBase },
+      {
+        data: (path) => store.dataUrl(path),
+        api: opts.apiBase,
+        region: regionBase,
+      },
       opts.config,
     );
     // One poll for every live source: buses, SeaBus AIS, service changes, live dispatch.
@@ -422,12 +426,13 @@ export class TransitEngine {
     // Track infrastructure, in a region with track-level rail (optional even there: without it,
     // SkyTrain falls back to GTFS shapes).
     const tracksPath = store.tracksPath;
+    const dataUrl = (path: string) => store.dataUrl(path);
     if (tracksPath)
-      void loadTracks(opts.dataBase, tracksPath).then(async (t) => {
+      void loadTracks(dataUrl, tracksPath).then(async (t) => {
         if (this.disposed) return;
         this.tracks = t;
         if (t) store.setTrackGraph(TrackGraph.fromCollection(t));
-        if (t) this.lines = await loadLines(opts.dataBase, tracksPath);
+        if (t) this.lines = await loadLines(dataUrl, tracksPath);
         if (this.disposed) return;
         this.syncStatic(true);
       });
@@ -1410,7 +1415,7 @@ export class TransitEngine {
         const plan = pp.plan;
         const tracks = this.tracks;
         void loadPlatforms(
-          this.store.dataBase,
+          (path) => this.store.dataUrl(path),
           plan.feed,
           plan.feedVersion,
         ).then(

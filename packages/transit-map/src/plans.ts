@@ -104,6 +104,17 @@ export class PlanStore {
     this.scenario = scenario;
   }
 
+  /**
+   * The URL of a published file (a path from a manifest or index, under dataBase), with the build
+   * it's from: every data build republishes files at the same paths, cached for a day, so the URL
+   * names the build (the manifest's generatedAt, which changes with every build; the manifest
+   * itself is cached for 5 minutes) and a rebuilt file is never read from a cache as its old self
+   * (deployment/README.md#transit-data-datatransitopiaorg).
+   */
+  dataUrl(path: string): string {
+    return `${this.dataBase}${path}?v=${encodeURIComponent(this.manifest.generatedAt)}`;
+  }
+
   /** Whether the region has track-level rail, and with it tracks, movements, dispatch and observations. */
   get rail(): boolean {
     return this.config.operations !== undefined;
@@ -144,7 +155,7 @@ export class PlanStore {
     if (this.observationIndex === undefined) {
       this.observationIndex = null;
       void fetch(
-        `${this.dataBase}${regionDataPath(this.region, "observations/index.json")}`,
+        this.dataUrl(regionDataPath(this.region, "observations/index.json")),
       )
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null)
@@ -162,7 +173,7 @@ export class PlanStore {
       if (obs === undefined) {
         this.fetchOnce(
           path,
-          `${this.dataBase}${path}`,
+          this.dataUrl(path),
           this.observationFiles,
           (j) => (j as ObservationFile).observations,
         );
@@ -187,9 +198,7 @@ export class PlanStore {
           .catch(() => null);
       // The static index (build:dispatch) and, unless viewing a scenario, the live one.
       void Promise.all([
-        get(
-          `${this.dataBase}${regionDataPath(this.region, "dispatch/index.json")}`,
-        ),
+        get(this.dataUrl(regionDataPath(this.region, "dispatch/index.json"))),
         this.scenario || !this.apiBase ?
           null
         : get(`${this.apiBase}rt/dispatch`),
@@ -214,7 +223,7 @@ export class PlanStore {
         // Live and preview versions are served by the RT service, static ones with the data.
         entry.path.startsWith("rt/") && this.apiBase ?
           `${this.apiBase}${entry.path}`
-        : `${this.dataBase}${entry.path}`,
+        : this.dataUrl(entry.path),
         this.patches,
         (j) => {
           const patch = j as DispatchPatch;
@@ -260,7 +269,10 @@ export class PlanStore {
     const index = this.movementIndexes.get(version);
     if (index === undefined) {
       const entry = this.manifest.feeds.find((f) => f.version === version);
-      const url = `${this.dataBase}${entry?.movements ?? feedDataPath(this.config.feed.id, version, "movements/index.json")}`;
+      const url = this.dataUrl(
+        entry?.movements
+          ?? feedDataPath(this.config.feed.id, version, "movements/index.json"),
+      );
       this.fetchOnce(
         version,
         url,
@@ -279,7 +291,7 @@ export class PlanStore {
     if (file === undefined) {
       this.fetchOnce(
         fileKey,
-        `${this.dataBase}${path}`,
+        this.dataUrl(path),
         this.movementFiles,
         (j) => j as MovementsFile,
       );
@@ -418,7 +430,7 @@ export class PlanStore {
     const p = this.prepared.get(feed.version);
     if (p) return p;
     if (!this.loading.has(feed.version)) {
-      const promise = fetch(`${this.dataBase}${feed.path}`)
+      const promise = fetch(this.dataUrl(feed.path))
         .then((r) => {
           if (!r.ok)
             throw new Error(`Failed to load ${feed.path}: HTTP ${r.status}`);

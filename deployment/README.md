@@ -76,7 +76,11 @@ One-time setup (done):
 2. Add a CORS policy allowing `GET` and `HEAD` from `https://www.transitopia.org` (and
    `https://transitopia.org`, `https://*.transitopia-web.pages.dev`, `http://localhost:5173`).
 3. Cache: the manifests (`data/feeds/*/manifest.json`) should be short-lived (e.g. 5 minutes); everything else can be cached
-   for longer (the other paths aren't content-addressed yet, and some are rewritten). The upload stores
+   for longer. Each build rewrites files at the same paths, so the site asks for every other file with
+   the build in its URL (`?v=<the manifest's generatedAt>`, `PlanStore.dataUrl` in
+   `packages/transit-map/src/plans.ts`): after a build, browsers and the edge fetch the new file
+   instead of serving the old one for a day, once the manifest's 5 minutes are up. The Cache Rule
+   must keep the query string in the cache key (Cloudflare's default). The upload stores
    `Cache-Control` on each object when it uploads (5 minutes for the manifest, a day for the rest),
    and a Cache Rule for `data.transitopia.org` makes the edge follow it (Cloudflare doesn't cache
    `.json` by default). Set the same headers when uploading by hand, or an overwrite drops them.
