@@ -173,7 +173,7 @@ config/
 
 | Region | Feeds (operator) | Drawn |
 |---|---|---|
-| `metro-vancouver` | `translink` (TransLink) | SkyTrain, SeaBus, West Coast Express, 99, R1–R6 |
+| `metro-vancouver` | `translink` (TransLink) | SkyTrain, SeaBus, West Coast Express, 99, R1–R6, 25 |
 | `greater-victoria` | `bc-transit-victoria` (BC Transit) | 95 Blink RapidBus, 15, 70 |
 | `central-okanagan` | `bc-transit-kelowna` (BC Transit) | 97 Okanagan RapidBus |
 
