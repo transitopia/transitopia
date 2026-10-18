@@ -49,7 +49,9 @@ import {
 import {
   BUS_STOPS_SOURCE,
   BUS_TICKS_SOURCE,
+  CORRIDORS_SOURCE,
   EXCHANGES_SOURCE,
+  OVERVIEW_CORRIDORS_SOURCE,
   ROUTES_SOURCE,
   SELECTED_PLACE_SOURCE,
   STATIONS_SOURCE,
@@ -66,6 +68,7 @@ import { BusFrequencyLayer } from "./layers/bus-frequency.ts";
 import type { FrequencyWindow } from "@transitopia/transit-core/plan/bus-frequency.ts";
 import {
   DEBUG_SOURCE,
+  LINES_SOURCE,
   TRACKS_SOURCE,
   addTrackLayers,
   applyTrackFilter,
@@ -239,12 +242,15 @@ const IDLE_RECOMPUTE_MS = 1000;
 /** Sources the engine adds to the host's map (removed on dispose). */
 const SOURCES = [
   ROUTES_SOURCE,
+  CORRIDORS_SOURCE,
+  OVERVIEW_CORRIDORS_SOURCE,
   SELECTED_PLACE_SOURCE,
   STATIONS_SOURCE,
   EXCHANGES_SOURCE,
   BUS_STOPS_SOURCE,
   BUS_TICKS_SOURCE,
   TRACKS_SOURCE,
+  LINES_SOURCE,
   DEBUG_SOURCE,
 ];
 /** A tapped place is brought into view after this long, once its card is up and measured. */
