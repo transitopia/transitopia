@@ -82,7 +82,7 @@ Tapping a route line (bus, ferry and rail lines, and SkyTrain track) opens its c
 
 How often something runs is shown in bands: Good, OK, Poor, Bad, the same for every route in every region (≤6, ≤12, ≤20 and over 20 minutes between departures) and colours per theme, defined once in `packages/shared/src/frequency.ts` and shared with the map's bus corridors (`src/TransitMap/frequency.ts` sets them as the `--band-*` CSS properties), blue to red, never green (live) or amber (not live). The band's name always shows next to its colour. Helpers: `src/TransitMap/frequency.ts`.
 
-Cards show routes in their own colours (badges, chips, a route card's tile), except regular bus routes the map draws (the 25 today), which have no colour of their own: they take the band of how often they run over the day (06:00–21:00 on the shown date, in the busier direction), as the map's "Day" bus frequency colours them, whichever window the map is set to (`routeColorsFor` in `src/TransitMap/RouteBadge.tsx`; the engine's `dayMinutes`). Catalogue routes, which the map doesn't draw, stay grey.
+Cards show routes in their own colours (badges, chips, a route card's tile), except regular bus routes the map draws (the 25 today), which have no colour of their own: they take the band of how often they run over the day (06:00–21:00 on the shown date, in the busier direction), as the map's "Day" bus frequency colours them, whichever window the map is set to (`routeColorsFor` in `src/TransitMap/RouteBadge.tsx`; the engine's `dayMinutes`). The map's vehicles on those routes follow the map's window instead, matching the line they're on ([transit-map → Vehicle shapes](../../packages/transit-map/README.md)). Catalogue routes, which the map doesn't draw, stay grey.
 
 ## Feature cards
 

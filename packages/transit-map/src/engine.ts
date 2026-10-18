@@ -6,6 +6,10 @@
 import { LngLat, type Map as MlMap } from "maplibre-gl";
 import type { Theme } from "@transitopia/map-style/basemap.ts";
 import { realtimeOf } from "@transitopia/shared/datasets.ts";
+import {
+  bandIndexPerHour,
+  FREQUENCY_BANDS,
+} from "@transitopia/shared/frequency.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
 import type { InfraCollection } from "@transitopia/transit-core/infra/types.ts";
 import type { LineGeometry } from "@transitopia/transit-core/infra/line-geometry.ts";
@@ -304,6 +308,8 @@ export class TransitEngine {
     PreparedPlan,
     Map<string, number | undefined>
   >();
+  /** What the vehicle colours were last set for (syncVehicleColors). */
+  private vehicleColorsFor: { pp: PreparedPlan; key: string } | undefined;
   /** The real-time corrections last applied, per service date (for departure times). */
   private lastCorrections: Map<ServiceDate, ScheduleCorrections> | undefined;
   private following = false;
@@ -1433,7 +1439,40 @@ export class TransitEngine {
     }
     this.vehicles.attach();
     this.vehicles.setRouteColors(pp.plan.routes);
+    this.vehicleColorsFor = undefined;
     this.invalidate();
+  }
+
+  /**
+   * Vehicles in their route's colour on the map: its own, except a regular bus route, which has none
+   * and takes the frequency band its corridors show (the map's window, "now" or "day"), in the
+   * current theme (packages/transit-map/README.md#bus-corridors). Re-set when the feed, the theme or
+   * the frequency layer's rates change; returns whether they did.
+   */
+  private syncVehicleColors(): boolean {
+    const pp = this.shownFeed;
+    if (!pp) return false;
+    const freq = this.frequencyLayer;
+    const key = `${freq?.version ?? -1}|${this.theme}`;
+    if (this.vehicleColorsFor?.pp === pp && this.vehicleColorsFor.key === key)
+      return false;
+    this.vehicleColorsFor = { pp, key };
+    const bands = FREQUENCY_BANDS.length;
+    this.vehicles.setRouteColors(
+      pp.plan.routes.map((r) => {
+        if (r.mode !== "bus" || r.category !== "regular") return r;
+        const perHour = freq?.routePerHour(r.key);
+        if (perHour === undefined) return r;
+        // A bus out when none start in the window (its last trip): the least frequent band.
+        const band = bandIndexPerHour(perHour);
+        return {
+          key: r.key,
+          color:
+            FREQUENCY_BANDS[band < 0 ? bands - 1 : band]!.color[this.theme],
+        };
+      }),
+    );
+    return true;
   }
 
   private frame = (): void => {
@@ -1481,6 +1520,7 @@ export class TransitEngine {
         this.focusRoute(),
       );
     }
+    if (this.syncVehicleColors()) this.inputsChanged = true;
     if (this.following && this.styleReady) this.keepCentred();
     else if (this.clearPaddingPending && !map.isMoving())
       this.clearMapPadding();

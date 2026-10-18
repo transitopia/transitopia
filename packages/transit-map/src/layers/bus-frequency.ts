@@ -56,6 +56,10 @@ export class BusFrequencyLayer {
   private key = "";
   /** Every shown route's rates, as last applied. */
   private rates: ComboRates | undefined;
+  /** Per route, trips an hour in its busier direction, as last applied. */
+  private routeRates = new Map<string, number>();
+  /** Bumped whenever update applies new rates (so the engine knows to re-colour vehicles). */
+  version = 0;
 
   constructor(plan: ServicePlan) {
     this.plan = plan;
@@ -103,7 +107,16 @@ export class BusFrequencyLayer {
     const key = `${date}|${window}|${step}|${[...hidden].join(",")}|${focus ?? ""}`;
     if (key === this.key) return;
     this.key = key;
+    this.version++;
     const perHour = this.freq.perHour(date, window, step * NOW_STEP_S);
+    this.routeRates.clear();
+    for (const rd of this.combos.routeDirs) {
+      const n = rd.patterns.reduce((sum, p) => sum + perHour[p]!, 0);
+      this.routeRates.set(
+        rd.route,
+        Math.max(this.routeRates.get(rd.route) ?? 0, n),
+      );
+    }
     const all = this.combos.rates(perHour, (route) => !hidden.has(route));
     this.rates = all;
     const own =
@@ -148,6 +161,14 @@ export class BusFrequencyLayer {
         best.set(route, Math.max(best.get(route) ?? 0, rates[k]!));
     });
     return [...best].sort((a, b) => b[1] - a[1]).map(([r]) => r);
+  }
+
+  /**
+   * A route's trips an hour in its busier direction, in the window last applied: the frequency its
+   * corridors show while it's focused (wherever it runs its whole service), and its vehicles' colour.
+   */
+  routePerHour(route: string): number | undefined {
+    return this.routeRates.get(route);
   }
 
   /** Whether a combo's buses include the route's. */
