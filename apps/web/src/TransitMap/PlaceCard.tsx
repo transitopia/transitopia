@@ -25,6 +25,7 @@ import { clockMinutes, timeState } from "./format.ts";
 import {
   badge,
   RouteBadge,
+  RouteBadgeStack,
   routeColorsFor,
   type RouteColors,
 } from "./RouteBadge.tsx";
@@ -207,11 +208,7 @@ const SharedRow: React.FC<{
   colors: (r: PlanRoute) => RouteColors;
 }> = ({ shared: s, colors }) => (
   <div className="my-1 flex items-center gap-2.5 rounded-[10px] border-0! bg-(--card-combined-bg) px-3 py-2.5">
-    <span className="flex">
-      {s.routes.map((r) => (
-        <RouteBadge key={r.key} route={r} colors={colors(r)} ring />
-      ))}
-    </span>
+    <RouteBadgeStack routes={s.routes} colors={colors} />
     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
       <span className="text-sm leading-snug font-bold">
         {sharedLabel(s.routes, s.to)}

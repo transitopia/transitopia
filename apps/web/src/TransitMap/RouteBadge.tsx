@@ -36,15 +36,46 @@ export function routeColorsFor(
   };
 }
 
+const BADGE_CLASS =
+  "flex h-[22px] min-w-8 items-center justify-center rounded-[5px] px-[5px] text-xs font-extrabold";
+
 /** The badge in the route's colours, leading departure rows and "View route" menu items. */
 export const RouteBadge: React.FC<{
   route: PlanRoute;
   colors: RouteColors;
-  ring?: boolean;
-}> = ({ route, colors, ring }) => (
+}> = ({ route, colors }) => (
   <span
-    className={`flex h-[22px] min-w-8 items-center justify-center rounded-[5px] px-[5px] text-xs font-extrabold ${ring ? "-ml-1.5 shadow-[0_0_0_2px_var(--card-combined-bg)] first:ml-0" : ""}`}
+    className={BADGE_CLASS}
     style={{ background: colors.bg, color: colors.fg }}>
     {badge(route)}
   </span>
 );
+
+/** A combined row shows at most this many badges, then "…" for the rest. */
+const STACK_MAX = 3;
+
+/**
+ * A combined row's routes (apps/web/README.md#station-and-stop-cards), badges stacked in a column:
+ * the first three, then "…" (the rest in its tooltip) when there are more.
+ */
+export const RouteBadgeStack: React.FC<{
+  routes: PlanRoute[];
+  colors: (r: PlanRoute) => RouteColors;
+}> = ({ routes, colors }) => {
+  const shown = routes.length > STACK_MAX ? routes.slice(0, STACK_MAX) : routes;
+  const rest = routes.slice(shown.length);
+  return (
+    <span className="flex flex-none flex-col gap-[3px]">
+      {shown.map((r) => (
+        <RouteBadge key={r.key} route={r} colors={colors(r)} />
+      ))}
+      {rest.length ?
+        <span
+          className={`${BADGE_CLASS} bg-(--card-chip-bg) text-(--card-muted)`}
+          title={`Also ${rest.map(badge).join(", ")}`}>
+          …
+        </span>
+      : null}
+    </span>
+  );
+};
