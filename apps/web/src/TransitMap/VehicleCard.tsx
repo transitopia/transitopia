@@ -8,7 +8,7 @@ import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
 import { creditsFor, legendsFor } from "@transitopia/shared/datasets.ts";
 
 import { clockMinutes, timeState } from "./format.ts";
-import { RouteBadge } from "./RouteBadge.tsx";
+import { RouteBadge, routeColorsFor } from "./RouteBadge.tsx";
 import {
   CardRow,
   CardSection,
@@ -151,6 +151,7 @@ export const VehicleCard: React.FC<{
     );
 
   const mode = MODE[route.mode];
+  const colors = routeColorsFor(engine, snap)(route);
   const title = route.mode === "bus" ? busTitle(v, route) : headsign(v);
   const actions: CardAction[] = [
     snap.following ?
@@ -182,7 +183,7 @@ export const VehicleCard: React.FC<{
     {
       id: "route",
       label: `View route: ${route.label}`,
-      lead: <RouteBadge route={route} />,
+      lead: <RouteBadge route={route} colors={colors} />,
       onSelect: () =>
         engine.open({ place: { kind: "route", id: route.key } }, title),
     },
@@ -202,7 +203,7 @@ export const VehicleCard: React.FC<{
   ];
   return (
     <InfoCard
-      tile={{ icon: mode.icon, bg: route.color, fg: route.textColor }}
+      tile={{ icon: mode.icon, ...colors }}
       eyebrow={mode.eyebrow(route)}
       title={title}
       subtitle={
@@ -255,7 +256,7 @@ export const VehicleCard: React.FC<{
               type="button"
               title={`View route: ${route.label}`}
               className="inline-flex h-[26px] items-center rounded-md px-[9px] text-[13px] font-bold hover:shadow-[inset_0_0_0_100px_rgb(0_0_0/0.12)]"
-              style={{ background: route.color, color: route.textColor }}
+              style={{ background: colors.bg, color: colors.fg }}
               onClick={() =>
                 engine.open({ place: { kind: "route", id: route.key } }, title)
               }>

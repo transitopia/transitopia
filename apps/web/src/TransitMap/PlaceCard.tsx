@@ -22,7 +22,12 @@ import {
 import { Menu, type MenuItem } from "../components/Menu.tsx";
 import type { IconId } from "../components/Icon.tsx";
 import { clockMinutes, timeState } from "./format.ts";
-import { badge, RouteBadge } from "./RouteBadge.tsx";
+import {
+  badge,
+  RouteBadge,
+  routeColorsFor,
+  type RouteColors,
+} from "./RouteBadge.tsx";
 import { bandOf, everyText } from "./frequency.ts";
 
 /** "Eastbound E Hastings St @ Main St" → ["Eastbound", "E Hastings St @ Main St"]. */
@@ -102,7 +107,8 @@ const GroupRow: React.FC<{
   now: number;
   live: boolean;
   items: MenuItem[];
-}> = ({ group, now, live, items }) => {
+  colors: (r: PlanRoute) => RouteColors;
+}> = ({ group, now, live, items, colors }) => {
   const [first, ...rest] = group.departures;
   const cancelled = group.departures.filter((d) => d.cancelled);
   const note = [
@@ -125,7 +131,7 @@ const GroupRow: React.FC<{
   );
   const content = (
     <>
-      <RouteBadge route={group.route} />
+      <RouteBadge route={group.route} colors={colors(group.route)} />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="text-[14.5px] leading-snug">
           {headsign(group.headsign)}
@@ -196,11 +202,14 @@ const NOUNS: Record<DepartureKind, string> = {
   bus: "buses",
 };
 
-const SharedRow: React.FC<{ shared: Shared }> = ({ shared: s }) => (
+const SharedRow: React.FC<{
+  shared: Shared;
+  colors: (r: PlanRoute) => RouteColors;
+}> = ({ shared: s, colors }) => (
   <div className="my-1 flex items-center gap-2.5 rounded-[10px] border-0! bg-(--card-combined-bg) px-3 py-2.5">
     <span className="flex">
       {s.routes.map((r) => (
-        <RouteBadge key={r.key} route={r} ring />
+        <RouteBadge key={r.key} route={r} colors={colors(r)} ring />
       ))}
     </span>
     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -263,7 +272,8 @@ const DepartureList: React.FC<{
   empty: string;
   snap: TransitSnapshot;
   itemsFor: (g: PlaceGroup) => MenuItem[];
-}> = ({ title, groups, shared, empty, snap, itemsFor }) => {
+  colors: (r: PlanRoute) => RouteColors;
+}> = ({ title, groups, shared, empty, snap, itemsFor, colors }) => {
   const owner = new Map<string, Shared>();
   for (const s of shared)
     if (s.platforms.length === 1) for (const k of s.groups) owner.set(k, s);
@@ -275,6 +285,7 @@ const DepartureList: React.FC<{
       now={snap.t}
       live={snap.live}
       items={itemsFor(g)}
+      colors={colors}
     />
   );
   const done = new Set<Shared>();
@@ -299,7 +310,7 @@ const DepartureList: React.FC<{
   return (
     <CardSection title={title}>
       {onTop.map((s) => (
-        <SharedRow key={sharedKey(s)} shared={s} />
+        <SharedRow key={sharedKey(s)} shared={s} colors={colors} />
       ))}
       {groups.length ?
         blocks
@@ -314,6 +325,7 @@ const PlaceCardBody: React.FC<{
   place: PlaceSnapshot;
 }> = ({ engine, snap, place }) => {
   const state = timeState(snap);
+  const colors = routeColorsFor(engine, snap);
   const station = place.kind === "station";
   const exchange = place.kind === "exchange";
   const isBus = (r: PlanRoute) => r.mode === "bus";
@@ -350,7 +362,7 @@ const PlaceCardBody: React.FC<{
       {
         id: "route",
         label: `View route: ${g.route.label}`,
-        lead: <RouteBadge route={g.route} />,
+        lead: <RouteBadge route={g.route} colors={colors(g.route)} />,
         onSelect: go({ kind: "route", id: g.route.key }),
       },
     ];
@@ -458,7 +470,7 @@ const PlaceCardBody: React.FC<{
       }
       chips={place.routes.map((r) => ({
         label: isBus(r) ? r.key : r.label,
-        color: { bg: r.color, fg: r.textColor },
+        color: colors(r),
         onSelect: go({ kind: "route", id: r.key }),
         action: `View route: ${r.label}`,
       }))}
@@ -510,6 +522,7 @@ const PlaceCardBody: React.FC<{
           groups={x.groups}
           shared={x.shared}
           itemsFor={itemsFor}
+          colors={colors}
           empty={
             sections.length > 1 ?
               `No ${NOUNS[x.kind]} leave here in the next two hours.`

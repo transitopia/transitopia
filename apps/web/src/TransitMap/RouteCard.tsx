@@ -18,6 +18,7 @@ import {
 } from "../components/InfoCard.tsx";
 import { timeState } from "./format.ts";
 import { bandKey, bandOf } from "./frequency.ts";
+import { routeColorsFor } from "./RouteBadge.tsx";
 
 const hh = (h: number) => String(h % 24).padStart(2, "0");
 
@@ -60,6 +61,7 @@ const RouteCardBody: React.FC<{
   place: RouteSnapshot;
 }> = ({ engine, snap, place }) => {
   const { route } = place;
+  const colors = routeColorsFor(engine, snap)(route);
   const days = engine.routeDays(route.key);
   const [dayIndex, setDayIndex] = React.useState(0);
   const day = days[Math.min(dayIndex, days.length - 1)];
@@ -138,12 +140,8 @@ const RouteCardBody: React.FC<{
     <InfoCard
       tile={
         route.mode === "bus" ?
-          { text: route.key, bg: route.color, fg: route.textColor }
-        : {
-            icon: route.mode === "ferry" ? "ferry" : "train",
-            bg: route.color,
-            fg: route.textColor,
-          }
+          { text: route.key, ...colors }
+        : { icon: route.mode === "ferry" ? "ferry" : "train", ...colors }
       }
       eyebrow={
         route.mode === "bus" ? "Bus route"

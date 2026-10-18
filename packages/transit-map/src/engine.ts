@@ -38,6 +38,7 @@ import {
   DAY_HOURS,
   dayTypes,
   hourlyMinutes,
+  routeMinutes,
 } from "@transitopia/transit-core/schedule/frequency.ts";
 import { Clock } from "./clock.ts";
 import {
@@ -65,7 +66,10 @@ import {
 } from "./layers/static.ts";
 import { VehicleLayer } from "./layers/vehicles.ts";
 import { BusFrequencyLayer } from "./layers/bus-frequency.ts";
-import type { FrequencyWindow } from "@transitopia/transit-core/plan/bus-frequency.ts";
+import {
+  DAY_WINDOW,
+  type FrequencyWindow,
+} from "@transitopia/transit-core/plan/bus-frequency.ts";
 import {
   DEBUG_SOURCE,
   LINES_SOURCE,
@@ -284,6 +288,11 @@ export class TransitEngine {
   private revealAt: number | undefined;
   /** Per feed and route: its day types and hourly frequencies (they don't change with the time). */
   private routeDayCache = new WeakMap<PreparedPlan, Map<string, RouteDay[]>>();
+  /** Per feed, route and date: its day average (dayMinutes). */
+  private dayMinutesCache = new WeakMap<
+    PreparedPlan,
+    Map<string, number | undefined>
+  >();
   /** The real-time corrections last applied, per service date (for departure times). */
   private lastCorrections: Map<ServiceDate, ScheduleCorrections> | undefined;
   private following = false;
@@ -811,6 +820,31 @@ export class TransitEngine {
       byRoute.set(cacheKey, days);
     }
     return days;
+  }
+
+  /**
+   * A route's average minutes between trips over the day (DAY_WINDOW, as the map's "Day" bus
+   * frequency) on the shown service date, in its busier direction; undefined when it doesn't run then.
+   */
+  dayMinutes(key: string): number | undefined {
+    const pp = this.shownFeed;
+    if (!pp) return undefined;
+    let byRoute = this.dayMinutesCache.get(pp);
+    if (!byRoute) this.dayMinutesCache.set(pp, (byRoute = new Map()));
+    const date = displayServiceDate(this.clock.now());
+    const cacheKey = `${key}|${date}`;
+    if (!byRoute.has(cacheKey))
+      byRoute.set(
+        cacheKey,
+        routeMinutes(
+          pp,
+          key,
+          date,
+          DAY_WINDOW.fromH * 3600,
+          (DAY_WINDOW.toH - DAY_WINDOW.fromH) * 3600,
+        ),
+      );
+    return byRoute.get(cacheKey);
   }
 
   /** Keep the selected vehicle at the centre of the view (or stop). */
