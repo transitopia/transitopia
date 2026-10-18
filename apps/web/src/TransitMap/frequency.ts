@@ -15,7 +15,9 @@ export interface Band {
   color: string;
 }
 
-// In the browser (tests import this in Node).
+// Inject our frequency band color definitions into the document's CSS at import time.
+// Done in this way so that we have a shared definition between TypeScript and CSS.
+// Happens only in the browser (skip when tests import this in Node).
 if (typeof document !== "undefined") {
   const style = document.createElement("style");
   style.dataset["source"] = "frequency-bands";
