@@ -36,13 +36,18 @@ export interface BasemapOptions {
  * overlays (transit lines, cycling routes) carry the colour.
  */
 const SPRITE: Record<Theme, string> = { light: "white", dark: "black" };
+/** The land colour, for overlays that fade toward it. */
+export const BACKGROUND: Record<Theme, string> = {
+  light: "#f5f4f1",
+  dark: "#15181c",
+};
 function flavor(theme: Theme): Flavor {
   if (theme === "light") {
     const park = "#e9f0e5";
     return {
       ...namedFlavor("white"),
-      background: "#f5f4f1",
-      earth: "#f5f4f1",
+      background: BACKGROUND.light,
+      earth: BACKGROUND.light,
       water: "#c9d9e5",
       park_a: park,
       park_b: park,
@@ -55,8 +60,8 @@ function flavor(theme: Theme): Flavor {
   const park = "#172019";
   return {
     ...namedFlavor("black"),
-    background: "#15181c",
-    earth: "#15181c",
+    background: BACKGROUND.dark,
+    earth: BACKGROUND.dark,
     water: "#1b2733",
     park_a: park,
     park_b: park,

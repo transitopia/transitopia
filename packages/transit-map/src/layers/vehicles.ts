@@ -7,7 +7,7 @@ import type { Map as MlMap } from "maplibre-gl";
 import type { VehicleState } from "@transitopia/transit-core/schedule/engine.ts";
 import type { KinematicsConfig } from "@transitopia/transit-core/movement/kinematics.ts";
 import { GlPolygonLayer, VERTEX_BYTES } from "./gl-polygons.ts";
-import { VEHICLES_BEFORE_LAYER } from "./static.ts";
+import { DIM_OPACITY, VEHICLES_BEFORE_LAYER } from "./static.ts";
 import {
   EARTH_CIRCUMFERENCE,
   distToPolyline,
@@ -45,6 +45,8 @@ export class VehicleLayer {
   )[] = [];
   private mercPerPx = 0;
   selectedId: string | undefined;
+  /** The route whose card is open: other routes' vehicles are dimmed (static.ts → setFocusRoute). */
+  focusRoute: string | undefined;
 
   private map: MlMap;
   private sizing: KinematicsConfig["sizing"];
@@ -104,15 +106,16 @@ export class VehicleLayer {
     const f32 = new Float32Array(buf);
     const u8 = new Uint8Array(buf);
     let vi = 0;
+    let dim = 1;
     const put = (x: number, y: number, c: RGBA) => {
       f32[vi * 3] = x - ox;
       f32[vi * 3 + 1] = y - oy;
       const o = vi * VERTEX_BYTES + 8;
-      const a = c[3] / 255;
+      const a = (c[3] / 255) * dim;
       u8[o] = c[0] * a;
       u8[o + 1] = c[1] * a;
       u8[o + 2] = c[2] * a;
-      u8[o + 3] = c[3];
+      u8[o + 3] = c[3] * dim;
       vi++;
     };
 
@@ -131,6 +134,10 @@ export class VehicleLayer {
       const rgb = this.colors.get(v.routeKey) ?? [110, 110, 110];
       const estimated = v.provenance === "estimated";
       const selected = v.id === this.selectedId;
+      dim =
+        this.focusRoute === undefined || v.routeKey === this.focusRoute ?
+          1
+        : DIM_OPACITY;
       const fill: RGBA =
         estimated ?
           [...rgb, Math.round(255 * ESTIMATED_OPACITY)]
@@ -211,6 +218,24 @@ export class VehicleLayer {
       this.hits.push({ v, poly: outer });
     }
     this.layer.setGeometry(buf, vi, [ox, oy]);
+  }
+
+  /** Vehicles within `px` of a screen point, nearest first (0 for one under it). */
+  pickWithin(x: number, y: number, px: number): VehicleState[] {
+    const ll = this.map.unproject([x, y]);
+    const mx = mercX(ll.lng);
+    const my = mercY(ll.lat);
+    const out: [VehicleState, number][] = [];
+    for (const h of this.hits) {
+      let d: number;
+      if ("poly" in h) {
+        d = pointInConvex(h.poly, mx, my) ? 0 : Infinity;
+        for (let k = 0; d > 0 && k < h.poly.length; k += 2)
+          d = Math.min(d, Math.hypot(h.poly[k]! - mx, h.poly[k + 1]! - my));
+      } else d = Math.max(0, distToPolyline(h.line, mx, my) - h.hw);
+      if (d <= px * this.mercPerPx) out.push([h.v, d]);
+    }
+    return out.sort((a, b) => a[1] - b[1]).map(([v]) => v);
   }
 
   /** Topmost vehicle under a screen point (within a few pixels), for hover and selection. */

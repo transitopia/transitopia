@@ -19,7 +19,13 @@ import {
   type ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
 import type { Theme } from "@transitopia/map-style/basemap.ts";
-import { VEHICLES_BEFORE_LAYER } from "./static.ts";
+import {
+  casingOpacity,
+  DIM_OPACITY,
+  focusColor,
+  onFocus,
+  VEHICLES_BEFORE_LAYER,
+} from "./static.ts";
 
 export const TRACKS_SOURCE = "tracks";
 export const LINES_SOURCE = "rail-lines";
@@ -208,6 +214,11 @@ export function addTrackLayers(
       ...STROKE.flatMap(([z, w]) => [z, w * scale + extra]),
     ] as ExpressionSpecification;
   const low = { maxzoom: RIBBON_ZOOM };
+  // Off the focused route (its card is open), lines are faded (static.ts → setFocusRoute): strokes
+  // by colour, since their pieces overlap; the ribbon, one polygon per line, by opacity.
+  const lineColor = focusColor(plan.routes, theme, "line");
+  const dimmed = (x: number) =>
+    ["case", onFocus("line"), x, x * DIM_OPACITY] as ExpressionSpecification;
 
   map.addLayer(
     {
@@ -242,7 +253,11 @@ export function addTrackLayers(
       ...low,
       filter: centre,
       layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": casing, "line-width": stroke(1, 3) },
+      paint: {
+        "line-color": casing,
+        "line-width": stroke(1, 3),
+        "line-opacity": casingOpacity(onFocus("line")),
+      },
     },
     before,
   );
@@ -256,7 +271,7 @@ export function addTrackLayers(
       filter: ["all", track(true), ["!=", ["get", "kind"], "main"]],
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
-        "line-color": ["get", "color"],
+        "line-color": lineColor,
         "line-width": width(0.8, 1.5, 3.5),
         "line-opacity": 0.9,
       },
@@ -271,7 +286,10 @@ export function addTrackLayers(
       ...low,
       filter: ["all", centre, ["!", shared]],
       layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": ["get", "color"], "line-width": stroke(1) },
+      paint: {
+        "line-color": lineColor,
+        "line-width": stroke(1),
+      },
     },
     before,
   );
@@ -287,7 +305,7 @@ export function addTrackLayers(
       filter: ["all", centre, shared],
       layout: { "line-join": "round" },
       paint: {
-        "line-color": ["get", "color"],
+        "line-color": lineColor,
         "line-width": [
           "interpolate",
           ["linear"],
@@ -317,7 +335,15 @@ export function addTrackLayers(
       filter: ["==", ["get", "type"], "ribbon"],
       paint: {
         "fill-color": ["get", "color"],
-        "fill-opacity": ["interpolate", ["linear"], ["zoom"], 16, 1, 17, 0.5],
+        "fill-opacity": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          16,
+          dimmed(1),
+          17,
+          dimmed(0.5),
+        ],
       },
     },
     before,
@@ -329,7 +355,7 @@ export function addTrackLayers(
       source: TRACKS_SOURCE,
       filter: ["all", seg, ["has", "works"]],
       paint: {
-        "line-color": ["get", "color"],
+        "line-color": lineColor,
         "line-width": width(2, 3, 4),
         "line-dasharray": [2, 1],
       },
@@ -365,9 +391,9 @@ export function addTrackLayers(
           RIBBON_ZOOM,
           0,
           16,
-          1,
+          dimmed(1),
           17,
-          0.6,
+          dimmed(0.6),
         ],
       },
     },

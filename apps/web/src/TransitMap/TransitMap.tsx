@@ -15,6 +15,7 @@ import { TimeBar } from "./TimeBar.tsx";
 import { TransitLayers } from "./TransitLayers.tsx";
 import { VehicleCard } from "./VehicleCard.tsx";
 import { PlaceCard } from "./PlaceCard.tsx";
+import { PickMenu } from "./PickMenu.tsx";
 import { RouteCard } from "./RouteCard.tsx";
 import { FollowPill } from "./FollowPill.tsx";
 import { useOverlayPadding } from "./overlayPadding.ts";
@@ -217,6 +218,7 @@ const EngineControls: React.FC<{ engine: TransitEngine }> = ({ engine }) => {
       <VehicleCard engine={engine} snap={snap} />
       <PlaceCard engine={engine} snap={snap} />
       <RouteCard engine={engine} snap={snap} />
+      <PickMenu engine={engine} snap={snap} />
       <TimeBar
         engine={engine}
         snap={snap}

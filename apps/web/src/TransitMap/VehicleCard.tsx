@@ -8,7 +8,7 @@ import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
 import { creditsFor, legendsFor } from "@transitopia/shared/datasets.ts";
 
 import { clockMinutes, timeState } from "./format.ts";
-import { RouteBadge } from "./RouteBadge.tsx";
+import { RouteBadge, routeColorsFor } from "./RouteBadge.tsx";
 import {
   CardRow,
   CardSection,
@@ -20,7 +20,7 @@ import {
 } from "../components/InfoCard.tsx";
 import type { IconId } from "../components/Icon.tsx";
 
-const STATUS: Record<VehicleState["status"], string> = {
+export const STATUS: Record<VehicleState["status"], string> = {
   moving: "Next stop",
   dwell: "At",
   layover: "Layover at",
@@ -30,7 +30,7 @@ const STATUS: Record<VehicleState["status"], string> = {
   held: "Held at a signal · next stop",
 };
 
-const MODE: Record<
+export const MODE: Record<
   PlanRoute["mode"],
   { eyebrow: (r: PlanRoute) => string; icon: IconId }
 > = {
@@ -40,7 +40,7 @@ const MODE: Record<
   bus: { eyebrow: () => "Bus", icon: "bus-front-fill" },
 };
 
-function cleanStopName(name: string | undefined): string {
+export function cleanStopName(name: string | undefined): string {
   return (name ?? "")
     .replace(/\s+Station\s+@\s+/i, " · ")
     .replace(/\s+Station$/i, "");
@@ -151,6 +151,7 @@ export const VehicleCard: React.FC<{
     );
 
   const mode = MODE[route.mode];
+  const colors = routeColorsFor(engine, snap)(route);
   const title = route.mode === "bus" ? busTitle(v, route) : headsign(v);
   const actions: CardAction[] = [
     snap.following ?
@@ -182,7 +183,7 @@ export const VehicleCard: React.FC<{
     {
       id: "route",
       label: `View route: ${route.label}`,
-      lead: <RouteBadge route={route} />,
+      lead: <RouteBadge route={route} colors={colors} />,
       onSelect: () =>
         engine.open({ place: { kind: "route", id: route.key } }, title),
     },
@@ -202,7 +203,7 @@ export const VehicleCard: React.FC<{
   ];
   return (
     <InfoCard
-      tile={{ icon: mode.icon, bg: route.color, fg: route.textColor }}
+      tile={{ icon: mode.icon, ...colors }}
       eyebrow={mode.eyebrow(route)}
       title={title}
       subtitle={
@@ -251,11 +252,13 @@ export const VehicleCard: React.FC<{
           label="Route"
           value={
             // Opens the route card, with a back strip returning here (apps/web/README.md#cross-references).
+            // One line: a long name ("620 Tsawwassen Ferry/Bridgeport Station Express") ends in an
+            // ellipsis, in full in the tooltip.
             <button
               type="button"
               title={`View route: ${route.label}`}
-              className="inline-flex h-[26px] items-center rounded-md px-[9px] text-[13px] font-bold hover:shadow-[inset_0_0_0_100px_rgb(0_0_0/0.12)]"
-              style={{ background: route.color, color: route.textColor }}
+              className="h-[26px] min-w-0 truncate rounded-md px-[9px] text-[13px] leading-[26px] font-bold hover:shadow-[inset_0_0_0_100px_rgb(0_0_0/0.12)]"
+              style={{ background: colors.bg, color: colors.fg }}
               onClick={() =>
                 engine.open({ place: { kind: "route", id: route.key } }, title)
               }>
