@@ -8,6 +8,7 @@ import type { Theme } from "@transitopia/map-style/basemap.ts";
 import { realtimeOf } from "@transitopia/shared/datasets.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
 import type { InfraCollection } from "@transitopia/transit-core/infra/types.ts";
+import type { LineGeometry } from "@transitopia/transit-core/infra/line-geometry.ts";
 import {
   addDays,
   localDate,
@@ -56,17 +57,22 @@ import {
   addStaticLayers,
   applyRouteFilter,
   applyStopsVisibility,
+  brandedRoutes,
   setFerryPair,
   setSelectedPlace,
 } from "./layers/static.ts";
 import { VehicleLayer } from "./layers/vehicles.ts";
+import { BusFrequencyLayer } from "./layers/bus-frequency.ts";
+import type { FrequencyWindow } from "@transitopia/transit-core/plan/bus-frequency.ts";
 import {
   DEBUG_SOURCE,
   TRACKS_SOURCE,
   addTrackLayers,
   applyTrackFilter,
   loadPlatforms,
+  loadLines,
   loadTracks,
+  PICKABLE_TRACK_LAYERS,
   setDebugPlatforms,
 } from "./layers/tracks.ts";
 import { readUrl, writeUrl, type Place, type UrlState } from "./url.ts";
@@ -168,6 +174,10 @@ export interface TransitSnapshot {
   showStops: boolean;
   /** Only vehicles with real positions are drawn (estimates hidden). */
   liveOnly: boolean;
+  /** The shown plan draws bus corridors (packages/transit-map/README.md#bus-corridors). */
+  corridors: boolean;
+  /** What corridor colours count: the hour from the shown time, or the day's average. */
+  busFrequency: FrequencyWindow;
   /** The camera keeps the selected vehicle in view. */
   following: boolean;
   selected: SelectedVehicle | undefined;
@@ -258,6 +268,8 @@ export class TransitEngine {
   private hidden: Set<string>;
   private showStops: boolean;
   private liveOnly: boolean;
+  private busFrequency: FrequencyWindow;
+  private frequencyLayer: BusFrequencyLayer | undefined;
   private selectedId: string | undefined;
   /** The selected vehicle's route, once seen: computed even while its route is hidden. */
   private selectedRoute: string | undefined;
@@ -278,6 +290,8 @@ export class TransitEngine {
   /** Screen edges covered by the host's chrome (cards, time bar), px: follow keeps clear of them. */
   private viewPadding = { top: 0, right: 0, bottom: 0, left: 0 };
   private tracks: InfraCollection | undefined;
+  /** Line centrelines and ribbons for drawing SkyTrain (lines.geojson). */
+  private lines: LineGeometry | undefined;
   private shownFeed: PreparedPlan | undefined;
   /** False from a style swap until 'style.load': our layers are gone until then. */
   private styleReady = true;
@@ -347,6 +361,9 @@ export class TransitEngine {
     this.hidden = new Set(loadPref<string[]>("hiddenRoutes", []));
     this.showStops = loadPref("showStops", true);
     this.liveOnly = loadPref("liveOnly", false);
+    // "night" was a window once; it reads as "now".
+    this.busFrequency =
+      loadPref<string>("busFrequency", "now") === "day" ? "day" : "now";
 
     this.vehicles = new VehicleLayer(map, opts.config.kinematics.sizing);
     this.vehicles.selectedId = this.selectedId;
@@ -380,10 +397,12 @@ export class TransitEngine {
     // SkyTrain falls back to GTFS shapes).
     const tracksPath = store.tracksPath;
     if (tracksPath)
-      void loadTracks(opts.dataBase, tracksPath).then((t) => {
+      void loadTracks(opts.dataBase, tracksPath).then(async (t) => {
         if (this.disposed) return;
         this.tracks = t;
         if (t) store.setTrackGraph(TrackGraph.fromCollection(t));
+        if (t) this.lines = await loadLines(opts.dataBase, tracksPath);
+        if (this.disposed) return;
         this.syncStatic(true);
       });
     this.syncStatic(true);
@@ -520,6 +539,13 @@ export class TransitEngine {
     this.publish();
   }
 
+  /** What bus corridors and stops are coloured by: the hour from the shown time, or the day's average. */
+  setBusFrequency(window: FrequencyWindow): void {
+    this.busFrequency = window;
+    savePref("busFrequency", window);
+    this.publish();
+  }
+
   /** Draw only vehicles with real positions (observed or interpolated), or every vehicle. */
   setLiveOnly(liveOnly: boolean): void {
     this.liveOnly = liveOnly;
@@ -641,11 +667,14 @@ export class TransitEngine {
     const layers = [
       "routes-bus",
       "routes-bus-limited",
+      "corridors-brand",
+      "corridors-overview-brand",
       "routes-shape",
       "routes-shape-inactive",
       "routes-skytrain",
-      "tracks-main",
+      ...PICKABLE_TRACK_LAYERS,
     ].filter((id) => map.getLayer(id));
+    const brands = this.shownFeed ? brandedRoutes(this.shownFeed.plan) : [];
     if (!layers.length) return undefined;
     const d = PLACE_PICK_PX;
     const known = this.shownFeed?.routes;
@@ -656,7 +685,18 @@ export class TransitEngine {
       ],
       { layers },
     )) {
-      const key = String(f.properties["route"] ?? f.properties["line"] ?? "");
+      // Corridors carry the route with its own colour drawn on them as feature state.
+      const brand =
+        f.layer.id.endsWith("-brand") ? f.state["brand"] : undefined;
+      if (
+        f.layer.id.endsWith("-brand")
+        && !(typeof brand === "number" && brand >= 0)
+      )
+        continue;
+      const key =
+        typeof brand === "number" ?
+          (brands[brand]?.key ?? "")
+        : String(f.properties["route"] ?? f.properties["line"] ?? "");
       if (known?.has(key) && !this.hidden.has(key))
         return { kind: "route", id: key };
     }
@@ -1089,6 +1129,8 @@ export class TransitEngine {
       hidden: this.hidden,
       showStops: this.showStops,
       liveOnly: this.liveOnly,
+      corridors: Boolean(this.shownFeed?.plan.corridors?.length),
+      busFrequency: this.busFrequency,
       following: this.following,
       selected,
       place: this.placeSnapshot(t),
@@ -1148,10 +1190,21 @@ export class TransitEngine {
     this.shownFeed = pp;
     addStaticLayers(map, pp.plan, this.theme, this.hidden);
     applyStopsVisibility(map, this.showStops);
+    if (!pp.plan.corridors?.length) this.frequencyLayer = undefined;
+    else if (!this.frequencyLayer || this.frequencyLayer.plan !== pp.plan)
+      this.frequencyLayer = new BusFrequencyLayer(pp.plan);
+    this.frequencyLayer?.invalidate();
     this.syncPlaceHighlight();
     this.ferryPair = undefined;
-    if (this.tracks) {
-      addTrackLayers(map, this.tracks, pp.plan, this.theme, this.debug);
+    if (this.tracks && this.lines) {
+      addTrackLayers(
+        map,
+        this.tracks,
+        this.lines,
+        pp.plan,
+        this.theme,
+        this.debug,
+      );
       applyTrackFilter(map, this.hidden);
       // Tracks replace the GTFS SkyTrain shapes.
       for (const id of ["routes-skytrain", "routes-skytrain-casing"])
@@ -1215,6 +1268,16 @@ export class TransitEngine {
       }
     }
     this.syncStatic();
+    if (this.frequencyLayer && this.styleReady) {
+      const date = displayServiceDate(t);
+      this.frequencyLayer.update(
+        map,
+        date,
+        (t - serviceDayStart(date)) / 1000,
+        this.busFrequency,
+        this.hidden,
+      );
+    }
     if (this.following && this.styleReady) this.keepCentred();
     else if (this.clearPaddingPending && !map.isMoving())
       this.clearMapPadding();

@@ -6,6 +6,10 @@
 //
 //   npm run scenario -- <name>
 
+import {
+  lineGeometry,
+  serviceExtents,
+} from "@transitopia/transit-core/infra/line-geometry.ts";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -151,6 +155,22 @@ async function main() {
   // 5. Publish.
   await writeJson(join(out, "plan.json"), plan);
   await writeJson(join(out, "tracks.geojson"), tracks);
+  // Line-level geometry for drawing, next to the tracks (packages/transit-map/README.md#rendering).
+  await writeJson(
+    join(out, "lines.geojson"),
+    lineGeometry(
+      tracks,
+      serviceExtents({
+        graph,
+        plan,
+        routeKeys: railKeys,
+        platforms: report.assignments,
+        patternPositions: report.patternPositions,
+        kin,
+        maxPullUpM: ops.turnback.maxPullUpM,
+      }),
+    ),
+  );
   const manifest: ScenarioManifest = {
     schema: 1,
     name: spec.name,

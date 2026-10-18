@@ -2,7 +2,7 @@
 // hops come from the physical minimum over the approximate distance (straight line × curvature
 // allowance) times a padding factor, plus dwell. Movement building later fits real track paths.
 
-import { cumulativeLengths, distM, pointAlong, type LonLat } from "../geo.ts";
+import { distM, sliceLine, type LonLat } from "../geo.ts";
 import {
   kinematicsFor,
   minLegTime,
@@ -89,7 +89,7 @@ function truncate(
     if (from === 0 && to === p.stops.length - 1) continue;
     const shape = plan.shapes[p.shape] ?? [];
     const newShape = `${p.shape}~cut`;
-    plan.shapes[newShape] = sliceShape(shape, p.dist[from]!, p.dist[to]!);
+    plan.shapes[newShape] = sliceLine(shape, p.dist[from]!, p.dist[to]!);
     const np: PlanPattern = {
       id: plan.patterns.length,
       route: p.route,
@@ -134,22 +134,6 @@ function truncate(
   plan.trips = kept.sort(
     (a, b) => a.start - b.start || a.id.localeCompare(b.id),
   );
-}
-
-/** The part of a polyline between two distances along it (m). */
-function sliceShape(coords: LonLat[], from: number, to: number): LonLat[] {
-  if (coords.length < 2) return coords;
-  const cum = cumulativeLengths(coords);
-  const out: LonLat[] = [];
-  const at = (d: number): LonLat => {
-    const p = pointAlong(coords, cum, d);
-    return [p.lon, p.lat];
-  };
-  out.push(at(from));
-  for (let i = 0; i < coords.length; i++)
-    if (cum[i]! > from && cum[i]! < to) out.push(coords[i]!);
-  out.push(at(to));
-  return out;
 }
 
 function extend(

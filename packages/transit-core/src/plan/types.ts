@@ -66,6 +66,18 @@ export interface PlanPattern {
   access?: number[];
 }
 
+/**
+ * A pattern running along a corridor: its index, its direction relative to the corridor's
+ * coordinates (1: first to last), and its distance along its shape where it enters the corridor (m).
+ */
+export type CorridorRef = [pattern: number, dir: 1 | -1, along: number];
+
+/** A stretch of road and the bus patterns running along it (packages/transit-core/DESIGN.md#bus-corridors). */
+export interface PlanCorridor {
+  coords: LonLat[];
+  refs: CorridorRef[];
+}
+
 export const STOP_NO_PICKUP = 1;
 export const STOP_NO_DROPOFF = 2;
 
@@ -147,6 +159,13 @@ export interface ServicePlan {
    * before it.
    */
   catalog?: CatalogRoute[];
+  /**
+   * Bus corridors from road-matched shapes (packages/transit-core/DESIGN.md#bus-corridors). Absent
+   * when the feed's roads weren't fetched (fetch-osm-roads), and in plans built before them.
+   */
+  corridors?: PlanCorridor[];
+  /** The same, with the two carriageways of divided roads merged into one line, for zoomed-out views. */
+  overviewCorridors?: PlanCorridor[];
 }
 
 /**

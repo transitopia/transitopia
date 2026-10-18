@@ -15,6 +15,8 @@ import {
 } from "../components/LayersPanel.tsx";
 import { SegmentedChoice } from "../components/SegmentedChoice.tsx";
 import { ProvenanceSwatch } from "./Swatches.tsx";
+import { FREQUENCY_BANDS, bandEvery } from "@transitopia/shared/frequency.ts";
+import { DAY_WINDOW } from "@transitopia/transit-core/plan/bus-frequency.ts";
 
 const CATEGORIES: {
   id: RouteCategory;
@@ -33,6 +35,15 @@ const CATEGORIES: {
   },
   { id: "regular", title: "Regular Bus", description: "Every other route" },
 ];
+
+/** Key line heights per band: thicker for more frequent, as bus corridors are drawn. */
+const BAND_HEIGHTS = ["h-[5px]", "h-[4px]", "h-[2px]", "h-[1.5px]"];
+
+/** " (06:00–21:00 avg.)" for the day window. */
+function dayWindowText(): string {
+  const hh = (h: number) => `${String(h % 24).padStart(2, "0")}:00`;
+  return ` (${hh(DAY_WINDOW.fromH)}–${hh(DAY_WINDOW.toH)} avg.)`;
+}
 
 // Plans built before routes had categories are all rapid transit (config/feeds/<feed>/routes.json → category).
 const categoryOf = (r: PlanRoute): RouteCategory => r.category ?? "rapid";
@@ -86,6 +97,17 @@ export const TransitLayers: React.FC<{
         />
       );
     })}
+    {snap.corridors ?
+      <SegmentedChoice
+        label="Bus frequency"
+        value={snap.busFrequency}
+        options={[
+          { value: "now", label: "Now" },
+          { value: "day", label: "Day" },
+        ]}
+        onChange={(v) => engine.setBusFrequency(v)}
+      />
+    : null}
     <PanelDivider />
     <SegmentedChoice
       label="Vehicles"
@@ -103,21 +125,43 @@ export const TransitLayers: React.FC<{
     />
     <PanelDivider />
     <dl className="grid grid-cols-[2.125rem_1fr] items-center gap-x-2 gap-y-2 px-4 pt-1 text-[13px] text-gray-700 dark:text-gray-300">
+      {snap.corridors ?
+        FREQUENCY_BANDS.map((b, i) => (
+          <React.Fragment key={b.id}>
+            <dt>
+              <span
+                aria-hidden="true"
+                className={`block w-7 rounded-full ${BAND_HEIGHTS[i]}`}
+                style={{ background: `var(--band-${b.id})` }}
+              />
+            </dt>
+            <dd>
+              {bandEvery(i)}
+              {snap.busFrequency === "day" ? dayWindowText() : ""}
+            </dd>
+          </React.Fragment>
+        ))
+      : null}
       <dt>
         <ProvenanceSwatch estimated={false} />
       </dt>
-      <dd>Live position (GPS, AIS or a sighting)</dd>
+      <dd>Live position (GPS etc.)</dd>
       <dt>
         <ProvenanceSwatch estimated />
       </dt>
       <dd>Estimated from the schedule</dd>
-      <dt>
-        <span
-          aria-hidden="true"
-          className="block h-[3px] w-7 bg-[repeating-linear-gradient(90deg,currentColor_0_4px,transparent_4px_8px)]"
-        />
-      </dt>
-      <dd>Limited service, or not in service</dd>
+      {/* Plans without corridors (regions without OSM roads yet) still dot limited service. */}
+      {snap.corridors ? null : (
+        <>
+          <dt>
+            <span
+              aria-hidden="true"
+              className="block h-[3px] w-7 bg-[repeating-linear-gradient(90deg,currentColor_0_4px,transparent_4px_8px)]"
+            />
+          </dt>
+          <dd>Limited service, or not in service</dd>
+        </>
+      )}
     </dl>
   </LayersPanel>
 );

@@ -1,4 +1,5 @@
-// Static transit layers drawn by MapLibre: route lines from GTFS shapes, stations, bus exchanges and
+// Static transit layers drawn by MapLibre: route lines from GTFS shapes, bus corridors coloured by
+// how often buses pass (packages/transit-map/README.md#bus-corridors), stations, bus exchanges and
 // bus stops.
 // Track-level SkyTrain geometry (packages/transit-core/DESIGN.md#track-graph) will replace the SkyTrain shapes in M3.
 
@@ -8,16 +9,25 @@ import type {
   ExpressionSpecification,
   GeoJSONSourceSpecification,
 } from "@maplibre/maplibre-gl-style-spec";
-import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
+import type {
+  PlanCorridor,
+  PlanRoute,
+  ServicePlan,
+} from "@transitopia/transit-core/plan/types.ts";
 import { routeSections } from "@transitopia/transit-core/plan/coverage.ts";
 import {
   busStopMarkers,
   busStopTicks,
 } from "@transitopia/transit-core/plan/bus-stops.ts";
 import type { Theme } from "@transitopia/map-style/basemap.ts";
+import { FREQUENCY_BANDS } from "@transitopia/shared/frequency.ts";
 import { hubsOf } from "../plans.ts";
 
 export const ROUTES_SOURCE = "transit-routes";
+export const CORRIDORS_SOURCE = "transit-corridors";
+/** Corridors below CORRIDOR_DETAIL_ZOOM: divided roads' carriageways merged into one line. */
+export const OVERVIEW_CORRIDORS_SOURCE = "transit-corridors-overview";
+const CORRIDOR_DETAIL_ZOOM = 14;
 export const STATIONS_SOURCE = "transit-stations";
 export const EXCHANGES_SOURCE = "transit-exchanges";
 export const BUS_STOPS_SOURCE = "transit-bus-stops";
@@ -69,13 +79,99 @@ const SHAPE_INACTIVE: ExpressionSpecification = [
   ["!=", ["get", "berthPair"], ["global-state", FERRY_PAIR]],
 ];
 
+/** Frequency tier colours, every 6 min or better first (packages/transit-map/README.md#bus-corridors). */
+const TIER_COLORS = {
+  light: FREQUENCY_BANDS.map((b) => b.color.light),
+  dark: FREQUENCY_BANDS.map((b) => b.color.dark),
+};
+/** Corridor widths per tier at a few zooms. */
+const TIER_WIDTHS: [number, number[]][] = [
+  [10, [2.4, 1.5, 0.8, 0.6]],
+  [13, [5, 3.4, 1.8, 1.1]],
+  [15, [7, 5, 2.6, 1.6]],
+  [17, [10, 7, 3.4, 2]],
+];
+const TIER = [
+  "coalesce",
+  ["feature-state", "tier"],
+  -1,
+] as ExpressionSpecification;
+const BRAND = [
+  "coalesce",
+  ["feature-state", "brand"],
+  -1,
+] as ExpressionSpecification;
+/** Widths of routes with their own colour (cased): thicker than the most frequent tier, which they cover. */
+const BRAND_WIDTHS: [number, number][] = [
+  [10, 2.8],
+  [13, 5.4],
+  [15, 7.6],
+  [17, 10.8],
+];
+
+/** A value per frequency tier (feature state), or `none` without service. */
+function byTier<T extends string | number>(
+  values: T[],
+  none: T,
+): ExpressionSpecification {
+  return [
+    "match",
+    TIER,
+    0,
+    values[0]!,
+    1,
+    values[1]!,
+    2,
+    values[2]!,
+    3,
+    values[3]!,
+    none,
+  ] as ExpressionSpecification;
+}
+
+/** Bus routes drawn as corridors rather than lines of their own: every bus route, when the plan has corridors. */
+function inCorridors(plan: ServicePlan): Set<string> {
+  if (!plan.corridors?.length) return new Set();
+  return new Set(plan.routes.filter((r) => r.kind === "bus").map((r) => r.key));
+}
+
+/**
+ * Bus routes with their own colour (the 99 and RapidBus: category "frequent"), drawn along their
+ * corridors in it; a corridor's `brand` feature state is an index into this list.
+ */
+export function brandedRoutes(plan: ServicePlan): PlanRoute[] {
+  return plan.routes.filter(
+    (r) => r.kind === "bus" && r.category !== "regular",
+  );
+}
+
+/** The corridors drawn zoomed out (plans without overview corridors draw the detailed ones). */
+export function overviewCorridors(plan: ServicePlan): PlanCorridor[] {
+  return plan.overviewCorridors ?? plan.corridors ?? [];
+}
+
+function corridorsGeoJson(corridors: PlanCorridor[]): FeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: corridors.map((c, id) => ({
+      type: "Feature" as const,
+      id,
+      properties: {},
+      geometry: { type: "LineString" as const, coordinates: c.coords },
+    })),
+  };
+}
+
 function routesGeoJson(plan: ServicePlan): FeatureCollection {
   const features: Feature[] = [];
   const seen = new Set<string>();
   // Buses: split into frequent sections, and limited-service or no-passenger ones (drawn dotted).
+  // Routes drawn as corridors aren't drawn on their own.
+  const corridor = inCorridors(plan);
   const busRoutes = new Set(
     plan.routes.filter((r) => r.kind === "bus").map((r) => r.key),
   );
+  for (const r of corridor) busRoutes.delete(r);
   for (const sec of routeSections(plan, busRoutes)) {
     const route = plan.routes.find((r) => r.key === sec.route)!;
     features.push({
@@ -94,7 +190,8 @@ function routesGeoJson(plan: ServicePlan): FeatureCollection {
   }
   const used = new Set(plan.trips.map((t) => t.pattern));
   for (const p of plan.patterns) {
-    if (busRoutes.has(p.route) || !used.has(p.id)) continue;
+    if (busRoutes.has(p.route) || corridor.has(p.route) || !used.has(p.id))
+      continue;
     const route = plan.routes.find((r) => r.key === p.route)!;
     // A ferry may use any of its berth pairs on a given day (AIS decides): draw them all, tagged
     // with their pair, so the ones not in use can be drawn dotted.
@@ -146,20 +243,72 @@ function busStopsGeoJson(plan: ServicePlan): FeatureCollection {
   };
 }
 
+/**
+ * Bus stop ticks. With corridors, one per stop (its id the stop's index in the plan, for its
+ * frequency's feature state), coloured by how often buses stop there unless only routes drawn on
+ * their own serve it; without, one per stop and route, in the route's colour.
+ */
 function busTicksGeoJson(plan: ServicePlan): FeatureCollection {
+  const color = new Map(plan.routes.map((r) => [r.key, r.color]));
+  const ticks = busStopTicks(plan);
+  if (!plan.corridors?.length)
+    return {
+      type: "FeatureCollection",
+      features: ticks.map((t) => ({
+        type: "Feature" as const,
+        properties: {
+          route: t.route,
+          routes: `,${t.route},`,
+          n: 1,
+          stop: t.stop,
+          bearing: t.bearing,
+          color: color.get(t.route) ?? "#888",
+        },
+        geometry: { type: "Point" as const, coordinates: [t.lon, t.lat] },
+      })),
+    };
+  const corridor = inCorridors(plan);
+  const index = stopIndex(plan);
+  const byStop = new Map<
+    string,
+    { tick: (typeof ticks)[number]; routes: Set<string> }
+  >();
+  for (const t of ticks) {
+    const g = byStop.get(t.stop);
+    if (g) g.routes.add(t.route);
+    else byStop.set(t.stop, { tick: t, routes: new Set([t.route]) });
+  }
   return {
     type: "FeatureCollection",
-    features: busStopTicks(plan).map((t) => ({
-      type: "Feature" as const,
-      properties: {
-        route: t.route,
-        stop: t.stop,
-        bearing: t.bearing,
-        color: plan.routes.find((r) => r.key === t.route)?.color ?? "#888",
-      },
-      geometry: { type: "Point" as const, coordinates: [t.lon, t.lat] },
-    })),
+    features: [...byStop.values()].map(({ tick: t, routes }) => {
+      const own = [...routes].filter((r) => !corridor.has(r));
+      return {
+        type: "Feature" as const,
+        id: index.get(t.stop)!,
+        properties: {
+          route: t.route,
+          routes: `,${[...routes].join(",")},`,
+          n: routes.size,
+          stop: t.stop,
+          bearing: t.bearing,
+          // Served only by routes drawn on their own: their colour.
+          branded: own.length === routes.size,
+          color: color.get(own[0] ?? t.route) ?? "#888",
+        },
+        geometry: { type: "Point" as const, coordinates: [t.lon, t.lat] },
+      };
+    }),
   };
+}
+
+function stopIndex(plan: ServicePlan): Map<string, number> {
+  return new Map(plan.stops.map((s, i) => [s.id, i]));
+}
+
+/** Indices of the stops with a tick (their feature ids, when the plan has corridors). */
+export function tickStops(plan: ServicePlan): number[] {
+  const index = stopIndex(plan);
+  return [...new Set(busStopTicks(plan).map((t) => index.get(t.stop)!))];
 }
 
 /**
@@ -249,6 +398,12 @@ export function addStaticLayers(
     void (map.getSource(ROUTES_SOURCE) as GeoJSONSource).setData(
       routes.data as FeatureCollection,
     );
+    void (map.getSource(CORRIDORS_SOURCE) as GeoJSONSource).setData(
+      corridorsGeoJson(plan.corridors ?? []),
+    );
+    void (map.getSource(OVERVIEW_CORRIDORS_SOURCE) as GeoJSONSource).setData(
+      corridorsGeoJson(overviewCorridors(plan)),
+    );
     void (map.getSource(STATIONS_SOURCE) as GeoJSONSource).setData(
       stations.data as FeatureCollection,
     );
@@ -265,6 +420,14 @@ export function addStaticLayers(
     return;
   }
   map.addSource(ROUTES_SOURCE, routes);
+  map.addSource(CORRIDORS_SOURCE, {
+    type: "geojson",
+    data: corridorsGeoJson(plan.corridors ?? []),
+  });
+  map.addSource(OVERVIEW_CORRIDORS_SOURCE, {
+    type: "geojson",
+    data: corridorsGeoJson(overviewCorridors(plan)),
+  });
   map.addSource(STATIONS_SOURCE, stations);
   map.addSource(EXCHANGES_SOURCE, {
     type: "geojson",
@@ -285,7 +448,91 @@ export function addStaticLayers(
   const text = dark ? "#e6e8eb" : "#1f2328";
   const halo = dark ? "#111418" : "#ffffff";
   const mutedText = dark ? "#c3c8ce" : "#3d434a";
+  const tierColors = TIER_COLORS[dark ? "dark" : "light"];
+  const brands = brandedRoutes(plan);
+  /** The colour of the route with its own colour in feature state `brand`. */
+  const brandColor = (brands.length ?
+    ["match", BRAND, ...brands.flatMap((r, i) => [i, r.color]), "rgba(0,0,0,0)"]
+  : "rgba(0,0,0,0)") as unknown as ExpressionSpecification;
+  const tierWidth = (extra: number, tiers: number[]): ExpressionSpecification =>
+    [
+      "interpolate",
+      ["linear"],
+      ["zoom"],
+      ...TIER_WIDTHS.flatMap(([z, w]) => [
+        z,
+        byTier(
+          w.map((x, i) => (tiers.includes(i) ? x + extra : 0)),
+          0,
+        ),
+      ]),
+    ] as ExpressionSpecification;
 
+  // Bus corridors: one line per street, coloured and weighted by how often buses pass; the most
+  // frequent tiers get a casing so they read over crossing streets. Zoomed out, divided roads are
+  // one line (the overview corridors); closer in, each carriageway is its own.
+  for (const [prefix, source, zooms] of [
+    [
+      "corridors-overview",
+      OVERVIEW_CORRIDORS_SOURCE,
+      { maxzoom: CORRIDOR_DETAIL_ZOOM },
+    ],
+    ["corridors", CORRIDORS_SOURCE, { minzoom: CORRIDOR_DETAIL_ZOOM }],
+  ] as const) {
+    map.addLayer({
+      id: `${prefix}-casing`,
+      type: "line",
+      source,
+      minzoom: Math.max(12, "minzoom" in zooms ? zooms.minzoom : 0),
+      ...("maxzoom" in zooms ? { maxzoom: zooms.maxzoom } : {}),
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: { "line-color": casing, "line-width": tierWidth(2, [0, 1]) },
+    });
+    map.addLayer({
+      id: prefix,
+      type: "line",
+      source,
+      ...zooms,
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: {
+        "line-color": byTier(tierColors, "rgba(0,0,0,0)"),
+        "line-width": tierWidth(0, [0, 1, 2, 3]),
+      },
+    });
+    // Routes with their own colour, over the corridors they run along: the busiest one running at
+    // the time shown (feature state `brand`, an index into brandedRoutes), thicker and cased.
+    const brandWidth = (extra: number): ExpressionSpecification =>
+      [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        ...BRAND_WIDTHS.flatMap(([z, w]) => [
+          z,
+          ["case", [">=", BRAND, 0], w + extra, 0],
+        ]),
+      ] as ExpressionSpecification;
+    map.addLayer({
+      id: `${prefix}-brand-casing`,
+      type: "line",
+      source,
+      minzoom: Math.max(12, "minzoom" in zooms ? zooms.minzoom : 0),
+      ...("maxzoom" in zooms ? { maxzoom: zooms.maxzoom } : {}),
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: { "line-color": casing, "line-width": brandWidth(2) },
+    });
+    map.addLayer({
+      id: `${prefix}-brand`,
+      type: "line",
+      source,
+      ...zooms,
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: {
+        "line-color": brandColor,
+        "line-width": brandWidth(0),
+      },
+    });
+  }
+  // Bus routes drawn on their own (99 B-Line, RapidBus; every route without corridors).
   map.addLayer({
     id: "routes-bus",
     type: "line",
@@ -294,8 +541,23 @@ export function addStaticLayers(
     layout: { "line-join": "round", "line-cap": "round" },
     paint: {
       "line-color": ["get", "color"],
-      "line-opacity": 0.55,
-      "line-width": ["interpolate", ["linear"], ["zoom"], 9, 1, 13, 2, 16, 4],
+      "line-opacity": plan.corridors?.length ? 1 : 0.55,
+      "line-width":
+        plan.corridors?.length ?
+          [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            10,
+            1.5,
+            13,
+            3.2,
+            15,
+            4.5,
+            17,
+            6,
+          ]
+        : ["interpolate", ["linear"], ["zoom"], 9, 1, 13, 2, 16, 4],
     },
   });
   map.addLayer({
@@ -409,7 +671,19 @@ export function addStaticLayers(
         1.5,
       ],
     },
-    paint: { "icon-color": ["get", "color"], "icon-opacity": 0.85 },
+    paint: {
+      // With corridors: the colour of the route with its own colour stopping there where it's drawn
+      // in it (only such routes serve the stop, not on a limited stretch), else the frequency tier.
+      "icon-color": [
+        "case",
+        ["!", ["has", "branded"]],
+        ["get", "color"],
+        [">=", BRAND, 0],
+        brandColor,
+        byTier(tierColors, "rgba(0,0,0,0)"),
+      ] as ExpressionSpecification,
+      "icon-opacity": 0.9,
+    },
   });
   // Bus exchanges: drawn like stations, in the stop labels' grey, once bus stops show.
   map.addLayer({
@@ -589,9 +863,13 @@ export function applyRouteFilter(map: MlMap, hidden: Set<string>): void {
     hiddenAtStop,
     ["get", "n"],
   ];
-  for (const id of [VEHICLES_BEFORE_LAYER, "exchanges", "exchanges-label"])
+  for (const id of [
+    VEHICLES_BEFORE_LAYER,
+    "exchanges",
+    "exchanges-label",
+    "bus-stops",
+  ])
     if (map.getLayer(id)) map.setFilter(id, stopVisible);
-  if (map.getLayer("bus-stops")) map.setFilter("bus-stops", visible);
 }
 
 /** Station, exchange and bus stop markers and their labels (the layers panel's "Stations & stops"). */

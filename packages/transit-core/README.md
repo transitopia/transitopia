@@ -2,9 +2,11 @@
 
 The DOM-free transit engine, shared by the pipelines, the server, tests and the browser (its tsconfig has no DOM lib, and it must stay that way). The design is in [DESIGN.md](DESIGN.md).
 
+Being here doesn't mean a module runs in the browser. The package holds the engine's logic wherever it runs, and the pipelines and server wrap it with I/O and orchestration. Some modules run only at build time, such as road matching (`src/plan/road-match.ts`), corridors (`src/plan/corridors.ts`) and SeaBus berths (`src/plan/ferry-berths.ts`), all used by `build-schedule`. Others, such as the dispatcher, run at build time and on the server. The browser bundle includes only what `packages/transit-map` and `apps/web` import.
+
 | Folder | What | Design |
 |---|---|---|
-| `src/gtfs/`, `src/plan/`, `src/time.ts` | Service-day calendars, the service plan format and feed selection, bus stops, route coverage, SeaBus berths, time zones | [Timetables](DESIGN.md#timetables) |
+| `src/gtfs/`, `src/plan/`, `src/time.ts` | Service-day calendars, the service plan format and feed selection, bus stops, route coverage, matching bus shapes to roads, corridors, SeaBus berths, time zones | [Timetables](DESIGN.md#timetables) |
 | `src/infra/` | The track model, topology from OSM, platform mapping, switch-aware routing | [Track graph](DESIGN.md#track-graph) |
 | `src/movement/` | Run inference, kinematics, movement files, and pure playback | [Run inference](DESIGN.md#run-inference), [Movements and playback](DESIGN.md#movements-and-playback) |
 | `src/schedule/` | The schedule engine for timetable vehicles (SeaBus, WCE, buses), with re-timing and corrections | [SeaBus and West Coast Express](DESIGN.md#seabus-and-west-coast-express) |

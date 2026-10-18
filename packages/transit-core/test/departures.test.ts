@@ -4,6 +4,7 @@ import {
   groupDepartures,
   minutesBetween,
   placeName,
+  sharedRuns,
   sharedStretches,
   stopsOf,
 } from "../src/schedule/departures.ts";
@@ -270,6 +271,32 @@ describe("shared stretches of short-turns", () => {
 
   it("doesn't share a single stop just around the corner", () => {
     expect(shortTurn(300)).toEqual([]);
+  });
+});
+
+describe("sharedRuns", () => {
+  const onward = (...keys: string[]) =>
+    keys.map((key, i) => ({ stop: i, key, m: (i + 1) * 300 }));
+
+  it("tries the services that carry on together when one turns off at the next stop", () => {
+    // All three to b; the third turns off there (300 m), the other two run on to d.
+    expect(
+      sharedRuns([
+        onward("b", "c", "d"),
+        onward("b", "c", "d", "e"),
+        onward("b", "x"),
+      ]),
+    ).toEqual([{ members: [0, 1], stops: 3 }]);
+  });
+
+  it("keeps a run all of them share as one, without splitting it", () => {
+    expect(
+      sharedRuns([
+        onward("b", "c", "d"),
+        onward("b", "c", "x"),
+        onward("b", "c"),
+      ]),
+    ).toEqual([{ members: [0, 1, 2], stops: 2 }]);
   });
 });
 
