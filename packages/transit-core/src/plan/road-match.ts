@@ -25,6 +25,8 @@ const CANDIDATE_FAR_M = 55;
 const MAX_CANDIDATES = 8;
 /** Where no candidates connect, the candidates of up to this many samples back grow. */
 const WIDEN_SAMPLES = 24;
+/** A step back along an edge this short is standing still (m). */
+const STILL_M = 1;
 /** GPS-style emission noise: how far GTFS shapes typically sit from the road centreline (m). */
 const SIGMA_M = 10;
 /** Transition scale: how much longer than the straight line a route between samples may be (m). */
@@ -379,6 +381,14 @@ function densify(pts: [number, number][], step: number): [number, number][] {
 }
 
 /**
+ * Whether b is along the same edge from a, or as good as on it: GTFS shapes repeat points, and the
+ * repeat can project a few centimetres behind, which would otherwise take a U-turn to reach.
+ */
+function aheadOnEdge(g: RoadGraph, a: Candidate, b: Candidate): boolean {
+  return a.e === b.e && (b.f - a.f) * g.edgeLen[a.e]! >= -STILL_M;
+}
+
+/**
  * Route between two candidates: its cost and length along the roads, or undefined beyond the
  * search bound. Moving backwards along one edge isn't allowed (that would need a U-turn).
  */
@@ -388,8 +398,8 @@ function routeBetween(
   b: Candidate,
   found: ReturnType<RoadGraph["search"]>,
 ): { cost: number; len: number } | undefined {
-  if (a.e === b.e && b.f >= a.f - 1e-6) {
-    const len = (b.f - a.f) * g.edgeLen[a.e]!;
+  if (aheadOnEdge(g, a, b)) {
+    const len = Math.max(0, (b.f - a.f) * g.edgeLen[a.e]!);
     return { cost: (len * g.edgeCost[a.e]!) / (g.edgeLen[a.e]! || 1), len };
   }
   const via = g.edgeFrom[b.e]!;
@@ -430,8 +440,21 @@ export function matchShape(g: RoadGraph, shape: LonLat[]): MatchResult {
     const start = i;
     let score = cands[i]!.map(emission);
     /** Scores at each sample of the chain, to resume from. */
-    const hist: number[][] = [score];
-    const back: Int32Array[] = [];
+    let hist: number[][] = [score];
+    let back: Int32Array[] = [];
+    /**
+     * The chain as it was when it last broke and candidates grew, and the candidates they replaced:
+     * kept if growing them doesn't take it any further.
+     */
+    let before:
+      | {
+          i: number;
+          score: number[];
+          hist: number[][];
+          back: Int32Array[];
+          cands: Map<number, Candidate[]>;
+        }
+      | undefined;
     for (; i + 1 < samples.length; i++) {
       const next = cands[i + 1]!;
       if (!next.length) break;
@@ -467,18 +490,29 @@ export function matchShape(g: RoadGraph, shape: LonLat[]): MatchResult {
         // can grow once, to every road within CANDIDATE_FAR_M: grow those of the last few samples
         // and resume before them, and break the chain only when none can.
         const from = Math.max(start, i - WIDEN_SAMPLES);
-        let grew = false;
+        const grown = new Map<number, Candidate[]>();
         for (let j = from; j <= i + 1; j++) {
           if (widened.has(j)) continue;
           widened.add(j);
           const [px, py] = samples[j]!;
           const all = g.near(px, py, CANDIDATE_FAR_M);
           if (all.length > cands[j]!.length) {
+            grown.set(j, cands[j]!);
             cands[j] = all;
-            grew = true;
           }
         }
-        if (!grew) break;
+        if (!grown.size) break;
+        if (!before || i > before.i)
+          before = {
+            i,
+            score,
+            hist: hist.slice(),
+            back: back.slice(),
+            cands: grown,
+          };
+        else
+          for (const [j, c] of grown)
+            if (!before.cands.has(j)) before.cands.set(j, c);
         const r = Math.max(start, from - 1);
         back.length = r - start;
         hist.length = r - start + 1;
@@ -490,6 +524,11 @@ export function matchShape(g: RoadGraph, shape: LonLat[]): MatchResult {
       back.push(bp);
       hist.push(ns);
       score = ns;
+    }
+    if (before && i <= before.i) {
+      // Growing the candidates didn't get past the break: keep the chain as it was.
+      for (const [j, c] of before.cands) if (j <= before.i) cands[j] = c;
+      ({ i, score, hist, back } = before);
     }
     // Backtrack.
     let best = 0;
@@ -535,8 +574,9 @@ export function matchShape(g: RoadGraph, shape: LonLat[]): MatchResult {
     matchedSamples += ch.path.length;
     let cur = at(0);
     for (let k = 1; k < ch.path.length; k++) {
-      const nxt = at(k);
-      if (cur.e === nxt.e && nxt.f >= cur.f - 1e-6) {
+      let nxt = at(k);
+      if (aheadOnEdge(g, cur, nxt)) {
+        nxt = { ...nxt, f: Math.max(cur.f, nxt.f) };
         pushEdge(cur.e, cur.f, nxt.f);
       } else {
         pushEdge(cur.e, cur.f, 1);

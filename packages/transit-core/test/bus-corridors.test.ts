@@ -135,6 +135,19 @@ describe("matchShape", () => {
       if (lo > mx(1)) expect(Math.abs(la - my(0))).toBeLessThan(1e-6);
   });
 
+  it("stays on the road where the shape repeats a point a little behind", () => {
+    // GTFS shapes repeat points, and the repeat can project a few centimetres back along the edge.
+    const m = matchShape(g, [
+      [lon(0), LAT_A],
+      [lon(1.5), LAT_A],
+      [lon(1.5) - 0.0000007, LAT_A],
+      [lon(4), LAT_A],
+    ]);
+    expect(m.pieces.some((p) => "raw" in p)).toBe(false);
+    for (const [, la] of m.coords)
+      expect(Math.abs(la - LAT_A)).toBeLessThan(1e-6);
+  });
+
   it("keeps the GTFS geometry where there's no road", () => {
     const far: LonLat[] = [
       [lon(0), 49.26],

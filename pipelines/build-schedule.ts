@@ -110,9 +110,9 @@ const STATION_MERGE_M = 400;
  * its ids are shown. 5: bus shapes without spurs to their stops. 6: bus shapes matched to OSM roads,
  * and bus corridors. 7: and overview corridors. 8: matched shapes simplified at 1 m. 9: matched
  * shapes and corridors keep the same road nodes. 10: matching retries every road in range before a
- * break; divided roads merge round bends.
+ * break; divided roads merge round bends. 11: repeated shape points don't break a match.
  */
-const PLAN_FORMAT = 10;
+const PLAN_FORMAT = 11;
 
 /** Regions showing the feed with SeaBus berths and lanes (infrastructure/seabus.json): build-schedule applies them. */
 async function ferryRegions(feed: string): Promise<string[]> {
