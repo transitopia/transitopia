@@ -1,6 +1,6 @@
 // How often buses pass along each bus corridor and stop at each stop (packages/transit-core/DESIGN.md#bus-corridors):
-// buses per hour in the busiest direction, for the hour around a time ("now"), or averaged over the
-// day (06:00–01:00) or the night after it (01:00–06:00); bands are the site's (@transitopia/shared/frequency.ts). Counts use each pattern's trips on the date
+// buses per hour in the busiest direction, for the hour from a time ("now") or averaged over the day
+// (06:00–21:00); bands are the site's (@transitopia/shared/frequency.ts). Counts use each pattern's trips on the date
 // and one representative trip's timing along the pattern, so a corridor's count is for when buses
 // pass it, not when they leave their first stop.
 
@@ -8,19 +8,16 @@ import { indexCalendar } from "../gtfs/calendar.ts";
 import { addDays, type ServiceDate } from "../time.ts";
 import type { ServicePlan } from "./types.ts";
 
-export type FrequencyWindow = "now" | "day" | "night";
+export type FrequencyWindow = "now" | "day";
 
 const HOUR = 3600;
 const DAY = 24 * HOUR;
 /**
- * The day and night averages (hours from the shown service day's start; past 24 is after midnight):
- * the day is 06:00 to 01:00, the night 01:00 to 06:00 after it. Trips are counted by when they run,
+ * The day average (hours from the shown service day's start): 06:00 to 21:00, the hours most riders
+ * travel; later hours are a time on the slider away with "now". Trips are counted by when they run,
  * whichever service day they belong to.
  */
-export const FREQUENCY_WINDOWS = {
-  day: { fromH: 6, toH: 25 },
-  night: { fromH: 25, toH: 30 },
-} as const;
+export const DAY_WINDOW = { fromH: 6, toH: 21 } as const;
 
 /** A time window on one service date (seconds since its service day start). */
 interface Span {
@@ -97,8 +94,8 @@ export class BusFrequency {
   }
 
   /**
-   * The window as spans of the shown service day and its neighbours: a service day's trips can run
-   * into the next calendar day (times past 24:00), and the next day's earliest ones before 06:00.
+   * The window as spans of the shown service day and its neighbours: the previous service day's
+   * trips can run into it (times past 24:00), as can the shown day's into the next.
    */
   private spans(
     date: ServiceDate,
@@ -107,11 +104,8 @@ export class BusFrequency {
   ): { spans: Span[]; hours: number } {
     const [from, to] =
       window === "now" ?
-        [t - HOUR / 2, t + HOUR / 2]
-      : [
-          FREQUENCY_WINDOWS[window].fromH * HOUR,
-          FREQUENCY_WINDOWS[window].toH * HOUR,
-        ];
+        [t, t + HOUR]
+      : [DAY_WINDOW.fromH * HOUR, DAY_WINDOW.toH * HOUR];
     return {
       spans: [-1, 0, 1].map((k) => ({
         date: addDays(date, k),

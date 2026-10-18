@@ -357,24 +357,16 @@ describe("BusFrequency", () => {
   const wed = serviceDate("20261021");
   const at = (along: number) => [[[0, freq.offsetAt(0, along), 1] as const]];
 
-  it("counts buses passing in the hour around a time", () => {
+  it("counts buses passing in the hour from a time", () => {
     expect(freq.count(at(0), wed, "now", 12 * 3600, () => true)[0]).toBe(6);
     // Halfway along, buses pass 5 minutes after they start.
     expect(freq.offsetAt(0, 1000)).toBe(300);
     expect(freq.count(at(1000), wed, "now", 12 * 3600, () => true)[0]).toBe(6);
   });
 
-  it("averages over the day and the night after it", () => {
-    // 06:00–01:00: 96 + the 22:30, 23:30 and 00:30 trips over 19 h.
-    expect(freq.count(at(0), wed, "day", 0, () => true)[0]).toBeCloseTo(
-      99 / 19,
-      5,
-    );
-    // 01:00–06:00 after Wednesday: the 01:30 trip (Wednesday's 25:30).
-    expect(freq.count(at(0), wed, "night", 0, () => true)[0]).toBeCloseTo(
-      1 / 5,
-      5,
-    );
+  it("averages over the day, 06:00–21:00", () => {
+    // Every 10 min from 06:00 to 20:50: 90 trips over 15 h; the evening's hourly trips don't count.
+    expect(freq.count(at(0), wed, "day", 0, () => true)[0]).toBeCloseTo(6, 5);
   });
 
   it("counts a trip of the next service day by when it runs", () => {
@@ -401,9 +393,8 @@ describe("BusFrequency", () => {
     } as unknown as ServicePlan;
     const f = new BusFrequency(early);
     const one = [[[0, 0, 1] as const]];
-    // Wednesday's day (06:00–01:00) gains it; its night (01:00–06:00) doesn't.
-    expect(f.count(one, wed, "day", 0, () => true)[0]).toBeCloseTo(100 / 19, 5);
-    expect(f.count(one, wed, "night", 0, () => true)[0]).toBeCloseTo(1 / 5, 5);
+    // The hour from Wednesday's 24:00: its 24:30 trip and Thursday's 00:15.
+    expect(f.count(one, wed, "now", 24 * 3600, () => true)[0]).toBe(2);
   });
 
   it("has nothing on days without service, and leaves out excluded patterns", () => {

@@ -16,7 +16,7 @@ import {
 import { SegmentedChoice } from "../components/SegmentedChoice.tsx";
 import { ProvenanceSwatch } from "./Swatches.tsx";
 import { FREQUENCY_BANDS, bandEvery } from "@transitopia/shared/frequency.ts";
-import { FREQUENCY_WINDOWS } from "@transitopia/transit-core/plan/bus-frequency.ts";
+import { DAY_WINDOW } from "@transitopia/transit-core/plan/bus-frequency.ts";
 
 const CATEGORIES: {
   id: RouteCategory;
@@ -39,11 +39,10 @@ const CATEGORIES: {
 /** Key line heights per band: thicker for more frequent, as bus corridors are drawn. */
 const BAND_HEIGHTS = ["h-[5px]", "h-[4px]", "h-[2px]", "h-[1.5px]"];
 
-/** "(06:00–01:00 average)" for the day and night windows. */
-function windowText(w: "day" | "night"): string {
+/** " (06:00–21:00 avg.)" for the day window. */
+function dayWindowText(): string {
   const hh = (h: number) => `${String(h % 24).padStart(2, "0")}:00`;
-  const { fromH, toH } = FREQUENCY_WINDOWS[w];
-  return ` (${hh(fromH)}–${hh(toH)} avg.)`;
+  return ` (${hh(DAY_WINDOW.fromH)}–${hh(DAY_WINDOW.toH)} avg.)`;
 }
 
 // Plans built before routes had categories are all rapid transit (config/feeds/<feed>/routes.json → category).
@@ -105,7 +104,6 @@ export const TransitLayers: React.FC<{
         options={[
           { value: "now", label: "Now" },
           { value: "day", label: "Day" },
-          { value: "night", label: "Night" },
         ]}
         onChange={(v) => engine.setBusFrequency(v)}
       />
@@ -139,7 +137,7 @@ export const TransitLayers: React.FC<{
             </dt>
             <dd>
               {bandEvery(i)}
-              {snap.busFrequency === "now" ? "" : windowText(snap.busFrequency)}
+              {snap.busFrequency === "day" ? dayWindowText() : ""}
             </dd>
           </React.Fragment>
         ))

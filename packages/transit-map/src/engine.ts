@@ -176,7 +176,7 @@ export interface TransitSnapshot {
   liveOnly: boolean;
   /** The shown plan draws bus corridors (packages/transit-map/README.md#bus-corridors). */
   corridors: boolean;
-  /** What corridor colours count: the hour around the shown time, the day's average, or the night's. */
+  /** What corridor colours count: the hour from the shown time, or the day's average. */
   busFrequency: FrequencyWindow;
   /** The camera keeps the selected vehicle in view. */
   following: boolean;
@@ -361,7 +361,9 @@ export class TransitEngine {
     this.hidden = new Set(loadPref<string[]>("hiddenRoutes", []));
     this.showStops = loadPref("showStops", true);
     this.liveOnly = loadPref("liveOnly", false);
-    this.busFrequency = loadPref<FrequencyWindow>("busFrequency", "now");
+    // "night" was a window once; it reads as "now".
+    this.busFrequency =
+      loadPref<string>("busFrequency", "now") === "day" ? "day" : "now";
 
     this.vehicles = new VehicleLayer(map, opts.config.kinematics.sizing);
     this.vehicles.selectedId = this.selectedId;
@@ -537,7 +539,7 @@ export class TransitEngine {
     this.publish();
   }
 
-  /** What bus corridors and stops are coloured by: now, the day's average or the night's. */
+  /** What bus corridors and stops are coloured by: the hour from the shown time, or the day's average. */
   setBusFrequency(window: FrequencyWindow): void {
     this.busFrequency = window;
     savePref("busFrequency", window);

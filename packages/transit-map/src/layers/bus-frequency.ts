@@ -23,7 +23,7 @@ import {
   tickStops,
 } from "./static.ts";
 
-/** "Now" counts the hour around the shown time, refreshed in steps of this many seconds. */
+/** "Now" counts the hour from the shown time, refreshed in steps of this many seconds. */
 const NOW_STEP_S = 300;
 /**
  * A route with its own colour is drawn in it only where it runs at least this share as often as on
