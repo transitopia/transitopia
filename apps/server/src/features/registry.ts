@@ -586,3 +586,307 @@ export async function resolveKey(
     ...(found.redirectedFrom ? { redirectedFrom: found.redirectedFrom } : {}),
   };
 }
+
+/**
+ * Merge a feature into another of the same kind (the same stop under two IDs, a cross-feed
+ * station): its refs and the stops inside it move to `intoId`, and its ID redirects there. Merging
+ * into a merged feature is refused, so a redirect is always one hop.
+ */
+export async function mergeFeatures(
+  db: Db,
+  fromId: string,
+  intoId: string,
+  userId: number | null = null,
+): Promise<void> {
+  await db.transaction().execute(async (tx) => {
+    await lockRegistry(tx);
+    const from = await featureById(tx, fromId);
+    const into = await featureById(tx, intoId);
+    if (!from) throw new Error(`no feature ${fromId}`);
+    if (!into) throw new Error(`no feature ${intoId}`);
+    if (fromId === intoId) throw new Error("a feature can't merge into itself");
+    if (from.kind !== into.kind)
+      throw new Error(`${fromId} is a ${from.kind}, ${intoId} a ${into.kind}`);
+    if (from.status === "merged")
+      throw new Error(`${fromId} is already merged`);
+    if (into.status === "merged")
+      throw new Error(
+        `${intoId} was merged into ${into.mergedInto}: merge into that`,
+      );
+    const refs = await tx
+      .updateTable("feature_refs")
+      .set({ feature_id: intoId })
+      .where("feature_id", "=", fromId)
+      .executeTakeFirst();
+    const children = await tx
+      .updateTable("features")
+      .set({ parent_id: intoId, updated_at: new Date() })
+      .where("parent_id", "=", fromId)
+      .executeTakeFirst();
+    // Earlier redirects to it now go straight to `intoId`.
+    await tx
+      .updateTable("features")
+      .set({ merged_into: intoId, updated_at: new Date() })
+      .where("merged_into", "=", fromId)
+      .execute();
+    await tx
+      .updateTable("features")
+      .set({ status: "merged", merged_into: intoId, updated_at: new Date() })
+      .where("id", "=", fromId)
+      .execute();
+    await recordChange(
+      tx,
+      fromId,
+      "merge",
+      { status: from.status },
+      {
+        mergedInto: intoId,
+        refs: Number(refs.numUpdatedRows),
+        stops: Number(children.numUpdatedRows),
+      },
+      userId,
+    );
+  });
+}
+
+/** Make a new exchange of some stops (taken out of whatever they were in). Returns its ID. */
+export async function newExchange(
+  db: Db,
+  name: string,
+  stopIds: string[],
+  userId: number | null = null,
+): Promise<string> {
+  if (!name.trim()) throw new Error("an exchange needs a name");
+  if (!stopIds.length) throw new Error("an exchange needs stops");
+  const mint = await idMinter(db);
+  const id = mint("exchange");
+  await db.transaction().execute(async (tx) => {
+    await lockRegistry(tx);
+    const stops: FeatureRow[] = [];
+    for (const s of stopIds) {
+      const f = await featureById(tx, s);
+      if (f?.kind !== "stop" || f.status !== "active")
+        throw new Error(`${s} isn't an active stop`);
+      stops.push(f);
+    }
+    const located = stops.filter((s) => s.lon !== null && s.lat !== null);
+    const lon = located.reduce((a, s) => a + s.lon!, 0) / located.length;
+    const lat = located.reduce((a, s) => a + s.lat!, 0) / located.length;
+    await tx
+      .insertInto("features")
+      .values({
+        id,
+        kind: "exchange",
+        operator_id: null,
+        feed_id: null,
+        parent_id: null,
+        name: name.trim(),
+        geom: located.length ? point(lon, lat) : null,
+      })
+      .execute();
+    // Its name was set by an admin: reconciliation keeps it.
+    await recordChange(tx, id, "rename", null, { name: name.trim() }, userId);
+    for (const s of stops) {
+      await tx
+        .updateTable("features")
+        .set({ parent_id: id, updated_at: new Date() })
+        .where("id", "=", s.id)
+        .execute();
+      await recordChange(
+        tx,
+        s.id,
+        "set-parent",
+        { parent: s.parentId },
+        { parent: id },
+        userId,
+      );
+    }
+  });
+  return id;
+}
+
+export interface FeatureSummary {
+  id: string;
+  kind: FeatureKind;
+  name: string;
+  status: "active" | "retired" | "merged";
+  feedId: string | null;
+  parentId: string | null;
+  lon: number | null;
+  lat: number | null;
+}
+
+const summaryColumns = [
+  "id",
+  "kind",
+  "name",
+  "status",
+  "feed_id",
+  "parent_id",
+  sql<number | null>`ST_X(geom::geometry)`.as("lon"),
+  sql<number | null>`ST_Y(geom::geometry)`.as("lat"),
+] as const;
+
+const toSummary = (r: {
+  id: string;
+  kind: FeatureKind;
+  name: string;
+  status: "active" | "retired" | "merged";
+  feed_id: string | null;
+  parent_id: string | null;
+  lon: number | null;
+  lat: number | null;
+}): FeatureSummary => ({
+  id: r.id,
+  kind: r.kind,
+  name: r.name,
+  status: r.status,
+  feedId: r.feed_id,
+  parentId: r.parent_id,
+  lon: r.lon,
+  lat: r.lat,
+});
+
+/** Features by ID or ref (exact), else by name (places first, at most `limit`). */
+export async function searchFeatures(
+  db: Db,
+  q: string,
+  limit = 50,
+): Promise<FeatureSummary[]> {
+  const text = q.trim();
+  if (!text) return [];
+  if (parseKey(text)) {
+    const f = await findFeature(db, text);
+    if (f) {
+      const r = await db
+        .selectFrom("features")
+        .select(summaryColumns)
+        .where("id", "=", f.id)
+        .execute();
+      return r.map(toSummary);
+    }
+  }
+  const rows = await db
+    .selectFrom("features")
+    .select(summaryColumns)
+    .where("name", "ilike", `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`)
+    .orderBy(
+      sql`case kind when 'station' then 0 when 'exchange' then 1 when 'route' then 2 else 3 end`,
+    )
+    .orderBy("name")
+    .limit(limit)
+    .execute();
+  return rows.map(toSummary);
+}
+
+/** A feature with what's around it, for its admin page. */
+export async function featureDetail(db: Db, id: string) {
+  const f = await db
+    .selectFrom("features")
+    .select([...summaryColumns, "merged_into", "created_at", "updated_at"])
+    .where("id", "=", id)
+    .executeTakeFirst();
+  if (!f) return undefined;
+  const parent =
+    f.parent_id ?
+      await db
+        .selectFrom("features")
+        .select(summaryColumns)
+        .where("id", "=", f.parent_id)
+        .executeTakeFirst()
+    : undefined;
+  const children = await db
+    .selectFrom("features")
+    .select(summaryColumns)
+    .where("parent_id", "=", id)
+    .orderBy("name")
+    .execute();
+  const flags = await db
+    .selectFrom("feature_flags")
+    .selectAll()
+    .where((eb) =>
+      eb.or([
+        eb("feature_id", "=", id),
+        eb(sql<string>`${id}`, "=", eb.fn.any("candidates")),
+      ]),
+    )
+    .orderBy("created_at", "desc")
+    .execute();
+  const changes = await db
+    .selectFrom("feature_changes as c")
+    .leftJoin("users as u", "u.id", "c.user_id")
+    .select(["c.action", "c.before", "c.after", "c.created_at", "u.login"])
+    .where("c.feature_id", "=", id)
+    .orderBy("c.id", "desc")
+    .execute();
+  return {
+    feature: { ...toSummary(f), mergedInto: f.merged_into },
+    parent: parent ? toSummary(parent) : null,
+    children: children.map(toSummary),
+    refs: await refsOf(db, id),
+    flags: flags.map(flagRow),
+    changes: changes.map((c) => ({
+      action: c.action,
+      before: c.before,
+      after: c.after,
+      at: c.created_at,
+      by: c.login,
+    })),
+  };
+}
+
+const flagRow = (f: {
+  id: number;
+  feature_id: string;
+  candidates: string[];
+  reason: string;
+  detail: unknown;
+  state: "open" | "resolved";
+  resolution: string | null;
+  created_at: Date;
+}) => ({
+  id: Number(f.id),
+  featureId: f.feature_id,
+  candidates: f.candidates,
+  reason: f.reason,
+  detail: (f.detail ?? null) as Record<string, unknown> | null,
+  state: f.state,
+  resolution: f.resolution,
+  createdAt: f.created_at,
+});
+
+/** Open reconciliation flags, oldest first, with their features' names. */
+export async function openFlags(db: Db, limit = 200) {
+  const rows = await db
+    .selectFrom("feature_flags as g")
+    .innerJoin("features as f", "f.id", "g.feature_id")
+    .selectAll("g")
+    .select(["f.name", "f.kind"])
+    .where("g.state", "=", "open")
+    .orderBy("g.id")
+    .limit(limit)
+    .execute();
+  return rows.map((r) => ({ ...flagRow(r), name: r.name, kind: r.kind }));
+}
+
+/** Close a flag: "kept" (it's a feature of its own), "retired", or "merged:<id>". */
+export async function resolveFlag(
+  db: Db,
+  flagId: number,
+  resolution: string,
+  userId: number | null = null,
+): Promise<void> {
+  if (!/^(kept|retired|merged:.+)$/.test(resolution))
+    throw new Error(`a resolution is kept, retired or merged:<id>`);
+  const r = await db
+    .updateTable("feature_flags")
+    .set({
+      state: "resolved",
+      resolution,
+      resolved_by: userId,
+      resolved_at: new Date(),
+    })
+    .where("id", "=", flagId)
+    .executeTakeFirst();
+  if (!Number(r.numUpdatedRows)) throw new Error(`no flag ${flagId}`);
+}

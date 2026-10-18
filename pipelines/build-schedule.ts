@@ -111,9 +111,10 @@ const STOP_OFFSET_WARN_M = 150;
  * its ids are shown. 5: bus shapes without spurs to their stops. 6: bus shapes matched to OSM roads,
  * and bus corridors. 7: and overview corridors. 8: matched shapes simplified at 1 m. 9: matched
  * shapes and corridors keep the same road nodes. 10: matching retries every road in range before a
- * break; divided roads merge round bends. 11: repeated shape points don't break a match.
+ * break; divided roads merge round bends. 11: repeated shape points don't break a match. 12: bus
+ * exchanges and stations' bays (`hubs`).
  */
-const PLAN_FORMAT = 11;
+const PLAN_FORMAT = 12;
 
 /** Regions showing the feed with SeaBus berths and lanes (infrastructure/seabus.json): build-schedule applies them. */
 async function ferryRegions(feed: string): Promise<string[]> {
@@ -680,6 +681,9 @@ export async function buildPlan(
     trips,
     calendar: { calendar, exceptions },
     catalog,
+    // The plan's own grouping of bays, with the catalogue's bays kept above; the browser never runs
+    // busHubs (it groups by the registry's places file where there is one).
+    hubs: busHubs({ routes, stops, stations, patterns, trips, catalog }),
   };
   if (roads && matched.size) {
     plan.corridors = buildCorridors(

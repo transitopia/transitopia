@@ -30,6 +30,7 @@ const plan: ServicePlan = {
   routes: [],
   stops: [],
   stations: [],
+  hubs: [],
   shapes: {},
   patterns: [],
   trips: [],

@@ -90,6 +90,7 @@ import {
   setDebugPlatforms,
 } from "./layers/tracks.ts";
 import { readUrl, writeUrl, type Place, type UrlState } from "./url.ts";
+import type { BusHub } from "@transitopia/transit-core/plan/exchanges.ts";
 import {
   resolveSelect,
   selectKey,
@@ -337,6 +338,8 @@ export class TransitEngine {
   /** Line centrelines and ribbons for drawing SkyTrain (lines.geojson). */
   private lines: LineGeometry | undefined;
   private shownFeed: PreparedPlan | undefined;
+  /** The stations' and exchanges' grouping the static layers were drawn with (hubsOf). */
+  private shownHubs: BusHub[] | undefined;
   /** The feed the engine shows (its vehicles' `rt` refs are in it). */
   private readonly feed: string;
   /** A `?select=` key waiting for the plan and its places file. */
@@ -549,6 +552,7 @@ export class TransitEngine {
         this.writeUrlSoon();
       }),
       store.onChange(() => {
+        this.syncHubs();
         this.syncStatic();
         this.describers.clear();
         this.resolveSelection();
@@ -1464,6 +1468,33 @@ export class TransitEngine {
     });
   }
 
+  /**
+   * When the shown plan's places file arrives, its stations and exchanges replace the plan's own
+   * grouping (src/hubs.ts): redraw them, and keep an open exchange card on the exchange sharing its
+   * bays (its id is now the feature's).
+   */
+  private syncHubs(): void {
+    const pp = this.shownFeed;
+    if (!pp) return;
+    this.store.placesFor(pp);
+    const hubs = hubsOf(pp.plan);
+    if (hubs === this.shownHubs) return;
+    const old = this.shownHubs;
+    this.shownHubs = hubs;
+    const place = this.place;
+    if (place?.kind === "exchange" && !hubs.some((h) => h.id === place.id)) {
+      const bays = new Set(old?.find((h) => h.id === place.id)?.bays);
+      const now = hubs.find((h) => h.bays.some((b) => bays.has(b)));
+      this.place =
+        now ?
+          now.station !== undefined ?
+            { kind: "station", id: now.station }
+          : { kind: "exchange", id: now.id }
+        : undefined;
+    }
+    this.syncStatic(true);
+  }
+
   /** Static layers follow the feed of the displayed date. */
   private syncStatic(force = false): void {
     const { map, store } = this;
@@ -1471,6 +1502,9 @@ export class TransitEngine {
     if (!pp || !this.styleReady || this.disposed) return;
     if (pp === this.shownFeed && !force) return;
     this.shownFeed = pp;
+    // Start loading its places file, whose grouping replaces the plan's (syncHubs).
+    store.placesFor(pp);
+    this.shownHubs = hubsOf(pp.plan);
     addStaticLayers(map, pp.plan, this.theme, this.hidden);
     applyStopsVisibility(map, this.showStops);
     if (!pp.plan.corridors?.length) this.frequencyLayer = undefined;

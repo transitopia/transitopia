@@ -19,9 +19,14 @@ import { reconcileVersion } from "../src/features/reconcile.ts";
 import {
   childrenOf,
   findFeature,
+  mergeFeatures,
+  newExchange,
+  resolveKey,
   retire,
+  searchFeatures,
   setParent,
 } from "../src/features/registry.ts";
+import { loadRegistry, registryFromDb } from "../src/features/export.ts";
 import { syncSources } from "../src/sources.ts";
 
 const M = 1 / 111_195;
@@ -219,5 +224,48 @@ describe.skipIf(!TEST_DATABASE_URL)("feature registry", () => {
       { route: route.id, service_date: "2026-10-01" },
       { route: route.id, service_date: "2026-10-02" },
     ]);
+  });
+
+  it("makes an exchange of stops, and merges duplicates with one-hop redirects", async () => {
+    const bay1 = (await findFeature(t.db, "stop:translink:60001"))!;
+    const bay2 = (await findFeature(t.db, "stop:translink:60002"))!;
+    const ex = await newExchange(t.db, "Blanca Loop", [bay1.id, bay2.id]);
+    expect((await childrenOf(t.db, ex)).map((c) => c.id).sort()).toEqual(
+      [bay1.id, bay2.id].sort(),
+    );
+    const ex2 = await newExchange(t.db, "Blanca Loop (again)", [bay1.id]);
+    await mergeFeatures(t.db, ex2, ex);
+    // Its stop moved with it, and its ID redirects.
+    expect((await findFeature(t.db, bay1.id))!.parentId).toBe(ex);
+    expect(await findFeature(t.db, ex2)).toMatchObject({
+      id: ex,
+      redirectedFrom: ex2,
+    });
+    await expect(mergeFeatures(t.db, ex, ex2)).rejects.toThrow(
+      /merge into that/,
+    );
+    await expect(mergeFeatures(t.db, ex, bay1.id)).rejects.toThrow(/exchange/);
+    expect((await searchFeatures(t.db, "blanca")).map((f) => f.kind)).toContain(
+      "exchange",
+    );
+  });
+
+  it("resolves keys for the API, by date for GTFS refs", async () => {
+    const r = await resolveKey(t.db, "stop:translink:70001", "20261002");
+    expect(r).toMatchObject({ kind: "stop", suffix: "70001" });
+    expect(r !== "unminted" && r?.bbox).toBeTruthy();
+    expect(await resolveKey(t.db, "osm-way:1")).toBe("unminted");
+    expect(await resolveKey(t.db, "sn-00000000")).toBeUndefined();
+  });
+
+  it("round-trips the registry through its export", async () => {
+    const before = await registryFromDb(t.db);
+    await loadRegistry(t.db, before);
+    const after = await registryFromDb(t.db);
+    expect(after.features).toEqual(before.features);
+    expect(after.refs).toEqual(before.refs);
+    expect(after.versions.map((v) => [v.version, v.seq])).toEqual(
+      before.versions.map((v) => [v.version, v.seq]),
+    );
   });
 });

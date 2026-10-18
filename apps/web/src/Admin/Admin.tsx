@@ -1,6 +1,7 @@
-// /admin (apps/web/README.md#admin): the server's status and the review queue for corrections. Disruptions
-// drafted from TransLink alerts, and observation sets, are edited here, previewed on the map as
-// dispatch versions nobody else sees, then confirmed (or discarded). Admins sign in with GitHub;
+// /admin (apps/web/README.md#admin): the server's status, the review queue for corrections, and the
+// feature registry's tools (Features.tsx). Disruptions drafted from TransLink alerts, and
+// observation sets, are edited here, previewed on the map as dispatch versions nobody else sees,
+// then confirmed (or discarded). Admins sign in with GitHub;
 // the server returns a bearer token in the URL fragment, kept in localStorage.
 
 import React from "react";
@@ -16,6 +17,7 @@ import {
   useSignOut,
 } from "./api.ts";
 import { DisruptionCard } from "./DisruptionCard.tsx";
+import { Features } from "./Features.tsx";
 import { NewCorrection } from "./NewCorrection.tsx";
 import { ObservationCard } from "./ObservationCard.tsx";
 import { isOpen } from "./Review.tsx";
@@ -134,6 +136,7 @@ function Dashboard() {
               ))}
           </Section>
           <NewCorrection />
+          <Features />
           {data.unparsedAlerts.length ?
             <Section title="SkyTrain alerts without a draft" empty="">
               {data.unparsedAlerts.map((a) => (

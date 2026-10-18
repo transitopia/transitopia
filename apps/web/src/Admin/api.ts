@@ -9,6 +9,10 @@ import {
   authMe,
   correctionsResponse,
   errorResponse,
+  featureDetailResponse,
+  featureFlagsResponse,
+  featureSearchResponse,
+  newExchangeResponse,
   okResponse,
   previewResponse,
   statusResponse,
@@ -138,5 +142,61 @@ export function useWrite() {
     }) =>
       call(w.path, writeResponse, { method: w.method ?? "POST", body: w.body }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: CORRECTIONS }),
+  });
+}
+
+const FEATURES = [...ADMIN, "features"] as const;
+
+/** Features by name, ID or ref (nothing for an empty query). */
+export function useFeatureSearch(q: string) {
+  const call = React.useContext(CallContext);
+  return useQuery({
+    queryKey: [...FEATURES, "search", q],
+    queryFn: () =>
+      call(
+        `admin/api/features?q=${encodeURIComponent(q)}`,
+        featureSearchResponse,
+      ),
+    enabled: q.trim().length > 1,
+    retry: false,
+  });
+}
+
+/** A feature's page: refs, parent, stops, flags, changes. */
+export function useFeature(id: string | undefined) {
+  const call = React.useContext(CallContext);
+  return useQuery({
+    queryKey: [...FEATURES, "detail", id],
+    queryFn: () =>
+      call(
+        `admin/api/features/${encodeURIComponent(id!)}`,
+        featureDetailResponse,
+      ),
+    enabled: id !== undefined,
+    retry: false,
+  });
+}
+
+/** Open reconciliation flags. */
+export function useFeatureFlags() {
+  const call = React.useContext(CallContext);
+  return useQuery({
+    queryKey: [...FEATURES, "flags"],
+    queryFn: () => call("admin/api/feature-flags", featureFlagsResponse),
+    retry: false,
+  });
+}
+
+/** Changes to the registry (containment, merges, retiring, flags), reloading features after each. */
+export function useFeatureWrite() {
+  const call = React.useContext(CallContext);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (w: { path: string; body?: unknown }) =>
+      call(w.path, z.union([newExchangeResponse, okResponse]), {
+        method: "POST",
+        body: w.body,
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: FEATURES }),
   });
 }

@@ -6,26 +6,14 @@
 import { distM, type LonLat } from "../geo.ts";
 import {
   isPassengerStop,
+  type PlanHub,
   type PlanStation,
   type PlanStop,
   type ServicePlan,
 } from "./types.ts";
 
-export interface BusHub {
-  /** A slug of the name ("ubc-exchange"), unique in the plan: the engine's id for it, never in links. */
-  id: string;
-  /** "UBC Exchange", "Kootenay Loop"; a station's name for its bays ("Joyce-Collingwood"). */
-  name: string;
-  /** Centre of its bays. */
-  lon: number;
-  lat: number;
-  /** GTFS stop_ids of its bays, by bay number. */
-  bays: string[];
-  /** Route keys serving them. */
-  routes: string[];
-  /** The plan station whose bays these are; absent for an exchange on its own. */
-  station?: string;
-}
+/** A bus exchange or a station's bays (`ServicePlan.hubs`). */
+export type BusHub = PlanHub;
 
 /** Bays of the same exchange within this distance of another of its bays are one exchange (m). */
 const MERGE_M = 250;
@@ -97,7 +85,7 @@ const slug = (name: string) =>
     .replace(/^-|-$/g, "");
 
 /** By bay number, numbers numerically; unnumbered (unloading) bays last. */
-function byBay(a: PlanStop, b: PlanStop): number {
+export function byBay(a: PlanStop, b: PlanStop): number {
   const x = bayNumber(a.name);
   const y = bayNumber(b.name);
   if (x === undefined || y === undefined)
@@ -175,6 +163,36 @@ export function groupBays(
   return [...groups.values()];
 }
 
+/**
+ * The drawn bus routes passengers can board at each of the plan's stops (by stop index), and the
+ * stops rail and ferry trips call at (`nonBus`).
+ */
+export function busStopRoutes(
+  plan: Pick<ServicePlan, "routes" | "patterns" | "trips" | "stops">,
+): Map<number, Set<string>> & { nonBus: Set<number> } {
+  const busRoutes = new Set(
+    plan.routes.filter((r) => r.kind === "bus").map((r) => r.key),
+  );
+  const used = new Set(plan.trips.map((t) => t.pattern));
+  const out = Object.assign(new Map<number, Set<string>>(), {
+    nonBus: new Set<number>(),
+  });
+  for (const p of plan.patterns) {
+    if (!used.has(p.id)) continue;
+    if (!busRoutes.has(p.route)) {
+      for (const si of p.stops) out.nonBus.add(si);
+      continue;
+    }
+    p.stops.forEach((si, i) => {
+      if (!isPassengerStop(p, i)) return;
+      let r = out.get(si);
+      if (!r) out.set(si, (r = new Set()));
+      r.add(p.route);
+    });
+  }
+  return out;
+}
+
 /** What `busHubs` reads: the plan's routes, stops, stations, trips and catalogue. */
 export type HubPlan = Pick<
   ServicePlan,
@@ -188,21 +206,9 @@ export type HubPlan = Pick<
  * exchange appears once one of its buses is drawn.
  */
 export function busHubs(plan: HubPlan): BusHub[] {
-  const busRoutes = new Set(
-    plan.routes.filter((r) => r.kind === "bus").map((r) => r.key),
-  );
-  const used = new Set(plan.trips.map((t) => t.pattern));
-  // Bay stop index → routes calling there.
   const bays = new Map<number, Set<string>>();
-  for (const p of plan.patterns) {
-    if (!busRoutes.has(p.route) || !used.has(p.id)) continue;
-    p.stops.forEach((si, i) => {
-      if (!isPassengerStop(p, i) || !isBay(plan.stops[si]!.name)) return;
-      let r = bays.get(si);
-      if (!r) bays.set(si, (r = new Set()));
-      r.add(p.route);
-    });
-  }
+  for (const [si, r] of busStopRoutes(plan))
+    if (isBay(plan.stops[si]!.name)) bays.set(si, r);
   const indexOf = new Map(plan.stops.map((s, i) => [s.id, i]));
   for (const c of plan.catalog ?? [])
     for (const id of c.stops) {

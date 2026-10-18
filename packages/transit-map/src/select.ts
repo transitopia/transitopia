@@ -79,12 +79,15 @@ export function resolveSelect(
         return r ? { place: { kind: "route", id: r } } : "elsewhere";
       }
       case "exchange": {
+        // Hubs from the places file have the exchange's ID; the plan's own, its bays.
         const bays = new Set(
           Object.keys(places.parents).filter((s) => places.parents[s] === id),
         );
-        const hub = ctx.hubs.find(
-          (h) => !h.station && h.bays.some((b) => bays.has(b)),
-        );
+        const hub =
+          ctx.hubs.find((h) => h.id === id)
+          ?? ctx.hubs.find(
+            (h) => !h.station && h.bays.some((b) => bays.has(b)),
+          );
         return hub ? { place: { kind: "exchange", id: hub.id } } : "elsewhere";
       }
       default:
@@ -145,6 +148,7 @@ export function selectKey(sel: Selection, ctx: SelectContext): string {
       return formatRef("gtfs-route", feed, r?.gtfsRouteId ?? place.id);
     }
     case "exchange": {
+      if (places?.places[place.id]) return places.places[place.id]!.key;
       const hub = ctx.hubs.find((h) => h.id === place.id);
       const ex = hub?.bays
         .map((b) => places?.parents[b])

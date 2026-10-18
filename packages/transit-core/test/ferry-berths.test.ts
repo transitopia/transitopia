@@ -76,6 +76,7 @@ function makePlan(trips: PlanTrip[]): ServicePlan {
       { id: "N", name: "North", lon: -123.1, lat: 49.3001 },
     ],
     stations: [],
+    hubs: [],
     shapes: {
       bus: [
         [-123.2, 49.2],

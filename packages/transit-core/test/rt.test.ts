@@ -76,6 +76,7 @@ const plan: ServicePlan = {
     { id: "s2", name: "End", lon: corner[0], lat: 49.259 },
   ],
   stations: [],
+  hubs: [],
   shapes: { L: [[-123.1, 49.25], corner, [corner[0], 49.259]] },
   patterns: [
     {

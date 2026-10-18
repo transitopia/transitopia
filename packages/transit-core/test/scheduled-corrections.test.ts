@@ -62,6 +62,7 @@ const plan: ServicePlan = {
     },
   ],
   stations: [],
+  hubs: [],
   shapes: {
     s: [
       [-123.08, 49.31],

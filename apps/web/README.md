@@ -103,6 +103,8 @@ Light and dark basemaps come from [packages/map-style](../../packages/map-style/
 
 `/admin` (`src/Admin/Admin.tsx`) is the review queue for corrections: the server's status and health, recent jobs, disruptions drafted from TransLink alerts, observation sets, and alerts the parser couldn't draft. Admins edit, preview, confirm, discard and reopen corrections there. Sign-in is with GitHub through the server; the token comes back in the URL fragment, is removed from the address bar at once, and is kept in local storage ([apps/server → Admin API and sign-in](../server/README.md#admin-api-and-sign-in)).
 
+**Features** (`Features.tsx`, [docs/DESIGN.md → Feature IDs](../../docs/DESIGN.md#feature-ids)): search stations, exchanges, stops and routes by name, ID or ref; a feature's page shows its refs (with the feed versions each range covers), the station or exchange it's in or the stops inside it, its flags and its change history, with a link to it on the map. Admins move or detach stops, make an exchange of some of a place's stops, merge a feature into another of its kind, retire one, and resolve reconciliation's flags (keep, or merge into a candidate). The server publishes the changed places files within a job tick.
+
 The page is `Admin.tsx` (sign-in and the queue's sections), with `Status.tsx`, `DisruptionCard.tsx`, `ObservationCard.tsx`, `NewCorrection.tsx`, `JsonEditor.tsx`, and `Review.tsx` for what both cards share (state badge, review buttons, preview links). `api.ts` fetches with react-query, parsing every response with the admin API's zod schemas in [`@transitopia/shared/admin-api.ts`](../../packages/shared/README.md), the same ones the server types its responses with; each card's writes reload the queue.
 
 ## Current location

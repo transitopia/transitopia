@@ -161,6 +161,7 @@ const plan: ServicePlan = {
     },
   ],
   stations: [],
+  hubs: [],
   shapes: { ab: [pt(100), pt(1900)], ba: [pt(1900), pt(100)] },
   patterns: [
     {

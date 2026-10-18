@@ -112,6 +112,8 @@ Each change is recorded in `feature_changes`, and later builds keep it.
 
 `/admin/api` lists corrections (and unparsed alerts), edits disruptions and observation sets (an edit to a confirmed one sends it back to draft), previews, confirms, discards and reopens them, exports the confirmed ones in the file format, and reports status, health, recent jobs, every `daily` run within retention (observed stop rows and trips per service date) and the database's size per table (for [sizing](../../deployment/README.md#sizing)). A disruption can't be confirmed without saying which track stays open. Its requests and responses are zod schemas in [`@transitopia/shared/admin-api.ts`](../../packages/shared/README.md): `app.ts` checks its responses against them (`satisfies`) and parses request bodies with them, and `/admin` parses what it gets back.
 
+Features (`/admin/api/features…`, `/admin/api/feature-flags…`, `src/features/registry.ts`): search, a feature's page (refs, parent, stops, flags, changes), and the registry's changes: a stop's parent (`POST …/features/<id>/parent`), retire, merge (`…/merge` with `into`: its refs and stops move, its ID redirects; never into a merged feature), a new exchange of some stops (`POST …/features/exchange`), and resolving a flag. Each change is recorded in `feature_changes` with the admin, and the `places` job republishes what it touched.
+
 `ADMIN_DEV_TOKEN` signs anyone presenting it in as an admin, for local development; the server refuses to start with it unless `PUBLIC_URL` is local.
 
 ## Settings

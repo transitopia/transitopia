@@ -24,10 +24,8 @@ import type {
   ObservationIndex,
 } from "@transitopia/transit-core/corrections/types.ts";
 import type { PlacesFile, PlacesIndex } from "@transitopia/shared/features.ts";
-import {
-  busHubs,
-  type BusHub,
-} from "@transitopia/transit-core/plan/exchanges.ts";
+import { hubsFromPlaces } from "./hubs.ts";
+import { type BusHub } from "@transitopia/transit-core/plan/exchanges.ts";
 import type { ScenarioManifest } from "@transitopia/transit-core/scenario/types.ts";
 import {
   preparePlan,
@@ -293,7 +291,9 @@ export class PlanStore {
       this.placesFiles,
       (j) => j as PlacesFile,
     );
-    return this.placesFiles.get(`places:${path}`);
+    const file = this.placesFiles.get(`places:${path}`);
+    if (file) placesOfPlan.set(pp.plan, file);
+    return file;
   }
 
   /** Track-level playback for a service date, or undefined (not built / still loading). */
@@ -597,12 +597,25 @@ export function displayServiceDate(t: number): ServiceDate {
   return localDate(t - SERVICE_DAY_ROLLOVER_H * 3600_000);
 }
 
-const hubCache = new WeakMap<ServicePlan, BusHub[]>();
-/** The plan's bus exchanges and stations' bus bays (computed once per plan). */
+/** Each plan's places file, once loaded (`PlanStore.placesFor`). */
+const placesOfPlan = new WeakMap<ServicePlan, PlacesFile>();
+const hubCache = new WeakMap<
+  ServicePlan,
+  { places: PlacesFile | undefined; hubs: BusHub[] }
+>();
+/**
+ * The plan's bus exchanges and stations' bus bays: as its places file groups them once it's loaded
+ * (src/hubs.ts), else the plan's own grouping. A new array when the places file arrives.
+ */
 export function hubsOf(plan: ServicePlan): BusHub[] {
-  let h = hubCache.get(plan);
-  if (!h) hubCache.set(plan, (h = busHubs(plan)));
-  return h;
+  const places = placesOfPlan.get(plan);
+  let c = hubCache.get(plan);
+  if (!c || c.places !== places)
+    hubCache.set(
+      plan,
+      (c = { places, hubs: places ? hubsFromPlaces(plan, places) : plan.hubs }),
+    );
+  return c.hubs;
 }
 
 const railServiceCache = new WeakMap<PreparedPlan, Set<string>>();
