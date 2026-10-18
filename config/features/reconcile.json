@@ -1,0 +1,13 @@
+{
+  "$comment": "Feature reconciliation (docs/DESIGN.md#feature-ids, apps/server/README.md#feature-reconciliation): which feature each stop, station and route in a new GTFS feed version belongs to. Every distance is a guess until reconciliation has been run over the archived feeds and its flags reviewed.",
+  "$stopNameMatchM": "A stop without a stop_code is the same stop as an unmatched one of the same name within this distance (m). Guess.",
+  "stopNameMatchM": 50,
+  "$stopMovedFarM": "A stop matched by its stop_id or stop_code that moved further than this is flagged (code-moved-far) for an admin to check (m). Guess.",
+  "stopMovedFarM": 300,
+  "$disappearedNearM": "A new stop within this distance of a stop of the same feed that disappeared in this version is flagged (disappeared-nearby), since it may be the same stop (m). Guess.",
+  "disappearedNearM": 50,
+  "$stationMatchM": "A station is the same as an unmatched one of the same name in its feed within this distance, and flagged when another feed has one of the same name within it (cross-feed-name-match) (m). Guess.",
+  "stationMatchM": 300,
+  "$exchangeReplacedM": "A new exchange within this distance of an exchange that has lost all its stops is flagged (exchange-replaced): the operator may have renumbered every bay (m). Guess; the bays' own merge distance (MERGE_M in packages/transit-core/src/plan/exchanges.ts).",
+  "exchangeReplacedM": 250
+}

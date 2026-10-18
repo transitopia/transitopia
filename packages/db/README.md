@@ -16,7 +16,7 @@ PostgreSQL (18, with PostGIS) for the Transitopia server: SQL migrations, [Kysel
 
 | Table | What | Kept |
 |---|---|---|
-| `regions`, `feeds` | Region and feed records, upserted from `config/regions/*/region.json` and `config/feeds/*/feed.json` when the server starts ([docs/DESIGN.md → Regions and feeds](../../docs/DESIGN.md#regions-and-feeds)). What comes from a feed is keyed by `feed_id` (polls, positions, trip changes, alerts, GTFS feeds, observed stop times, statistics); AIS fixes too; corrections and dispatch versions by `region_id`. | |
+| `regions`, `operators`, `feeds` | Region, operator and feed records, upserted from `config/regions/*/region.json`, `config/operators/*/operator.json` and `config/feeds/*/feed.json` when the server starts (a feed references its operator) ([docs/DESIGN.md → Regions and feeds](../../docs/DESIGN.md#regions-and-feeds)). What comes from a feed is keyed by `feed_id` (polls, positions, trip changes, alerts, GTFS feeds, observed stop times, statistics); AIS fixes too; corrections and dispatch versions by `region_id`. | |
 | `service_leader` | Where followers forward `/rt/*`. Leadership itself is a session advisory lock. | |
 | `upstream_requests` | Every upstream request, successful or not, by `provider` (the feed id): each feed's daily cap is enforced against it, so restarts and retries count | |
 | `rt_polls` | One row per poll or AIS batch: the coverage record | |
@@ -26,9 +26,13 @@ PostgreSQL (18, with PostGIS) for the Transitopia server: SQL migrations, [Kysel
 | `alerts` | GTFS-RT alerts with first and last sighting; the latest wording wins | indefinitely |
 | `observation_sets`, `disruptions` | Curated corrections: `body` is the file format, `state` the review state (`draft`, `previewing`, `confirmed`, `discarded`). Only confirmed ones apply. | indefinitely |
 | `dispatch_versions` | Dispatch patch versions (the patches are files): `live` or `preview` | indefinitely |
-| `gtfs_feeds` | GTFS static feeds (the zips are in the archive bucket) | indefinitely |
-| `observed_stop_times` | Per trip and stop, when the vehicle was there, derived from raw positions while they exist: the atom behind every statistic (partitioned by month) | indefinitely |
-| `route_stats_daily` | Per-route statistics per service date and time band; `coverage` is the share of scheduled trip time the recorder covered, so a gap is a gap, never a zero | indefinitely |
+| `gtfs_feeds` | GTFS static feeds (the zips are in the archive bucket). `seq` numbers them in the order they were archived, which ranges of refs are over; `reconciled_at` is when feature reconciliation took the version in. | indefinitely |
+| `features` | The feature registry ([docs/DESIGN.md → Feature IDs](../../docs/DESIGN.md#feature-ids)): an ID per station, exchange, stop and route; its kind, operator and feed, name, position (`geom`, a PostGIS geography), status (`active`, `retired`, `merged` with `merged_into`), and a stop's station or exchange (`parent_id`) | indefinitely |
+| `feature_refs` | The source records a feature is (`scheme`, `namespace`, `ref`), over a range of feed versions (`versions`, an `int4range` of `gtfs_feeds.seq`; unbounded for schemes without versions). An exclusion constraint (`btree_gist`) keeps a ref to one feature in each version. | indefinitely |
+| `feature_flags` | What reconciliation wasn't sure of (`reason`, `candidates`), for an admin to resolve | indefinitely |
+| `feature_changes` | Every admin change to the registry (`set-parent`, `retire`, …), with before and after | indefinitely |
+| `observed_stop_times` | Per trip and stop, when the vehicle was there, derived from raw positions while they exist: the atom behind every statistic (partitioned by month). `feed_version` is the GTFS version it was derived from; `observed_stop_times_by_feature` adds each row's stop feature. | indefinitely |
+| `route_stats_daily` | Per-route statistics per service date and time band; `coverage` is the share of scheduled trip time the recorder covered, so a gap is a gap, never a zero. `feed_version` as above; `route_stats_daily_by_feature` adds each row's route feature, continuous across feed versions. | indefinitely |
 | `job_runs` | Scheduled and catch-up jobs, one row per job and key | |
 | `users`, `sessions` | Admins signed in with GitHub; sessions store only the token's SHA-256 | |
 

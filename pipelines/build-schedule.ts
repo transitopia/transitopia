@@ -41,7 +41,6 @@ import type {
 } from "@transitopia/transit-core/config.ts";
 import {
   cumulativeLengths,
-  distM,
   projectOnto,
   removeStopSpurs,
   round,
@@ -94,6 +93,10 @@ import {
   bayAtPlace,
   busHubs,
 } from "@transitopia/transit-core/plan/exchanges.ts";
+import {
+  groupStations,
+  stationName,
+} from "@transitopia/transit-core/plan/stations.ts";
 
 /** Shape simplification tolerance (m) by route kind: track-level lines keep more detail. */
 const SIMPLIFY_M: Record<RouteKind, number> = { skytrain: 1, shape: 3, bus: 4 };
@@ -101,8 +104,6 @@ const SIMPLIFY_M: Record<RouteKind, number> = { skytrain: 1, shape: 3, bus: 4 };
 const STOP_SPURS: StopSpurLimits = { curbM: 10, spurM: 20 };
 /** Warn when a stop projects further than this from its trip's shape. */
 const STOP_OFFSET_WARN_M = 150;
-/** Same-named stations closer than this are one station on the map. */
-const STATION_MERGE_M = 400;
 /**
  * Bump when this script writes something different from the same feed and config (a new field,
  * different filtering), so plans already built are rebuilt. 2: route catalogue and its bays.
@@ -562,10 +563,7 @@ export async function buildPlan(
     if (!row) continue;
     stations.push({
       id,
-      // "Waterfront Station", "Waterfront Station @ West Coast Express" → "Waterfront"
-      name: row
-        .stop_name!.replace(/\s+Station\b.*$/, "")
-        .replace(/\s+@.*$/, ""),
+      name: stationName(row.stop_name!),
       lon: Number(row.stop_lon),
       lat: Number(row.stop_lat),
       routes: [...rs],
@@ -573,18 +571,14 @@ export async function buildPlan(
   }
   // Merge same-named stations close together (e.g. standalone WCE stops beside the SkyTrain
   // station of the same name), keeping the first (parent) station's position.
-  const merged: PlanStation[] = [];
-  for (const s of stations.sort(
-    (a, b) => b.routes.length - a.routes.length || a.id.localeCompare(b.id),
-  )) {
-    const twin = merged.find(
-      (m) =>
-        m.name === s.name
-        && distM([m.lon, m.lat], [s.lon, s.lat]) < STATION_MERGE_M,
-    );
-    if (twin) twin.routes = [...new Set([...twin.routes, ...s.routes])];
-    else merged.push(s);
-  }
+  const merged = groupStations(
+    stations.sort(
+      (a, b) => b.routes.length - a.routes.length || a.id.localeCompare(b.id),
+    ),
+  ).map(([first, ...rest]) => ({
+    ...first!,
+    routes: [...new Set([first!, ...rest].flatMap((s) => s.routes))],
+  }));
   stations.length = 0;
   stations.push(...merged.sort((a, b) => a.name.localeCompare(b.name)));
 

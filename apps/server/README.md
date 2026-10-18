@@ -77,10 +77,26 @@ A patch only fits the build it was dispatched against (`baseBuiltAt`), which is 
 | `partitions` | UTC date | Create the next days' and months' partitions |
 | `retention` | local date | Drop raw data older than `retentionDays` (60): partitions, hour files, and their archive copies |
 | `daily` | feed:service date | A feed's observed stop times and per-route statistics for each finished service date still within retention (`src/jobs/daily.ts`, with `packages/transit-core/src/rt/observed.ts` and `stats.ts`). `npm run stats -- <YYYYMMDD>` reruns one. |
-| `data` | local date | With `BUILD_DATA=1`, at `dataBuildAt`: build the transit data (the pipelines, in a child process) with the confirmed corrections from the database, publish it to `DATA_PUBLISH_REMOTE`, and archive new GTFS feeds. Also runs at once, under the key `<local date>-initial`, whenever a feed has nothing published (a new server, a feed just added, or a deploy that moved the published data), even if the day's build already ran. |
+| `data` | local date | With `BUILD_DATA=1`, at `dataBuildAt`: build the transit data (the pipelines, in a child process) with the confirmed corrections from the database, publish it to `DATA_PUBLISH_REMOTE`, archive new GTFS feeds and reconcile them into the feature registry ([below](#feature-reconciliation)). Also runs at once, under the key `<local date>-initial`, whenever a feed has nothing published (a new server, a feed just added, or a deploy that moved the published data), even if the day's build already ran. |
 | `archive` | local hour | Copy closed recordings to `ARCHIVE_REMOTE` |
 
 Backups run in their own container (`infra/backup/`) and record themselves in `job_runs`. `/healthz` fails when a daily job (statistics, data build, backup) failed in the last 3 days or hasn't succeeded for 36 hours.
+
+## Feature reconciliation
+
+`src/features/` ([docs/DESIGN.md → Feature IDs](../../docs/DESIGN.md#feature-ids)). After the data build records new GTFS versions in `gtfs_feeds`, `reconcileFeeds` takes in every version of every feed not yet reconciled, in `seq` order, one transaction each (holding an advisory lock, so the CLI and the server never write at once): it reads the version's every stop and route from its zip (`packages/data/src/gtfs-features.ts`; from `ARCHIVE_REMOTE` when it's no longer on disk), loads a snapshot of the registry (`registry.ts`), runs the pure matcher (`packages/transit-core/src/features/reconcile.ts`) and writes its decisions: new features, refreshed names and positions, ref ranges carried on or opened, and flags. A feed's later versions wait for a version whose zip can't be found. From an empty registry this is the catch-up over every archived version. A failure is logged and doesn't stop the build from publishing; the next build tries again.
+
+`npm run features` does the same locally, and has the containment tools until `/admin` has them:
+
+```sh
+DATABASE_URL=… npm run features -- reconcile [--feed <id>] [--skip-missing]   # IDs minted locally are throwaway
+DATABASE_URL=… npm run features -- show stop:translink:50123                # a feature by ID or ref: refs, parent, stops
+DATABASE_URL=… npm run features -- detach <stop> [<stop> …]                  # e.g. Blanca Loop's bays: not an exchange
+DATABASE_URL=… npm run features -- retire <exchange>                         # once it has no stops
+DATABASE_URL=… npm run features -- move <stop> <station or exchange>
+```
+
+Each change is recorded in `feature_changes`, and later builds keep it.
 
 ## Admin API and sign-in
 
@@ -108,12 +124,13 @@ From the environment (`src/env.ts`; production values in `infra/.env.example`):
 | `BUILD_DATA=1`, `DATA_PUBLISH_REMOTE`, `ARCHIVE_REMOTE` | Build and publish the transit data; rclone destinations for it and the archive |
 | `TRANSLINK_API_KEY`, `AISSTREAM_API_KEY` | Upstream keys (or `.secrets`); used only with `RT_POLL=1` |
 
-The server refuses to start on outdated time zone data (`timezoneChecks` in each `region.json`). It upserts the `regions` and `feeds` tables from the files when it starts (`src/sources.ts`; the import and statistics tools do too, since rows of a feed reference it). Its own settings, the same for every region, are in [config/server/](../../config/server/): `server.json` (default port, live dispatch) and `recording.json` (retention, statistics, the daily data build).
+The server refuses to start on outdated time zone data (`timezoneChecks` in each `region.json`). It upserts the `regions`, `operators` and `feeds` tables from the files when it starts (`src/sources.ts`; the import and statistics tools do too, since rows of a feed reference it). Its own settings, the same for every region, are in [config/server/](../../config/server/): `server.json` (default port, live dispatch) and `recording.json` (retention, statistics, the daily data build); reconciliation's distances are in [config/features/reconcile.json](../../config/features/reconcile.json).
 
 ## Command-line tools
 
 - `npm run db:import-history`: import `var/rt-history/<feed>/`, `var/{ais,dispatch}-history` into the database (idempotent).
 - `npm run stats -- <YYYYMMDD> [--feed <id>]`: recompute a date's observed stop times and statistics (every feed with real time, or one).
 - `npm run corrections -- export <dir> | import [<dir>] | pull`: move corrections between the database and the file format.
+- `npm run features -- reconcile | show | move | detach | retire`: the feature registry ([above](#feature-reconciliation)).
 
 Tests (`test/`) use a scratch database when `TEST_DATABASE_URL` is set.

@@ -109,6 +109,72 @@ function byBay(a: PlanStop, b: PlanStop): number {
   return x.localeCompare(y, undefined, { numeric: true });
 }
 
+/** A proposed group of bays: an exchange's, or a station's. */
+export interface BayGroup {
+  /** The exchange's name ("UBC Exchange"), or the station's for its bays. */
+  name: string;
+  /** Stop ids of its bays, in the order given. */
+  bays: string[];
+  /** The id of the station whose bays these are; absent for an exchange on its own. */
+  station?: string;
+}
+
+type Located = { id: string; name: string; lon: number; lat: number };
+
+/**
+ * Bays grouped into exchanges and stations' bays, by name and distance (GTFS gives bays no parent):
+ * bays of the same name each within MERGE_M of another are one exchange, and a group within
+ * STATION_M of a station whose name starts with the same word is that station's. Every bay given is
+ * in one group. What `busHubs` builds on, and what feature reconciliation proposes for new bays
+ * (packages/transit-core/DESIGN.md#bus-exchanges).
+ */
+export function groupBays(
+  bays: readonly Located[],
+  stations: readonly Located[],
+): BayGroup[] {
+  // Clusters: same name, each bay within MERGE_M of another.
+  const clusters: { name: string; stops: Located[] }[] = [];
+  const at = (s: Located): LonLat => [s.lon, s.lat];
+  for (const s of bays) {
+    const name = baseName(s.name);
+    const near = clusters.filter(
+      (c) =>
+        c.name.toLowerCase() === name.toLowerCase()
+        && c.stops.some((o) => distM(at(o), at(s)) < MERGE_M),
+    );
+    if (!near.length) {
+      clusters.push({ name, stops: [s] });
+      continue;
+    }
+    // Join, merging clusters this bay bridges.
+    const [first, ...rest] = near;
+    first!.stops.push(s, ...rest.flatMap((c) => c.stops));
+    for (const c of rest) clusters.splice(clusters.indexOf(c), 1);
+  }
+  // Each cluster to its station, if any; a station's clusters are one group ("Scott Rd Station" and
+  // "Scott Road Station" bays are both Scott Road's).
+  const groups = new Map<string, BayGroup>();
+  for (const c of clusters) {
+    let best: { id: string; name: string; d: number } | undefined;
+    for (const st of stations) {
+      if (firstWord(st.name) !== firstWord(c.name)) continue;
+      const d = Math.min(...c.stops.map((s) => distM(at(s), at(st))));
+      if (d < STATION_M && (!best || d < best.d))
+        best = { id: st.id, name: st.name, d };
+    }
+    const key = best ? `station:${best.id}` : `name:${c.name}`;
+    const g = groups.get(key);
+    if (g) g.bays.push(...c.stops.map((s) => s.id));
+    else
+      groups.set(key, {
+        name: best ? best.name : c.name,
+        bays: c.stops.map((s) => s.id),
+        ...(best ? { station: best.id } : {}),
+      });
+  }
+  return [...groups.values()];
+}
+
 /** What `busHubs` reads: the plan's routes, stops, stations, trips and catalogue. */
 export type HubPlan = Pick<
   ServicePlan,
@@ -144,54 +210,17 @@ export function busHubs(plan: HubPlan): BusHub[] {
       if (si !== undefined && isBay(plan.stops[si]!.name) && !bays.has(si))
         bays.set(si, new Set());
     }
-  // Clusters: same name, each bay within MERGE_M of another.
-  const clusters: { name: string; stops: number[] }[] = [];
-  const at = (si: number): LonLat => [plan.stops[si]!.lon, plan.stops[si]!.lat];
-  for (const si of bays.keys()) {
-    const name = baseName(plan.stops[si]!.name);
-    const near = clusters.filter(
-      (c) =>
-        c.name.toLowerCase() === name.toLowerCase()
-        && c.stops.some((o) => distM(at(o), at(si)) < MERGE_M),
-    );
-    if (!near.length) {
-      clusters.push({ name, stops: [si] });
-      continue;
-    }
-    // Join, merging clusters this bay bridges.
-    const [first, ...rest] = near;
-    first!.stops.push(si, ...rest.flatMap((c) => c.stops));
-    for (const c of rest) clusters.splice(clusters.indexOf(c), 1);
-  }
-  // Each cluster to its station, if any; a station's clusters are one hub ("Scott Rd Station" and
-  // "Scott Road Station" bays are both Scott Road's).
-  const hubs = new Map<
-    string,
-    { name: string; stops: number[]; station?: string }
-  >();
-  for (const c of clusters) {
-    let best: { id: string; name: string; d: number } | undefined;
-    for (const st of plan.stations) {
-      if (firstWord(st.name) !== firstWord(c.name)) continue;
-      const d = Math.min(
-        ...c.stops.map((si) => distM(at(si), [st.lon, st.lat])),
-      );
-      if (d < STATION_M && (!best || d < best.d))
-        best = { id: st.id, name: st.name, d };
-    }
-    const key = best ? `station:${best.id}` : `name:${c.name}`;
-    const h = hubs.get(key);
-    if (h) h.stops.push(...c.stops);
-    else
-      hubs.set(key, {
-        name: best ? best.name : c.name,
-        stops: [...c.stops],
-        ...(best ? { station: best.id } : {}),
-      });
-  }
+  const groups = groupBays(
+    [...bays.keys()].map((si) => plan.stops[si]!),
+    plan.stations,
+  );
+  const hubs = groups.map((g) => ({
+    ...g,
+    stops: g.bays.map((id) => indexOf.get(id)!),
+  }));
   const out: BusHub[] = [];
   const ids = new Set<string>();
-  for (const h of hubs.values()) {
+  for (const h of hubs) {
     if (!h.station && h.stops.every((si) => !bays.get(si)!.size)) continue;
     const stops = h.stops.map((si) => plan.stops[si]!).sort(byBay);
     let id = slug(h.name);

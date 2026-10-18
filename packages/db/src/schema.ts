@@ -4,6 +4,7 @@
 
 import type { ColumnType, Generated } from "kysely";
 import type { ReviewState } from "@transitopia/shared/admin-api.ts";
+import type { FeatureKind } from "@transitopia/shared/features.ts";
 
 type Timestamp = ColumnType<Date, Date | string, Date | string>;
 /** A timestamp with a database default (`now()`). */
@@ -18,7 +19,8 @@ type Json<T> = ColumnType<T, string, string>;
 
 export interface Database {
   regions: { id: string; name: string; timezone: string };
-  feeds: { id: string; name: string; agency: string; timezone: string };
+  operators: { id: string; name: string };
+  feeds: { id: string; name: string; operator_id: string; timezone: string };
   service_leader: {
     region_id: string;
     instance: string;
@@ -144,6 +146,9 @@ export interface Database {
     sha256: string;
     bytes: number;
     object_key: string | null;
+    /** The order versions were archived in (feature_refs.versions). */
+    seq: Generated<number>;
+    reconciled_at: Timestamp | null;
   };
   observed_stop_times: {
     feed_id: string;
@@ -159,6 +164,7 @@ export interface Database {
     observed_at: Timestamp;
     precision_s: number;
     stats_version: number;
+    feed_version: string | null;
   };
   route_stats_daily: {
     feed_id: string;
@@ -170,7 +176,55 @@ export interface Database {
     metrics: Json<unknown>;
     coverage: number;
     stats_version: number;
+    feed_version: string | null;
     computed_at: DefaultTimestamp;
+  };
+  // The feature registry (docs/DESIGN.md#feature-ids). `geom` is a PostGIS geography: write and
+  // read it with SQL (ST_MakePoint, ST_X), never as a value.
+  features: {
+    id: string;
+    kind: FeatureKind;
+    operator_id: string | null;
+    feed_id: string | null;
+    parent_id: string | null;
+    name: string;
+    geom: ColumnType<unknown, unknown, unknown>;
+    status: Generated<"active" | "retired" | "merged">;
+    merged_into: string | null;
+    created_at: DefaultTimestamp;
+    updated_at: DefaultTimestamp;
+  };
+  feature_refs: {
+    id: Generated<number>;
+    feature_id: string;
+    scheme: string;
+    namespace: Generated<string>;
+    ref: string;
+    /** An int4range of gtfs_feeds.seq ("[3,8)"); unbounded ("(,)") for schemes without versions. */
+    versions: ColumnType<string, string | undefined, string>;
+    origin: "reconcile" | "admin" | "import";
+    created_at: DefaultTimestamp;
+  };
+  feature_changes: {
+    id: Generated<number>;
+    feature_id: string;
+    action: string;
+    before: Json<unknown> | null;
+    after: Json<unknown> | null;
+    user_id: number | null;
+    created_at: DefaultTimestamp;
+  };
+  feature_flags: {
+    id: Generated<number>;
+    feature_id: string;
+    candidates: ColumnType<string[], string[] | undefined, string[]>;
+    reason: string;
+    detail: Json<unknown> | null;
+    state: Generated<"open" | "resolved">;
+    resolution: string | null;
+    resolved_by: number | null;
+    created_at: DefaultTimestamp;
+    resolved_at: Timestamp | null;
   };
   job_runs: {
     job: string;

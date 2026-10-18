@@ -1,6 +1,7 @@
 // The daily transit data build on the server (apps/server/README.md#jobs). It detects new GTFS feeds and
 // publishes to object storage. It runs the same steps as `npm run data`, with
-// the confirmed corrections exported from the database, then archives new GTFS feeds and publishes
+// the confirmed corrections exported from the database, then archives new GTFS feeds, reconciles
+// them into the feature registry (docs/DESIGN.md#feature-ids) and publishes
 // var/public/data for data.transitopia.org. Building here keeps the live dispatcher's base plans
 // identical to what browsers load: a dispatch patch only fits the build it was made from.
 
@@ -20,9 +21,15 @@ import type { CorrectionsRepo } from "../corrections.ts";
 import type { ServerEnv } from "../env.ts";
 import { run } from "./exec.ts";
 import { isoDate } from "../dates.ts";
+import { reconcileConfig } from "../config.ts";
+import { reconcileFeeds } from "../features/reconcile.ts";
 
 export interface DataBuildResult {
   newFeeds: string[];
+  /** Feed versions reconciled into the feature registry ("<feed>/<version>"). */
+  reconciled: string[];
+  /** Why reconciliation failed, if it did: it never stops the build from publishing. */
+  reconcileError?: string;
   published: boolean;
 }
 
@@ -53,7 +60,24 @@ export async function buildData(opts: {
   const newFeeds: string[] = [];
   if (db)
     for (const f of opts.feeds)
-      newFeeds.push(...(await recordFeeds(db, f.id, env, log)));
+      newFeeds.push(...(await recordFeeds(db, f.id, env.archiveRemote, log)));
+  // Feature IDs for the new versions (and any not yet reconciled), apps/server/README.md#feature-reconciliation.
+  const reconciled: string[] = [];
+  let reconcileError: string | undefined;
+  if (db)
+    try {
+      for (const r of await reconcileFeeds({
+        db,
+        feeds: opts.feeds,
+        settings: reconcileConfig,
+        archiveRemote: env.archiveRemote,
+        log,
+      }))
+        reconciled.push(`${r.feed}/${r.version}`);
+    } catch (e) {
+      reconcileError = (e as Error).message;
+      log(`feature reconciliation failed: ${reconcileError}`);
+    }
   let published = false;
   if (env.dataPublishRemote) {
     const dest = `${env.dataPublishRemote}/data`;
@@ -83,14 +107,22 @@ export async function buildData(opts: {
     published = true;
     log(`published transit data to ${env.dataPublishRemote}`);
   }
-  return { newFeeds, published };
+  return {
+    newFeeds,
+    reconciled,
+    ...(reconcileError ? { reconcileError } : {}),
+    published,
+  };
 }
 
-/** Add a feed's archived GTFS versions to gtfs_feeds (kept indefinitely), uploading the zips to the archive. */
-async function recordFeeds(
+/**
+ * Add a feed's archived GTFS versions to gtfs_feeds (kept indefinitely), uploading the zips to the
+ * archive when there is one.
+ */
+export async function recordFeeds(
   db: Db,
   feedId: string,
-  env: ServerEnv,
+  archiveRemote: string | undefined,
   log: (msg: string) => void,
 ): Promise<string[]> {
   const known = new Set(
@@ -108,11 +140,11 @@ async function recordFeeds(
     if (known.has(f.version)) continue;
     // TransLink's zips were archived at gtfs/metro-vancouver/<version>/ before feeds had ids.
     const key = `gtfs/${feedId}/${f.version}/google_transit.zip`;
-    if (env.archiveRemote)
+    if (archiveRemote)
       await run("rclone", [
         "copyto",
         f.path,
-        `${env.archiveRemote}/${key}`,
+        `${archiveRemote}/${key}`,
         "--s3-no-check-bucket",
       ]);
     const row = {
@@ -123,7 +155,7 @@ async function recordFeeds(
       fetched_at: (await stat(f.path)).mtime,
       sha256: await sha256File(f.path),
       bytes: (await stat(f.path)).size,
-      object_key: env.archiveRemote ? key : null,
+      object_key: archiveRemote ? key : null,
     };
     await db
       .insertInto("gtfs_feeds")
@@ -132,7 +164,7 @@ async function recordFeeds(
       .execute();
     added.push(`${feedId}/${f.version}`);
     log(
-      `GTFS feed ${feedId} ${f.version} recorded${env.archiveRemote ? " and archived" : ""}`,
+      `GTFS feed ${feedId} ${f.version} recorded${archiveRemote ? " and archived" : ""}`,
     );
   }
   return added;

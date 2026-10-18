@@ -188,7 +188,7 @@ export async function readFeedRoutes(feed: string): Promise<Config<"routes">> {
 export async function readConfig<
   N extends Exclude<
     ConfigName,
-    "kinematics" | "rt" | "routes" | "recording" | "server"
+    "kinematics" | "rt" | "routes" | "recording" | "server" | "reconcile"
   >,
 >(name: N, region: string): Promise<Config<N>> {
   return parseConfig(
@@ -249,6 +249,11 @@ export async function readOperator(id: string): Promise<OperatorInfo> {
   return parseOperator(
     await readJson<unknown>(join(OPERATORS_DIR, id, "operator.json")),
   );
+}
+
+/** Every operator (config/operators/*), checked. */
+export async function readOperators(): Promise<OperatorInfo[]> {
+  return Promise.all((await subdirs(OPERATORS_DIR)).map(readOperator));
 }
 
 /**

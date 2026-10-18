@@ -101,6 +101,7 @@ var/                       gitignored: downloads, recordings, build output (var/
 | Per-route daily statistics | Database (`route_stats_daily`) | indefinitely |
 | Trip changes (cancellations, skipped stops), alerts with first and last seen, dispatch versions | Database (and files) | indefinitely |
 | GTFS static feeds | Archive bucket (the original zips) and `gtfs_feeds` | indefinitely |
+| Feature registry: IDs, refs, containment, flags, admin changes ([below](#feature-ids)) | Database (`features`, `feature_refs`, `feature_flags`, `feature_changes`) | indefinitely |
 | Request ledger (`upstream_requests`) | Database | |
 | Published transit data (plans, movements, patches) | `transitopia-data` on R2, behind data.transitopia.org | |
 
@@ -163,6 +164,7 @@ Everything committed and curated is under `config/` (one package, `@transitopia/
 config/
   defaults/        kinematics.json, rt.json: vehicles and real-time use, for every region and operator
   server/          server.json, recording.json: the server's own (port, live dispatch, retention, statistics)
+  features/        reconcile.json: feature reconciliation's distances (#feature-ids)
   operators/<id>/  operator.json: who runs the vehicles (TransLink, BC Transit), and its overrides of the defaults
   feeds/<id>/      feed.json: one agency's published data (GTFS, GTFS-RT, request budget, vessels' AIS),
                    naming its operator; routes.json: which routes are drawn, by name
@@ -203,6 +205,43 @@ The basemap is a British Columbia extract of Protomaps' daily build for now. It 
 
 Time zones come from the runtime's tzdata, never hard-coded. BC moved to permanent UTC−7 in 2026 (tzdata 2026b); the server refuses to start on older data (`timezoneChecks` in each `region.json`). Every region and feed so far is in `America/Vancouver`, which `packages/transit-core/src/time.ts` assumes; `build-schedule` refuses a feed in another time zone until regions carry their own.
 
+## Feature IDs
+
+Every station, bus exchange, stop and route in every feed has a **persistent, global ID** that survives GTFS feed changes and renames (issue #193; vehicles, cycling features and facts come later). The registry is in the database, and only production's IDs are published.
+
+**Two forms of string** name a feature, told apart by their characters alone (`packages/shared/src/features.ts`: `parseKey`, `formatKey`, `mintId`):
+
+| Form | Contains | Grammar | Examples |
+|---|---|---|---|
+| **ID** | no `:` | `<prefix>-<8 characters>`, optionally `-<name>` | `sn-k3v9qd7m`, `sn-k3v9qd7m-waterfront` |
+| **Ref** | `:` | `<scheme>:<value>` or `<scheme>:<namespace>:<value>` | `gtfs-stop:translink:12034`, `stop:translink:50123`, `osm-way:123890` |
+
+- **IDs** are a kind's prefix (`sn` station, `ex` exchange, `st` stop, `rt` route; `vh`, `cr`, `cw`, `bp`, `mm` for vehicles, cycling routes and ways, bike parking and bikeshare stations; `an` and `ph` reserved) and 8 random lowercase Crockford base32 characters, never derived from data. Minting draws again if the ID exists. A **name suffix** after them (`-waterfront`) is decoration for URLs, ignored by lookups, so there are no slugs.
+- **Refs** point at a record in a source. The scheme says whether there's a namespace (a feed, operator or GBFS system), so the value can hold anything, `:` included. `gtfs-stop` and `gtfs-route` are the feed's `stop_id` and `route_id`; `stop` is the `stop_code`, the number on the sign. These three hold over a **range of feed versions** (`feature_refs.versions`, an `int4range` of `gtfs_feeds.seq`, the order versions were archived in), so a ref names one feature in each version and a reused id can name another later. `run:<run id>` is the engine's own, never the registry's.
+
+### The role of a region
+
+Nothing in the registry is keyed by region. A region is a view configuration (which feeds to show here) and the owner of place-bound engineering data (track networks, dispatch, corrections). Which regions show a feature follows from its geometry and its refs; what it belongs to is its operator and feed (`features.operator_id`, `feed_id`), for stops and routes.
+
+### Relationships between features
+
+- **Service** (which routes serve a place) stays derived from the plan: it changes with every feed version and date.
+- **Containment** (which station or exchange a stop is in) is the registry's: `features.parent_id`, one level. The heuristics only propose it: the plan's station merging (same name within 400 m, `src/plan/stations.ts` in transit-core) and bay grouping (`groupBays`, [packages/transit-core/DESIGN.md → Bus exchanges](../packages/transit-core/DESIGN.md#bus-exchanges)). A stop's parent is set when it's first minted, and from then on only an admin changes it (`npm run features -- move|detach`, recorded in `feature_changes`), even when it has none. Exchanges are features like stations, with no ref: GTFS has no record of them, so their identity is kept in the registry and new bays join them through their existing bays.
+
+### Reconciliation
+
+The server's daily data build reconciles every feed version in `gtfs_feeds` not yet reconciled, oldest first, one transaction each ([apps/server → Feature reconciliation](../apps/server/README.md#feature-reconciliation)). The matcher is pure (`packages/transit-core/src/features/reconcile.ts`: registry snapshot + the version's every stop and route → decisions), with its distances in `config/features/reconcile.json`:
+
+| Kind | The same feature when (first match wins) | Otherwise |
+|---|---|---|
+| stop | 1. its `stop_id`'s ref, with the same `stop_code`; 2. its `stop_code`'s ref; 3. without a code, an unmatched stop of the same name within 50 m | Mint. Flag it beside a stop that disappeared (`disappeared-nearby`); flag a matched stop that moved over 300 m (`code-moved-far`). |
+| station | a ref of a parent stop in its group (parent stops and standalone rail stops of the same name, merged as the plan merges them); else an unmatched station of the same name within 300 m in the feed | Mint. Flag it when another feed has a station of the same name within 300 m (`cross-feed-name-match`). |
+| route | the same feed and name (`route_short_name` without leading zeros, else `route_long_name`) | Mint. |
+
+A new stop gets its parent from the proposal: a platform its GTFS parent's station; a bay the parent most of its group's existing stops have, "none" included (so a new bay at an exchange an admin dissolved stays an ordinary stop); and only when every stop of a group is new, the station the group is beside or a newly minted exchange (flagged `exchange-replaced` beside an exchange that lost all its stops). An existing stop whose parent differs from the proposal is flagged (`grouping-differs`) and kept. A feature is flagged once per reason. Names and positions follow the newest version, except where an admin set them.
+
+**Statistics** keep their GTFS keys and record the feed version they were derived from (`feed_version`); the views `route_stats_daily_by_feature` and `observed_stop_times_by_feature` join them to features through the refs, so a route's and a stop's history continue across feed versions.
+
 ## Decisions
 
 Made while planning V2 (2026-09-29 to 2026-10-01). Change them deliberately, and update this list.
@@ -233,6 +272,7 @@ Made while planning V2 (2026-09-29 to 2026-10-01). Change them deliberately, and
 | Next region | Montreal, a long way off. |
 | Regions and feeds | **Feeds are separate from regions** (2026-10-14), and **operators from feeds** (2026-10-15): a region lists the feeds it shows, and a feed (fetched, built, polled, recorded) can be in several; settings come in layers (defaults, operator, feed, then route or region) under `config/`; a region's are only about the place. Greater Victoria and Central Okanagan (a few BC Transit routes) keep the design multi-region and multi-agency before a second big city. The site shows one region at a time, the one in view ([above](#regions-and-feeds)). |
 | Live data | **One poll per map**: `/regions/<id>/live/transit` for transit (later `/regions/<id>/live/cycling` for GBFS), shared by every visitor at the edge, with a section per source (agency or feed) and pointers to immutable per-date files for anything large or slow-changing ([apps/server → Live endpoint](../apps/server/README.md#live-endpoint), issue #177). Polling, not server-sent events or WebSockets: an open connection per visitor would reach the one VM and lose the edge cache. |
+| Feature IDs | **Prefixed random IDs** with a decorative name suffix in URLs, **refs** for source records, **no slugs** (2026-10-18, issue #193). The registry is in the database, GTFS refs hold over ranges of feed versions, containment is the registry's (the heuristics only propose it), and only production mints the IDs that are published ([above](#feature-ids)). |
 | Environments | Production and local development. A staging environment can be added cheaply later: configuration in env files, hostnames and buckets as config, unattended migrations, a Compose project per environment. Staging would never poll TransLink. |
 
 ## Risks
