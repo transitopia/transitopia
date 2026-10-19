@@ -476,6 +476,19 @@ export async function assemblePlan(
   return plan;
 }
 
+/**
+ * The files holding these services' SkyTrain trips: their late files, which have every one
+ * (LATE_MARGIN_S). Track-level playback of a date needs them all.
+ */
+export function railTripFiles(
+  files: PlanFiles,
+  services: ReadonlySet<string>,
+): TripFileRef[] {
+  return files.trips.filter(
+    (f) => services.has(f.service) && f.path.endsWith(".late.json"),
+  );
+}
+
 /** The trip files a service date needs from `fromSec` (service seconds) on, given its services. */
 export function tripFilesFor(
   files: PlanFiles,

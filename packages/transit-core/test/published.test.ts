@@ -9,6 +9,7 @@ import {
   decodeTrips,
   encodeLine,
   publishPlan,
+  railTripFiles,
   sortTrips,
   tripFilesFor,
   type PublishedCorridors,
@@ -228,6 +229,10 @@ describe("published plans", () => {
       tripFilesFor(core.files, wk, 24 * H + 60).map((f) => f.path),
     ).toEqual(["trips/wk.late.json"]);
     expect(tripFilesFor(core.files, wk, Infinity)).toEqual([]);
+    // Track-level playback needs every SkyTrain trip of a service: all in its late file.
+    expect(railTripFiles(core.files, wk).map((f) => f.path)).toEqual([
+      "trips/wk.late.json",
+    ]);
   });
 
   it("carry each pattern's start times for frequencies without the trips", async () => {

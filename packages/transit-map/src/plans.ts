@@ -54,6 +54,7 @@ import {
   decodeCorridors,
   decodeShapes,
   decodeTrips,
+  railTripFiles,
   tripFilesFor,
   type PublishedCorridors,
   type PublishedPlan,
@@ -341,9 +342,23 @@ export class PlanStore {
   private playbackFor(
     date: ServiceDate,
     pp: PreparedPlan,
+    fromSec: number,
   ): TrainPlayback | undefined {
     if (!this.graph) return undefined;
     const version = pp.plan.feedVersion;
+    // Its movement file references every SkyTrain trip of the date's services: build it only while
+    // its trains can still be running (the day before, early on), once those trips are in.
+    const v = this.versions.get(version);
+    if (!v) return undefined;
+    const railFiles = railTripFiles(v.files, pp.servicesOn(date));
+    if (!railFiles.some((f) => f.until > fromSec)) return undefined;
+    let loaded = true;
+    for (const ref of railFiles) {
+      const state = v.tripFiles.get(ref.path);
+      if (state === undefined) this.loadTrips(v, ref);
+      if (state !== "done" || v.pending.has(ref.service)) loaded = false;
+    }
+    if (!loaded) return undefined;
     const index = this.movementIndexes.get(version);
     if (index === undefined) {
       const entry = this.manifest.feeds.find((f) => f.version === version);
@@ -686,7 +701,7 @@ export class PlanStore {
       // The day before: only its trips still running.
       const pp = this.planFor(date, date === today ? 0 : sec);
       if (!pp) continue;
-      const pb = this.playbackFor(date, pp);
+      const pb = this.playbackFor(date, pp, date === today ? 0 : sec);
       if (pb) {
         out.push(...pb.vehiclesAt(sec, date, routes));
         const nonRail = new Set(
