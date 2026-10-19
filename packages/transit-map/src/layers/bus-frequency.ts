@@ -92,10 +92,17 @@ export class BusFrequencyLayer {
     ];
   }
 
-  /** Forget what was applied (after the sources were re-created or their data replaced). */
-  invalidate(): void {
+  /**
+   * Forget what was applied, after the sources were re-created or their data replaced: and clear
+   * their feature state, which MapLibre keeps by feature id across new data, where an id may now be
+   * another corridor (the detailed corridors replacing the overview's, which stand in for them
+   * until they load, or another feed's).
+   */
+  invalidate(map: MlMap): void {
     this.key = "";
     this.brandShown.clear();
+    for (const { source } of this.sources)
+      if (map.getSource(source)) map.removeFeatureState({ source });
   }
 
   update(

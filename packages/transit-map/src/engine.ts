@@ -1538,7 +1538,7 @@ export class TransitEngine {
       || this.frequencyLayer.corridors !== pp.plan.corridors
     )
       this.frequencyLayer = new BusFrequencyLayer(pp.plan);
-    this.frequencyLayer?.invalidate();
+    this.frequencyLayer?.invalidate(map);
     this.syncPlaceHighlight();
     this.ferryPair = undefined;
     if (this.tracks && this.lines) {
