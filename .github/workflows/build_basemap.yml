@@ -20,8 +20,8 @@ jobs:
       RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_SECRET_ACCESS_KEY: ${{ secrets.RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_SECRET_ACCESS_KEY }}
     steps:
       - name: Check out code
-        uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+        uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: npm
