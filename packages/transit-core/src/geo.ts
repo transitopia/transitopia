@@ -250,3 +250,17 @@ export function round(n: number, decimals: number): number {
   const k = 10 ** decimals;
   return Math.round(n * k) / k;
 }
+
+/** A line rounded to `decimals`, without the repeated points that can make. */
+export function roundLine(
+  coords: readonly LonLat[],
+  decimals: number,
+): LonLat[] {
+  const out: LonLat[] = [];
+  for (const [lon, lat] of coords) {
+    const p: LonLat = [round(lon, decimals), round(lat, decimals)];
+    const last = out.at(-1);
+    if (!last || last[0] !== p[0] || last[1] !== p[1]) out.push(p);
+  }
+  return out;
+}

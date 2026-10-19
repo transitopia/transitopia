@@ -5,7 +5,9 @@
 //         config/regions/<region>/infrastructure/seabus.json + config/regions/<region>/seabus.json,
 //         and the feed's OSM roads when fetched (var/raw/osm-roads/<feed>/latest.json, fetch-osm-roads):
 //         bus shapes are matched to them and bus corridors built (packages/transit-core/DESIGN.md#bus-corridors)
-// Output: var/public/data/feeds/<feed>/<version dir>/plan.json, var/public/data/feeds/<feed>/manifest.json
+// Output: var/public/data/feeds/<feed>/<version dir>/plan.json and its parts beside it (shapes,
+//         corridors, trips by service: packages/transit-core/DESIGN.md#published-plans),
+//         var/public/data/feeds/<feed>/manifest.json
 // See packages/transit-core/DESIGN.md#timetables.
 //
 //   tsx pipelines/build-schedule.ts                     # build versions not yet built, or built from other inputs
@@ -16,7 +18,7 @@
 // above), so editing routes.json or changing what this writes rebuilds existing plans too.
 
 import { createHash } from "node:crypto";
-import { open, readdir, readFile, stat } from "node:fs/promises";
+import { open, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { readCsv, readCsvAll, type Row } from "@transitopia/data/gtfs-zip.ts";
 import {
@@ -34,6 +36,7 @@ import {
   readRegions,
   writeJson,
 } from "@transitopia/data/paths.ts";
+import { readPlanCore, writePlan } from "@transitopia/data/plans.ts";
 import { shortId } from "@transitopia/transit-core/plan/display.ts";
 import type {
   FeedInfo,
@@ -43,7 +46,7 @@ import {
   cumulativeLengths,
   projectOnto,
   removeStopSpurs,
-  round,
+  roundLine,
   simplify,
   type LonLat,
   type StopSpurLimits,
@@ -86,6 +89,7 @@ import {
   type ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
 import {
+  LINE_DECIMALS,
   STOP_NO_DROPOFF,
   STOP_NO_PICKUP,
 } from "@transitopia/transit-core/plan/types.ts";
@@ -112,9 +116,9 @@ const STOP_OFFSET_WARN_M = 150;
  * and bus corridors. 7: and overview corridors. 8: matched shapes simplified at 1 m. 9: matched
  * shapes and corridors keep the same road nodes. 10: matching retries every road in range before a
  * break; divided roads merge round bends. 11: repeated shape points don't break a match. 12: bus
- * exchanges and stations' bays (`hubs`).
+ * exchanges and stations' bays (`hubs`). 13: published in parts (plan/published.ts), lines at 5 decimals.
  */
-const PLAN_FORMAT = 12;
+const PLAN_FORMAT = 13;
 
 /** Regions showing the feed with SeaBus berths and lanes (infrastructure/seabus.json): build-schedule applies them. */
 async function ferryRegions(feed: string): Promise<string[]> {
@@ -454,7 +458,7 @@ export async function buildPlan(
       }
     }
     const simplified = simplify(coords, SIMPLIFY_M[kind]);
-    shapes[id] = simplified.map(([lon, lat]) => [round(lon, 6), round(lat, 6)]);
+    shapes[id] = roundLine(simplified, LINE_DECIMALS);
   }
   // Matched shapes keep the same road nodes as each other and as the corridors, so lines along
   // the same road coincide (packages/transit-core/DESIGN.md#bus-corridors).
@@ -686,7 +690,7 @@ export async function buildPlan(
     hubs: busHubs({ routes, stops, stations, patterns, trips, catalog }),
   };
   if (roads && matched.size) {
-    plan.corridors = buildCorridors(
+    const corridors = buildCorridors(
       roads,
       patterns.flatMap((p) => {
         const pieces = matched.get(p.shape);
@@ -694,9 +698,10 @@ export async function buildPlan(
       }),
       keep,
     );
-    plan.overviewCorridors = mergeCarriageways(plan.corridors);
+    plan.corridors = corridors;
+    plan.overviewCorridors = mergeCarriageways(corridors);
     log(
-      `Built ${plan.corridors.length} bus corridors (${plan.overviewCorridors.length} with divided roads merged)`,
+      `Built ${corridors.length} bus corridors (${plan.overviewCorridors.length} with divided roads merged)`,
     );
   }
 
@@ -755,7 +760,7 @@ export async function buildManifest(feed: string): Promise<FeedManifest> {
   for (const v of dirs.sort()) {
     const p = join(out, v, "plan.json");
     if (!(await exists(p))) continue;
-    const plan = await readJson<ServicePlan>(p);
+    const plan = await readPlanCore(p);
     feeds.push({
       version: plan.feedVersion,
       start: plan.feedStart,
@@ -785,7 +790,7 @@ async function buildFeed(feed: FeedInfo, force: boolean): Promise<void> {
     const out = join(feedPaths(feed.id).out, v, "plan.json");
     const was =
       (await exists(out)) ?
-        ((await readJson<ServicePlan>(out)).inputs ?? "none")
+        ((await readPlanCore(out)).inputs ?? "none")
       : undefined;
     if (!force && was === inputs) continue;
     log(
@@ -798,9 +803,8 @@ async function buildFeed(feed: FeedInfo, force: boolean): Promise<void> {
     roads ??= loadRoads(feed.id);
     const plan = await buildPlan(zip, feed, await roads);
     plan.inputs = inputs;
-    await writeJson(out, plan);
-    const size = (await stat(out)).size;
-    log(`Wrote ${out} (${(size / 1e6).toFixed(1)} MB)`);
+    const size = await writePlan(out, plan);
+    log(`Wrote ${out} and its parts (${(size / 1e6).toFixed(1)} MB)`);
     built++;
   }
   const manifest = await buildManifest(feed.id);

@@ -79,7 +79,10 @@ export interface VehicleState {
   width: number;
 }
 
-/** Layover at a terminus is shown only if the vehicle's next trip starts within this many seconds. */
+/**
+ * Layover at a terminus is shown only if the vehicle's next trip starts within this many seconds.
+ * (Published plans' late trip files allow for it: LATE_MARGIN_S in plan/published.ts.)
+ */
 const MAX_LAYOVER_S = 45 * 60;
 
 export interface PreparedTrip {
@@ -123,13 +126,85 @@ export function preparePlan(
   const shapeCum = new Map<string, Float64Array>();
   for (const [id, coords] of Object.entries(plan.shapes))
     shapeCum.set(id, cumulativeLengths(coords));
+  const byService = new Map<string, PlanTrip[]>();
+  for (const trip of plan.trips) {
+    let list = byService.get(trip.service);
+    if (!list) byService.set(trip.service, (list = []));
+    list.push(trip);
+  }
   const tripsByService = new Map<string, PreparedTrip[]>();
   const maxSpanByService = new Map<string, number>();
+  const tripIndex = new Map<string, PreparedTrip>();
+  for (const [service, trips] of byService) {
+    const { list, maxSpan } = prepareService(plan, routes, kinCfg, trips);
+    tripsByService.set(service, list);
+    maxSpanByService.set(service, maxSpan);
+    for (const t of list) tripIndex.set(t.trip.id, t);
+  }
+  const stopById = new Map(plan.stops.map((s) => [s.id, s]));
+  const catalog = new Map((plan.catalog ?? []).map((c) => [c.key, c]));
+  const catalogAtStop = new Map<string, string[]>();
+  for (const c of catalog.values())
+    for (const id of c.stops) {
+      const list = catalogAtStop.get(id);
+      if (list) list.push(c.key);
+      else catalogAtStop.set(id, [c.key]);
+    }
+  return {
+    plan,
+    routes,
+    catalog,
+    catalogAtStop,
+    tripIndex,
+    stopById,
+    shapeCum,
+    servicesOn: indexCalendar(plan.calendar),
+    tripsByService,
+    maxSpanByService,
+  };
+}
 
-  for (const trip of plan.trips) {
+/**
+ * The prepared plan with these services' trips replaced (by every trip of each loaded so far): a
+ * new object, so whatever is cached per prepared plan is worked out again. For the browser, which
+ * loads trips by service (packages/transit-core/DESIGN.md#published-plans); `plan.trips` is
+ * left as it is.
+ */
+export function withServiceTrips(
+  pp: PreparedPlan,
+  services: ReadonlyMap<string, readonly PlanTrip[]>,
+  kinCfg: KinematicsConfig,
+): PreparedPlan {
+  const tripIndex = new Map(pp.tripIndex);
+  const tripsByService = new Map(pp.tripsByService);
+  const maxSpanByService = new Map(pp.maxSpanByService);
+  for (const [service, trips] of services) {
+    const { list, maxSpan } = prepareService(pp.plan, pp.routes, kinCfg, trips);
+    for (const t of pp.tripsByService.get(service) ?? [])
+      tripIndex.delete(t.trip.id);
+    for (const t of list) tripIndex.set(t.trip.id, t);
+    tripsByService.set(service, list);
+    maxSpanByService.set(service, maxSpan);
+  }
+  return { ...pp, tripIndex, tripsByService, maxSpanByService };
+}
+
+/** One service's trips, prepared, sorted by start and chained into layovers; and the longest a trip is shown. */
+function prepareService(
+  plan: ServicePlan,
+  routes: Map<string, PlanRoute>,
+  kinCfg: KinematicsConfig,
+  trips: readonly PlanTrip[],
+): { list: PreparedTrip[]; maxSpan: number } {
+  const list: PreparedTrip[] = [];
+  // One per route, shared by its trips.
+  const kins = new Map<string, Kinematics>();
+  for (const trip of trips) {
     const pattern = plan.patterns[trip.pattern]!;
     const route = routes.get(pattern.route)!;
-    const kin = kinematicsFor(kinCfg, route.mode, route.key);
+    let kin = kins.get(route.key);
+    if (!kin)
+      kins.set(route.key, (kin = kinematicsFor(kinCfg, route.mode, route.key)));
     const n = trip.arr.length;
     const arr = new Float64Array(n);
     const dep = new Float64Array(n);
@@ -152,7 +227,7 @@ export function preparePlan(
       }
       if (dep[i]! < arr[i]!) dep[i] = arr[i]!;
     }
-    const prepared: PreparedTrip = {
+    list.push({
       trip,
       pattern,
       route,
@@ -164,71 +239,42 @@ export function preparePlan(
       arr,
       dep,
       visibleUntil: arr[n - 1]!,
-      legs: Array.from({ length: n - 1 }),
-    };
-    let list = tripsByService.get(trip.service);
-    if (!list) tripsByService.set(trip.service, (list = []));
-    list.push(prepared);
+      // Each solved when first needed.
+      legs: [],
+    });
   }
 
-  for (const [service, list] of tripsByService) {
-    list.sort((x, y) => x.trip.start - y.trip.start);
-    // Layover: hold the vehicle at its last stop until its block's next trip departs from there.
-    const byBlock = new Map<string, PreparedTrip[]>();
-    for (const t of list) {
-      if (!t.trip.block) continue;
-      let b = byBlock.get(t.vehicleId);
-      if (!b) byBlock.set(t.vehicleId, (b = []));
-      b.push(t);
-    }
-    for (const b of byBlock.values()) {
-      for (let i = 0; i + 1 < b.length; i++) {
-        const cur = b[i]!;
-        const next = b[i + 1]!;
-        const lastStop =
-          plan.stops[cur.pattern.stops[cur.pattern.stops.length - 1]!]!;
-        const firstStop = plan.stops[next.pattern.stops[0]!]!;
-        const gap = next.dep[0]! - cur.visibleUntil;
-        if (
-          gap >= 0
-          && gap <= MAX_LAYOVER_S
-          && sameStation(lastStop, firstStop)
-        ) {
-          cur.visibleUntil = next.trip.start;
-          cur.next = next;
-        }
+  list.sort((x, y) => x.trip.start - y.trip.start);
+  // Layover: hold the vehicle at its last stop until its block's next trip departs from there.
+  const byBlock = new Map<string, PreparedTrip[]>();
+  for (const t of list) {
+    if (!t.trip.block) continue;
+    let b = byBlock.get(t.vehicleId);
+    if (!b) byBlock.set(t.vehicleId, (b = []));
+    b.push(t);
+  }
+  for (const b of byBlock.values()) {
+    for (let i = 0; i + 1 < b.length; i++) {
+      const cur = b[i]!;
+      const next = b[i + 1]!;
+      const lastStop =
+        plan.stops[cur.pattern.stops[cur.pattern.stops.length - 1]!]!;
+      const firstStop = plan.stops[next.pattern.stops[0]!]!;
+      const gap = next.dep[0]! - cur.visibleUntil;
+      if (
+        gap >= 0
+        && gap <= MAX_LAYOVER_S
+        && sameStation(lastStop, firstStop)
+      ) {
+        cur.visibleUntil = next.trip.start;
+        cur.next = next;
       }
     }
-    let maxSpan = 0;
-    for (const t of list)
-      maxSpan = Math.max(maxSpan, t.visibleUntil - t.trip.start);
-    maxSpanByService.set(service, maxSpan);
   }
-
-  const tripIndex = new Map<string, PreparedTrip>();
-  for (const list of tripsByService.values())
-    for (const t of list) tripIndex.set(t.trip.id, t);
-  const stopById = new Map(plan.stops.map((s) => [s.id, s]));
-  const catalog = new Map((plan.catalog ?? []).map((c) => [c.key, c]));
-  const catalogAtStop = new Map<string, string[]>();
-  for (const c of catalog.values())
-    for (const id of c.stops) {
-      const list = catalogAtStop.get(id);
-      if (list) list.push(c.key);
-      else catalogAtStop.set(id, [c.key]);
-    }
-  return {
-    plan,
-    routes,
-    catalog,
-    catalogAtStop,
-    tripIndex,
-    stopById,
-    shapeCum,
-    servicesOn: indexCalendar(plan.calendar),
-    tripsByService,
-    maxSpanByService,
-  };
+  let maxSpan = 0;
+  for (const t of list)
+    maxSpan = Math.max(maxSpan, t.visibleUntil - t.trip.start);
+  return { list, maxSpan };
 }
 
 /** GTFS rail times are rounded to the minute; retimed stops stay within this of the timetable (s). */

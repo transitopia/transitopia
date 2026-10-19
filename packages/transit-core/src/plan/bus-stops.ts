@@ -12,7 +12,11 @@ import {
   type LonLat,
 } from "../geo.ts";
 import { isBay } from "./exchanges.ts";
-import { isPassengerStop, type ServicePlan } from "./types.ts";
+import {
+  isPassengerStop,
+  patternTripCounts,
+  type ServicePlan,
+} from "./types.ts";
 
 export interface BusStopMarker {
   name: string;
@@ -88,13 +92,13 @@ function computeTicks(plan: ServicePlan): BusStopTick[] {
   const busRoutes = new Set(
     plan.routes.filter((r) => r.kind === "bus").map((r) => r.key),
   );
-  const used = new Set(plan.trips.map((t) => t.pattern));
+  const trips = patternTripCounts(plan);
   const stations = stationPoints(plan);
   const cums = new Map<string, Float64Array>();
   const seen = new Set<string>();
   const out: BusStopTick[] = [];
   for (const p of plan.patterns) {
-    if (!busRoutes.has(p.route) || !used.has(p.id)) continue;
+    if (!busRoutes.has(p.route) || !trips[p.id]) continue;
     const shape = plan.shapes[p.shape] as LonLat[] | undefined;
     if (!shape || shape.length < 2) continue;
     let cum = cums.get(p.shape);

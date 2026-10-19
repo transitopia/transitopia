@@ -58,8 +58,28 @@ export class CorridorFrequency {
   /** Per stop: the route sets that share a stretch from it. */
   private readonly sharedFrom = new Map<number, number[][]>();
 
+  /** Each stop's combo, from a published plan's table (`ServicePlan.frequency`). */
+  private readonly stopCombo: readonly number[] | undefined;
+
+  /**
+   * From the plan's frequency table where it has one (published plans: worked out once, when
+   * published), else from its patterns and trips.
+   */
   constructor(plan: ServicePlan) {
     this.plan = plan;
+    const table = plan.frequency;
+    if (table) {
+      this.routeDirs.push(...table.routeDirs);
+      this.routeDirOf = plan.patterns.map(() => -1);
+      table.routeDirs.forEach((rd, i) =>
+        rd.patterns.forEach((p) => (this.routeDirOf[p] = i)),
+      );
+      this.combos.push(...table.combos);
+      this.sharedAlong = [];
+      this.stopCombo = table.stopCombo;
+      return;
+    }
+    this.stopCombo = undefined;
     const rdIds = new Map<string, number>();
     this.routeDirOf = plan.patterns.map((p) => {
       const key = `${p.route}|${p.direction}`;
@@ -166,6 +186,8 @@ export class CorridorFrequency {
    */
   combosOfCorridors(corridors: readonly PlanCorridor[]): Int32Array {
     return Int32Array.from(corridors, (c) => {
+      if (c.combo !== undefined) return c.combo;
+      if (!c.refs) throw new Error("A corridor has neither refs nor a combo");
       const half = lengthM(c) / 2;
       const sets: number[][] = [];
       for (const [p, , along] of c.refs) {
@@ -185,6 +207,8 @@ export class CorridorFrequency {
    * lists). A stop nothing leaves from (a last stop) gets the routes arriving.
    */
   combosOfStops(stops: readonly number[]): Int32Array {
+    const table = this.stopCombo;
+    if (table) return Int32Array.from(stops, (s) => table[s]!);
     const leaving = new Map<number, Set<number>>();
     const arriving = new Map<number, Set<number>>();
     for (const p of this.plan.patterns)
@@ -206,6 +230,11 @@ export class CorridorFrequency {
         this.sharedFrom.get(s) ?? [],
       ),
     );
+  }
+
+  /** Every plan stop's combo (`combosOfStops`), for the plan's frequency table. */
+  stopCombos(): number[] {
+    return [...this.combosOfStops(this.plan.stops.map((_, i) => i))];
   }
 
   /**

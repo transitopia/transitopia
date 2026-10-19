@@ -5,7 +5,7 @@
 
 import { indexCalendar } from "../gtfs/calendar.ts";
 import { addDays, type ServiceDate } from "../time.ts";
-import type { ServicePlan } from "./types.ts";
+import { patternStarts, type ServicePlan } from "./types.ts";
 
 export type FrequencyWindow = "now" | "day";
 
@@ -21,28 +21,23 @@ export const DAY_WINDOW = { fromH: 6, toH: 21 } as const;
 export class BusFrequency {
   private readonly plan: ServicePlan;
   private readonly services: (date: ServiceDate) => Set<string>;
-  /** Per pattern: its trips' indices in plan.trips. */
-  private readonly tripsOf: number[][];
+  /** Per pattern, per service: its trips' start times. */
+  private readonly startsOf: Record<string, number[]>[];
   private readonly starts = new Map<ServiceDate, Float64Array[]>();
 
   constructor(plan: ServicePlan) {
     this.plan = plan;
     this.services = indexCalendar(plan.calendar);
-    this.tripsOf = plan.patterns.map(() => []);
-    plan.trips.forEach((t, i) => this.tripsOf[t.pattern]?.push(i));
+    this.startsOf = patternStarts(plan);
   }
 
   /** Per pattern, the sorted start times of its trips on a date. */
   private startsOn(date: ServiceDate): Float64Array[] {
     let s = this.starts.get(date);
     if (s) return s;
-    const active = this.services(date);
-    s = this.tripsOf.map((ts) =>
-      Float64Array.from(
-        ts
-          .filter((i) => active.has(this.plan.trips[i]!.service))
-          .map((i) => this.plan.trips[i]!.start),
-      ).sort(),
+    const active = [...this.services(date)];
+    s = this.startsOf.map((byService) =>
+      Float64Array.from(active.flatMap((sv) => byService[sv] ?? [])).sort(),
     );
     if (this.starts.size > 4) this.starts.clear();
     this.starts.set(date, s);

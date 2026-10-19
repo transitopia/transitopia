@@ -13,6 +13,7 @@ import {
   type RailNetwork,
 } from "./paths.ts";
 import { loadGraph } from "./infra.ts";
+import { readPlan } from "./plans.ts";
 import { dispatchDebugFromEnv } from "./dispatch-debug.ts";
 import {
   preparePlan,
@@ -22,7 +23,6 @@ import {
   feedDataPath,
   feedForDate,
   type FeedManifest,
-  type ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
 import {
   serviceKey,
@@ -99,7 +99,7 @@ export class DispatchContexts {
     if (!ppP)
       this.plans.set(
         feed.version,
-        (ppP = readJson<ServicePlan>(join(PUBLIC_DIR, feed.path)).then((p) =>
+        (ppP = readPlan(join(PUBLIC_DIR, feed.path)).then((p) =>
           preparePlan(p, kin),
         )),
       );

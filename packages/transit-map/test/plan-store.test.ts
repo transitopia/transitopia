@@ -3,6 +3,8 @@ import { parseConfig, parseFeed } from "@transitopia/transit-core/config.ts";
 import { serviceDate } from "@transitopia/transit-core/time.ts";
 import kinematics from "@transitopia/config/defaults/kinematics.json";
 import victoria from "@transitopia/config/feeds/bc-transit-victoria/feed.json";
+import { publishPlan } from "@transitopia/transit-core/plan/published.ts";
+import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
 import { PlanStore } from "../src/plans.ts";
 
 const config = {
@@ -65,5 +67,155 @@ describe("PlanStore data URLs", () => {
     const a = (await store("2026-10-17T10:39:00.000Z")).s.dataUrl("p.json");
     const b = (await store("2026-10-18T17:33:18.203Z")).s.dataUrl("p.json");
     expect(a).not.toBe(b);
+  });
+});
+
+describe("PlanStore loading plans by parts", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const H = 3600;
+  const trip = (id: string, service: string, start: number) => ({
+    id,
+    pattern: 0,
+    service,
+    headsign: "Downtown",
+    start,
+    arr: [0, 600],
+  });
+  const plan: ServicePlan = {
+    schema: 1,
+    feed: "bc-transit-victoria",
+    feedVersion: "v1",
+    feedStart: serviceDate("20260901"),
+    feedEnd: serviceDate("20261231"),
+    timezone: "America/Vancouver",
+    builtAt: "",
+    routes: [
+      {
+        key: "95",
+        label: "95 Blink",
+        kind: "bus",
+        mode: "bus",
+        color: "#0a0",
+        textColor: "#fff",
+        gtfsRouteId: "95",
+      },
+    ],
+    stops: [
+      { id: "A", name: "A", lon: -123.4, lat: 48.45 },
+      { id: "B", name: "B", lon: -123.38, lat: 48.45 },
+    ],
+    stations: [],
+    hubs: [],
+    shapes: {
+      s: [
+        [-123.4, 48.45],
+        [-123.38, 48.45],
+      ],
+    },
+    patterns: [
+      {
+        id: 0,
+        route: "95",
+        direction: 0,
+        shape: "s",
+        stops: [0, 1],
+        dist: [0, 1475],
+      },
+    ],
+    trips: [
+      trip("1", "wk", 8 * H),
+      trip("2", "wk", 24.2 * H),
+      trip("3", "sat", 9 * H),
+    ],
+    calendar: {
+      calendar: [
+        {
+          serviceId: "wk",
+          days: [true, true, true, true, true, false, false],
+          start: serviceDate("20260901"),
+          end: serviceDate("20261231"),
+        },
+        {
+          serviceId: "sat",
+          days: [false, false, false, false, false, true, false],
+          start: serviceDate("20260901"),
+          end: serviceDate("20261231"),
+        },
+      ],
+      exceptions: [],
+    },
+  };
+
+  /** A store over the plan's published files; returns it and the files requested after the manifest. */
+  async function published() {
+    const { core, files } = publishPlan(plan);
+    const dir = "data/feeds/bc-transit-victoria/v1/";
+    const served = new Map<string, unknown>([
+      [`${dir}plan.json`, core],
+      ...[...files].map(([k, v]): [string, unknown] => [dir + k, v]),
+    ]);
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = url
+          .replace("https://data.example/", "")
+          .replace(/\?.*/, "");
+        if (path.endsWith("manifest.json"))
+          return new Response(JSON.stringify(manifest("2026-10-19T00:00:00Z")));
+        urls.push(path.slice(dir.length));
+        const body = served.get(path);
+        return body ?
+            new Response(JSON.stringify(body))
+          : new Response("", { status: 404 });
+      }),
+    );
+    const s = await PlanStore.load(
+      "https://data.example/",
+      undefined,
+      "greater-victoria",
+      config,
+    );
+    return { s, urls };
+  }
+
+  const settle = (s: PlanStore) =>
+    new Promise<void>((resolve) => {
+      const off = s.onChange(() => {
+        off();
+        resolve();
+      });
+    });
+
+  it("loads the core, its shapes and the date's trips, then the day after's late trips only", async () => {
+    const { s, urls } = await published();
+    const tue = serviceDate("20261020");
+    expect(s.planFor(tue)).toBeUndefined();
+    await settle(s);
+    // The core is in: the date's trips were asked for with it.
+    expect(urls.sort()).toEqual([
+      "plan.json",
+      "shapes.json",
+      "trips/wk.json",
+      "trips/wk.late.json",
+    ]);
+    expect(s.planFor(tue, Infinity)?.tripIndex.size).toBe(0);
+    while (!s.planFor(tue)) await settle(s);
+    const pp = s.planFor(tue)!;
+    expect([...pp.tripIndex.keys()].sort()).toEqual(["1", "2"]);
+    expect(pp.plan.patterns[0]!.starts).toEqual({
+      sat: [9 * H],
+      wk: [8 * H, 24.2 * H],
+    });
+
+    // Saturday: its own trips; Friday's, from midnight on, are already in (late file).
+    const sat = serviceDate("20261024");
+    expect(s.planFor(serviceDate("20261023"), 24 * H + 60)).toBe(pp);
+    urls.length = 0;
+    expect(s.planFor(sat)).toBeUndefined();
+    while (!s.planFor(sat)) await settle(s);
+    expect(urls).toEqual(["trips/sat.json"]);
+    expect(s.planFor(sat)!.plan).toBe(pp.plan);
   });
 });

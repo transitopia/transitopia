@@ -233,7 +233,9 @@ export class RtClient {
     pp: PreparedPlan | undefined,
   ): RtTimeline {
     const predictor = pp ? this.predictorFor(pp) : undefined;
-    const key = `${live ? "live" : "rec"}:${snapshots.length}:${snapshots[0]?.fetchedAt}:${snapshots.at(-1)?.fetchedAt}:${pp?.plan.feedVersion}:${predictor ? "p" : ""}:${this.changesVersion}`;
+    // The prepared plan grows as its trip files load (PlanStore.planFor): its trip count is part of
+    // the key, so vehicles are matched against every trip in so far.
+    const key = `${live ? "live" : "rec"}:${snapshots.length}:${snapshots[0]?.fetchedAt}:${snapshots.at(-1)?.fetchedAt}:${pp?.plan.feedVersion}:${pp?.tripIndex.size}:${predictor ? "p" : ""}:${this.changesVersion}`;
     let timeline = this.timelines.get(key);
     if (timeline) this.timelines.delete(key);
     else {

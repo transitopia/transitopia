@@ -26,6 +26,7 @@ import {
 import {
   feedForDate,
   type PlanRoute,
+  type ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
 import {
   firstBoarding,
@@ -58,6 +59,7 @@ import {
   CORRIDORS_SOURCE,
   EXCHANGES_SOURCE,
   OVERVIEW_CORRIDORS_SOURCE,
+  CORRIDOR_DETAIL_ZOOM,
   ROUTES_SOURCE,
   SELECTED_PLACE_RADIUS_PX,
   SELECTED_PLACE_SOURCE,
@@ -67,6 +69,7 @@ import {
   applyRouteFilter,
   applyStopsVisibility,
   brandedRoutes,
+  overviewCorridors,
   setFerryPair,
   setFocusRoute,
   setSelectedPlace,
@@ -247,6 +250,8 @@ const RT_BADGE: Record<RtMode, [string, string]> = {
  * Safari throws after ~100 history.replaceState calls in 10 s.
  */
 const URL_WRITE_THROTTLE_MS = 300;
+/** The detailed corridors start loading this many zoom levels before they're drawn. */
+const DETAIL_PRELOAD_ZOOM = 1;
 /**
  * Tapping a vehicle follows it only at this speed or slower (|rate|): constant panning at 60×+ is
  * disorienting (docs: apps/web/README.md#follow; the 10× cutoff is a guess).
@@ -338,6 +343,8 @@ export class TransitEngine {
   /** Line centrelines and ribbons for drawing SkyTrain (lines.geojson). */
   private lines: LineGeometry | undefined;
   private shownFeed: PreparedPlan | undefined;
+  /** The shown plan's detailed corridors when its layers were drawn (they load later). */
+  private shownCorridors: ServicePlan["corridors"];
   /** The stations' and exchanges' grouping the static layers were drawn with (hubsOf). */
   private shownHubs: BusHub[] | undefined;
   /** The feed the engine shows (its vehicles' `rt` refs are in it). */
@@ -529,6 +536,9 @@ export class TransitEngine {
     const onMove = () => {
       this.lastCameraMove = performance.now();
     };
+    const onZoomEnd = () => this.loadDetailSoon();
+    map.on("zoomend", onZoomEnd);
+    this.cleanups.push(() => map.off("zoomend", onZoomEnd));
     map.on("dragstart", onDragStart);
     map.on("zoomstart", onGesture);
     map.on("rotatestart", onGesture);
@@ -1282,7 +1292,7 @@ export class TransitEngine {
   private selectContext(waitForPlaces: boolean): SelectContext | undefined {
     const pp =
       this.shownFeed
-      ?? this.store.planFor(displayServiceDate(this.clock.now()));
+      ?? this.store.planFor(displayServiceDate(this.clock.now()), Infinity);
     if (!pp) return undefined;
     const places = this.store.placesFor(pp);
     if (places === undefined && waitForPlaces) return undefined;
@@ -1340,7 +1350,7 @@ export class TransitEngine {
 
   private describeDate(date: ServiceDate): string {
     const feed = feedForDate(this.store.manifest, date);
-    const pp = this.store.planFor(date);
+    const pp = this.store.planFor(date, Infinity);
     if (!feed) return "No timetable for this date";
     if (!pp) return "…";
     let fn = this.describers.get(feed.version);
@@ -1417,7 +1427,9 @@ export class TransitEngine {
       hidden: this.hidden,
       showStops: this.showStops,
       liveOnly: this.liveOnly,
-      corridors: Boolean(this.shownFeed?.plan.corridors?.length),
+      corridors: Boolean(
+        this.shownFeed && overviewCorridors(this.shownFeed.plan).length,
+      ),
       busFrequency: this.busFrequency,
       following: this.following,
       selected,
@@ -1445,7 +1457,8 @@ export class TransitEngine {
    */
   /** The selected vehicle's trip: where and when riders can first board it (epoch ms), and its short id. */
   private tripSummary(v: VehicleState): SelectedVehicle["trip"] {
-    const pp = this.store.planFor(v.serviceDate);
+    // A vehicle's trip is loaded, or it wouldn't be drawn.
+    const pp = this.store.planFor(v.serviceDate, Infinity);
     const pt = pp?.tripIndex.get(v.tripId);
     if (!pp || !pt) return undefined;
     const i = firstBoarding(pt.pattern);
@@ -1498,20 +1511,32 @@ export class TransitEngine {
     this.syncStatic(true);
   }
 
-  /** Static layers follow the feed of the displayed date. */
+  /**
+   * Static layers follow the feed of the displayed date: they need only its core, so they're drawn
+   * before its trips are in. The shown plan is the latest prepared one (with the trips loaded so
+   * far); its layers are redrawn when the feed changes or its detailed corridors arrive.
+   */
   private syncStatic(force = false): void {
     const { map, store } = this;
-    const pp = store.planFor(displayServiceDate(this.clock.now()));
+    const pp = store.planFor(displayServiceDate(this.clock.now()), Infinity);
     if (!pp || !this.styleReady || this.disposed) return;
-    if (pp === this.shownFeed && !force) return;
+    const same =
+      pp.plan === this.shownFeed?.plan
+      && pp.plan.corridors === this.shownCorridors;
     this.shownFeed = pp;
+    if (same && !force) return;
+    this.shownCorridors = pp.plan.corridors;
     // Start loading its places file, whose grouping replaces the plan's (syncHubs).
     store.placesFor(pp);
     this.shownHubs = hubsOf(pp.plan);
     addStaticLayers(map, pp.plan, this.theme, this.hidden);
     applyStopsVisibility(map, this.showStops);
-    if (!pp.plan.corridors?.length) this.frequencyLayer = undefined;
-    else if (!this.frequencyLayer || this.frequencyLayer.plan !== pp.plan)
+    if (!overviewCorridors(pp.plan).length) this.frequencyLayer = undefined;
+    else if (
+      !this.frequencyLayer
+      || this.frequencyLayer.plan !== pp.plan
+      || this.frequencyLayer.corridors !== pp.plan.corridors
+    )
       this.frequencyLayer = new BusFrequencyLayer(pp.plan);
     this.frequencyLayer?.invalidate();
     this.syncPlaceHighlight();
@@ -1552,7 +1577,18 @@ export class TransitEngine {
     this.vehicles.attach();
     this.vehicles.setRouteColors(pp.plan.routes);
     this.vehicleColorsFor = undefined;
+    this.loadDetailSoon();
     this.invalidate();
+  }
+
+  /**
+   * The detailed corridors load the first time the map is zoomed in nearly far enough to draw them
+   * (until then, the overview's are drawn there too).
+   */
+  private loadDetailSoon(): void {
+    const pp = this.shownFeed;
+    if (pp && this.map.getZoom() >= CORRIDOR_DETAIL_ZOOM - DETAIL_PRELOAD_ZOOM)
+      this.store.loadDetailedCorridors(pp);
   }
 
   /**
@@ -1688,7 +1724,11 @@ export class TransitEngine {
     let aisUsed = false;
     if (!store.scenario) {
       for (const date of [addDays(localDate(t), -1), localDate(t)]) {
-        const dpp = store.planFor(date);
+        // The day before: only its trips still running.
+        const dpp = store.planFor(
+          date,
+          date === localDate(t) ? 0 : (t - serviceDayStart(date)) / 1000,
+        );
         const seabus = dpp && ais.correctionsFor(date, dpp, t);
         if (!seabus) continue;
         aisUsed = true;
