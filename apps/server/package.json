@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@hono/node-server": "^2.1.4",
+    "@hono/node-server": "^2.1.5",
     "@transitopia/data": "*",
     "@transitopia/db": "*",
     "@transitopia/config": "*",
@@ -20,7 +20,7 @@
     "gtfs-realtime-bindings": "^2.2.0",
     "hono": "^4.13.13",
     "pg": "^8.23.1",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/pg": "^8.23.1"
