@@ -90,6 +90,7 @@ const plan: ServicePlan = {
     stop("S4b", "Northbound Renfrew St @ 1st Ave", -123.096),
   ],
   stations: [],
+  hubs: [],
   shapes: {
     a: [
       [-123.1, 49.28],

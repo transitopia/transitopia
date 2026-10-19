@@ -103,6 +103,7 @@ describe("applyService extend", () => {
   };
   const plan: ServicePlan = {
     schema: 1,
+    hubs: [],
     feed: "translink",
     feedVersion: "v",
     feedStart: serviceDate("20260901"),
@@ -282,6 +283,7 @@ describe("applyService truncate", () => {
       stop("e", 2500),
     ],
     stations: [],
+    hubs: [],
     shapes: {
       ew: [pt(0), pt(3000)],
       we: [pt(3000), pt(0)],

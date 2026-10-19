@@ -18,6 +18,12 @@ describe("isBay", () => {
     expect(isBay("Newton Exchange @ Layover")).toBe(false);
     expect(isBay("Eastbound W Broadway @ Alma St")).toBe(false);
     expect(isBay("Westbound W Broadway @ Bayswater St")).toBe(false);
+    // Streets named Bay (seen across TransLink's whole feed, 2026-10).
+    expect(isBay("Southbound Nelson Ave @ Bay St")).toBe(false);
+    expect(isBay("Eastbound Fraser Way @ Bay Mill Rd")).toBe(false);
+    expect(isBay("Surrey Central Station @ Bay 5A")).toBe(true);
+    expect(isBay("King Edward Station @ Bay 3 -")).toBe(true);
+    expect(isBay("Bridgeport Station @ Unloading Bay")).toBe(true);
   });
 
   it("reads BC Transit's bays, which have no @", () => {
@@ -26,6 +32,7 @@ describe("isBay", () => {
     expect(isBay("Legislature Exch")).toBe(true);
     expect(isBay("Swartz Bay Ferry Terminal Bay A")).toBe(true);
     expect(isBay("Douglas St at Bay St")).toBe(false);
+    expect(isBay("Cooper Rd at Orchard Park Exchange")).toBe(false);
     expect(isBay("Fort St at Foul Bay Rd")).toBe(false);
     expect(isBay("HMC Dockyard Terminal")).toBe(false);
     expect(bayNumber("Royal Oak Exch Bay H")).toBe("H");
@@ -36,6 +43,9 @@ describe("isBay", () => {
     );
     expect(baseName("Langford Exch Bay A")).toBe("Langford Exchange");
     expect(baseName("Legislature Exch")).toBe("Legislature Exchange");
+    expect(baseName("Southbound White Rock Centre @ Bay 11")).toBe(
+      "White Rock Centre",
+    );
     expect(baseName("UBCO Exchange Bay C")).toBe("UBCO Exchange");
     expect(baseName("Swartz Bay Ferry Terminal Bay A")).toBe(
       "Swartz Bay Ferry Terminal",

@@ -40,6 +40,22 @@ export interface PlanStop {
   platform?: string;
 }
 
+/** A bus exchange, or a station's bus bays. */
+export interface PlanHub {
+  id: string;
+  /** "UBC Exchange", "Kootenay Loop"; a station's name for its bays ("Joyce-Collingwood"). */
+  name: string;
+  /** Centre of its bays. */
+  lon: number;
+  lat: number;
+  /** GTFS stop_ids of its bays, by bay number. */
+  bays: string[];
+  /** Route keys serving them. */
+  routes: string[];
+  /** The plan station whose bays these are; absent for an exchange on its own. */
+  station?: string;
+}
+
 export interface PlanStation {
   id: string;
   name: string;
@@ -147,6 +163,12 @@ export interface ServicePlan {
   routes: PlanRoute[];
   stops: PlanStop[];
   stations: PlanStation[];
+  /**
+   * Bus exchanges and stations' bus bays, as the plan's own grouping proposes them (`busHubs`,
+   * packages/transit-core/DESIGN.md#bus-exchanges). The site groups by the registry's places file
+   * instead where there is one (packages/transit-map/src/hubs.ts).
+   */
+  hubs: PlanHub[];
   shapes: Record<string, LonLat[]>;
   patterns: PlanPattern[];
   trips: PlanTrip[];

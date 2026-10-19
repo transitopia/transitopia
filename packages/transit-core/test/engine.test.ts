@@ -57,6 +57,7 @@ const plan: ServicePlan = {
     { id: "C", name: "C", lon: -123.0725, lat: 49.25 },
   ],
   stations: [],
+  hubs: [],
   shapes: {
     east: [
       [-123.1, 49.25],

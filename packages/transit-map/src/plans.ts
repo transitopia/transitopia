@@ -23,10 +23,9 @@ import type {
   ObservationFile,
   ObservationIndex,
 } from "@transitopia/transit-core/corrections/types.ts";
-import {
-  busHubs,
-  type BusHub,
-} from "@transitopia/transit-core/plan/exchanges.ts";
+import type { PlacesFile, PlacesIndex } from "@transitopia/shared/features.ts";
+import { hubsFromPlaces } from "./hubs.ts";
+import { type BusHub } from "@transitopia/transit-core/plan/exchanges.ts";
 import type { ScenarioManifest } from "@transitopia/transit-core/scenario/types.ts";
 import {
   preparePlan,
@@ -59,6 +58,9 @@ export class PlanStore {
   private listeners = new Set<() => void>();
   private graph: TrackGraph | undefined;
   private movementIndexes = new Map<string, MovementsIndex | null>();
+  /** The feed's places index (data/feeds/<feed>/places.json) and files, by path. */
+  private placesIndex = new Map<string, PlacesIndex | null>();
+  private placesFiles = new Map<string, PlacesFile | null>();
   private movementFiles = new Map<string, MovementsFile | null>();
   private playbacks = new Map<string, TrainPlayback>();
   private preview: Record<string, string> = {};
@@ -257,6 +259,41 @@ export class PlanStore {
       );
     }
     return this.reconciledScheduled.get(key);
+  }
+
+  /**
+   * A plan version's places file (docs/DESIGN.md#published-features): the registry's IDs for its
+   * stations, stops and routes. Undefined while it loads (a change event fires), null when there's
+   * none (no registry where the data was built, or a version not reconciled yet).
+   */
+  placesFor(pp: PreparedPlan): PlacesFile | null | undefined {
+    if (this.scenario) return null;
+    const indexPath = feedDataPath(
+      this.config.feed.id,
+      undefined,
+      "places.json",
+    );
+    // The index changes with admin edits, not only builds: no build parameter (a short cache).
+    this.fetchOnce(
+      "places:index",
+      `${this.dataBase}${indexPath}`,
+      this.placesIndex,
+      (j) => j as PlacesIndex,
+    );
+    const index = this.placesIndex.get("places:index");
+    if (index === undefined) return undefined;
+    const path = index?.versions[pp.plan.feedVersion];
+    if (!path) return null;
+    // Each file is immutable.
+    this.fetchOnce(
+      `places:${path}`,
+      `${this.dataBase}${path}`,
+      this.placesFiles,
+      (j) => j as PlacesFile,
+    );
+    const file = this.placesFiles.get(`places:${path}`);
+    if (file) placesOfPlan.set(pp.plan, file);
+    return file;
   }
 
   /** Track-level playback for a service date, or undefined (not built / still loading). */
@@ -560,12 +597,30 @@ export function displayServiceDate(t: number): ServiceDate {
   return localDate(t - SERVICE_DAY_ROLLOVER_H * 3600_000);
 }
 
-const hubCache = new WeakMap<ServicePlan, BusHub[]>();
-/** The plan's bus exchanges and stations' bus bays (computed once per plan). */
+/** Each plan's places file, once loaded (`PlanStore.placesFor`). */
+const placesOfPlan = new WeakMap<ServicePlan, PlacesFile>();
+const hubCache = new WeakMap<
+  ServicePlan,
+  { places: PlacesFile | undefined; hubs: BusHub[] }
+>();
+/**
+ * The plan's bus exchanges and stations' bus bays: as its places file groups them once it's loaded
+ * (src/hubs.ts), else the plan's own grouping. A new array when the places file arrives.
+ */
 export function hubsOf(plan: ServicePlan): BusHub[] {
-  let h = hubCache.get(plan);
-  if (!h) hubCache.set(plan, (h = busHubs(plan)));
-  return h;
+  const places = placesOfPlan.get(plan);
+  let c = hubCache.get(plan);
+  if (!c || c.places !== places)
+    hubCache.set(
+      plan,
+      (c = {
+        places,
+        // A plan published before plans carried `hubs` (until the next data build after a deploy,
+        // and in branch previews, which read production's data) has none: no exchanges, no crash.
+        hubs: places ? hubsFromPlaces(plan, places) : (plan.hubs ?? []),
+      }),
+    );
+  return c.hubs;
 }
 
 const railServiceCache = new WeakMap<PreparedPlan, Set<string>>();

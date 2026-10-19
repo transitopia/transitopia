@@ -85,7 +85,7 @@ function MapApp() {
                 <Redirect to={`/cycling${location.hash}`} replace />
               </Route>
               <Route path="/">
-                {/* Keeps the map position, including pre-V2 ?z=&lat=&lng= (converted by <Map>). */}
+                {/* Keeps the query and the map position (#map=). */}
                 <Redirect
                   to={`/transit${location.search}${location.hash}`}
                   replace

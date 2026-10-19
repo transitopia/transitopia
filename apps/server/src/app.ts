@@ -8,6 +8,18 @@
 
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
+import { isServiceDate } from "@transitopia/transit-core/time.ts";
+import {
+  featureDetail,
+  mergeFeatures,
+  newExchange,
+  openFlags,
+  resolveFlag,
+  resolveKey,
+  retire,
+  searchFeatures,
+  setParent,
+} from "./features/registry.ts";
 import { sql } from "kysely";
 import type { Db } from "@transitopia/db/connect.ts";
 import { recentRuns } from "@transitopia/db/jobs.ts";
@@ -15,8 +27,16 @@ import { storageSizes } from "@transitopia/db/storage.ts";
 import type * as z from "zod";
 import {
   disruption,
+  featureDetailResponse,
+  featureFlagsResponse,
+  featureSearchResponse,
+  mergeRequest,
+  newExchangeRequest,
+  newExchangeResponse,
   observationSetPut,
+  resolveFlagRequest,
   rtStatus,
+  setParentRequest,
   type AuthMe,
   type CorrectionsResponse,
   type Health,
@@ -82,6 +102,22 @@ export function createApp(deps: AppDeps): Hono<Env> {
     );
   });
 
+  // ---- Feature resolver (apps/server/README.md#feature-resolver) -------------------------------
+  app.get("/features/:key", async (c) => {
+    const headers = {
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "public, max-age=3600",
+    };
+    if (!db) return c.json({ error: "No feature registry" }, 503, headers);
+    const date = c.req.query("date");
+    if (date !== undefined && !isServiceDate(date))
+      return c.json({ error: "date is YYYYMMDD" }, 400, headers);
+    const r = await resolveKey(db, c.req.param("key"), date);
+    if (r === "unminted") return c.json({ unminted: true }, 404, headers);
+    if (!r) return c.json({ error: "Unknown feature" }, 404, headers);
+    return c.json(r, 200, headers);
+  });
+
   app.get("/healthz", async (c) => {
     const h = await health(deps);
     return c.json(h, h.ok ? 200 : 503, { "Cache-Control": "no-store" });
@@ -142,6 +178,102 @@ export function createApp(deps: AppDeps): Hono<Env> {
       storage: db ? await storageSizes(db) : null,
     } satisfies StatusResponse),
   );
+
+  // ---- Features (docs/DESIGN.md#feature-ids): containment, merges and flags ------------------
+  const needDb = (c: Context<Env>) =>
+    c.json({ error: "No database: no feature registry" }, 409);
+  /**
+   * Who made a registry change (feature_changes.user_id): a signed-in admin's users row; none for
+   * ADMIN_DEV_TOKEN's local admin, who has no row.
+   */
+  const userId = (c: Context<Env>) => {
+    const id = c.get("user").id;
+    return id > 0 ? id : null;
+  };
+  /** Run a registry change, answering its error (a refused change) as a 400. */
+  const change = async (c: Context<Env>, fn: () => Promise<unknown>) => {
+    try {
+      await fn();
+      return c.json({ ok: true } as const);
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 400);
+    }
+  };
+
+  app.get("/admin/api/features", async (c) => {
+    if (!db) return needDb(c);
+    return c.json({
+      results: await searchFeatures(db, c.req.query("q") ?? ""),
+    } satisfies z.input<typeof featureSearchResponse>);
+  });
+
+  app.get("/admin/api/features/:id", async (c) => {
+    if (!db) return needDb(c);
+    const d = await featureDetail(db, c.req.param("id"));
+    if (!d) return c.json({ error: "No such feature" }, 404);
+    return c.json(d satisfies z.input<typeof featureDetailResponse>);
+  });
+
+  app.post("/admin/api/features/:id/parent", async (c) => {
+    if (!db) return needDb(c);
+    const body = await parseBody(c, setParentRequest);
+    if (!body.ok) return body.response;
+    return change(c, () =>
+      setParent(db, c.req.param("id"), body.value.parent, userId(c)),
+    );
+  });
+
+  app.post("/admin/api/features/:id/retire", async (c) => {
+    if (!db) return needDb(c);
+    return change(c, () => retire(db, c.req.param("id"), userId(c)));
+  });
+
+  app.post("/admin/api/features/:id/merge", async (c) => {
+    if (!db) return needDb(c);
+    const body = await parseBody(c, mergeRequest);
+    if (!body.ok) return body.response;
+    return change(c, () =>
+      mergeFeatures(db, c.req.param("id"), body.value.into, userId(c)),
+    );
+  });
+
+  app.post("/admin/api/features/exchange", async (c) => {
+    if (!db) return needDb(c);
+    const body = await parseBody(c, newExchangeRequest);
+    if (!body.ok) return body.response;
+    try {
+      const id = await newExchange(
+        db,
+        body.value.name,
+        body.value.stops,
+        userId(c),
+      );
+      return c.json({ id } satisfies z.input<typeof newExchangeResponse>);
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 400);
+    }
+  });
+
+  app.get("/admin/api/feature-flags", async (c) => {
+    if (!db) return needDb(c);
+    return c.json({
+      flags: await openFlags(db),
+    } satisfies z.input<typeof featureFlagsResponse>);
+  });
+
+  app.post("/admin/api/feature-flags/:id/resolve", async (c) => {
+    if (!db) return needDb(c);
+    const body = await parseBody(c, resolveFlagRequest);
+    if (!body.ok) return body.response;
+    return change(c, () =>
+      resolveFlag(
+        db,
+        Number(c.req.param("id")),
+        body.value.resolution,
+        userId(c),
+      ),
+    );
+  });
 
   const needRepo = (c: Context<Env>) =>
     repo ? undefined : (

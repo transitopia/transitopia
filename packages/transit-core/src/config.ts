@@ -157,6 +157,16 @@ const recording = z.strictObject({
   dataBuildAt: hhmm,
 });
 
+// --- config/features/reconcile.json ---
+
+const reconcile = z.strictObject({
+  stopNameMatchM: pos,
+  stopMovedFarM: pos,
+  disappearedNearM: pos,
+  stationMatchM: pos,
+  exchangeReplacedM: pos,
+});
+
 // --- config/feeds/<feed>/routes.json ---
 
 const routeKinds = ["skytrain", "shape", "bus"] as const satisfies RouteKind[];
@@ -600,6 +610,7 @@ export const CONFIG_SCHEMAS = {
   dispatch,
   kinematics,
   operations,
+  reconcile,
   recording,
   routes,
   rt,

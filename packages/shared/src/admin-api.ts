@@ -200,3 +200,95 @@ export type Previews = z.infer<typeof previews>;
 /** POST /admin/api/:kind/:id/preview. */
 export const previewResponse = z.object({ versions: previews });
 export type PreviewResponse = z.infer<typeof previewResponse>;
+
+// ---- Features (docs/DESIGN.md#feature-ids) ---------------------------------------------------
+
+const featureKind = z.enum([
+  "station",
+  "exchange",
+  "stop",
+  "route",
+  "vehicle",
+  "cycling-route",
+  "cycling-way",
+  "bike-parking",
+  "bikeshare-station",
+]);
+
+export const featureSummary = z.object({
+  id: z.string(),
+  kind: featureKind,
+  name: z.string(),
+  status: z.enum(["active", "retired", "merged"]),
+  feedId: z.string().nullable(),
+  parentId: z.string().nullable(),
+  lon: z.number().nullable(),
+  lat: z.number().nullable(),
+});
+export type FeatureSummary = z.infer<typeof featureSummary>;
+
+export const featureFlag = z.object({
+  id: z.number(),
+  featureId: z.string(),
+  candidates: z.array(z.string()),
+  /** code-moved-far, disappeared-nearby, cross-feed-name-match, exchange-replaced, grouping-differs. */
+  reason: z.string(),
+  detail: z.record(z.string(), z.unknown()).nullable(),
+  state: z.enum(["open", "resolved"]),
+  resolution: z.string().nullable(),
+  createdAt: z.coerce.date(),
+});
+export type FeatureFlag = z.infer<typeof featureFlag>;
+
+/** GET /admin/api/features?q= */
+export const featureSearchResponse = z.object({
+  results: z.array(featureSummary),
+});
+
+/** GET /admin/api/features/:id */
+export const featureDetailResponse = z.object({
+  feature: featureSummary.extend({ mergedInto: z.string().nullable() }),
+  parent: featureSummary.nullable(),
+  children: z.array(featureSummary),
+  /** Each ref, with the first and last feed versions of its range (none for unversioned refs). */
+  refs: z.array(z.object({ ref: z.string(), versions: z.array(z.string()) })),
+  flags: z.array(featureFlag),
+  changes: z.array(
+    z.object({
+      action: z.string(),
+      before: z.unknown(),
+      after: z.unknown(),
+      at: z.coerce.date(),
+      by: z.string().nullable(),
+    }),
+  ),
+});
+export type FeatureDetailResponse = z.infer<typeof featureDetailResponse>;
+
+/** GET /admin/api/feature-flags: the open ones. */
+export const featureFlagsResponse = z.object({
+  flags: z.array(featureFlag.extend({ name: z.string(), kind: featureKind })),
+});
+export type FeatureFlagsResponse = z.infer<typeof featureFlagsResponse>;
+
+/** POST /admin/api/features/:id/parent */
+export const setParentRequest = z.object({ parent: z.string().nullable() });
+/** POST /admin/api/features/:id/merge */
+export const mergeRequest = z.object({ into: z.string() });
+/** POST /admin/api/features/exchange */
+export const newExchangeRequest = z.object({
+  name: z.string().min(1),
+  stops: z.array(z.string()).min(1),
+});
+export const newExchangeResponse = z.object({ id: z.string() });
+/**
+ * How a reconciliation flag was resolved: "kept" (a feature of its own), "retired",
+ * "merged:<id>" (merged into a candidate), or "moved:<id>" (a stop put in a candidate station or
+ * exchange, for grouping-differs).
+ */
+export const FLAG_RESOLUTION = /^(kept|retired|merged:.+|moved:.+)$/;
+
+/** POST /admin/api/feature-flags/:id/resolve */
+export const resolveFlagRequest = z.object({
+  resolution: z.string().regex(FLAG_RESOLUTION),
+});

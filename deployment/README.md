@@ -75,7 +75,7 @@ One-time setup (done):
 1. Create the R2 bucket `transitopia-data` and connect the custom domain `data.transitopia.org`.
 2. Add a CORS policy allowing `GET` and `HEAD` from `https://www.transitopia.org` (and
    `https://transitopia.org`, `https://*.transitopia-web.pages.dev`, `http://localhost:5173`).
-3. Cache: the manifests (`data/feeds/*/manifest.json`) should be short-lived (e.g. 5 minutes); everything else can be cached
+3. Cache: the manifests (`data/feeds/*/manifest.json`), the places indexes (`data/feeds/*/places.json`) and `data/features/latest.json` should be short-lived (e.g. 5 minutes); everything else can be cached
    for longer. Each build rewrites files at the same paths, so the site asks for every other file with
    the build in its URL (`?v=<the manifest's generatedAt>`, `PlanStore.dataUrl` in
    `packages/transit-map/src/plans.ts`): after a build, browsers and the edge fetch the new file
@@ -184,7 +184,9 @@ curated corrections); git and GitHub cover the rest. Test a restore every quarte
 Developers work against real data without polling: `npm run snapshot:pull -- --from 2026-09-20 --to 2026-09-27 [--db]`
 downloads recorded hours for that range from the archive bucket (the last 60 days only; older periods
 have statistics and observed stop times but no raw fixes), and with `--db` restores the nightly
-developer snapshot: every table except users, sessions and raw rows. It needs rclone access to
+developer snapshot: every table except users, sessions and raw rows (the feature registry included).
+Without it, `npm run features -- pull` (after `npm run db:up`, or with no database at all) loads the
+public registry export, so local places files carry production's IDs ([docs/DESIGN.md → Published features](../docs/DESIGN.md#published-features)). It needs rclone access to
 `transitopia-archive`. Snapshots stay private to the team until each source's terms allow
 publishing them ([DATA-LICENSES.md](../DATA-LICENSES.md)).
 

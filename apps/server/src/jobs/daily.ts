@@ -160,6 +160,7 @@ export async function dailyStats(
             observed_at: new Date(o.observedAt),
             precision_s: o.precisionS,
             stats_version: STATS_VERSION,
+            feed_version: tt.feedVersion,
           })),
         )
         .onConflict((oc) => oc.doNothing())
@@ -236,6 +237,7 @@ export async function dailyStats(
             metrics: JSON.stringify(s.metrics),
             coverage: s.coverage,
             stats_version: STATS_VERSION,
+            feed_version: tt.feedVersion,
           })),
         )
         .execute();
