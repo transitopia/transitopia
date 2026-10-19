@@ -1,7 +1,8 @@
-// Feature reconciliation on the server (apps/server/README.md#feature-reconciliation): every GTFS
-// feed version in gtfs_feeds that hasn't been reconciled, oldest first (gtfs_feeds.seq), one
-// transaction per version. Catching up from an empty registry is the same loop. A version's zip
-// comes from var/raw/gtfs/<feed>/<version>/, or the archive when it isn't there.
+// Feature (persistent entity ID) reconciliation on the server
+// (apps/server/README.md#feature-reconciliation): every GTFS feed version in gtfs_feeds that
+// hasn't been reconciled, oldest first (gtfs_feeds.seq), one transaction per version.
+// Catching up from an empty registry is the same loop. A version's zip comes from
+// var/raw/gtfs/<feed>/<version>/, or the archive when it isn't there.
 
 import { existsSync } from "node:fs";
 import { sql } from "kysely";

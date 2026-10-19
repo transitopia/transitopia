@@ -1,7 +1,7 @@
-// The feature registry's tables (packages/db/migrations/003_features.sql, docs/DESIGN.md#feature-ids):
-// what reconciliation reads (a snapshot of a feed's features and refs) and writes (its decisions),
-// lookups by ID or ref, and the admin changes (containment, retiring), each recorded in
-// feature_changes.
+// The feature/entity ID registry's tables (packages/db/migrations/003_features.sql,
+// docs/DESIGN.md#feature-ids): what reconciliation reads (a snapshot of a feed's features
+// and refs) and writes (its decisions), lookups by ID or ref, and the admin changes
+// (containment, retiring), each recorded in feature_changes.
 
 import { randomFillSync } from "node:crypto";
 import { sql } from "kysely";

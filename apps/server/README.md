@@ -86,6 +86,8 @@ Backups run in their own container (`infra/backup/`) and record themselves in `j
 
 ## Feature reconciliation
 
+Feature reconciliation is the process of matching GTFS features like bus stops to our permanent IDs, like `st-g36cf3hr-50913`, minting new IDs as needed.
+
 `src/features/` ([docs/DESIGN.md → Feature IDs](../../docs/DESIGN.md#feature-ids)). After the data build records new GTFS versions in `gtfs_feeds`, `reconcileFeeds` takes in every version of every feed not yet reconciled, in `seq` order, one transaction each (holding an advisory lock, so the CLI and the server never write at once): it reads the version's every stop and route from its zip (`packages/data/src/gtfs-features.ts`; from `ARCHIVE_REMOTE` when it's no longer on disk), loads a snapshot of the registry (`registry.ts`), runs the pure matcher (`packages/transit-core/src/features/reconcile.ts`) and writes its decisions: new features, refreshed names and positions, ref ranges carried on or opened, and flags. A feed's later versions wait for a version whose zip can't be found. From an empty registry this is the catch-up over every archived version. A failure is logged and doesn't stop the build from publishing; the next build tries again.
 
 `npm run features` does the same locally, and has the containment tools until `/admin` has them:

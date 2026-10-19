@@ -1,5 +1,6 @@
-// The registry in its export form (packages/data/src/features.ts): read from the database for the
-// public export and the places files, and loaded into a local database by `npm run features -- pull`.
+// The feature ID (persistent entity ID) registry in its export form (packages/data/src/features.ts):
+// read from the database for the public export and the places files, and loaded into a local database
+// by `npm run features -- pull`.
 
 import { sql } from "kysely";
 import type { Db } from "@transitopia/db/connect.ts";

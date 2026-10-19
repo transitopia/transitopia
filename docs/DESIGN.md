@@ -221,7 +221,7 @@ Every station, bus exchange, stop and route in every feed has a **persistent, gl
 
 ### The role of a region
 
-Nothing in the registry is keyed by region. A region is a view configuration (which feeds to show here) and the owner of place-bound engineering data (track networks, dispatch, corrections). Which regions show a feature follows from its geometry and its refs; what it belongs to is its operator and feed (`features.operator_id`, `feed_id`), for stops and routes.
+Nothing in the registry is keyed by region. A region is a view configuration (which feeds to show here), the owner of place-bound engineering data (track networks, dispatch, corrections), and a scope for computing comparative statistics and analysis. Which regions show a feature follows from its geometry and its refs; what it belongs to is its operator and feed (`features.operator_id`, `feed_id`), for stops and routes.
 
 ### Relationships between features
 
@@ -230,7 +230,7 @@ Nothing in the registry is keyed by region. A region is a view configuration (wh
 
 ### Reconciliation
 
-The server's daily data build reconciles every feed version in `gtfs_feeds` not yet reconciled, oldest first, one transaction each ([apps/server → Feature reconciliation](../apps/server/README.md#feature-reconciliation)). The matcher is pure (`packages/transit-core/src/features/reconcile.ts`: registry snapshot + the version's every stop and route → decisions), with its distances in `config/features/reconcile.json`:
+Feature reconciliation is the process of matching GTFS features like bus stops to our permanent IDs, like `st-g36cf3hr-50913`, minting new IDs as needed. The server's daily data build reconciles every feed version in `gtfs_feeds` not yet reconciled, oldest first, one transaction each ([apps/server → Feature reconciliation](../apps/server/README.md#feature-reconciliation)). The matcher is pure (`packages/transit-core/src/features/reconcile.ts`: registry snapshot + the version's every stop and route → decisions), with its distances in `config/features/reconcile.json`:
 
 | Kind | The same feature when (first match wins) | Otherwise |
 |---|---|---|
