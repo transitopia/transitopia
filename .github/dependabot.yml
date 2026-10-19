@@ -48,3 +48,9 @@ updates:
       timezone: America/New_York
     labels:
       - dependencies
+    groups:
+      # All action updates (major included) in one PR
+      actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
