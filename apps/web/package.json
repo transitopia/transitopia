@@ -10,18 +10,18 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.104.1",
+    "@tanstack/react-query": "^5.104.2",
     "@transitopia/map-style": "*",
     "@transitopia/config": "*",
     "@transitopia/shared": "*",
     "@transitopia/transit-core": "*",
     "@transitopia/transit-map": "*",
-    "maplibre-gl": "^6.13.0",
+    "maplibre-gl": "^6.14.0",
     "pmtiles": "^4.5.0",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "wouter": "^3.13.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4",

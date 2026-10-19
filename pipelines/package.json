@@ -15,7 +15,7 @@
     "@transitopia/server": "*",
     "@transitopia/transit-core": "*",
     "gtfs-realtime-bindings": "^2.2.0",
-    "playwright-core": "^1.64.0"
+    "playwright-core": "^1.64.1"
   },
   "devDependencies": {
     "@types/geojson": "^7946.0.16"
