@@ -113,6 +113,10 @@ describe("?select=", () => {
     expect(
       selectKey({ place: { kind: "exchange", id: "ubc-exchange" } }, ctx),
     ).toBe("ex-00000002-ubc-exchange");
+    // Without its ID an exchange has no key: a bay's ref would reopen as the bay.
+    expect(
+      selectKey({ place: { kind: "exchange", id: "ubc-exchange" } }, bare),
+    ).toBeUndefined();
     expect(selectKey({ place: { kind: "stop", id: "13001" } }, bare)).toBe(
       "stop:translink:60001",
     );

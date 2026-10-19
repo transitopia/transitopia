@@ -13,6 +13,7 @@ import {
   parseKey,
   type FeatureKind,
 } from "@transitopia/shared/features.ts";
+import { FLAG_RESOLUTION } from "@transitopia/shared/admin-api.ts";
 import type {
   Decisions,
   GtfsFeatureKind,
@@ -63,18 +64,22 @@ export async function loadSnapshot(
       ]),
     )
     .execute();
+  // A station's feeds: its parent stops' refs, and the stops inside it. A station of standalone
+  // rail or ferry stops (West Coast Express) has no ref of its own, and must still be found by name
+  // in its feed when their ids change.
   const stationFeeds = new Map<string, string[]>();
-  for (const r of await db
-    .selectFrom("feature_refs as r")
-    .innerJoin("features as f", "f.id", "r.feature_id")
-    .select(["r.feature_id", "r.namespace"])
-    .distinct()
-    .where("f.kind", "=", "station")
-    .where("r.scheme", "=", "gtfs-stop")
-    .execute()) {
-    let l = stationFeeds.get(r.feature_id);
-    if (!l) stationFeeds.set(r.feature_id, (l = []));
-    l.push(r.namespace);
+  const feedRows = await sql<{ id: string; feed: string }>`
+    select r.feature_id as id, r.namespace as feed
+    from feature_refs r join features f on f.id = r.feature_id
+    where f.kind = 'station' and r.scheme = 'gtfs-stop'
+    union
+    select s.parent_id, s.feed_id
+    from features s join features f on f.id = s.parent_id
+    where f.kind = 'station' and s.feed_id is not null`.execute(db);
+  for (const r of feedRows.rows) {
+    let l = stationFeeds.get(r.id);
+    if (!l) stationFeeds.set(r.id, (l = []));
+    l.push(r.feed);
   }
   const locked = new Map<string, Set<string>>();
   for (const c of await db
@@ -146,11 +151,32 @@ export async function idMinter(
   };
 }
 
+/**
+ * One new ID of a kind, checked against the table: for a single feature made by an admin, in the
+ * transaction that inserts it (holding the registry lock), so a reconciliation can't take it first.
+ */
+async function mintOne(
+  tx: Db,
+  kind: FeatureKind,
+  random: (b: Uint8Array) => Uint8Array = (b) => randomFillSync(b),
+): Promise<string> {
+  for (;;) {
+    const id = mintId(kind, random);
+    const taken = await tx
+      .selectFrom("features")
+      .select("id")
+      .where("id", "=", id)
+      .executeTakeFirst();
+    if (!taken) return id;
+  }
+}
+
 export interface ApplyResult {
   minted: number;
   updated: number;
   refsExtended: number;
   refsAdded: number;
+  reactivated: number;
   flagged: number;
 }
 
@@ -190,6 +216,13 @@ export async function applyDecisions(
         updated_at: new Date(),
       })
       .where("id", "=", u.id)
+      .execute();
+  if (d.reactivate.length)
+    await tx
+      .updateTable("features")
+      .set({ status: "active", updated_at: new Date() })
+      .where("id", "in", d.reactivate)
+      .where("status", "=", "retired")
       .execute();
   // Every range carried on gets the same new upper bound.
   const byUpper = new Map<number, number[]>();
@@ -256,6 +289,7 @@ export async function applyDecisions(
     updated: d.update.length,
     refsExtended: d.extendRefs.length,
     refsAdded: d.insertRefs.length,
+    reactivated: d.reactivate.length,
     flagged,
   };
 }
@@ -379,17 +413,31 @@ export async function refsOf(
 export async function childrenOf(db: Tx, id: string): Promise<FeatureRow[]> {
   const rows = await db
     .selectFrom("features")
-    .select("id")
+    .select([
+      "id",
+      "kind",
+      "name",
+      "status",
+      "parent_id",
+      "feed_id",
+      sql<number | null>`ST_X(geom::geometry)`.as("lon"),
+      sql<number | null>`ST_Y(geom::geometry)`.as("lat"),
+    ])
     .where("parent_id", "=", id)
     .where("status", "!=", "merged")
-    .orderBy("name")
     .execute();
-  const out: FeatureRow[] = [];
-  for (const r of rows) {
-    const f = await featureById(db, r.id);
-    if (f) out.push(withoutMerge(f));
-  }
-  return out;
+  return rows
+    .map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      name: r.name,
+      status: r.status,
+      parentId: r.parent_id,
+      feedId: r.feed_id,
+      lon: r.lon,
+      lat: r.lat,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 }
 
 async function recordChange(
@@ -564,7 +612,16 @@ export async function resolveKey(
     .select(["operator_id"])
     .where("id", "=", found.id)
     .executeTakeFirstOrThrow();
-  const code = refs.rows.find((r) => r.scheme === "stop")?.ref;
+  // The code in its newest version, as the places files name stops (a renumbered stop has several).
+  const code = (
+    await db
+      .selectFrom("feature_refs")
+      .select("ref")
+      .where("feature_id", "=", found.id)
+      .where("scheme", "=", "stop")
+      .orderBy(sql`upper(versions)`, (ob) => ob.desc().nullsFirst())
+      .executeTakeFirst()
+  )?.ref;
   return {
     id: found.id,
     kind: found.kind,
@@ -660,10 +717,9 @@ export async function newExchange(
 ): Promise<string> {
   if (!name.trim()) throw new Error("an exchange needs a name");
   if (!stopIds.length) throw new Error("an exchange needs stops");
-  const mint = await idMinter(db);
-  const id = mint("exchange");
-  await db.transaction().execute(async (tx) => {
+  return db.transaction().execute(async (tx) => {
     await lockRegistry(tx);
+    const id = await mintOne(tx, "exchange");
     const stops: FeatureRow[] = [];
     for (const s of stopIds) {
       const f = await featureById(tx, s);
@@ -703,8 +759,8 @@ export async function newExchange(
         userId,
       );
     }
+    return id;
   });
-  return id;
 }
 
 export interface FeatureSummary {
@@ -876,15 +932,15 @@ export async function openFlags(db: Db, limit = 200) {
   return rows.map((r) => ({ ...flagRow(r), name: r.name, kind: r.kind }));
 }
 
-/** Close a flag: "kept" (it's a feature of its own), "retired", or "merged:<id>". */
+/** Close a flag (FLAG_RESOLUTION: kept, retired, merged:<id> or moved:<id>). */
 export async function resolveFlag(
   db: Db,
   flagId: number,
   resolution: string,
   userId: number | null = null,
 ): Promise<void> {
-  if (!/^(kept|retired|merged:.+)$/.test(resolution))
-    throw new Error(`a resolution is kept, retired or merged:<id>`);
+  if (!FLAG_RESOLUTION.test(resolution))
+    throw new Error(`a resolution is kept, retired, merged:<id> or moved:<id>`);
   const r = await db
     .updateTable("feature_flags")
     .set({

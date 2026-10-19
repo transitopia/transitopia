@@ -55,6 +55,19 @@ export async function reconcileFeeds(opts: {
       .where("reconciled_at", "is not", null)
       .executeTakeFirst();
     let prevSeq = done?.seq ?? undefined;
+    // Versions recorded below the newest reconciled one (a zip skipped with --skip-missing, or added
+    // out of order) can't be reconciled: refs' ranges only grow at their newest end. Say so.
+    const behind = await db
+      .selectFrom("gtfs_feeds")
+      .select(["version", "seq"])
+      .where("feed_id", "=", feed.id)
+      .where("reconciled_at", "is", null)
+      .where("seq", "<", prevSeq ?? 0)
+      .execute();
+    for (const v of behind)
+      log(
+        `features: ${feed.id} ${v.version} (seq ${v.seq}) is older than the newest reconciled version and won't be reconciled`,
+      );
     const pending = await db
       .selectFrom("gtfs_feeds")
       .select(["version", "seq", "object_key"])
@@ -96,7 +109,7 @@ export async function reconcileFeeds(opts: {
         prevSeq = v.seq;
         out.push({ feed: feed.id, version: v.version, seq: v.seq, ...result });
         log(
-          `features: ${feed.id} ${v.version}: ${result.minted} minted, ${result.updated} updated, ${result.refsExtended} refs carried on, ${result.refsAdded} added, ${result.flagged} flagged (${Date.now() - t0} ms)`,
+          `features: ${feed.id} ${v.version}: ${result.minted} minted, ${result.updated} updated, ${result.refsExtended} refs carried on, ${result.refsAdded} added, ${result.reactivated} reactivated, ${result.flagged} flagged (${Date.now() - t0} ms)`,
         );
       } finally {
         await zip.cleanup();

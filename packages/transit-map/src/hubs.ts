@@ -4,7 +4,7 @@
 // here within minutes, without a plan rebuild. Without a places file the plan's own grouping is
 // used (`ServicePlan.hubs`, built by `busHubs` in build-schedule); the browser never runs `busHubs`.
 
-import type { PlacesFile } from "@transitopia/shared/features.ts";
+import { parseKey, type PlacesFile } from "@transitopia/shared/features.ts";
 import {
   busStopRoutes,
   byBay,
@@ -29,8 +29,8 @@ export function hubsFromPlaces(
   const indexOf = new Map(plan.stops.map((s, i) => [s.id, i]));
   const stationOf = new Map<string, string>();
   for (const [planId, key] of Object.entries(places.stations)) {
-    const id = /^([a-z]{2,3}-[0-9a-z]{8})/.exec(key)?.[1];
-    if (id && !stationOf.has(id)) stationOf.set(id, planId);
+    const k = parseKey(key);
+    if (k?.form === "id" && !stationOf.has(k.id)) stationOf.set(k.id, planId);
   }
   const bays = new Map<string, number[]>();
   for (const [stopId, placeId] of Object.entries(places.parents)) {

@@ -52,8 +52,14 @@ class Registry {
       const l = latest.get(k);
       if (!l || r.upper > l.upper) latest.set(k, r);
     }
+    // As loadSnapshot: a station's feeds are its refs' and the stops inside it.
     const feeds = (id: string) =>
-      this.refs.some((r) => r.featureId === id && r.scheme === "gtfs-stop") ?
+      (
+        this.refs.some((r) => r.featureId === id && r.scheme === "gtfs-stop")
+        || [...this.features.values()].some(
+          (f) => f.parentId === id && f.feedId === "f",
+        )
+      ) ?
         ["f"]
       : [];
     return {
@@ -86,6 +92,7 @@ class Registry {
         ...(m.parentId ? { parentId: m.parentId } : {}),
         ...(m.feedId ? { feedId: m.feedId } : {}),
       });
+    for (const id of d.reactivate) this.features.get(id)!.status = "active";
     for (const u of d.update) {
       const f = this.features.get(u.id)!;
       if (u.name !== undefined) f.name = u.name;
@@ -192,6 +199,7 @@ describe("reconcile", () => {
       update: [],
       extendRefs: [],
       insertRefs: [],
+      reactivate: [],
       flags: [],
     });
   });
@@ -316,6 +324,52 @@ describe("reconcile", () => {
     expect(reg.at("gtfs-stop", "12138", 1)!.parentId).toBe(
       reg.at("gtfs-stop", "99901", 1)!.id,
     );
+  });
+
+  it("keeps a station of standalone stops when their ids and codes change", () => {
+    const reg = new Registry();
+    const wce = (id: string, code: string, lat: number): FeedRecords => ({
+      stops: [
+        stop(id, "Mission City Station @ West Coast Express", lat, {
+          code,
+          nonBus: true,
+        }),
+      ],
+      routes: [],
+    });
+    reg.run(1, wce("12500", "57900", 0));
+    const station = reg.features.get(
+      reg.at("gtfs-stop", "12500", 1)!.parentId!,
+    )!;
+    expect(station).toMatchObject({ kind: "station", name: "Mission City" });
+    const d = reg.run(2, wce("13600", "58000", 20));
+    expect(d.mint.map((m) => m.kind)).toEqual(["stop"]);
+    expect(reg.at("gtfs-stop", "13600", 2)!.parentId).toBe(station.id);
+    expect(reg.flags.map((f) => f.reason)).not.toContain(
+      "cross-feed-name-match",
+    );
+  });
+
+  it("reactivates a retired stop whose stop_id comes back, and flags it", () => {
+    const reg = new Registry();
+    reg.run(1, base());
+    const main = reg.at("gtfs-stop", "14001", 1)!;
+    const without = base();
+    without.stops = without.stops.filter((s) => s.id !== "14001");
+    reg.run(2, without);
+    // An admin retires the stop that disappeared.
+    main.status = "retired";
+    const d = reg.run(3, base());
+    expect(d.mint).toEqual([]);
+    expect(d.reactivate).toEqual([main.id]);
+    expect(reg.at("gtfs-stop", "14001", 3)).toBe(main);
+    expect(main.status).toBe("active");
+    expect(reg.flags).toEqual([
+      expect.objectContaining({
+        featureId: main.id,
+        reason: "retired-returned",
+      }),
+    ]);
   });
 
   it("keeps a route by its name when its route_id changes", () => {

@@ -281,7 +281,14 @@ export const newExchangeRequest = z.object({
   stops: z.array(z.string()).min(1),
 });
 export const newExchangeResponse = z.object({ id: z.string() });
+/**
+ * How a reconciliation flag was resolved: "kept" (a feature of its own), "retired",
+ * "merged:<id>" (merged into a candidate), or "moved:<id>" (a stop put in a candidate station or
+ * exchange, for grouping-differs).
+ */
+export const FLAG_RESOLUTION = /^(kept|retired|merged:.+|moved:.+)$/;
+
 /** POST /admin/api/feature-flags/:id/resolve */
 export const resolveFlagRequest = z.object({
-  resolution: z.string().regex(/^(kept|retired|merged:.+)$/),
+  resolution: z.string().regex(FLAG_RESOLUTION),
 });

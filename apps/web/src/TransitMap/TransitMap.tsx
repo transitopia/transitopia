@@ -114,7 +114,7 @@ export default function TransitMap() {
   // without it (a vehicle or place of another region), at the same time, unless the map moved
   // there to find the selection (`carry`, from the feature resolver).
   const shownRegion = React.useRef<string>(undefined);
-  const carry = React.useRef<string>(undefined);
+  const carry = React.useRef<{ key: string; region: string }>(undefined);
 
   React.useEffect(() => {
     if (!map || !ready) return;
@@ -122,8 +122,11 @@ export default function TransitMap() {
     let created: TransitEngine | undefined;
     const params = new URLSearchParams(location.search);
     const { select: _s, ...time } = readUrl();
-    const select = carry.current;
-    carry.current = undefined;
+    // A key carried for this region is used once its engine starts; one for another region (the
+    // user panned elsewhere first) is dropped.
+    const select =
+      carry.current?.region === region.info.id ? carry.current.key : undefined;
+    if (!select) carry.current = undefined;
     const switched =
       shownRegion.current !== undefined
       && shownRegion.current !== region.info.id;
@@ -148,6 +151,7 @@ export default function TransitMap() {
           return;
         }
         created = eng;
+        if (select) carry.current = undefined;
         setEngine(eng);
         Object.assign(window, { transit: eng.debugHandle() });
       },
@@ -207,7 +211,21 @@ export default function TransitMap() {
         <EngineControls
           engine={engine}
           onElsewhere={(key, bounds) => {
-            carry.current = key;
+            // Carried only to another region, whose engine will select it. A feature in this
+            // region that its plan doesn't have (a stop no drawn route serves) can't be selected:
+            // the map just shows where it is.
+            const [w, s, e, n] = bounds;
+            const pad = 1e-5;
+            const target = regionInView({
+              west: w - pad,
+              south: s - pad,
+              east: e + pad,
+              north: n + pad,
+            });
+            carry.current =
+              target && target.info.id !== region.info.id ?
+                { key, region: target.info.id }
+              : undefined;
             map?.fitBounds(bounds, { padding: PADDING, maxZoom: 16 });
           }}
         />

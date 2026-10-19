@@ -275,3 +275,91 @@ describe.skipIf(!TEST_DATABASE_URL)("feature registry", () => {
     );
   });
 });
+
+describe.skipIf(!TEST_DATABASE_URL)(
+  "feature registry across feed versions",
+  () => {
+    let t: TestDb;
+    const seqs: number[] = [];
+
+    beforeAll(async () => {
+      t = await createTestDb();
+      await syncSources(t.db);
+      for (const [i, version] of ["W1", "W2"].entries()) {
+        const r = await t.db
+          .insertInto("gtfs_feeds")
+          .values({
+            feed_id: "translink",
+            version,
+            start_date: `2026-11-0${i + 1}`,
+            end_date: "2026-12-31",
+            fetched_at: new Date(Date.UTC(2026, 10, i + 1)),
+            sha256: "x",
+            bytes: 1,
+            object_key: null,
+          })
+          .returning("seq")
+          .executeTakeFirstOrThrow();
+        seqs.push(r.seq);
+      }
+    });
+    afterAll(() => t?.drop());
+
+    const version = (
+      i: number,
+      stops: FeedStop[],
+    ): Parameters<typeof reconcileVersion>[1] => ({
+      feed: FEED,
+      version: `W${i + 1}`,
+      seq: seqs[i]!,
+      prevSeq: i ? seqs[i - 1] : undefined,
+      records: { stops, routes: [] },
+      settings: reconcileConfig,
+    });
+
+    it("keeps a station of standalone stops, and names a merged stop by its newest code", async () => {
+      await reconcileVersion(
+        t.db,
+        version(0, [
+          stop("12500", "Mission City Station @ West Coast Express", 0, {
+            code: "57900",
+            nonBus: true,
+          }),
+          stop("14001", "Main St @ 1st Ave", 9000, { code: "50100" }),
+        ]),
+      );
+      const station = (await findFeature(t.db, "gtfs-stop:translink:12500"))!
+        .parentId!;
+      const old = (await findFeature(t.db, "stop:translink:50100"))!;
+
+      // Both stops come back with new ids and codes.
+      const r = await reconcileVersion(
+        t.db,
+        version(1, [
+          stop("13600", "Mission City Station @ West Coast Express", 20, {
+            code: "58000",
+            nonBus: true,
+          }),
+          stop("15001", "Main St @ 1st Ave", 9010, { code: "70200" }),
+        ]),
+      );
+      // Two stops, no second Mission City station.
+      expect(r.minted).toBe(2);
+      expect(
+        (await findFeature(t.db, "gtfs-stop:translink:13600"))!.parentId,
+      ).toBe(station);
+      const flags = await t.db
+        .selectFrom("feature_flags")
+        .select("reason")
+        .execute();
+      expect(flags.map((f) => f.reason)).not.toContain("cross-feed-name-match");
+
+      // An admin merges the renumbered stop into the old one: the resolver names it by the code it
+      // has now, as the places files do, not the alphabetically first.
+      const renumbered = (await findFeature(t.db, "stop:translink:70200"))!;
+      await mergeFeatures(t.db, renumbered.id, old.id);
+      const resolved = await resolveKey(t.db, old.id);
+      expect(resolved).toMatchObject({ suffix: "70200" });
+    });
+  },
+);

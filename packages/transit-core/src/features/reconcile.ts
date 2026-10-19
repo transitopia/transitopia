@@ -121,7 +121,8 @@ export type FlagReason =
   | "disappeared-nearby"
   | "cross-feed-name-match"
   | "exchange-replaced"
-  | "grouping-differs";
+  | "grouping-differs"
+  | "retired-returned";
 
 export interface Flag {
   featureId: string;
@@ -144,6 +145,11 @@ export interface Decisions {
     lower: number;
     upper: number;
   }[];
+  /**
+   * Retired stops and stations whose stop_id or stop code came back in this version: active again
+   * (retiring one means it's gone; the feed says it isn't), each flagged `retired-returned`.
+   */
+  reactivate: string[];
   flags: Flag[];
 }
 
@@ -216,6 +222,7 @@ export function reconcile(input: ReconcileInput): Decisions {
     update: [],
     extendRefs: [],
     insertRefs: [],
+    reactivate: [],
     flags: [],
   };
   const features = new Map(snapshot.features.map((f) => [f.id, f]));
@@ -296,6 +303,11 @@ export function reconcile(input: ReconcileInput): Decisions {
     }
     if (u.name !== undefined || u.lon !== undefined) out.update.push(u);
   };
+  const reactivate = (f: RegistryFeature, ref: string) => {
+    if (f.status !== "retired" || out.reactivate.includes(f.id)) return;
+    out.reactivate.push(f.id);
+    flag(f.id, "retired-returned", [], { ref });
+  };
   const flag = (
     featureId: string,
     reason: FlagReason,
@@ -337,7 +349,10 @@ export function reconcile(input: ReconcileInput): Decisions {
     const matched = new Map<string, string>();
     for (const p of parents) {
       const f = refFeature("gtfs-stop", p.id, "station");
-      if (f) matched.set(p.id, f.id);
+      if (f) {
+        matched.set(p.id, f.id);
+        reactivate(f, `gtfs-stop:${feed}:${p.id}`);
+      }
     }
     let id = majority([...matched.values()]);
     if (id === undefined && !parents.length) {
@@ -407,6 +422,10 @@ export function reconcile(input: ReconcileInput): Decisions {
   const existing = new Set<string>();
   const byRule = new Map<string, 1 | 2 | 3>();
   const claim = (s: FeedStop, f: RegistryFeature, rule: 1 | 2 | 3) => {
+    reactivate(
+      f,
+      rule === 2 ? `stop:${feed}:${s.code}` : `gtfs-stop:${feed}:${s.id}`,
+    );
     claimed.add(f.id);
     featureOf.set(s.id, f.id);
     existing.add(s.id);

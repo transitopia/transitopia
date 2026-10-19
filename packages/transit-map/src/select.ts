@@ -119,10 +119,14 @@ export function resolveSelect(
 
 /**
  * The canonical key of a selection: the feature's ID with its current name suffix where the places
- * file has it, else a ref (a development machine without a registry). An exchange without one is
- * named by its first bay.
+ * file has it, else a ref (a development machine without a registry, a preview, a feed version not
+ * reconciled yet). An exchange has no ref (GTFS has no record of it), so without its ID it has no
+ * key: undefined, and the URL names no selection rather than one that would reopen as a bay.
  */
-export function selectKey(sel: Selection, ctx: SelectContext): string {
+export function selectKey(
+  sel: Selection,
+  ctx: SelectContext,
+): string | undefined {
   if ("vehicle" in sel) return vehicleKey(ctx.feed, sel.vehicle);
   const { place } = sel;
   const { places, plan, feed } = ctx;
@@ -153,8 +157,7 @@ export function selectKey(sel: Selection, ctx: SelectContext): string {
       const ex = hub?.bays
         .map((b) => places?.parents[b])
         .find((p) => p !== undefined && places?.places[p]?.kind === "exchange");
-      if (ex) return places!.places[ex]!.key;
-      return formatRef("gtfs-stop", feed, hub?.bays[0] ?? place.id);
+      return ex && places!.places[ex]!.key;
     }
   }
 }

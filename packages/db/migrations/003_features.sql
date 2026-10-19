@@ -100,7 +100,7 @@ create table feature_flags (
   reason text not null,                          -- 'code-moved-far', 'exchange-replaced', …
   detail jsonb,
   state text not null default 'open' check (state in ('open', 'resolved')),
-  resolution text,                               -- 'kept', 'merged:<id>', 'retired'
+  resolution text,                               -- 'kept', 'merged:<id>', 'moved:<id>', 'retired'
   resolved_by bigint references users,
   created_at timestamptz not null default now(),
   resolved_at timestamptz

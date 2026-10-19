@@ -305,6 +305,8 @@ const REASONS: Record<string, string> = {
   "cross-feed-name-match": "Another feed has a station of this name nearby",
   "exchange-replaced": "New exchange beside one that lost all its stops",
   "grouping-differs": "The heuristics would group it elsewhere",
+  "retired-returned":
+    "Retired, but back in the feed: made active again (retire it again if that's wrong)",
 };
 
 function Flags(props: { onOpen: (id: string) => void }) {
@@ -359,24 +361,46 @@ function Flags(props: { onOpen: (id: string) => void }) {
                 onClick={() => resolve(g, "kept")}>
                 Keep
               </button>
-              {g.candidates.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  className={primary}
-                  disabled={write.isPending}
-                  onClick={() =>
-                    write.mutate(
-                      {
-                        path: `admin/api/features/${g.featureId}/merge`,
-                        body: { into: c },
-                      },
-                      { onSuccess: () => resolve(g, `merged:${c}`) },
-                    )
-                  }>
-                  Merge into {c}
-                </button>
-              ))}
+              {g.reason === "grouping-differs" ?
+                // The candidate is the station or exchange the heuristics propose for this stop:
+                // move it there (or out of any, when they propose none), not a merge.
+                (g.candidates.length ? g.candidates : [null]).map((c) => (
+                  <button
+                    key={c ?? "none"}
+                    type="button"
+                    className={primary}
+                    disabled={write.isPending}
+                    onClick={() =>
+                      write.mutate(
+                        {
+                          path: `admin/api/features/${g.featureId}/parent`,
+                          body: { parent: c },
+                        },
+                        { onSuccess: () => resolve(g, `moved:${c ?? "none"}`) },
+                      )
+                    }>
+                    {c ? `Move to ${c}` : "Detach from its station or exchange"}
+                  </button>
+                ))
+              : g.candidates.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    className={primary}
+                    disabled={write.isPending}
+                    onClick={() =>
+                      write.mutate(
+                        {
+                          path: `admin/api/features/${g.featureId}/merge`,
+                          body: { into: c },
+                        },
+                        { onSuccess: () => resolve(g, `merged:${c}`) },
+                      )
+                    }>
+                    Merge into {c}
+                  </button>
+                ))
+              }
             </span>
           </li>
         ))}
