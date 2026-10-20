@@ -77,6 +77,7 @@ import type {
 import {
   feedDataPath,
   type FeedManifest,
+  type PlanCorridor,
   type PlanPattern,
   type PlanRoute,
   type PlanStation,
@@ -112,9 +113,10 @@ const STOP_OFFSET_WARN_M = 150;
  * break; divided roads merge round bends. 11: repeated shape points don't break a match. 12: bus
  * exchanges and stations' bays (`hubs`). 13: published in parts (plan/published.ts), lines at 5 decimals.
  * 14: weekday figures (routes' `weekdayWait`, combos' `weekday`) and shared stretches' offsets.
- * 15: every route in the feed by default (plan/routes.ts), no catalogue.
+ * 15: every route in the feed by default (plan/routes.ts), no catalogue. 16: corridors numbered by
+ * their geometry, and their metadata in a part of its own (corridor-info.json) for plan tiles.
  */
-const PLAN_FORMAT = 15;
+const PLAN_FORMAT = 16;
 
 /** Regions showing the feed with SeaBus berths and lanes (infrastructure/seabus.json): build-schedule applies them. */
 async function ferryRegions(feed: string): Promise<string[]> {
@@ -549,8 +551,10 @@ export async function buildPlan(
       }),
       keep,
     );
-    plan.corridors = corridors;
-    plan.overviewCorridors = mergeCarriageways(corridors);
+    // Numbered by their geometry (then their patterns): their index is their feature id in the
+    // plan's tiles, so a feed version whose corridors didn't change gets the same tiles.
+    plan.corridors = byGeometry(corridors);
+    plan.overviewCorridors = byGeometry(mergeCarriageways(corridors));
     log(
       `Built ${corridors.length} bus corridors (${plan.overviewCorridors.length} with divided roads merged)`,
     );
@@ -577,6 +581,22 @@ export async function buildPlan(
       );
   }
   return plan;
+}
+
+/** Corridors in an order worked out from their coordinates, and patterns where those are the same. */
+function byGeometry<T extends PlanCorridor>(corridors: T[]): T[] {
+  const key = (c: T) => JSON.stringify(c.coords);
+  const keys = new Map(corridors.map((c) => [c, key(c)]));
+  const refs = (c: T) => JSON.stringify(c.refs ?? []);
+  return corridors.sort((a, b) => {
+    const ka = keys.get(a)!;
+    const kb = keys.get(b)!;
+    return (
+      ka < kb ? -1
+      : ka > kb ? 1
+      : refs(a).localeCompare(refs(b))
+    );
+  });
 }
 
 /** Fill NaN times by linear interpolation on distance between known neighbours. */

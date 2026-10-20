@@ -42,6 +42,11 @@ export interface ServerEnv {
   buildData: boolean;
   /** rclone destination for the published transit data (e.g. r2:transitopia-data). */
   dataPublishRemote: string | undefined;
+  /**
+   * rclone destination for map tiles (e.g. r2:transitopia-maps): the transit overview tileset the
+   * data build makes (packages/transit-core/DESIGN.md#overview-tiles).
+   */
+  mapsPublishRemote: string | undefined;
   /** rclone destination for archives: raw recordings, GTFS feeds, backups (e.g. r2:transitopia-archive). */
   archiveRemote: string | undefined;
 }
@@ -74,6 +79,7 @@ export function readEnv(env: NodeJS.ProcessEnv = process.env): ServerEnv {
     jobs: env.JOBS === undefined ? true : flag(env.JOBS),
     buildData: flag(env.BUILD_DATA),
     dataPublishRemote: env.DATA_PUBLISH_REMOTE || undefined,
+    mapsPublishRemote: env.MAPS_PUBLISH_REMOTE || undefined,
     archiveRemote: env.ARCHIVE_REMOTE || undefined,
   };
 }

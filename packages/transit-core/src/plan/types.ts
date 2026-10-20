@@ -101,13 +101,44 @@ export interface PlanPattern {
  */
 export type CorridorRef = [pattern: number, dir: 1 | -1, along: number];
 
-/** A stretch of road and the bus patterns running along it (packages/transit-core/DESIGN.md#bus-corridors). */
+/**
+ * A stretch of road and the bus patterns running along it (packages/transit-core/DESIGN.md#bus-corridors), as
+ * built and as pipelines read it back: the browser draws corridors from the plan's tiles and has only
+ * their metadata (`PlanCorridorInfo`).
+ */
 export interface PlanCorridor {
   coords: LonLat[];
   /** Only while building the plan: a published plan carries its `combo` instead. */
   refs?: CorridorRef[] | undefined;
   /** Its frequency combo (`ServicePlan.frequency`), in a published plan. */
   combo?: number | undefined;
+}
+
+/**
+ * A plan's corridors without their geometry (packages/transit-core/DESIGN.md#plan-tiles): what the map
+ * styles the corridors of its tiles by. A corridor's index is its feature id in the tiles.
+ */
+export interface CorridorSet {
+  /** Per corridor, its frequency combo (`ServicePlan.frequency`). */
+  combo: number[];
+  /** Short corridors and the corridors they join (`shortCorridorNeighbours`). */
+  short: [number, number[]][];
+}
+
+/**
+ * Per corridor, the patterns along it (`CorridorRef`): for drawing a stretch of a pattern over the
+ * corridors it runs along. Published beside the metadata (`PlanFiles.corridorRefs`), which doesn't
+ * need them.
+ */
+export interface PlanCorridorRefs {
+  detailed: CorridorRef[][];
+  overview: CorridorRef[][];
+}
+
+/** The detailed corridors (drawn from CORRIDOR_DETAIL_ZOOM) and the overview's (divided roads merged). */
+export interface PlanCorridorInfo {
+  detailed: CorridorSet;
+  overview: CorridorSet;
 }
 
 /**
@@ -260,6 +291,8 @@ export interface ServicePlan {
   corridors?: PlanCorridor[];
   /** The same, with the two carriageways of divided roads merged into one line, for zoomed-out views. */
   overviewCorridors?: PlanCorridor[];
+  /** The corridors' metadata, in the browser's plan (from its `files.corridorInfo`). */
+  corridorInfo?: PlanCorridorInfo | undefined;
   /** The corridors' and stops' frequency combos, in a published plan with corridors. */
   frequency?: PlanFrequencyTable | undefined;
   /**
@@ -274,6 +307,15 @@ export interface PlanFiles {
   shapes: string;
   corridors?: string | undefined;
   overviewCorridors?: string | undefined;
+  /** The corridors' metadata without their geometry (`PlanCorridorInfo`): what the browser loads. */
+  corridorInfo?: string | undefined;
+  /** The patterns along each corridor (`PlanCorridorRefs`). */
+  corridorRefs?: string | undefined;
+  /**
+   * The plan's tiles (packages/transit-core/DESIGN.md#plan-tiles): every line the map draws for it, named by
+   * a hash of their input, so plans whose lines didn't change share them. Set by build-plan-tiles.
+   */
+  tiles?: string | undefined;
   trips: TripFileRef[];
 }
 

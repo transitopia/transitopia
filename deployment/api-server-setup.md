@@ -133,8 +133,9 @@ provider from the VM means they survive anything that happens to the VM's accoun
 
 R2 → Manage API tokens → Create API token:
 
-- **For the server:** permission "Object Read & Write", applied to the buckets `transitopia-data`
-  and `transitopia-archive` only. It publishes the transit data and writes the archive.
+- **For the server:** permission "Object Read & Write", applied to the buckets `transitopia-data`,
+  `transitopia-maps` and `transitopia-archive` only. It publishes the transit data and the transit
+  overview tileset, and writes the archive.
 - **For developers' `npm run snapshot:pull`:** "Object Read only", `transitopia-archive` only.
 
 Note each token's access key ID and secret access key, and the S3 endpoint
@@ -201,7 +202,7 @@ Fill in `infra/.env`:
   `AISSTREAM_API_KEY`, `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` (step 8), and
   `ADMIN_GITHUB_LOGINS`.
 - The `RCLONE_CONFIG_R2_*` lines: the R2 endpoint and the server's token (step 7). The remote's
-  name (`r2`) must match `DATA_PUBLISH_REMOTE` and `ARCHIVE_REMOTE`.
+  name (`r2`) must match `DATA_PUBLISH_REMOTE`, `MAPS_PUBLISH_REMOTE` and `ARCHIVE_REMOTE`.
 
 `infra/.env` and `infra/certs/` are gitignored.
 

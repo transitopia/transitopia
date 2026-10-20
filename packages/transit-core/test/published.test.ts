@@ -3,6 +3,8 @@ import { serviceDate } from "../src/time.ts";
 import {
   assemblePlan,
   decodeCore,
+  decodeCorridorInfo,
+  decodeCorridorRefs,
   decodeCorridors,
   decodeLine,
   decodeShapes,
@@ -12,11 +14,14 @@ import {
   railTripFiles,
   sortTrips,
   tripFilesFor,
+  type PublishedCorridorInfo,
+  type PublishedCorridorRefs,
   type PublishedCorridors,
   type PublishedShapes,
   type PublishedTrips,
 } from "../src/plan/published.ts";
 import { CorridorFrequency } from "../src/plan/corridor-frequency.ts";
+import { PLAN_TILE_LAYERS, planTileFeatures } from "../src/plan/tiles.ts";
 import type { PlanTrip, ServicePlan } from "../src/plan/types.ts";
 import {
   preparePlan,
@@ -308,5 +313,129 @@ describe("line coding", () => {
     ];
     expect(decodeLine(encodeLine(line, 5), 5)).toEqual(line);
     expect(encodeLine(line, 5).slice(2)).toEqual([1, 1, 22344, -18766]);
+  });
+});
+
+describe("corridor metadata", () => {
+  it("carries each corridor's combo and short neighbours, and its patterns beside them", async () => {
+    const plan = fixture();
+    const { core, files } = await roundTrip(plan);
+    const info = decodeCorridorInfo(
+      JSON.parse(files.get(core.files.corridorInfo!)!) as PublishedCorridorInfo,
+    );
+    const combos = [
+      ...new CorridorFrequency(plan).combosOfCorridors(plan.corridors!),
+    ];
+    // Without overview corridors, both sets are the detailed ones.
+    for (const set of [info.detailed, info.overview])
+      expect(set).toEqual({ combo: combos, short: [] });
+    const refs = decodeCorridorRefs(
+      JSON.parse(files.get(core.files.corridorRefs!)!) as PublishedCorridorRefs,
+    );
+    expect(refs.detailed).toEqual(plan.corridors!.map((c) => c.refs));
+    expect(refs.overview).toEqual(refs.detailed);
+  });
+
+  it("keeps a pattern's direction against the corridor", async () => {
+    const plan = fixture();
+    plan.corridors![0]!.refs = [[1, -1, 250]];
+    const { core, files } = await roundTrip(plan);
+    const refs = decodeCorridorRefs(
+      JSON.parse(files.get(core.files.corridorRefs!)!) as PublishedCorridorRefs,
+    );
+    expect(refs.detailed[0]).toEqual([[1, -1, 250]]);
+  });
+});
+
+describe("plan tiles", () => {
+  it("number corridors as the plan does, at the zooms each set is drawn", () => {
+    const plan = fixture();
+    const features = planTileFeatures(plan);
+    const layer = (name: string) =>
+      features.filter((f) => f.tippecanoe.layer === name);
+    expect(layer(PLAN_TILE_LAYERS.corridors).map((f) => f.id)).toEqual([0, 1]);
+    expect(layer(PLAN_TILE_LAYERS.corridors).map((f) => f.geometry)).toEqual(
+      plan.corridors!.map((c) => ({
+        type: "LineString",
+        coordinates: c.coords,
+      })),
+    );
+    expect(layer(PLAN_TILE_LAYERS.corridors)[0]!.tippecanoe.minzoom).toBe(14);
+    expect(
+      layer(PLAN_TILE_LAYERS.overviewCorridors)[0]!.tippecanoe.maxzoom,
+    ).toBe(13);
+  });
+
+  it("draw buses as corridors, and other routes along their shapes", () => {
+    const routes = planTileFeatures(fixture()).filter(
+      (f) => f.tippecanoe.layer === PLAN_TILE_LAYERS.routes,
+    );
+    expect(routes.map((f) => f.properties["route"])).toEqual(["expo"]);
+    expect(routes[0]!.properties).toMatchObject({
+      kind: "skytrain",
+      color: "#0033a0",
+    });
+  });
+
+  it("draw SkyTrain from its track where the region has it", () => {
+    const features = planTileFeatures(fixture(), {
+      tracks: {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            properties: {
+              type: "segment",
+              id: "w1.0",
+              kind: "yard",
+              lines: [],
+            },
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [-123.1, 49.26],
+                [-123.09, 49.26],
+              ],
+            },
+          },
+        ],
+      } as never,
+      lines: {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            properties: {
+              type: "centre",
+              line: "expo",
+              lines: ["expo"],
+              shared: false,
+            },
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [-123.1, 49.25],
+                [-123.0725, 49.25],
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const of = (name: string) =>
+      features.filter((f) => f.tippecanoe.layer === name);
+    // Not along its GTFS shape too.
+    expect(of(PLAN_TILE_LAYERS.routes)).toEqual([]);
+    expect(of(PLAN_TILE_LAYERS.railLines)[0]!.properties).toEqual({
+      type: "centre",
+      line: "expo",
+      shared: false,
+      color: "#0033a0",
+    });
+    // Yard track has no line colour (the map draws it grey).
+    expect(of(PLAN_TILE_LAYERS.railTracks)[0]!.properties).toEqual({
+      kind: "yard",
+      line: "",
+    });
   });
 });

@@ -1,7 +1,7 @@
 // Build a scenario (packages/transit-core/DESIGN.md#scenarios): alternate track and/or service defined in
 // config/regions/<region>/scenarios/<name>/scenario.json (a region with track-level rail), run through the same pipeline as the base network:
 // compose tracks → modify service → map platforms → infer runs → movements. Output:
-//   var/public/data/regions/<region>/scenarios/<name>/{manifest.json, plan.json and its parts, tracks.geojson, movements/}
+//   var/public/data/regions/<region>/scenarios/<name>/{manifest.json, plan.json and its parts, lines/ (its tiles), tracks.geojson, movements/}
 // View with ?scenario=<name>.
 //
 //   npm run scenario -- <name>
@@ -10,7 +10,7 @@ import {
   lineGeometry,
   serviceExtents,
 } from "@transitopia/transit-core/infra/line-geometry.ts";
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   PUBLIC_DIR,
@@ -32,6 +32,7 @@ import {
 import { buildAllMovements } from "./lib/movements.ts";
 import { regionDataPath } from "@transitopia/transit-core/plan/types.ts";
 import { writePlan } from "@transitopia/data/plans.ts";
+import { writePlanTiles } from "@transitopia/data/plan-tiles.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
 import { mapPlatforms } from "@transitopia/transit-core/infra/platforms.ts";
 import { routePattern } from "@transitopia/transit-core/infra/patterns.ts";
@@ -153,13 +154,13 @@ async function main() {
     relDir: `${rel}/movements`,
   });
 
-  // 5. Publish.
-  await writePlan(join(out, "plan.json"), plan);
-  await writeJson(join(out, "tracks.geojson"), tracks);
-  // Line-level geometry for drawing, next to the tracks (packages/transit-map/README.md#rendering).
-  await writeJson(
-    join(out, "lines.geojson"),
-    lineGeometry(
+  // 5. Publish: the plan, its tiles (with the scenario's track) and the track network.
+  const planPath = join(out, "plan.json");
+  await writePlan(planPath, plan);
+  await rm(join(out, "lines"), { recursive: true, force: true });
+  await writePlanTiles(planPath, plan, join(out, "lines"), {
+    tracks,
+    lines: lineGeometry(
       tracks,
       serviceExtents({
         graph,
@@ -171,7 +172,8 @@ async function main() {
         maxPullUpM: ops.turnback.maxPullUpM,
       }),
     ),
-  );
+  });
+  await writeJson(join(out, "tracks.geojson"), tracks);
   const manifest: ScenarioManifest = {
     schema: 1,
     name: spec.name,
