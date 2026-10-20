@@ -1307,6 +1307,9 @@ export class TransitEngine {
       cancelAnimationFrame(this.raf);
       this.live.stop();
       this.setFollow(false);
+      // Vehicles are sized for the zoom they were computed at: none are kept to be drawn, for a
+      // frame, at another when shown again.
+      this.vehicles.update([], this.theme === "dark");
       this.vehicles.detach();
       this.hiddenLayers = [];
       for (const layer of map.getStyle()?.layers ?? [])
@@ -1327,6 +1330,10 @@ export class TransitEngine {
     this.linesReady = false;
     // Layers a new style (a theme switch while hidden) dropped are added again.
     this.syncStatic(true);
+    // Vehicles for this view before the layer draws again.
+    const t = this.clock.now();
+    this.computedFor = { t, zoom: this.map.getZoom(), at: performance.now() };
+    this.computeVehicles(t);
     this.vehicles.attach();
     this.invalidate();
     this.publish();
