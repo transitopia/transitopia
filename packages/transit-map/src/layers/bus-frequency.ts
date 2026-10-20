@@ -27,6 +27,14 @@ import {
 
 /** "Now" counts trips in the hour from the shown time, refreshed in steps of this many seconds. */
 const NOW_STEP_S = 300;
+
+/**
+ * Where "Now"'s hour starts for a shown time (service seconds): the time, to the step before it
+ * (NOW_STEP_S), so the colours change only every few minutes. Hosts label the window with it.
+ */
+export function nowWindowStart(seconds: number): number {
+  return Math.floor(seconds / NOW_STEP_S) * NOW_STEP_S;
+}
 /**
  * A route with its own colour is drawn in it only where it runs at least this share as often as on
  * its busiest stretch; elsewhere (limited service, e.g. the 99 east of Commercial–Broadway) its buses
@@ -111,14 +119,14 @@ export class BusFrequencyLayer {
     focus: string | undefined,
   ): void {
     if (!map.getSource(CORRIDORS_SOURCE)) return;
-    const step = window === "now" ? Math.floor(seconds / NOW_STEP_S) : 0;
+    const step = window === "now" ? nowWindowStart(seconds) : 0;
     const key = `${date}|${window}|${step}|${[...hidden].join(",")}|${focus ?? ""}`;
     if (key === this.key) return;
     this.key = key;
     this.version++;
     const query =
       window === "now" ?
-        { date, from: step * NOW_STEP_S, seconds: 3600 }
+        { date, from: step, seconds: 3600 }
       : ("weekdays" as const);
     const all = this.combos.frequencies(query, (route) => !hidden.has(route));
     this.rates = all;

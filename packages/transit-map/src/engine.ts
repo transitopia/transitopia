@@ -77,7 +77,7 @@ import {
   setSelectedPlace,
 } from "./layers/static.ts";
 import { VehicleLayer } from "./layers/vehicles.ts";
-import { BusFrequencyLayer } from "./layers/bus-frequency.ts";
+import { BusFrequencyLayer, nowWindowStart } from "./layers/bus-frequency.ts";
 import {
   DEBUG_SOURCE,
   LINES_SOURCE,
@@ -209,8 +209,10 @@ export interface TransitSnapshot {
   liveOnly: boolean;
   /** The shown plan draws bus corridors (packages/transit-map/README.md#bus-corridors). */
   corridors: boolean;
-  /** What corridor colours count: the hour from the shown time, or the day's average. */
+  /** What corridor colours count: the hour from the shown time, or the weekday figure. */
   busFrequency: FrequencyWindow;
+  /** "Now"'s hour as the corridors count it (epoch ms, `nowWindowStart`): [from, to). */
+  busFrequencyHour: [number, number];
   /** The camera keeps the selected vehicle in view. */
   following: boolean;
   selected: SelectedVehicle | undefined;
@@ -1458,6 +1460,13 @@ export class TransitEngine {
         this.shownFeed && overviewCorridors(this.shownFeed.plan).length,
       ),
       busFrequency: this.busFrequency,
+      busFrequencyHour: (() => {
+        const day = serviceDayStart(serviceDate);
+        const from = day + nowWindowStart((t - day) / 1000) * 1000;
+        const same = prev?.busFrequencyHour;
+        // A stable identity while the window stays put, so React skips re-rendering the key.
+        return same?.[0] === from ? same : [from, from + 3600_000];
+      })(),
       following: this.following,
       selected,
       place: this.placeSnapshot(t),

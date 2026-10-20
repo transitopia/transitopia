@@ -53,10 +53,10 @@ export function bandRange(i: number): string {
     : `>${FREQUENCY_BANDS[i - 1]?.maxMinutes ?? 0}m`;
 }
 
-/** A band's range in words: "Every 6 min or better", …, "Less often than every 20 min". */
-export function bandEvery(i: number): string {
+/** A band's range in words, as a worst wait: "Wait up to 6 min", …, "Wait over 20 min". */
+export function bandWait(i: number): string {
   const max = FREQUENCY_BANDS[i]?.maxMinutes;
   return max !== undefined ?
-      `Every ${max} min or better`
-    : `Less often than every ${FREQUENCY_BANDS[i - 1]?.maxMinutes ?? 0} min`;
+      `Wait up to ${max} min`
+    : `Wait over ${FREQUENCY_BANDS[i - 1]?.maxMinutes ?? 0} min`;
 }
