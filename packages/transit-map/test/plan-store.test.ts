@@ -26,15 +26,29 @@ const manifest = (generatedAt: string) => ({
   ],
 });
 
-/** A PlanStore over a stubbed fetch; returns it and every URL requested after the manifest. */
-async function store(generatedAt: string) {
+/**
+ * A PlanStore over a stubbed fetch; returns it and every URL requested after the manifest. The
+ * manifest is from the build `generatedAt`, or `rebuiltAt` once loaded again; other files are
+ * `files[path]` (by URL path), else missing.
+ */
+async function store(
+  generatedAt: string,
+  rebuiltAt = generatedAt,
+  files: Record<string, unknown> = {},
+) {
   const urls: string[] = [];
+  let manifests = 0;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
       urls.push(url);
-      return url.endsWith("manifest.json") ?
-          new Response(JSON.stringify(manifest(generatedAt)))
+      const path = new URL(url).pathname.slice(1);
+      if (path.endsWith("manifest.json"))
+        return new Response(
+          JSON.stringify(manifest(manifests++ ? rebuiltAt : generatedAt)),
+        );
+      return path in files ?
+          new Response(JSON.stringify(files[path]))
         : new Response("", { status: 404 });
     }),
   );
@@ -61,6 +75,50 @@ describe("PlanStore data URLs", () => {
     expect(urls).toEqual([
       "https://data.example/data/feeds/bc-transit-victoria/v1/plan.json?v=2026-10-18T17%3A33%3A18.203Z",
     ]);
+  });
+
+  it("waits longer each time before retrying a plan that failed to load", async () => {
+    const { s, urls } = await store("2026-10-18T17:33:18.203Z");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let now = Date.parse("2026-10-21T08:00:00Z");
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const date = serviceDate("20261021");
+    /** Redraws: planFor on each, letting the failed load settle in between. */
+    const redraws = async (n: number) => {
+      for (let i = 0; i < n; i++) {
+        s.planFor(date);
+        await new Promise((r) => setTimeout(r, 0));
+      }
+    };
+    const plans = () => urls.filter((u) => u.includes("plan.json")).length;
+    await redraws(10);
+    expect(plans()).toBe(1);
+    now += 5_000;
+    await redraws(10);
+    expect(plans()).toBe(2);
+    now += 5_000;
+    await redraws(10);
+    expect(plans()).toBe(2);
+    now += 5_000;
+    await redraws(10);
+    expect(plans()).toBe(3);
+    // The manifest was checked after each failure, and hadn't changed.
+    expect(s.rebuilt).toBe(false);
+  });
+
+  it("notices a rebuild when a plan it can't read is from another build", async () => {
+    // A cache answers the old build's URL with the old build's plan, in a format it can't read.
+    const { s } = await store(
+      "2026-10-19T16:49:39.522Z",
+      "2026-10-20T00:22:20.721Z",
+      { "data/feeds/bc-transit-victoria/v1/plan.json": { schema: 1 } },
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let changed = 0;
+    s.onChange(() => changed++);
+    s.planFor(serviceDate("20261021"));
+    await vi.waitFor(() => expect(s.rebuilt).toBe(true));
+    expect(changed).toBe(1);
   });
 
   it("changes the URLs when the data is rebuilt", async () => {

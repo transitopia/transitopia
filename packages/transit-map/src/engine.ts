@@ -144,6 +144,12 @@ export interface TransitEngineOptions {
   dataset?: string | undefined;
   /** The region's config and feed (kinematics, real time, and rail and SeaBus where it has them), checked. */
   config: RegionConfig;
+  /**
+   * Called once when the published data has been rebuilt since the engine started and its files
+   * can no longer be loaded (`PlanStore.rebuilt`): the host disposes of the engine and makes a new
+   * one, which starts from the URL (time and selection, written just before).
+   */
+  onRebuilt?: (() => void) | undefined;
 }
 
 export interface SelectedVehicle {
@@ -556,12 +562,21 @@ export class TransitEngine {
     });
 
     const invalidate = () => this.invalidate();
+    let rebuilt = false;
     this.cleanups.push(
       this.clock.subscribe(() => {
         this.invalidate();
         this.writeUrlSoon();
       }),
       store.onChange(() => {
+        if (store.rebuilt) {
+          if (!rebuilt) {
+            rebuilt = true;
+            this.writeUrl();
+            opts.onRebuilt?.();
+          }
+          return;
+        }
         this.syncHubs();
         this.syncStatic();
         this.describers.clear();

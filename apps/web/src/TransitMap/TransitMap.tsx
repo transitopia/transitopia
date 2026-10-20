@@ -108,6 +108,8 @@ export default function TransitMap() {
   const themeRef = React.useRef(theme);
   const [engine, setEngine] = React.useState<TransitEngine>();
   const [error, setError] = React.useState<string>();
+  // Bumped when the published data is rebuilt under an engine: the engine is made again.
+  const [build, setBuild] = React.useState(0);
   useInitialView(map);
   const { region, inView, ready } = useRegion(map);
   // The first engine takes its selection from the URL; one for a region panned to later starts
@@ -141,6 +143,7 @@ export default function TransitMap() {
       debug: params.has("debug"),
       dataset: region.config.feed.dataset,
       config: region.config,
+      onRebuilt: () => setBuild((b) => b + 1),
       ...(switched ?
         { initial: { ...time, ...(select ? { select } : {}) } }
       : {}),
@@ -166,7 +169,7 @@ export default function TransitMap() {
       setEngine(undefined);
       delete (window as { transit?: unknown }).transit;
     };
-  }, [map, region, ready]);
+  }, [map, region, ready, build]);
 
   // Runs before the map swaps its style (child effects run first), so the engine re-adds its
   // layers in the new theme's colours when the new style loads.

@@ -79,7 +79,7 @@ One-time setup (done):
    for longer. Each build rewrites files at the same paths, so the site asks for every other file with
    the build in its URL (`?v=<the manifest's generatedAt>`, `PlanStore.dataUrl` in
    `packages/transit-map/src/plans.ts`): after a build, browsers and the edge fetch the new file
-   instead of serving the old one for a day, once the manifest's 5 minutes are up. The Cache Rule
+   instead of serving the old one for a day, once the manifest's 5 minutes are up. A tab open across a build still holds the old manifest: when a plan it asks for can't be read, the site checks the manifest again and restarts the map on the new build. The Cache Rule
    must keep the query string in the cache key (Cloudflare's default). The upload stores
    `Cache-Control` on each object when it uploads (5 minutes for the manifest, a day for the rest),
    and a Cache Rule for `data.transitopia.org` makes the edge follow it (Cloudflare doesn't cache
