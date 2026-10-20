@@ -103,6 +103,15 @@ export class PlanStore {
   private loading = new Map<string, Promise<void>>();
   /** Feed versions whose plan failed to load: when to try again, and the wait after that. */
   private failed = new Map<string, { at: number; wait: number }>();
+  private checkingManifest = false;
+  /**
+   * Whether the data has been rebuilt since this store's manifest: its files are then another
+   * build's, so the store can't load them (`checkManifest`). The engine is made again then.
+   */
+  get rebuilt(): boolean {
+    return this.isRebuilt;
+  }
+  private isRebuilt = false;
   /** Trip files requested with their plan's core, by path, until loadTrips takes them. */
   private prefetched = new Map<string, Promise<PublishedTrips>>();
   private listeners = new Set<() => void>();
@@ -489,9 +498,7 @@ export class PlanStore {
         sm,
       );
     }
-    const res = await fetch(
-      `${base}${feedDataPath(config.feed.id, undefined, "manifest.json")}`,
-    );
+    const res = await fetchManifest(base, config.feed.id);
     if (!res.ok)
       throw new Error(
         `No timetable data (HTTP ${res.status}). Run "npm run data" first.`,
@@ -607,12 +614,35 @@ export class PlanStore {
       })
       .catch((e: unknown) => {
         console.error(e);
+        void this.checkManifest();
         const wait =
           failed ? Math.min(failed.wait * 2, RETRY_MAX_MS) : RETRY_FIRST_MS;
         this.failed.set(feed.version, { at: Date.now() + wait, wait });
         this.loading.delete(feed.version);
       });
     this.loading.set(feed.version, promise);
+  }
+
+  /**
+   * After a plan failed to load: whether the manifest has changed since this store read it. A tab
+   * open across a data build asks for files with the old build in their URL (`dataUrl`), which
+   * caches may answer with the old build's files, in a format this code may not read.
+   */
+  private async checkManifest(): Promise<void> {
+    if (this.scenario || this.isRebuilt || this.checkingManifest) return;
+    this.checkingManifest = true;
+    try {
+      const res = await fetchManifest(this.dataBase, this.config.feed.id);
+      const m = res.ok ? ((await res.json()) as FeedManifest) : undefined;
+      if (m && m.generatedAt !== this.manifest.generatedAt) {
+        this.isRebuilt = true;
+        this.emit();
+      }
+    } catch {
+      // Offline, or a broken manifest: the plan is tried again later.
+    } finally {
+      this.checkingManifest = false;
+    }
   }
 
   /** A file of a service's trips, added to the prepared plan when it's in. */
@@ -830,4 +860,14 @@ function railServices(pp: PreparedPlan): Set<string> {
     railServiceCache.set(pp.plan, s);
   }
   return s;
+}
+
+/**
+ * A feed's manifest, revalidated rather than taken from the browser's cache: it names the build
+ * every other file's URL is for.
+ */
+function fetchManifest(base: string, feed: string): Promise<Response> {
+  return fetch(`${base}${feedDataPath(feed, undefined, "manifest.json")}`, {
+    cache: "no-cache",
+  });
 }
