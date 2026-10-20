@@ -4,7 +4,10 @@ import {
   type TransitSnapshot,
 } from "@transitopia/transit-map/engine.ts";
 import { readUrl } from "@transitopia/transit-map/url.ts";
-import { overviewLayers } from "@transitopia/transit-map/overview.ts";
+import {
+  overviewLayers,
+  overviewMaxZoom,
+} from "@transitopia/transit-map/overview.ts";
 import { ENGINE_MIN_ZOOM } from "@transitopia/shared/transit-overview.ts";
 
 import { transitApi, transitData } from "../config.ts";
@@ -144,25 +147,40 @@ const OVERVIEW_DATASETS = REGIONS.map((r) => r.config.feed.dataset);
 
 /**
  * Every region's routes zoomed out (packages/transit-core/DESIGN.md#overview-tiles), below the zoom
- * a region's engine starts at; again after a theme switch replaces the style.
+ * a region's engine starts at, and further in until the engine draws its own lines (so zooming in
+ * never leaves the map without any); again after a theme switch replaces the style.
  */
-function useOverview(map: MapType | undefined, theme: "light" | "dark"): void {
+function useOverview(
+  map: MapType | undefined,
+  theme: "light" | "dark",
+  engine: TransitEngine | undefined,
+): void {
   const styleGeneration = useStyleGeneration();
-  const [shown, setShown] = React.useState(false);
+  const engineLines = React.useSyncExternalStore(
+    React.useCallback(
+      (fn: () => void) => engine?.subscribe(fn) ?? (() => {}),
+      [engine],
+    ),
+    () => engine?.getSnapshot().linesReady ?? false,
+  );
+  const [zoomedOut, setZoomedOut] = React.useState(false);
   // Credit every feed while it's drawn.
-  useDatasets(shown ? OVERVIEW_DATASETS : []);
+  useDatasets(zoomedOut || !engineLines ? OVERVIEW_DATASETS : []);
   React.useEffect(() => {
     if (!map) return;
-    const update = () => setShown(map.getZoom() < ENGINE_MIN_ZOOM);
+    const update = () => setZoomedOut(map.getZoom() < ENGINE_MIN_ZOOM);
     update();
     map.on("zoomend", update);
     return () => {
       map.off("zoomend", update);
     };
   }, [map]);
+  const maxzoom = overviewMaxZoom(engineLines);
+  const maxzoomRef = React.useRef(maxzoom);
+  maxzoomRef.current = maxzoom;
   React.useEffect(() => {
     if (!map) return;
-    const layers = overviewLayers(OVERVIEW_SOURCE, theme);
+    const layers = overviewLayers(OVERVIEW_SOURCE, theme, maxzoomRef.current);
     for (const layer of layers)
       if (!map.getLayer(layer.id)) map.addLayer(layer);
     return () => {
@@ -170,6 +188,11 @@ function useOverview(map: MapType | undefined, theme: "light" | "dark"): void {
         if (map.getLayer(layer.id)) map.removeLayer(layer.id);
     };
   }, [map, theme, styleGeneration]);
+  React.useEffect(() => {
+    if (!map) return;
+    for (const layer of overviewLayers(OVERVIEW_SOURCE, theme))
+      if (map.getLayer(layer.id)) map.setLayerZoomRange(layer.id, 0, maxzoom);
+  }, [map, theme, styleGeneration, maxzoom]);
 }
 
 /**
@@ -185,7 +208,7 @@ export default function TransitMap() {
   // Bumped when the published data is rebuilt under an engine: the engine is made again.
   const [build, setBuild] = React.useState(0);
   useInitialView(map);
-  useOverview(map, theme);
+  useOverview(map, theme, engine);
   const { region, inView, active, ready } = useRegion(map);
   // The first engine takes its selection from the URL; one for a region panned to later starts
   // without it (a vehicle or place of another region), at the same time, unless the map moved

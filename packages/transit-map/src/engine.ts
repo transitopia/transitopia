@@ -206,6 +206,11 @@ export interface TransitSnapshot {
   liveOnly: boolean;
   /** The shown plan draws bus corridors (packages/transit-map/README.md#bus-corridors). */
   corridors: boolean;
+  /**
+   * The map draws the shown plan's lines: its tiles in view have loaded. Until then a host can keep
+   * drawing something in their place (the site's overview tiles).
+   */
+  linesReady: boolean;
   /** What corridor colours count: the hour from the shown time, or the weekday figure. */
   busFrequency: FrequencyWindow;
   /** "Now"'s hour as the corridors count it (epoch ms, `nowWindowStart`): [from, to). */
@@ -342,6 +347,8 @@ export class TransitEngine {
   private viewPadding = { top: 0, right: 0, bottom: 0, left: 0 };
   private tracks: InfraCollection | undefined;
   private shownFeed: PreparedPlan | undefined;
+  /** The plan tiles in view have loaded since the lines' source was (re)added (`linesReady`). */
+  private linesReady = false;
   /** The stations' and exchanges' grouping the static layers were drawn with (hubsOf). */
   private shownHubs: BusHub[] | undefined;
   /** The feed the engine shows (its vehicles' `rt` refs are in it). */
@@ -525,6 +532,18 @@ export class TransitEngine {
           "pointer"
         : "";
     };
+    const onSourceData = (e: { sourceId?: string }) => {
+      if (
+        this.linesReady
+        || e.sourceId !== LINES_SOURCE
+        || !map.getSource(LINES_SOURCE)
+        || !map.isSourceLoaded(LINES_SOURCE)
+      )
+        return;
+      this.linesReady = true;
+      this.publish();
+    };
+    map.on("sourcedata", onSourceData);
     map.on("style.load", onStyleLoad);
     map.on("styledata", onStyleData);
     map.on("click", onClick);
@@ -541,6 +560,7 @@ export class TransitEngine {
       map.off("zoomstart", onGesture);
       map.off("rotatestart", onGesture);
       map.off("move", onMove);
+      map.off("sourcedata", onSourceData);
       map.off("style.load", onStyleLoad);
       map.off("styledata", onStyleData);
       map.off("click", onClick);
@@ -1436,6 +1456,7 @@ export class TransitEngine {
       showStops: this.showStops,
       liveOnly: this.liveOnly,
       corridors: Boolean(this.shownFeed?.plan.corridorInfo),
+      linesReady: this.linesReady,
       busFrequency: this.busFrequency,
       busFrequencyHour: (() => {
         const day = serviceDayStart(serviceDate);
@@ -1541,7 +1562,9 @@ export class TransitEngine {
     // Start loading its places file, whose grouping replaces the plan's (syncHubs).
     store.placesFor(pp);
     this.shownHubs = hubsOf(pp.plan);
-    addStaticLayers(map, pp.plan, tiles, this.theme, this.hidden);
+    // Published with the rest at the end (invalidate).
+    if (addStaticLayers(map, pp.plan, tiles, this.theme, this.hidden))
+      this.linesReady = false;
     applyStopsVisibility(map, this.showStops);
     if (!pp.plan.corridorInfo) this.frequencyLayer = undefined;
     else if (!this.frequencyLayer || this.frequencyLayer.plan !== pp.plan)

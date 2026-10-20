@@ -1,7 +1,9 @@
 // The transit overview's layers (packages/transit-core/DESIGN.md#overview-tiles): every region's routes
 // zoomed out, below the zoom a region's engine starts at, with static colours (how often buses pass
 // on regular weekdays, as the map's "Day"). The host adds the tileset as a vector source and these
-// layers on it; they need no engine.
+// layers on it; they need no engine. Until a region's engine draws its own lines (its snapshot's
+// `linesReady`), the host keeps them drawn further in too (`overviewMaxZoom`), overzoomed, so
+// zooming in never leaves the map without lines.
 
 import type {
   ExpressionSpecification,
@@ -34,10 +36,16 @@ const SKYTRAIN_WIDTHS: [number, number][] = [
 /** Worse service recedes, as in the engine (TIER_OPACITY in layers/static.ts). */
 const TIER_OPACITY = [1, 1, 1, 0.7];
 
-/** The overview's layers on `source`, for a theme; drawn only below ENGINE_MIN_ZOOM. */
+/** The overview's layers' maxzoom: ENGINE_MIN_ZOOM, or none while no engine draws lines. */
+export function overviewMaxZoom(engineLines: boolean): number {
+  return engineLines ? ENGINE_MIN_ZOOM : 24;
+}
+
+/** The overview's layers on `source`, for a theme, drawn below `maxzoom`. */
 export function overviewLayers(
   source: string,
   theme: Theme,
+  maxzoom = ENGINE_MIN_ZOOM,
 ): LayerSpecification[] {
   const tierColors = FREQUENCY_BANDS.map((b) => b.color[theme]);
   const tier = ["get", "tier"] as ExpressionSpecification;
@@ -63,7 +71,7 @@ export function overviewLayers(
   ] as ExpressionSpecification;
   const common = {
     source,
-    maxzoom: ENGINE_MIN_ZOOM,
+    maxzoom,
     layout: {
       "line-join": "round" as const,
       "line-cap": "round" as const,

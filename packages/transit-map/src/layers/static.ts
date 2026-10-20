@@ -390,7 +390,8 @@ function stationsGeoJson(plan: ServicePlan): FeatureCollection {
 
 /**
  * Add the plan's layers, or with them there already, update its stations and stops. `tiles` is the
- * plan's tiles' URL: other tiles (another feed version's) replace every layer.
+ * plan's tiles' URL: other tiles (another feed version's) replace every layer. Returns whether the
+ * lines' source was added (its tiles load from then on).
  */
 export function addStaticLayers(
   map: MlMap,
@@ -398,7 +399,7 @@ export function addStaticLayers(
   tiles: string,
   theme: Theme,
   hiddenRoutes: Set<string>,
-): void {
+): boolean {
   const stations: GeoJSONSourceSpecification = {
     type: "geojson",
     data: stationsGeoJson(plan),
@@ -418,7 +419,7 @@ export function addStaticLayers(
       busTicksGeoJson(plan),
     );
     applyRouteFilter(map, hiddenRoutes);
-    return;
+    return false;
   }
   removeSources(map, STATIC_SOURCES);
   map.addSource(LINES_SOURCE, { type: "vector", url: tiles });
@@ -874,6 +875,7 @@ export function addStaticLayers(
     "stations-label",
   );
   applyRouteFilter(map, hiddenRoutes);
+  return true;
 }
 
 /** The ferry berth pair in use on the day shown; the other pairs' routes are drawn dotted. */
