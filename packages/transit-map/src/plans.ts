@@ -73,6 +73,12 @@ import type { RegionConfig } from "./config.ts";
 
 /** Trip files arriving within this long of each other are added to the prepared plan at once (ms). */
 const TRIPS_BATCH_MS = 20;
+/**
+ * A plan that failed to load is tried again after this long, doubling with each failure up to
+ * RETRY_MAX_MS: planFor is called on every redraw, so retrying at once would download it in a loop.
+ */
+const RETRY_FIRST_MS = 5_000;
+const RETRY_MAX_MS = 5 * 60_000;
 
 /** A feed version's plan as loaded so far (packages/transit-core/DESIGN.md#published-plans). */
 interface LoadedVersion {
@@ -95,6 +101,8 @@ interface LoadedVersion {
 export class PlanStore {
   private versions = new Map<string, LoadedVersion>();
   private loading = new Map<string, Promise<void>>();
+  /** Feed versions whose plan failed to load: when to try again, and the wait after that. */
+  private failed = new Map<string, { at: number; wait: number }>();
   /** Trip files requested with their plan's core, by path, until loadTrips takes them. */
   private prefetched = new Map<string, Promise<PublishedTrips>>();
   private listeners = new Set<() => void>();
@@ -557,6 +565,8 @@ export class PlanStore {
     fromSec: number,
   ): void {
     if (this.loading.has(feed.version)) return;
+    const failed = this.failed.get(feed.version);
+    if (failed && Date.now() < failed.at) return;
     const dir = feed.path.slice(0, feed.path.lastIndexOf("/") + 1);
     const get = <T>(path: string) => this.getJson<T>(path);
     const promise = get<PublishedPlan>(feed.path)
@@ -592,10 +602,14 @@ export class PlanStore {
           detail: files.corridors ? undefined : null,
         });
         this.loading.delete(feed.version);
+        this.failed.delete(feed.version);
         this.emit();
       })
       .catch((e: unknown) => {
         console.error(e);
+        const wait =
+          failed ? Math.min(failed.wait * 2, RETRY_MAX_MS) : RETRY_FIRST_MS;
+        this.failed.set(feed.version, { at: Date.now() + wait, wait });
         this.loading.delete(feed.version);
       });
     this.loading.set(feed.version, promise);

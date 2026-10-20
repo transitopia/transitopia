@@ -63,6 +63,32 @@ describe("PlanStore data URLs", () => {
     ]);
   });
 
+  it("waits longer each time before retrying a plan that failed to load", async () => {
+    const { s, urls } = await store("2026-10-18T17:33:18.203Z");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let now = Date.parse("2026-10-21T08:00:00Z");
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const date = serviceDate("20261021");
+    /** Redraws: planFor on each, letting the failed load settle in between. */
+    const redraws = async (n: number) => {
+      for (let i = 0; i < n; i++) {
+        s.planFor(date);
+        await new Promise((r) => setTimeout(r, 0));
+      }
+    };
+    await redraws(10);
+    expect(urls).toHaveLength(1);
+    now += 5_000;
+    await redraws(10);
+    expect(urls).toHaveLength(2);
+    now += 5_000;
+    await redraws(10);
+    expect(urls).toHaveLength(2);
+    now += 5_000;
+    await redraws(10);
+    expect(urls).toHaveLength(3);
+  });
+
   it("changes the URLs when the data is rebuilt", async () => {
     const a = (await store("2026-10-17T10:39:00.000Z")).s.dataUrl("p.json");
     const b = (await store("2026-10-18T17:33:18.203Z")).s.dataUrl("p.json");
