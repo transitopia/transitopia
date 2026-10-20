@@ -25,6 +25,12 @@ export interface PlanRoute {
    * Absent in plans built before it: hosts pass a default (TransitEngineOptions.dataset).
    */
   dataset?: string | undefined;
+  /**
+   * How often it runs over a regular week (schedule/frequency.ts → `weekWait`, in its better
+   * direction): the mean of each daytime hour's worst wait, in minutes. Set when the plan is
+   * published; absent when it doesn't run in those hours.
+   */
+  weekWait?: number | undefined;
 }
 
 export interface PlanStop {
@@ -112,8 +118,19 @@ export interface PlanCorridor {
 export interface PlanFrequencyTable {
   routeDirs: { route: string; patterns: number[] }[];
   combos: {
-    units: { routeDir: number; patterns: number[] }[];
+    units: {
+      routeDir: number;
+      patterns: number[];
+      /**
+       * In a unit sharing a stretch with others: when each pattern's trips pass here, s after
+       * they start, relative to the combo's earliest (for merging their departures).
+       */
+      offsets?: number[] | undefined;
+    }[];
+    /** Units (indices into `units`) that share a stretch here, two or more each. */
     bundles: number[][];
+    /** Its week figure with every route shown (minutes, `PlanRoute.weekWait`'s measure). */
+    week?: number | undefined;
   }[];
   /** Per plan stop, its combo (the routes leaving it). */
   stopCombo: number[];
@@ -281,7 +298,7 @@ export interface TripFileRef {
 
 /**
  * A route in the feed without trips in the plan: what it's called, the plan's stops it serves, and
- * when its trips start, which is all its frequency needs (`routeMinutes`). Category "regular".
+ * when its trips start, which is all its frequency needs (`routeFrequency`). Category "regular".
  */
 export interface CatalogRoute extends PlanRoute {
   /** Stops it serves among the plan's stops (stop_ids). */

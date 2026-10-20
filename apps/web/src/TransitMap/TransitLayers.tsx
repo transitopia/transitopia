@@ -16,7 +16,7 @@ import {
 import { SegmentedChoice } from "../components/SegmentedChoice.tsx";
 import { ProvenanceSwatch } from "./Swatches.tsx";
 import { FREQUENCY_BANDS, bandEvery } from "@transitopia/shared/frequency.ts";
-import { DAY_WINDOW } from "@transitopia/transit-core/plan/bus-frequency.ts";
+import { DAY_WINDOW } from "@transitopia/transit-core/schedule/frequency.ts";
 
 const CATEGORIES: {
   id: RouteCategory;
@@ -39,10 +39,10 @@ const CATEGORIES: {
 /** Key line heights per band: thicker for more frequent, as bus corridors are drawn. */
 const BAND_HEIGHTS = ["h-[5px]", "h-[4px]", "h-[2px]", "h-[1.5px]"];
 
-/** " (06:00–21:00 avg.)" for the day window. */
+/** " (typical week, 06:00–21:00)" for the day window. */
 function dayWindowText(): string {
   const hh = (h: number) => `${String(h % 24).padStart(2, "0")}:00`;
-  return ` (${hh(DAY_WINDOW.fromH)}–${hh(DAY_WINDOW.toH)} avg.)`;
+  return ` (typical week, ${hh(DAY_WINDOW.fromH)}–${hh(DAY_WINDOW.toH)})`;
 }
 
 // Plans built before routes had categories are all rapid transit (config/feeds/<feed>/routes.json → category).

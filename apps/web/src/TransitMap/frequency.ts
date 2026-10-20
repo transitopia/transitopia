@@ -32,7 +32,7 @@ if (typeof document !== "undefined") {
   document.head.append(style);
 }
 
-/** The band for an average of `minutes` between departures. */
+/** The band for a worst wait of `minutes` (packages/transit-core/src/schedule/frequency.ts). */
 export function bandOf(minutes: number): Band {
   const b = FREQUENCY_BANDS[bandIndex(minutes)]!;
   return { id: b.id, name: b.name, color: `var(--band-${b.id})` };
@@ -51,4 +51,9 @@ export function bandKey(): (Band & { range: string })[] {
 /** "every 8m", or "every ~5m" for a combined estimate. */
 export function everyText(minutes: number, approx = false): string {
   return `every ${approx ? "~" : ""}${Math.max(1, Math.round(minutes))}m`;
+}
+
+/** "up to 15m": a worst wait. */
+export function upToText(minutes: number): string {
+  return `up to ${Math.max(1, Math.round(minutes))}m`;
 }

@@ -18,8 +18,8 @@ export interface RouteColors {
 
 /**
  * The colours cards show a route in (apps/web/README.md#service-frequency): its own, except a regular
- * bus route the map draws, which has none and takes its day frequency band, as the map's "Day" bus
- * frequency colours it. Catalogue routes (not drawn) keep the plan's grey.
+ * bus route the map draws, which has none and takes the band of its week figure, as the map's "Day"
+ * bus frequency colours it. Catalogue routes (not drawn) keep the plan's grey.
  */
 export function routeColorsFor(
   engine: TransitEngine,
@@ -29,10 +29,8 @@ export function routeColorsFor(
     const own = { bg: r.color, fg: r.textColor };
     if (r.mode !== "bus" || r.category !== "regular") return own;
     if (!snap.routes.some((x) => x.key === r.key)) return own;
-    const minutes = engine.dayMinutes(r.key);
-    return minutes === undefined ? own : (
-        { bg: bandOf(minutes).color, fg: "#ffffff" }
-      );
+    const wait = engine.dayWait(r.key);
+    return wait === undefined ? own : { bg: bandOf(wait).color, fg: "#ffffff" };
   };
 }
 

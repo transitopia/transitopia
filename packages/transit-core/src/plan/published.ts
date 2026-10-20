@@ -6,6 +6,7 @@
 // decodes the parts as it loads them (packages/transit-map/src/plans.ts).
 
 import type { LonLat } from "../geo.ts";
+import { routeWeekWaits } from "../schedule/frequency.ts";
 import { CorridorFrequency } from "./corridor-frequency.ts";
 import {
   LINE_DECIMALS,
@@ -13,6 +14,7 @@ import {
   type PlanCorridor,
   type PlanFiles,
   type PlanPattern,
+  type PlanRoute,
   type PlanStop,
   type PlanTrip,
   type ServicePlan,
@@ -214,12 +216,19 @@ export function publishPlan(plan: ServicePlan): PlanPublication {
       files.set("corridors-overview.json", corridorFile(overviewCorridors));
       refs.overviewCorridors = "corridors-overview.json";
     }
+    const stopCombo = cf.stopCombos();
     frequency = {
       routeDirs: cf.routeDirs,
-      combos: cf.combos,
-      stopCombo: cf.stopCombos(),
+      combos: cf.combosWithWeek(),
+      stopCombo,
     };
   }
+  const weekWaits = routeWeekWaits(plan);
+  const withWeek = <R extends PlanRoute>(r: R): R => {
+    const { weekWait: _w, ...route } = r;
+    const w = weekWaits.get(r.key);
+    return (w === undefined ? route : { ...route, weekWait: w }) as R;
+  };
 
   // Trips by service: those the day after needs in a file of their own (LATE_MARGIN_S).
   const kind = new Map(plan.routes.map((r) => [r.key, r.kind]));
@@ -259,6 +268,8 @@ export function publishPlan(plan: ServicePlan): PlanPublication {
   const core: PublishedPlan = {
     schema: 2,
     ...rest,
+    routes: rest.routes.map(withWeek),
+    ...(rest.catalog ? { catalog: rest.catalog.map(withWeek) } : {}),
     stops: encodeStops(stops),
     patterns: patterns.map((p, i) => {
       const { starts: _s, ...pattern } = p;

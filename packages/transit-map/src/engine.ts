@@ -6,10 +6,7 @@
 import { LngLat, type Map as MlMap } from "maplibre-gl";
 import type { Theme } from "@transitopia/map-style/basemap.ts";
 import { realtimeOf } from "@transitopia/shared/datasets.ts";
-import {
-  bandIndexPerHour,
-  FREQUENCY_BANDS,
-} from "@transitopia/shared/frequency.ts";
+import { bandIndex, FREQUENCY_BANDS } from "@transitopia/shared/frequency.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
 import type { InfraCollection } from "@transitopia/transit-core/infra/types.ts";
 import type { LineGeometry } from "@transitopia/transit-core/infra/line-geometry.ts";
@@ -25,6 +22,7 @@ import {
 } from "@transitopia/transit-core/gtfs/describe.ts";
 import {
   feedForDate,
+  patternStarts,
   type PlanRoute,
   type ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
@@ -42,8 +40,12 @@ import type { Departure } from "@transitopia/transit-core/schedule/departures.ts
 import {
   DAY_HOURS,
   dayTypes,
-  hourlyMinutes,
-  routeMinutes,
+  hourlyFrequency,
+  regularWeek,
+  routeStarts,
+  routeWeekWait,
+  type Frequency,
+  type FrequencyWindow,
 } from "@transitopia/transit-core/schedule/frequency.ts";
 import { Clock } from "./clock.ts";
 import {
@@ -76,10 +78,6 @@ import {
 } from "./layers/static.ts";
 import { VehicleLayer } from "./layers/vehicles.ts";
 import { BusFrequencyLayer } from "./layers/bus-frequency.ts";
-import {
-  DAY_WINDOW,
-  type FrequencyWindow,
-} from "@transitopia/transit-core/plan/bus-frequency.ts";
 import {
   DEBUG_SOURCE,
   LINES_SOURCE,
@@ -173,14 +171,15 @@ export type { PickChoice, PickMenu, PlaceGroup, PlaceSnapshot, RouteSnapshot };
 /** A card to open: a vehicle's, or a place's (station, exchange, stop or route line). */
 export type CardTarget = { vehicle: string } | { place: Place };
 
-/** A kind of day in the shown feed, with the route's minutes between trips per hour (DAY_HOURS). */
+/** A kind of day in the shown feed, with how often the route runs in each hour (DAY_HOURS). */
 export interface RouteDay {
   date: ServiceDate;
   label: string;
-  hours: (number | undefined)[];
+  hours: (Frequency | undefined)[];
 }
 
 export { DAY_HOURS };
+export type { Frequency };
 
 export interface TransitSnapshot {
   /** Shown instant, epoch ms (updated a few times a second while playing). */
@@ -329,8 +328,8 @@ export class TransitEngine {
   private revealAt: number | undefined;
   /** Per feed and route: its day types and hourly frequencies (they don't change with the time). */
   private routeDayCache = new WeakMap<PreparedPlan, Map<string, RouteDay[]>>();
-  /** Per feed, route and date: its day average (dayMinutes). */
-  private dayMinutesCache = new WeakMap<
+  /** Per feed and route: its week figure, where the plan hasn't it (dayWait). */
+  private dayWaitCache = new WeakMap<
     PreparedPlan,
     Map<string, number | undefined>
   >();
@@ -1050,7 +1049,7 @@ export class TransitEngine {
       days = dayTypes(pp, from).map((d) => ({
         date: d.date,
         label: this.describeDate(d.date),
-        hours: hourlyMinutes(pp, key, d.date),
+        hours: hourlyFrequency(pp, key, d.date),
       }));
       byRoute.set(cacheKey, days);
     }
@@ -1058,28 +1057,29 @@ export class TransitEngine {
   }
 
   /**
-   * A route's average minutes between trips over the day (DAY_WINDOW, as the map's "Day" bus
-   * frequency) on the shown service date, in its busier direction; undefined when it doesn't run then.
+   * A route's week figure (minutes, `PlanRoute.weekWait`: the mean of each daytime hour's worst
+   * wait over a regular week, as the map's "Day" bus frequency), worked out here for a plan
+   * published without it; undefined when it doesn't run then.
    */
-  dayMinutes(key: string): number | undefined {
+  dayWait(key: string): number | undefined {
     const pp = this.shownFeed;
     if (!pp) return undefined;
-    let byRoute = this.dayMinutesCache.get(pp);
-    if (!byRoute) this.dayMinutesCache.set(pp, (byRoute = new Map()));
-    const date = displayServiceDate(this.clock.now());
-    const cacheKey = `${key}|${date}`;
-    if (!byRoute.has(cacheKey))
+    const route = pp.routes.get(key) ?? pp.catalog.get(key);
+    if (route?.weekWait !== undefined) return route.weekWait;
+    let byRoute = this.dayWaitCache.get(pp);
+    if (!byRoute) this.dayWaitCache.set(pp, (byRoute = new Map()));
+    if (!byRoute.has(key)) {
+      const { plan } = pp;
       byRoute.set(
-        cacheKey,
-        routeMinutes(
-          pp,
-          key,
-          date,
-          DAY_WINDOW.fromH * 3600,
-          (DAY_WINDOW.toH - DAY_WINDOW.fromH) * 3600,
+        key,
+        routeWeekWait(
+          pp.servicesOn,
+          regularWeek(pp.servicesOn, plan.feedStart, plan.feedEnd),
+          routeStarts(plan, patternStarts(plan), key),
         ),
       );
-    return byRoute.get(cacheKey);
+    }
+    return byRoute.get(key);
   }
 
   /** Keep the selected vehicle at the centre of the view (or stop). */
@@ -1632,18 +1632,15 @@ export class TransitEngine {
     if (this.vehicleColorsFor?.pp === pp && this.vehicleColorsFor.key === key)
       return false;
     this.vehicleColorsFor = { pp, key };
-    const bands = FREQUENCY_BANDS.length;
     this.vehicles.setRouteColors(
       pp.plan.routes.map((r) => {
         if (r.mode !== "bus" || r.category !== "regular") return r;
-        const perHour = freq?.routePerHour(r.key);
-        if (perHour === undefined) return r;
-        // A bus out when none start in the window (its last trip): the least frequent band.
-        const band = bandIndexPerHour(perHour);
+        const wait = freq?.routeWait(r.key);
+        if (wait === undefined) return r;
+        // A bus out when none start in the window (its last trip) has Infinity: the last band.
         return {
           key: r.key,
-          color:
-            FREQUENCY_BANDS[band < 0 ? bands - 1 : band]!.color[this.theme],
+          color: FREQUENCY_BANDS[bandIndex(wait)]!.color[this.theme],
         };
       }),
     );

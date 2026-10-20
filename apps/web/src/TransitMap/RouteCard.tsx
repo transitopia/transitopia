@@ -34,7 +34,7 @@ const CELL_HEIGHT: Record<string, number> = {
 };
 const NO_SERVICE_PX = 2;
 
-/** "Every 4 min", "Every 12 min". */
+/** "Every 4 min", "Every 12 min": the average. */
 const everyMinutes = (m: number) => `Every ${Math.max(1, Math.round(m))} min`;
 
 /**
@@ -110,8 +110,8 @@ const RouteCardBody: React.FC<{
           ]
         : []),
       ];
-  const band =
-    place.nextHour !== undefined ? bandOf(place.nextHour) : undefined;
+  const next = place.nextHour;
+  const band = next ? bandOf(next.wait) : undefined;
   return (
     <InfoCard
       tile={
@@ -143,7 +143,10 @@ const RouteCardBody: React.FC<{
       onClose={() => engine.select(undefined)}
       footer={
         <>
-          <p>From the timetable: trips per hour in the busier direction.</p>
+          <p>
+            From the timetable, by when trips start, in the better direction.
+            Colours show the longest wait.
+          </p>
           {legendsFor(creditsFor(place.datasets)).map((l) => (
             <p key={l} className="mt-1">
               {l}
@@ -158,11 +161,11 @@ const RouteCardBody: React.FC<{
             className="w-1.5 flex-none rounded-full bg-(--card-chip-bg)"
             style={band ? { background: band.color } : undefined}
           />
-          {band && place.nextHour !== undefined ?
+          {band && next ?
             <div className="flex flex-col gap-[3px]">
               <div className="flex flex-wrap items-center gap-2.5">
                 <span className="text-[22px] font-extrabold tracking-tight">
-                  {everyMinutes(place.nextHour)}
+                  {everyMinutes(next.minutes)}
                 </span>
                 <span className="inline-flex items-center gap-[5px] rounded-md bg-(--card-chip-bg) px-2 py-0.5 text-[13px] font-extrabold">
                   <span
@@ -174,8 +177,8 @@ const RouteCardBody: React.FC<{
                 </span>
               </div>
               <span className="text-[13.5px] leading-snug text-(--card-muted)">
-                Average wait ~{Math.max(1, Math.round(place.nextHour / 2))} min,
-                from the timetable
+                Wait up to {Math.max(1, Math.round(next.wait))} min, from the
+                timetable
               </span>
             </div>
           : <span className="text-[15px] font-bold text-(--card-muted)">
@@ -213,14 +216,14 @@ const RouteCardBody: React.FC<{
               className="flex h-6 gap-0.5 px-0.5"
               role="list"
               aria-label="Hourly frequency">
-              {day.hours.map((m, i) => {
+              {day.hours.map((f, i) => {
                 const h = DAY_HOURS[i]!;
-                const b = m !== undefined ? bandOf(m) : undefined;
+                const b = f ? bandOf(f.wait) : undefined;
                 return (
                   <span
                     key={h}
                     role="listitem"
-                    title={`${hh(h)}:00 · ${b && m !== undefined ? `every ${Math.round(m)} min · ${b.name}` : "no service"}`}
+                    title={`${hh(h)}:00 · ${b && f ? `every ${Math.max(1, Math.round(f.minutes))} min, up to ${Math.max(1, Math.round(f.wait))} · ${b.name}` : "no service"}`}
                     // The hour's whole column, so "now" is ringed the same however short its cell.
                     className={`flex h-full flex-1 items-end rounded`}>
                     <span

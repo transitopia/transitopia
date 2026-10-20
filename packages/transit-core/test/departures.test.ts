@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  departureFrequency,
   departuresAt,
   groupDepartures,
-  minutesBetween,
   placeName,
   sharedRuns,
   sharedStretches,
@@ -18,8 +18,8 @@ import { serviceDayStart, serviceDate } from "../src/time.ts";
 import {
   DAY_HOURS,
   dayTypes,
-  hourlyMinutes,
-  routeMinutes,
+  hourlyFrequency,
+  routeFrequency,
 } from "../src/schedule/frequency.ts";
 
 const kin: KinematicsConfig = {
@@ -197,7 +197,8 @@ describe("departuresAt", () => {
 });
 
 describe("grouping, frequency and shared stretches", () => {
-  const deps = departuresAt(pp, new Set(["S1"]), at(H8), at(H8 + 3600), [DATE]);
+  // Two hours, as cards look ahead: the hour's worst wait runs to the next departure after it.
+  const deps = departuresAt(pp, new Set(["S1"]), at(H8), at(H8 + 7200), [DATE]);
   const groups = groupDepartures(deps);
 
   it("groups by route and destination, soonest group first", () => {
@@ -208,10 +209,15 @@ describe("grouping, frequency and shared stretches", () => {
   });
 
   it("says how often each group leaves in the next hour", () => {
-    expect(minutesBetween(groups[0]!.departures, at(H8))).toBe(10);
-    expect(minutesBetween(groups[1]!.departures, at(H8))).toBe(15);
+    // From S1 at 08:02, 08:12, …: up to 10 min, the last gap to 09:02 included.
+    expect(departureFrequency(groups[0]!.departures, at(H8))).toEqual({
+      minutes: 10,
+      wait: 10,
+      departures: 6,
+    });
+    expect(departureFrequency(groups[1]!.departures, at(H8))?.wait).toBe(15);
     expect(
-      minutesBetween(groups[1]!.departures, at(H8 + 7200)),
+      departureFrequency(groups[1]!.departures, at(H8 + 7200)),
     ).toBeUndefined();
   });
 
@@ -220,7 +226,12 @@ describe("grouping, frequency and shared stretches", () => {
     expect(shared).toHaveLength(1);
     expect(shared[0]!.groups).toHaveLength(2);
     expect(placeName(plan, shared[0]!.toStopId)).toBe("Renfrew St");
-    expect(minutesBetween(shared[0]!.departures, at(H8))).toBe(6);
+    // Ten departures an hour, but A's and B's coincide at :02 and :32: up to 10 min apart.
+    expect(departureFrequency(shared[0]!.departures, at(H8))).toEqual({
+      minutes: 6,
+      wait: 10,
+      departures: 10,
+    });
   });
 });
 
@@ -362,20 +373,26 @@ describe("stopsOf", () => {
 });
 
 describe("route frequency", () => {
-  it("averages minutes between trips in an hour, per route", () => {
-    expect(routeMinutes(pp, "A", DATE, H8, 3600)).toBe(10);
-    expect(routeMinutes(pp, "B", DATE, H8, 3600)).toBe(15);
-    expect(routeMinutes(pp, "A", DATE, H8 - 3600, 3600)).toBeUndefined();
+  it("averages minutes between trips in an hour, per route, with the worst wait", () => {
+    expect(routeFrequency(pp, "A", DATE, H8, 3600)).toEqual({
+      minutes: 10,
+      wait: 10,
+      departures: 6,
+    });
+    expect(routeFrequency(pp, "B", DATE, H8, 3600)?.minutes).toBe(15);
+    expect(routeFrequency(pp, "A", DATE, H8 - 3600, 3600)).toBeUndefined();
   });
 
   it("fills the day strip hour by hour", () => {
-    const hours = hourlyMinutes(pp, "A", DATE);
+    const hours = hourlyFrequency(pp, "A", DATE);
     expect(hours).toHaveLength(DAY_HOURS.length);
-    expect(hours[DAY_HOURS.indexOf(8)]).toBe(10);
+    expect(hours[DAY_HOURS.indexOf(8)]?.minutes).toBe(10);
+    // The last trip leaves at 09:50 and nothing follows: as an hour without service.
+    expect(hours[DAY_HOURS.indexOf(9)]?.wait).toBe(60);
     expect(hours[DAY_HOURS.indexOf(10)]).toBeUndefined();
   });
 
-  it("counts a catalogue route's trip starts, in its busier direction", () => {
+  it("counts a catalogue route's trip starts, in its better direction", () => {
     const withCatalog = preparePlan(
       {
         ...plan,
@@ -390,7 +407,8 @@ describe("route frequency", () => {
             textColor: "#ffffff",
             gtfsRouteId: "x25",
             stops: ["S1"],
-            // 08:00–08:59: four trips one way, three the other; one at 09:00.
+            // 08:00–08:59: four trips one way (every 15 min), three the other (up to 20 apart);
+            // one at 09:00.
             starts: {
               sa: [
                 [480, 495, 510, 525, 540],
@@ -402,10 +420,14 @@ describe("route frequency", () => {
       },
       kin,
     );
-    expect(routeMinutes(withCatalog, "25", DATE, H8, 3600)).toBe(15);
+    expect(routeFrequency(withCatalog, "25", DATE, H8, 3600)).toEqual({
+      minutes: 15,
+      wait: 15,
+      departures: 4,
+    });
     expect(withCatalog.catalogAtStop.get("S1")).toEqual(["25"]);
     expect(
-      routeMinutes(withCatalog, "25", serviceDate("20260927"), H8, 3600),
+      routeFrequency(withCatalog, "25", serviceDate("20260927"), H8, 3600),
     ).toBeUndefined();
   });
 

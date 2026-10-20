@@ -20,6 +20,8 @@ const corridor = (combo: number, lat: number): PlanCorridor => ({
 });
 const plan = (): ServicePlan =>
   ({
+    feedStart: serviceDate("20261001"),
+    feedEnd: serviceDate("20261031"),
     routes: [
       { key: "R2", kind: "bus", category: "frequent" },
       { key: "19", kind: "bus", category: "regular" },

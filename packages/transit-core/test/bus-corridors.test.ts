@@ -5,10 +5,7 @@ import {
   type OsmElement,
 } from "../src/plan/road-match.ts";
 import { buildCorridors, mergeCarriageways } from "../src/plan/corridors.ts";
-import { BusFrequency } from "../src/plan/bus-frequency.ts";
 import type { LonLat } from "../src/geo.ts";
-import type { ServicePlan } from "../src/plan/types.ts";
-import { serviceDate } from "../src/time.ts";
 
 // A small street grid near 49.25°N: A (one-way eastbound) along nodes 1–5, 182 m apart; B (two-way)
 // 110 m north along nodes 6–10; and C (two-way) joining A's node 3 to B's node 8.
@@ -313,86 +310,5 @@ describe("mergeCarriageways", () => {
     ]);
     expect(lone).toHaveLength(1);
     expect(lone[0]!.coords[0]![1]).toBeCloseTo(y(10), 6);
-  });
-});
-
-describe("BusFrequency", () => {
-  // One pattern, two stops 10 minutes apart; weekday trips every 10 min 06:00–22:00, then hourly to 01:00.
-  const starts = [
-    ...Array.from({ length: 96 }, (_, i) => 6 * 3600 + i * 600),
-    ...[22, 23, 24, 25].map((h) => h * 3600 + 1800),
-  ];
-  const plan = {
-    patterns: [
-      {
-        id: 0,
-        route: "9",
-        direction: 0,
-        shape: "s",
-        stops: [0, 1],
-        dist: [0, 2000],
-      },
-    ],
-    trips: starts.map((start, i) => ({
-      id: `t${i}`,
-      pattern: 0,
-      service: "wk",
-      headsign: "",
-      start,
-      arr: [0, 600],
-    })),
-    calendar: {
-      calendar: [
-        {
-          serviceId: "wk",
-          days: [true, true, true, true, true, false, false],
-          start: serviceDate("20261001"),
-          end: serviceDate("20261231"),
-        },
-      ],
-      exceptions: [],
-    },
-  } as unknown as ServicePlan;
-  const freq = new BusFrequency(plan);
-  const wed = serviceDate("20261021");
-
-  it("counts trips starting in the hour from a time", () => {
-    expect(freq.perHour(wed, "now", 12 * 3600)[0]).toBe(6);
-    expect(freq.perHour(wed, "now", 12 * 3600 + 60)[0]).toBe(6);
-  });
-
-  it("averages over the day, 06:00–21:00", () => {
-    // Every 10 min from 06:00 to 20:50: 90 trips over 15 h; the evening's hourly trips don't count.
-    expect(freq.perHour(wed, "day", 0)[0]).toBeCloseTo(6, 5);
-  });
-
-  it("counts a trip of the next service day by when it runs", () => {
-    // Thursday's service with one trip at 00:15 (a service day that starts at midnight).
-    const early = {
-      ...plan,
-      trips: [
-        ...plan.trips,
-        {
-          id: "x",
-          pattern: 0,
-          service: "thu",
-          headsign: "",
-          start: 900,
-          arr: [0, 600],
-        },
-      ],
-      calendar: {
-        ...plan.calendar,
-        exceptions: [
-          { serviceId: "thu", date: serviceDate("20261022"), type: 1 as const },
-        ],
-      },
-    } as unknown as ServicePlan;
-    // The hour from Wednesday's 24:00: its 24:30 trip and Thursday's 00:15.
-    expect(new BusFrequency(early).perHour(wed, "now", 24 * 3600)[0]).toBe(2);
-  });
-
-  it("has nothing on days without service", () => {
-    expect(freq.perHour(serviceDate("20261024"), "now", 12 * 3600)[0]).toBe(0);
   });
 });

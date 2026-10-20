@@ -6,7 +6,10 @@
 export interface FrequencyBand {
   id: "good" | "ok" | "poor" | "bad";
   name: string;
-  /** Average minutes between departures, up to and including this (the last band has none). */
+  /**
+   * The worst wait in minutes (packages/transit-core/src/schedule/frequency.ts → `worstWait`), up to
+   * and including this (the last band has none).
+   */
   maxMinutes?: number;
   /** Colours per theme: blue → red, never green or amber (those mean other things on the site). */
   color: { light: string; dark: string };
@@ -34,17 +37,12 @@ export const FREQUENCY_BANDS: readonly FrequencyBand[] = [
   { id: "bad", name: "Bad", color: { light: "#b0213a", dark: "#d4333f" } },
 ];
 
-/** The band (index into FREQUENCY_BANDS) for an average of `minutes` between departures. */
+/** The band (index into FREQUENCY_BANDS) for a worst wait of `minutes`. */
 export function bandIndex(minutes: number): number {
   const i = FREQUENCY_BANDS.findIndex(
     (b) => b.maxMinutes !== undefined && minutes <= b.maxMinutes,
   );
   return i >= 0 ? i : FREQUENCY_BANDS.length - 1;
-}
-
-/** The band for `perHour` departures an hour, or -1 for none. */
-export function bandIndexPerHour(perHour: number): number {
-  return perHour > 0 ? bandIndex(60 / perHour) : -1;
 }
 
 /** A band's range, short: "≤6m", …, ">20m". */
