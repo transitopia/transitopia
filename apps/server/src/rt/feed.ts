@@ -49,6 +49,7 @@ import type { ProviderStatus } from "@transitopia/shared/admin-api.ts";
 import { Recorder } from "./recorder.ts";
 import { ServiceChanges } from "./changes.ts";
 import type { Store } from "../store.ts";
+import { serverConfig } from "../config.ts";
 import {
   delayFor,
   fetchAlerts,
@@ -107,6 +108,10 @@ export class FeedPoller {
   > = { positions: {}, tripUpdates: {}, alerts: {} };
   /** Share of the latest poll's vehicles on a trip that have a delay (null before a poll). */
   private delayCoverage: number | null = null;
+  /** Buses on a trip in the latest positions poll. */
+  private busesOnTrips = 0;
+  /** Since when coverage has been low with enough buses to judge (/healthz). */
+  private lowCoverageSince: number | undefined;
   /** Trip id → route id of every bus on a trip in the latest positions poll (every route). */
   private busTrips = new Map<string, string | undefined>();
   /** The latest trip-updates poll, matched against busTrips (/rt/status → tripFeed). */
@@ -142,6 +147,17 @@ export class FeedPoller {
       opts.record,
     );
     this.ledger = new RequestLedger(this.schedule.dailyCap);
+  }
+
+  /** When /healthz fails trip updates: the server's default, with the feed's overrides. */
+  private get tripUpdatesHealth() {
+    const d = serverConfig.tripUpdatesHealth;
+    const o = this.feed.realtime.tripUpdatesHealth;
+    return {
+      minCoverage: o?.minCoverage ?? d.minCoverage,
+      minBuses: o?.minBuses ?? d.minBuses,
+      lowForS: o?.lowForS ?? d.lowForS,
+    };
   }
 
   private get schedule() {
@@ -439,9 +455,8 @@ export class FeedPoller {
 
   private tripFeedLow(t: TripFeedSummary): boolean {
     return (
-      t.busesOnTrips > 0
-      && t.busesMatched / t.busesOnTrips
-        < this.feed.realtime.tripUpdatesMinCoverage
+      t.busesOnTrips >= this.tripUpdatesHealth.minBuses
+      && t.busesMatched / t.busesOnTrips < this.tripUpdatesHealth.minCoverage
     );
   }
 
@@ -490,6 +505,14 @@ export class FeedPoller {
       onTrips && this.endpoints.tripUpdates.lastOkAt !== undefined ?
         withDelay / onTrips
       : null;
+    this.busesOnTrips = onTrips;
+    const { minBuses, minCoverage } = this.tripUpdatesHealth;
+    const low =
+      this.delayCoverage !== null
+      && onTrips >= minBuses
+      && this.delayCoverage < minCoverage;
+    this.lowCoverageSince =
+      low ? (this.lowCoverageSince ?? fetchedAt) : undefined;
     if (this.opts.record) await this.recorder.record(all);
     await this.opts.store?.recordPositions(
       this.feed.id,
@@ -649,8 +672,14 @@ export class FeedPoller {
         ]),
       ),
       delayCoverage: this.delayCoverage,
+      busesOnTrips: this.busesOnTrips,
+      lowCoverageForS:
+        this.lowCoverageSince === undefined ?
+          null
+        : Math.round((now - this.lowCoverageSince) / 1000),
       tripFeed: this.tripFeed,
-      minDelayCoverage: this.feed.realtime.tripUpdatesMinCoverage,
+      minDelayCoverage: this.tripUpdatesHealth.minCoverage,
+      maxLowCoverageS: this.tripUpdatesHealth.lowForS,
     };
   }
 }

@@ -5,5 +5,14 @@
   "$dispatchCheckS": "Live dispatch (apps/server/README.md#live-dispatch-and-previews): how often the leader checks the confirmed observations and disruptions (the database, or config/regions/<rail region>/{observations,disruptions} without one) for changes. Only changed inputs re-dispatch a date; client requests never do.",
   "dispatchCheckS": 30,
   "$dispatchWindowDays": "Live dispatch covers service dates this many days either side of today; older and later dates come from build:dispatch.",
-  "dispatchWindowDays": 7
+  "dispatchWindowDays": 7,
+  "$tripUpdatesHealth": "When /healthz fails a feed's trip updates for answering with delays for almost none of the buses: the feed is empty or no longer matches the positions (apps/server/README.md#real-time-service). A feed can override any of these (feed.json → realtime.tripUpdatesHealth). Guesses, from recorded data: TransLink 75-85 % in service hours and 36-60 % at night (2026-10-01 to 10-11), 0 from 04:00 on 2026-10-12 for hours while polls kept succeeding; BC Transit's Kelowna feed 0 % of 1-7 buses around 00:20 and 04:50-05:20, with buses signed on to trips the feed has dropped or doesn't list yet, dipping below 20 % of 11 buses for 5 minutes at 05:18 (2026-10-19).",
+  "tripUpdatesHealth": {
+    "$minCoverage": "It fails below this share of the buses on a trip with a delay...",
+    "minCoverage": 0.2,
+    "$minBuses": "...judged only on positions polls with at least this many buses on a trip (with a handful, one bus is a large share)...",
+    "minBuses": 10,
+    "$lowForS": "...once it has stayed low this long (single polls dip; real outages last hours).",
+    "lowForS": 1200
+  }
 }

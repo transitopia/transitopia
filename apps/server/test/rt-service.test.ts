@@ -461,15 +461,15 @@ describe("RtService", () => {
     );
   });
 
-  it("fails health when trip updates succeed but give no delays for the buses", async () => {
+  it("fails health when trip updates succeed but give no delays for the buses for a while", async () => {
     dir = await mkdtemp(join(tmpdir(), "rt-test-"));
+    // Two buses first (too few to judge, as at the ends of service), then twelve.
+    let trips = ["t1", "t2"];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string | URL) =>
         feedResponse(
-          /gtfsposition/.test(String(url)) ?
-            positionsFeed(["t1", "t2"])
-          : emptyFeed(),
+          /gtfsposition/.test(String(url)) ? positionsFeed(trips) : emptyFeed(),
         ),
       ),
     );
@@ -493,25 +493,45 @@ describe("RtService", () => {
         st.providers.translink.feeds.tripUpdates.lastOkAgeS,
       ).not.toBeNull();
     });
-    await (
-      service.pollers.get("translink") as unknown as {
-        pollPositions(): Promise<void>;
-      }
-    ).pollPositions();
-    const h = await health({ service } as unknown as AppDeps);
-    expect(h.checks["translink/tripUpdates"]?.ok).toBe(false);
-    expect(h.checks["translink/tripUpdates"]?.detail).toMatch(
-      /0 % of vehicles have a delay/,
-    );
+    const poller = service.pollers.get("translink") as unknown as {
+      pollPositions(): Promise<void>;
+    };
+    await poller.pollPositions();
+    const tu = async () =>
+      (await health({ service } as unknown as AppDeps)).checks[
+        "translink/tripUpdates"
+      ];
+    expect(await tu()).toMatchObject({
+      ok: true,
+      detail: expect.stringMatching(/0 % of 2 vehicles have a delay$/),
+    });
+    trips = Array.from({ length: 12 }, (_, i) => `t${i}`);
+    await poller.pollPositions();
+    expect(await tu()).toMatchObject({
+      ok: true,
+      detail: expect.stringMatching(
+        /0 % of 12 vehicles have a delay \(below 20 % for 0 s, limit \d+ s\)/,
+      ),
+    });
+    // Still none once the limit has passed (config/server/server.json → tripUpdatesHealth.lowForS).
+    const now = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(now + 3_600_000);
+    await poller.pollPositions();
+    expect(await tu()).toMatchObject({
+      ok: false,
+      detail: expect.stringMatching(/below 20 % for 3600 s/),
+    });
   });
 
   it("summarises each trip-updates poll against the buses, and logs when few match", async () => {
     dir = await mkdtemp(join(tmpdir(), "rt-test-"));
+    // Enough buses to judge (config/server/server.json → tripUpdatesHealth.minBuses).
+    const trips = Array.from({ length: 10 }, (_, i) => `b${i + 1}`);
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string | URL) =>
         feedResponse(
-          /gtfsposition/.test(String(url)) ? positionsFeed(["t1", "t2"])
+          /gtfsposition/.test(String(url)) ? positionsFeed(trips)
           : /gtfsrealtime/.test(String(url)) ? tripUpdatesFeed(["t9"])
           : emptyFeed(),
         ),
@@ -540,15 +560,15 @@ describe("RtService", () => {
       trips: 1,
       withStopDelays: 1,
       matched: 0,
-      busesOnTrips: 2,
+      busesOnTrips: 10,
       busesMatched: 0,
       unmatchedTrips: [
         { tripId: "t9", routeId: "6641", startDate: "20261012" },
       ],
-      unmatchedBuses: [{ tripId: "t1" }, { tripId: "t2" }],
+      unmatchedBuses: expect.arrayContaining([{ tripId: "b1" }]),
     });
     expect(logs.join("\n")).toMatch(
-      /trip updates match few buses: 0 of 2 .*Unmatched feed trips: t9 \(route 6641\)/,
+      /trip updates match few buses: 0 of 10 .*Unmatched feed trips: t9 \(route 6641\)/,
     );
   });
 });

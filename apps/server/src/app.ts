@@ -470,7 +470,9 @@ export async function health({ service, db, jobs }: AppDeps): Promise<Health> {
     const tripUpdates = p.feeds.tripUpdates;
     if (!tripUpdates) continue;
     // A failed poll is logged and retried; this catches the feed staying down, or succeeding with
-    // nothing that matches the positions (trip updates also carry cancellations and skipped stops).
+    // nothing that matches the positions (trip updates also carry cancellations and skipped stops)
+    // for a while, with enough buses out to tell: at the ends of service, buses are signed on to
+    // trips the feed has dropped or doesn't list yet.
     // A restarted leader continues the schedule rather than polling at once, so until the first
     // success the age counts from when polling started (apps/server/README.md#real-time-service).
     const { lastOkAgeS, lastError } = tripUpdates;
@@ -478,8 +480,9 @@ export async function health({ service, db, jobs }: AppDeps): Promise<Health> {
     const tuAge = lastOkAgeS ?? p.pollingForS;
     const nextInS = p.budget.nextPollInS.tripUpdates;
     const coverage = p.delayCoverage;
+    const lowForS = p.lowCoverageForS;
     const fresh = tuAge !== null && tuAge <= tuLimit;
-    const covered = coverage === null || coverage >= p.minDelayCoverage;
+    const covered = lowForS === null || lowForS < p.maxLowCoverageS;
     checks[`${feed}/tripUpdates`] = {
       ok: fresh && covered,
       detail: [
@@ -488,7 +491,9 @@ export async function health({ service, db, jobs }: AppDeps): Promise<Health> {
         : `last successful poll ${lastOkAgeS} s ago (limit ${tuLimit} s)`,
         ...(lastError ? [`last error: ${lastError}`] : []),
         ...(typeof coverage === "number" ?
-          [`${Math.round(coverage * 100)} % of vehicles have a delay`]
+          [
+            `${Math.round(coverage * 100)} % of ${p.busesOnTrips} vehicles have a delay${lowForS === null ? "" : ` (below ${Math.round(p.minDelayCoverage * 100)} % for ${lowForS} s, limit ${p.maxLowCoverageS} s)`}`,
+          ]
         : []),
       ].join("; "),
     };

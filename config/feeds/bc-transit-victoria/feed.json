@@ -35,9 +35,7 @@
     "$interpolateSlackS": "Interpolate between two fixes at most the positions poll interval plus this apart (guess, OPEN-QUESTIONS #2).",
     "interpolateSlackS": 90,
     "$extrapolateSlackS": "Predict a bus forward for at most the positions poll interval plus this (fixes are fresher than TransLink's: p50 ~8 s, max ~60 s old when fetched; guess, OPEN-QUESTIONS #2).",
-    "extrapolateSlackS": 45,
-    "$tripUpdatesMinCoverage": "/healthz fails below this share of buses on a trip with a delay from trip updates (guess, as TransLink's; OPEN-QUESTIONS #2).",
-    "tripUpdatesMinCoverage": 0.2
+    "extrapolateSlackS": 45
   },
   "display": {
     "$tripId": "Trip ids are three internal ids, <journey>:<variant>:<block> (e.g. 11898518:14545024:14591755); the journey alone is unique on any date (feed of 2026-10-14: a journey appears in at most two trips, never running the same day).",

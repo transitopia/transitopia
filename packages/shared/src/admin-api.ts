@@ -81,7 +81,12 @@ export const providerStatus = z.looseObject({
   /** Per endpoint: positions, trip updates, alerts. */
   feeds: z.record(z.string(), feedStatus),
   delayCoverage: z.number().nullable(),
+  busesOnTrips: z.number(),
+  /** How long delayCoverage has been below minDelayCoverage with enough buses to judge (null when it isn't). */
+  lowCoverageForS: z.number().nullable(),
   minDelayCoverage: z.number(),
+  /** /healthz fails once lowCoverageForS reaches this. */
+  maxLowCoverageS: z.number(),
 });
 export type ProviderStatus = z.infer<typeof providerStatus>;
 
