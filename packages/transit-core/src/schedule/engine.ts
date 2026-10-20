@@ -12,7 +12,6 @@ import {
 import { indexCalendar } from "../gtfs/calendar.ts";
 import { serviceDayStart, type ServiceDate } from "../time.ts";
 import type {
-  CatalogRoute,
   PlanPattern,
   PlanRoute,
   PlanStop,
@@ -112,10 +111,6 @@ export interface PreparedPlan {
   tripsByService: Map<string, PreparedTrip[]>;
   /** Longest visible span of any trip per service, for bounding the search window. */
   maxSpanByService: Map<string, number>;
-  /** The feed's other bus routes by key (not drawn; ServicePlan.catalog). */
-  catalog: Map<string, CatalogRoute>;
-  /** Catalogue route keys serving each of the plan's stops. */
-  catalogAtStop: Map<string, string[]>;
 }
 
 export function preparePlan(
@@ -142,19 +137,9 @@ export function preparePlan(
     for (const t of list) tripIndex.set(t.trip.id, t);
   }
   const stopById = new Map(plan.stops.map((s) => [s.id, s]));
-  const catalog = new Map((plan.catalog ?? []).map((c) => [c.key, c]));
-  const catalogAtStop = new Map<string, string[]>();
-  for (const c of catalog.values())
-    for (const id of c.stops) {
-      const list = catalogAtStop.get(id);
-      if (list) list.push(c.key);
-      else catalogAtStop.set(id, [c.key]);
-    }
   return {
     plan,
     routes,
-    catalog,
-    catalogAtStop,
     tripIndex,
     stopById,
     shapeCum,

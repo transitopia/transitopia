@@ -224,10 +224,10 @@ export function publishPlan(plan: ServicePlan): PlanPublication {
     };
   }
   const weekWaits = routeWeekdayWaits(plan);
-  const withWeek = <R extends PlanRoute>(r: R): R => {
+  const withWeek = (r: PlanRoute): PlanRoute => {
     const { weekdayWait: _w, ...route } = r;
     const w = weekWaits.get(r.key);
-    return (w === undefined ? route : { ...route, weekdayWait: w }) as R;
+    return w === undefined ? route : { ...route, weekdayWait: w };
   };
 
   // Trips by service: those the day after needs in a file of their own (LATE_MARGIN_S).
@@ -269,7 +269,6 @@ export function publishPlan(plan: ServicePlan): PlanPublication {
     schema: 2,
     ...rest,
     routes: rest.routes.map(withWeek),
-    ...(rest.catalog ? { catalog: rest.catalog.map(withWeek) } : {}),
     stops: encodeStops(stops),
     patterns: patterns.map((p, i) => {
       const { starts: _s, ...pattern } = p;

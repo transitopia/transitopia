@@ -191,23 +191,29 @@ const routeCategories = [
   "regular",
 ] as const satisfies RouteCategory[];
 
+/** GTFS routes are selected by name, never by route_id (which changes between feeds). */
+const routeMatch = z
+  .strictObject({
+    route_long_name: z.string().min(1).exactOptional(),
+    route_short_name: z.string().min(1).exactOptional(),
+  })
+  .refine(
+    (m) => m.route_long_name !== undefined || m.route_short_name !== undefined,
+    "match needs route_long_name or route_short_name",
+  );
+
+/**
+ * One route's overrides of what the plan takes from the GTFS (plan/routes.ts → `selectRoutes`):
+ * every route in a feed is drawn by default, so only routes drawn differently are listed.
+ */
 const route = z.strictObject({
+  /** The route's key, what other config (kinematics, SeaBus, regions) and URLs name it by. */
   key: z.string().min(1),
-  label: z.string().min(1),
-  /** GTFS routes are selected by name, never by route_id (which changes between feeds). */
-  match: z
-    .strictObject({
-      route_long_name: z.string().min(1).exactOptional(),
-      route_short_name: z.string().min(1).exactOptional(),
-    })
-    .refine(
-      (m) =>
-        m.route_long_name !== undefined || m.route_short_name !== undefined,
-      "match needs route_long_name or route_short_name",
-    ),
-  kind: z.enum(routeKinds),
-  mode: z.enum(routeModes),
-  category: z.enum(routeCategories),
+  match: routeMatch,
+  label: z.string().min(1).exactOptional(),
+  kind: z.enum(routeKinds).exactOptional(),
+  mode: z.enum(routeModes).exactOptional(),
+  category: z.enum(routeCategories).exactOptional(),
   color: z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, "expected #rrggbb")
@@ -219,11 +225,12 @@ const route = z.strictObject({
 const routes = z.strictObject({
   routes: z
     .array(route)
-    .min(1)
     .refine(
       (rs) => new Set(rs.map((r) => r.key)).size === rs.length,
       "route keys must be unique",
     ),
+  /** Routes in the feed the plan leaves out: not drawn, not on cards, not tracked. */
+  exclude: z.array(z.strictObject({ match: routeMatch })).exactOptional(),
 });
 
 // --- rt.json ---
@@ -631,6 +638,7 @@ export const CONFIG_SCHEMAS = {
 export type ConfigName = keyof typeof CONFIG_SCHEMAS;
 export type Config<N extends ConfigName> = z.output<(typeof CONFIG_SCHEMAS)[N]>;
 export type RouteConfig = z.output<typeof route>;
+export type RouteMatch = z.output<typeof routeMatch>;
 
 /**
  * A config file's contents (parsed JSON), without comments and checked against its schema. Throws

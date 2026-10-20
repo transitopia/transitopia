@@ -1,5 +1,5 @@
 {
-  "$comment": "BC Transit's Victoria Regional Transit System, published by BC Transit through Consat (tmix.se) as operator 48 (https://www.bctransit.com/open-data/, checked 2026-10-14). Which routes are drawn: routes.json. Regions showing it: greater-victoria. Terms: https://www.bctransit.com/open-data/terms-of-use/ (identify BC Transit as the source; no use of its marks).",
+  "$comment": "BC Transit's Victoria Regional Transit System, published by BC Transit through Consat (tmix.se) as operator 48 (https://www.bctransit.com/open-data/, checked 2026-10-14). Every route is drawn; overrides and exclusions: routes.json. Regions showing it: greater-victoria. Terms: https://www.bctransit.com/open-data/terms-of-use/ (identify BC Transit as the source; no use of its marks).",
   "id": "bc-transit-victoria",
   "name": "BC Transit (Victoria)",
   "operator": "bc-transit",

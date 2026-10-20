@@ -140,7 +140,7 @@ The server refuses to start on outdated time zone data (`timezoneChecks` in each
 
 ## Command-line tools
 
-- `npm run db:import-history`: import `var/rt-history/<feed>/`, `var/{ais,dispatch}-history` into the database (idempotent).
+- `npm run db:import-history`: import `var/rt-history/<feed>/`, `var/{ais,dispatch}-history` into the database (idempotent: a poll counts as imported once its positions or fixes are there, so it fills in a restored developer snapshot, which has the polls without them).
 - `npm run stats -- <YYYYMMDD> [--feed <id>]`: recompute a date's observed stop times and statistics (every feed with real time, or one).
 - `npm run corrections -- export <dir> | import [<dir>] | pull`: move corrections between the database and the file format.
 - `npm run features -- pull | places | reconcile | show | move | detach | retire`: the feature registry ([above](#feature-reconciliation)). `pull` and `places` work without a database too, with `var/features/registry.ndjson.gz`.

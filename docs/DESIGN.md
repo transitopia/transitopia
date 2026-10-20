@@ -115,7 +115,7 @@ Raw real-time data is deleted after 60 days (`config/server/recording.json`). An
 - **A daily job** computes statistics for each finished service date while the raw data is still there, and catches up after downtime: per route, direction, day and time band, trips scheduled, observed and cancelled, skipped stops, on-time performance at timepoints (on time = **1 minute early to 3 minutes late**), delay percentiles, delivered versus scheduled headways, and bunching. `npm run stats -- <YYYYMMDD>` recomputes a date.
 - **Coverage is the denominator.** Every statistic records how much of the period the recorder covered. "Cancelled" and "on time" only mean something where we were recording; gaps are reported as gaps, never as zeros.
 - **Statistics are versioned.** Each row records the version of the code that produced it, so a changed definition can be recomputed from the atom.
-- **Every route is recorded,** not just the ones drawn. Each response already covers every TransLink vehicle, so this costs no extra requests, only storage. Vehicles on routes we don't draw get an untracked route key (`gtfs:<route_id>`), and every reader keeps only tracked ones (`trackedOnly`).
+- **Every route is recorded,** not just the ones drawn. Each response already covers every TransLink vehicle, so this costs no extra requests, only storage. Vehicles on routes not drawn when they were recorded (excluded ones, or routes before every route was drawn) get an untracked route key (`gtfs:<route_id>`); every reader keeps only tracked ones (`trackedOnly`), giving a vehicle on a route drawn since then that route's key, so older recordings count it too.
 
 Kept in Postgres, observed stop times grow by about 78 GB a year ([deployment/README.md → Sizing](../deployment/README.md#sizing)), so older months need to move to monthly files in object storage within about a year of recording.
 
@@ -167,7 +167,7 @@ config/
   features/        reconcile.json: feature reconciliation's distances (#feature-ids)
   operators/<id>/  operator.json: who runs the vehicles (TransLink, BC Transit), and its overrides of the defaults
   feeds/<id>/      feed.json: one agency's published data (GTFS, GTFS-RT, request budget, vessels' AIS),
-                   naming its operator; routes.json: which routes are drawn, by name
+                   naming its operator; routes.json: overrides and exclusions of its routes, by name
   regions/<id>/    region.json: a place on the map (bbox, time zone, first view, the feeds it shows);
                    its settings (rt.json where it has one, and for Metro Vancouver operations, dispatch, seabus);
                    infrastructure/, scenarios/, observations/, disruptions/; README, OPEN-QUESTIONS
@@ -175,7 +175,7 @@ config/
 
 | Region | Feeds (operator) | Drawn |
 |---|---|---|
-| `metro-vancouver` | `translink` (TransLink) | SkyTrain, SeaBus, West Coast Express, 99, R1–R6, 5, 6, 9, 16, 19, 25, 49 |
+| `metro-vancouver` | `translink` (TransLink) | SkyTrain, SeaBus, West Coast Express and every bus route (99 B-Line and R1–R6 RapidBus as frequent; HandyDART excluded) |
 | `greater-victoria` | `bc-transit-victoria` (BC Transit) | Every bus route (95 Blink RapidBus as frequent) |
 | `central-okanagan` | `bc-transit-kelowna` (BC Transit) | Every bus route (97 Okanagan RapidBus as frequent) |
 

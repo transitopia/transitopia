@@ -1,5 +1,6 @@
 // Import recorded history into the database (apps/server/README.md#command-line-tools)
-// Idempotent: hours, batches and versions already imported are skipped.
+// Idempotent: hours, batches and versions already imported (with their positions or fixes) are
+// skipped, so it fills in a restored developer snapshot (npm run snapshot:pull -- --db).
 //
 //   DATABASE_URL=postgres://… npm run db:import-history [-- --var <dir>]
 //
@@ -108,20 +109,57 @@ async function* hourFiles(
     }
 }
 
+/**
+ * Whether a poll is in the database with its positions or fixes. The developer snapshot
+ * (infra/backup/backup.sh) has every poll but none of their rows, so a poll alone doesn't count
+ * unless it had no vehicles.
+ */
 async function imported(
   feed: string,
   source: "gtfs-rt" | "ais",
   t: number,
 ): Promise<boolean> {
-  return Boolean(
-    await db
-      .selectFrom("rt_polls")
-      .select("fetched_at")
-      .where("feed_id", "=", feed)
-      .where("source", "=", source)
-      .where("fetched_at", "=", new Date(t))
-      .executeTakeFirst(),
-  );
+  const at = new Date(t);
+  const poll = await db
+    .selectFrom("rt_polls")
+    .select("vehicles")
+    .where("feed_id", "=", feed)
+    .where("source", "=", source)
+    .where("fetched_at", "=", at)
+    .executeTakeFirst();
+  if (!poll) return false;
+  if (!poll.vehicles) return true;
+  const row =
+    source === "gtfs-rt" ?
+      await db
+        .selectFrom("rt_positions")
+        .select("fetched_at")
+        .where("feed_id", "=", feed)
+        .where("fetched_at", "=", at)
+        .limit(1)
+        .executeTakeFirst()
+    : await db
+        .selectFrom("ais_fixes")
+        .select("received_at")
+        .where("feed_id", "=", feed)
+        .where("received_at", "=", at)
+        .limit(1)
+        .executeTakeFirst();
+  return Boolean(row);
+}
+
+/**
+ * Whether an hour is in the database, judged by its last poll with vehicles (an empty one counts
+ * as imported, and an import stopped part-way has the hour's first polls but not its last).
+ */
+function hourImported(
+  feed: string,
+  source: "gtfs-rt" | "ais",
+  h: { snapshots: RtSnapshot[] },
+): Promise<boolean> {
+  const last =
+    h.snapshots.findLast((s) => s.vehicles.length) ?? h.snapshots.at(-1)!;
+  return imported(feed, source, last.fetchedAt);
 }
 
 // Positions, service changes and the request ledger, per feed.
@@ -131,10 +169,7 @@ for (const feed of (await readFeeds()).filter((f) => f.realtime)) {
   let hours = 0;
   let polls = 0;
   for await (const h of hourFiles(dir)) {
-    if (
-      !h.snapshots.length
-      || (await imported(feed.id, "gtfs-rt", h.snapshots[0]!.fetchedAt))
-    )
+    if (!h.snapshots.length || (await hourImported(feed.id, "gtfs-rt", h)))
       continue;
     await ensurePartitionsFor(
       db,
@@ -260,10 +295,7 @@ for (const feed of (await readFeeds()).filter((f) => f.realtime)) {
 for (const feed of (await readFeeds()).filter((f) => f.ais)) {
   let batches = 0;
   for await (const h of hourFiles(join(varDir, "ais-history", feed.id))) {
-    if (
-      !h.snapshots.length
-      || (await imported(feed.id, "ais", h.snapshots[0]!.fetchedAt))
-    )
+    if (!h.snapshots.length || (await hourImported(feed.id, "ais", h)))
       continue;
     await ensurePartitionsFor(
       db,

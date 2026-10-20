@@ -133,7 +133,7 @@ export function featureKey(
   return formatKey({ ...k, suffix: nameSuffix(f.kind, f.name, { code }) });
 }
 
-type PlanIds = Pick<ServicePlan, "stations" | "stops" | "routes" | "catalog">;
+type PlanIds = Pick<ServicePlan, "stations" | "stops" | "routes">;
 
 /**
  * A feed version's places file (without its `n`), or undefined when the registry hasn't reconciled
@@ -196,7 +196,7 @@ export function buildPlaces(
     const p = place(f.parent);
     if (p) out.parents[s.id] = p;
   }
-  for (const route of [...plan.routes, ...(plan.catalog ?? [])]) {
+  for (const route of plan.routes) {
     const f = v.at("gtfs-route", route.gtfsRouteId);
     if (f?.kind !== "route") continue;
     used.add(f.id);

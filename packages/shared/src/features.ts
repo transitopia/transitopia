@@ -205,7 +205,7 @@ export interface PlacesFile {
   stations: Record<string, string>;
   /** stop_id → the stop's key. */
   stops: Record<string, string>;
-  /** Route key (the plan's, and its catalogue's) → the route's key. */
+  /** The plan's route key → the route's key. */
   routes: Record<string, string>;
   /** stop_id → the ID of the station or exchange it's in. */
   parents: Record<string, string>;

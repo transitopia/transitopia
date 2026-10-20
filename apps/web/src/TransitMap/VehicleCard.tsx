@@ -151,7 +151,7 @@ export const VehicleCard: React.FC<{
     );
 
   const mode = MODE[route.mode];
-  const colors = routeColorsFor(engine, snap)(route);
+  const colors = routeColorsFor(engine)(route);
   const title = route.mode === "bus" ? busTitle(v, route) : headsign(v);
   const actions: CardAction[] = [
     snap.following ?

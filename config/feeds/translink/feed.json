@@ -1,5 +1,5 @@
 {
-  "$comment": "TransLink's GTFS feeds (packages/transit-core/DESIGN.md#source-data). Which routes are drawn: routes.json. Regions showing it: metro-vancouver.",
+  "$comment": "TransLink's GTFS feeds (packages/transit-core/DESIGN.md#source-data). Every route is drawn; overrides and exclusions: routes.json. Regions showing it: metro-vancouver.",
   "id": "translink",
   "name": "TransLink",
   "operator": "translink",

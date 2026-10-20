@@ -645,7 +645,7 @@ export class RtService {
           headers: {
             "Content-Type": "application/x-ndjson; charset=utf-8",
             ...CORS,
-            // Closed hours never change; the open hour does.
+            // Closed hours change only when the routes drawn do (trackedOnly), so a day is fine.
             "Cache-Control": f.closed ? "public, max-age=86400" : "no-cache",
             "Content-Encoding": "gzip",
           },
