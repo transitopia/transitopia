@@ -12,12 +12,13 @@ import {
   basemapAssets,
   basemapTiles,
   cyclingTiles,
-  needPmTiles,
+  transitOverviewTiles,
 } from "../config.ts";
 import { ThemeToggle, useTheme } from "../Theme/Theme.tsx";
 import {
   MapContext,
   MapLibreGLContext,
+  OVERVIEW_SOURCE,
   type MapLibreGLType,
   type MapType,
 } from "./MapUtils.ts";
@@ -46,6 +47,10 @@ function siteStyle(theme: Theme): StyleSpecification {
     ],
   });
   style.sources["transitopia-cycling"] = { type: "vector", url: cyclingTiles };
+  style.sources[OVERVIEW_SOURCE] = {
+    type: "vector",
+    url: transitOverviewTiles,
+  };
   return style as StyleSpecification;
 }
 
@@ -68,8 +73,10 @@ export const Map: React.FC<{
   const [controlGroup, setControlGroup] = React.useState<HTMLElement>();
 
   React.useEffect(() => {
-    if (needPmTiles && !pmTilesInitialized) {
-      // Load the "pmtiles" protocol that allows us to serve all the vector tiles for the map from a single large static .pmtiles file.
+    if (!pmTilesInitialized) {
+      // Load the "pmtiles" protocol that allows us to serve all the vector tiles for the map from a
+      // single large static .pmtiles file: local tilesets, and the transit plans' tiles everywhere
+      // (packages/transit-core/DESIGN.md#plan-tiles).
       const protocol = new pmtiles.Protocol();
       maplibregl.addProtocol("pmtiles", protocol.tile);
       pmTilesInitialized = true;

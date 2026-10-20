@@ -9,7 +9,6 @@ import { realtimeOf } from "@transitopia/shared/datasets.ts";
 import { bandIndex, FREQUENCY_BANDS } from "@transitopia/shared/frequency.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
 import type { InfraCollection } from "@transitopia/transit-core/infra/types.ts";
-import type { LineGeometry } from "@transitopia/transit-core/infra/line-geometry.ts";
 import {
   addDays,
   localDate,
@@ -24,7 +23,6 @@ import {
   feedForDate,
   patternStarts,
   type PlanRoute,
-  type ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
 import {
   firstBoarding,
@@ -58,11 +56,8 @@ import {
 import {
   BUS_STOPS_SOURCE,
   BUS_TICKS_SOURCE,
-  CORRIDORS_SOURCE,
   EXCHANGES_SOURCE,
-  OVERVIEW_CORRIDORS_SOURCE,
-  CORRIDOR_DETAIL_ZOOM,
-  ROUTES_SOURCE,
+  LINES_SOURCE,
   SELECTED_PLACE_RADIUS_PX,
   SELECTED_PLACE_SOURCE,
   STATIONS_SOURCE,
@@ -70,8 +65,7 @@ import {
   addStaticLayers,
   applyRouteFilter,
   applyStopsVisibility,
-  brandedRoutes,
-  overviewCorridors,
+  removeSources,
   setFerryPair,
   setFocusRoute,
   setSelectedPlace,
@@ -80,16 +74,19 @@ import { VehicleLayer } from "./layers/vehicles.ts";
 import { BusFrequencyLayer, nowWindowStart } from "./layers/bus-frequency.ts";
 import {
   DEBUG_SOURCE,
-  LINES_SOURCE,
   TRACKS_SOURCE,
+  addTrackDebugLayers,
   addTrackLayers,
   applyTrackFilter,
   loadPlatforms,
-  loadLines,
   loadTracks,
   PICKABLE_TRACK_LAYERS,
   setDebugPlatforms,
 } from "./layers/tracks.ts";
+import {
+  brandedRoutes,
+  PLAN_TILE_LAYERS,
+} from "@transitopia/transit-core/plan/tiles.ts";
 import { readUrl, writeUrl, type Place, type UrlState } from "./url.ts";
 import type { BusHub } from "@transitopia/transit-core/plan/exchanges.ts";
 import {
@@ -257,8 +254,6 @@ const RT_BADGE: Record<RtMode, [string, string]> = {
  * Safari throws after ~100 history.replaceState calls in 10 s.
  */
 const URL_WRITE_THROTTLE_MS = 300;
-/** The detailed corridors start loading this many zoom levels before they're drawn. */
-const DETAIL_PRELOAD_ZOOM = 1;
 /**
  * Tapping a vehicle follows it only at this speed or slower (|rate|): constant panning at 60×+ is
  * disorienting (docs: apps/web/README.md#follow; the 10× cutoff is a guess).
@@ -282,16 +277,13 @@ const SNAPSHOT_INTERVAL_MS = 200;
 const IDLE_RECOMPUTE_MS = 1000;
 /** Sources the engine adds to the host's map (removed on dispose). */
 const SOURCES = [
-  ROUTES_SOURCE,
-  CORRIDORS_SOURCE,
-  OVERVIEW_CORRIDORS_SOURCE,
+  LINES_SOURCE,
   SELECTED_PLACE_SOURCE,
   STATIONS_SOURCE,
   EXCHANGES_SOURCE,
   BUS_STOPS_SOURCE,
   BUS_TICKS_SOURCE,
   TRACKS_SOURCE,
-  LINES_SOURCE,
   DEBUG_SOURCE,
 ];
 /** A tapped place is brought into view after this long, once its card is up and measured. */
@@ -349,11 +341,7 @@ export class TransitEngine {
   /** Screen edges covered by the host's chrome (cards, time bar), px: follow keeps clear of them. */
   private viewPadding = { top: 0, right: 0, bottom: 0, left: 0 };
   private tracks: InfraCollection | undefined;
-  /** Line centrelines and ribbons for drawing SkyTrain (lines.geojson). */
-  private lines: LineGeometry | undefined;
   private shownFeed: PreparedPlan | undefined;
-  /** The shown plan's detailed corridors when its layers were drawn (they load later). */
-  private shownCorridors: ServicePlan["corridors"];
   /** The stations' and exchanges' grouping the static layers were drawn with (hubsOf). */
   private shownHubs: BusHub[] | undefined;
   /** The feed the engine shows (its vehicles' `rt` refs are in it). */
@@ -477,7 +465,6 @@ export class TransitEngine {
         if (this.disposed) return;
         this.tracks = t;
         if (t) store.setTrackGraph(TrackGraph.fromCollection(t));
-        if (t) this.lines = await loadLines(dataUrl, tracksPath);
         if (this.disposed) return;
         this.syncStatic(true);
       });
@@ -492,7 +479,7 @@ export class TransitEngine {
       // A new style (theme switch) replaces our sources and layers; wait for it to load. Sources
       // removed from the loaded style (a previous engine disposed, e.g. for another region) aren't
       // a new style, and no style.load would follow.
-      if (!map.getSource(ROUTES_SOURCE) && !map.isStyleLoaded())
+      if (!map.getSource(LINES_SOURCE) && !map.isStyleLoaded())
         this.styleReady = false;
     };
     const onClick = (e: {
@@ -545,9 +532,6 @@ export class TransitEngine {
     const onMove = () => {
       this.lastCameraMove = performance.now();
     };
-    const onZoomEnd = () => this.loadDetailSoon();
-    map.on("zoomend", onZoomEnd);
-    this.cleanups.push(() => map.off("zoomend", onZoomEnd));
     map.on("dragstart", onDragStart);
     map.on("zoomstart", onGesture);
     map.on("rotatestart", onGesture);
@@ -921,7 +905,7 @@ export class TransitEngine {
     )) {
       if (f.layer.id === "corridors" || f.layer.id === "corridors-overview") {
         for (const key of this.frequencyLayer?.routesOn(
-          f.layer.source,
+          f.sourceLayer ?? PLAN_TILE_LAYERS.corridors,
           Number(f.id),
         ) ?? [])
           if (known?.has(key) && !this.hidden.has(key)) out.add(key);
@@ -1288,12 +1272,7 @@ export class TransitEngine {
     for (const fn of this.cleanups) fn();
     this.live.stop();
     this.vehicles.detach();
-    const style = this.map.getStyle();
-    for (const layer of style?.layers ?? [])
-      if ("source" in layer && SOURCES.includes(layer.source))
-        this.map.removeLayer(layer.id);
-    for (const s of SOURCES)
-      if (this.map.getSource(s)) this.map.removeSource(s);
+    removeSources(this.map, SOURCES);
     this.listeners.clear();
   }
 
@@ -1456,9 +1435,7 @@ export class TransitEngine {
       hidden: this.hidden,
       showStops: this.showStops,
       liveOnly: this.liveOnly,
-      corridors: Boolean(
-        this.shownFeed && overviewCorridors(this.shownFeed.plan).length,
-      ),
+      corridors: Boolean(this.shownFeed?.plan.corridorInfo),
       busFrequency: this.busFrequency,
       busFrequencyHour: (() => {
         const day = serviceDayStart(serviceDate);
@@ -1548,83 +1525,52 @@ export class TransitEngine {
   }
 
   /**
-   * Static layers follow the feed of the displayed date: they need only its core, so they're drawn
-   * before its trips are in. The shown plan is the latest prepared one (with the trips loaded so
-   * far); its layers are redrawn when the feed changes or its detailed corridors arrive.
+   * Static layers follow the feed of the displayed date: they need only its core and its tiles, so
+   * they're drawn before its trips are in. The shown plan is the latest prepared one (with the trips
+   * loaded so far); its layers are redrawn when the feed changes.
    */
   private syncStatic(force = false): void {
     const { map, store } = this;
     const pp = store.planFor(displayServiceDate(this.clock.now()), Infinity);
     if (!pp || !this.styleReady || this.disposed) return;
-    const same =
-      pp.plan === this.shownFeed?.plan
-      && pp.plan.corridors === this.shownCorridors;
+    const tiles = store.tilesUrl(pp);
+    if (!tiles) return;
+    const same = pp.plan === this.shownFeed?.plan;
     this.shownFeed = pp;
     if (same && !force) return;
-    this.shownCorridors = pp.plan.corridors;
     // Start loading its places file, whose grouping replaces the plan's (syncHubs).
     store.placesFor(pp);
     this.shownHubs = hubsOf(pp.plan);
-    addStaticLayers(map, pp.plan, this.theme, this.hidden);
+    addStaticLayers(map, pp.plan, tiles, this.theme, this.hidden);
     applyStopsVisibility(map, this.showStops);
-    if (!overviewCorridors(pp.plan).length) this.frequencyLayer = undefined;
-    else if (
-      !this.frequencyLayer
-      || this.frequencyLayer.plan !== pp.plan
-      || this.frequencyLayer.corridors !== pp.plan.corridors
-    )
+    if (!pp.plan.corridorInfo) this.frequencyLayer = undefined;
+    else if (!this.frequencyLayer || this.frequencyLayer.plan !== pp.plan)
       this.frequencyLayer = new BusFrequencyLayer(pp.plan);
     this.frequencyLayer?.invalidate(map);
     this.syncPlaceHighlight();
     this.ferryPair = undefined;
-    if (this.tracks && this.lines) {
-      addTrackLayers(
-        map,
-        this.tracks,
-        this.lines,
-        pp.plan,
-        this.theme,
-        this.debug,
+    // SkyTrain's track, in the tiles of a region with track-level rail (they replace its GTFS shapes).
+    addTrackLayers(map, pp.plan, this.theme);
+    applyTrackFilter(map, this.hidden);
+    if (this.debug && this.tracks) {
+      addTrackDebugLayers(map, this.tracks, this.theme);
+      const plan = pp.plan;
+      const tracks = this.tracks;
+      void loadPlatforms(
+        (path) => this.store.dataUrl(path),
+        plan.feed,
+        plan.feedVersion,
+      ).then(
+        (p) =>
+          p
+          && !this.disposed
+          && setDebugPlatforms(map, TrackGraph.fromCollection(tracks), plan, p),
       );
-      applyTrackFilter(map, this.hidden);
-      // Tracks replace the GTFS SkyTrain shapes.
-      for (const id of ["routes-skytrain", "routes-skytrain-casing"])
-        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
-      if (this.debug) {
-        const plan = pp.plan;
-        const tracks = this.tracks;
-        void loadPlatforms(
-          (path) => this.store.dataUrl(path),
-          plan.feed,
-          plan.feedVersion,
-        ).then(
-          (p) =>
-            p
-            && !this.disposed
-            && setDebugPlatforms(
-              map,
-              TrackGraph.fromCollection(tracks),
-              plan,
-              p,
-            ),
-        );
-      }
     }
     this.vehicles.attach();
     this.vehicles.setRouteColors(pp.plan.routes);
     this.vehicleColorsFor = undefined;
-    this.loadDetailSoon();
     this.invalidate();
-  }
-
-  /**
-   * The detailed corridors load the first time the map is zoomed in nearly far enough to draw them
-   * (until then, the overview's are drawn there too).
-   */
-  private loadDetailSoon(): void {
-    const pp = this.shownFeed;
-    if (pp && this.map.getZoom() >= CORRIDOR_DETAIL_ZOOM - DETAIL_PRELOAD_ZOOM)
-      this.store.loadDetailedCorridors(pp);
   }
 
   /**

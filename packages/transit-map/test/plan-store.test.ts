@@ -208,6 +208,8 @@ describe("PlanStore loading plans by parts", () => {
   /** A store over the plan's published files; returns it and the files requested after the manifest. */
   async function published() {
     const { core, files } = publishPlan(plan);
+    // build-plan-tiles names them.
+    core.files.tiles = "../lines/0123abcd.pmtiles";
     const dir = "data/feeds/bc-transit-victoria/v1/";
     const served = new Map<string, unknown>([
       [`${dir}plan.json`, core],

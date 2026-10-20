@@ -7,23 +7,18 @@
 import type { Map as MlMap } from "maplibre-gl";
 import type { FrequencyWindow } from "@transitopia/transit-core/schedule/frequency.ts";
 import {
-  capShort,
   CorridorFrequency,
-  shortCorridorNeighbours,
+  corridorStyle,
   type ComboFrequencies,
 } from "@transitopia/transit-core/plan/corridor-frequency.ts";
+import {
+  brandedRoutes,
+  PLAN_TILE_LAYERS,
+} from "@transitopia/transit-core/plan/tiles.ts";
 import { bandIndex } from "@transitopia/shared/frequency.ts";
 import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
 import type { ServiceDate } from "@transitopia/transit-core/time.ts";
-import {
-  brandedRoutes,
-  BUS_TICKS_SOURCE,
-  CORRIDORS_SOURCE,
-  detailedCorridors,
-  OVERVIEW_CORRIDORS_SOURCE,
-  overviewCorridors,
-  tickStops,
-} from "./static.ts";
+import { BUS_TICKS_SOURCE, LINES_SOURCE, tickStops } from "./static.ts";
 
 /** "Now" counts trips in the hour from the shown time, refreshed in steps of this many seconds. */
 const NOW_STEP_S = 300;
@@ -35,30 +30,26 @@ const NOW_STEP_S = 300;
 export function nowWindowStart(seconds: number): number {
   return Math.floor(seconds / NOW_STEP_S) * NOW_STEP_S;
 }
-/**
- * A route with its own colour is drawn in it only where it runs at least this share as often as on
- * its busiest stretch; elsewhere (limited service, e.g. the 99 east of Commercial–Broadway) its buses
- * count towards the frequency colour like any other (packages/transit-core/src/plan/coverage.ts).
- */
-const LIMITED_SHARE = 0.25;
+/** Where a set of features' state goes: a tile layer of the plan's tiles, or the stop ticks' source. */
+interface Target {
+  source: string;
+  sourceLayer?: string | undefined;
+}
 
 export class BusFrequencyLayer {
   readonly plan: ServicePlan;
-  /** The plan's detailed corridors when it was made (they load later: a new layer is made then). */
-  readonly corridors: ServicePlan["corridors"];
   private readonly combos: CorridorFrequency;
-  /** Per source: its features' ids (corridor or stop index) and their combos. */
-  private readonly sources: {
-    source: string;
+  /** Per target: its features' ids (corridor or stop index) and their combos. */
+  private readonly targets: (Target & {
     ids: number[];
     combo: Int32Array;
     /** Short corridors and the corridors they join (none for stops). */
     short: [number, number[]][];
     stops: boolean;
-  }[];
+  })[];
   /** Brand index (brandedRoutes order) per routeDir, or -1. */
   private readonly brandOf: number[];
-  /** Per source, the corridors (or stops) last given a `brand`. */
+  /** Per target (by sourceLayer or source), the corridors (or stops) last given a `brand`. */
   private readonly brandShown = new Map<string, Set<number>>();
   private key = "";
   /** Every shown route's frequencies, as last applied. */
@@ -66,23 +57,28 @@ export class BusFrequencyLayer {
   /** Bumped whenever update applies new rates (so the engine knows to re-colour vehicles). */
   version = 0;
 
+  /** For a plan with corridors (`plan.corridorInfo`). */
   constructor(plan: ServicePlan) {
     this.plan = plan;
-    this.corridors = plan.corridors;
     this.combos = new CorridorFrequency(plan);
     const brands = brandedRoutes(plan).map((r) => r.key);
     this.brandOf = this.combos.routeDirs.map((rd) => brands.indexOf(rd.route));
-    const corridors = (source: string, cs: typeof plan.corridors) => ({
-      source,
-      ids: (cs ?? []).map((_, i) => i),
-      combo: this.combos.combosOfCorridors(cs ?? []),
-      short: shortCorridorNeighbours(cs ?? []),
+    const info = plan.corridorInfo!;
+    const corridors = (
+      sourceLayer: string,
+      set: (typeof info)["detailed"],
+    ) => ({
+      source: LINES_SOURCE,
+      sourceLayer,
+      ids: set.combo.map((_, i) => i),
+      combo: Int32Array.from(set.combo),
+      short: set.short,
       stops: false,
     });
     const stopIds = tickStops(plan);
-    this.sources = [
-      corridors(CORRIDORS_SOURCE, detailedCorridors(plan)),
-      corridors(OVERVIEW_CORRIDORS_SOURCE, overviewCorridors(plan)),
+    this.targets = [
+      corridors(PLAN_TILE_LAYERS.corridors, info.detailed),
+      corridors(PLAN_TILE_LAYERS.overviewCorridors, info.overview),
       {
         source: BUS_TICKS_SOURCE,
         ids: stopIds,
@@ -94,19 +90,22 @@ export class BusFrequencyLayer {
   }
 
   /**
-   * Forget what was applied, after the sources were re-created or their data replaced: and clear
-   * their feature state, which MapLibre keeps by feature id across new data, where an id may now be
-   * another corridor (the detailed corridors replacing the overview's, which stand in for them
-   * until they load, or another feed's). Removing it isn't enough: MapLibre applies a source's
-   * state changes only while it's drawn, and changes still queued (the detailed corridors' while
-   * zoomed out) outlive a removal followed by new state. So the next update also sets every
+   * Forget what was applied, after the sources were re-created: and clear their feature state,
+   * which MapLibre keeps by feature id across new data. Removing it isn't enough: MapLibre applies a
+   * source's state changes only while it's drawn, and changes still queued (the detailed corridors'
+   * while zoomed out) outlive a removal followed by new state. So the next update also sets every
    * feature's `brand`, as for features that had one.
    */
   invalidate(map: MlMap): void {
     this.key = "";
-    for (const s of this.sources) {
-      this.brandShown.set(s.source, new Set(s.ids));
-      if (map.getSource(s.source)) map.removeFeatureState({ source: s.source });
+    for (const t of this.targets) {
+      this.brandShown.set(keyOf(t), new Set(t.ids));
+      if (map.getSource(t.source))
+        map.removeFeatureState(
+          t.sourceLayer ?
+            { source: t.source, sourceLayer: t.sourceLayer }
+          : { source: t.source },
+        );
     }
   }
 
@@ -118,7 +117,7 @@ export class BusFrequencyLayer {
     hidden: ReadonlySet<string>,
     focus: string | undefined,
   ): void {
-    if (!map.getSource(CORRIDORS_SOURCE)) return;
+    if (!map.getSource(LINES_SOURCE)) return;
     const step = window === "now" ? nowWindowStart(seconds) : 0;
     const key = `${date}|${window}|${step}|${[...hidden].join(",")}|${focus ?? ""}`;
     if (key === this.key) return;
@@ -136,36 +135,46 @@ export class BusFrequencyLayer {
       );
     // Frequency tiers count every route: where a route with its own colour is drawn in it, it
     // covers the tier line; where it isn't (limited service), its buses count like any other.
-    for (const s of this.sources) {
+    for (const t of this.targets) {
       const onFocus = Array.from(
-        s.combo,
+        t.combo,
         (c) => focus === undefined || this.serves(c, focus),
       );
       const ratesAt = (i: number) => (own && onFocus[i] ? own : all);
-      const waits = capShort(
-        Float32Array.from(s.combo, (c, i) => ratesAt(i).best[c]!),
-        s.short,
+      const { waits, brands } = corridorStyle(
+        this.combos,
+        t.combo,
+        t.short,
+        this.brandOf,
+        ratesAt,
+        t.stops,
       );
-      s.ids.forEach((id, i) =>
+      t.ids.forEach((id, i) =>
         map.setFeatureState(
-          { source: s.source, id },
+          { ...target(t), id },
           {
             tier: Number.isFinite(waits[i]) ? bandIndex(waits[i]!) : -1,
             dim: !onFocus[i],
           },
         ),
       );
-      this.applyBrands(map, s, ratesAt);
+      const shown = new Map([...brands].map(([i, b]) => [t.ids[i]!, b]));
+      for (const id of this.brandShown.get(keyOf(t)) ?? [])
+        if (!shown.has(id))
+          map.setFeatureState({ ...target(t), id }, { brand: -1 });
+      for (const [id, b] of shown)
+        map.setFeatureState({ ...target(t), id }, { brand: b });
+      this.brandShown.set(keyOf(t), new Set(shown.keys()));
     }
   }
 
   /**
-   * The routes running along a corridor (a feature of CORRIDORS_SOURCE or OVERVIEW_CORRIDORS_SOURCE)
-   * at the time and in the window last applied, busiest first: what a tap on it selects.
+   * The routes running along a corridor (a feature of the tile layer `sourceLayer`) at the time and
+   * in the window last applied, busiest first: what a tap on it selects.
    */
-  routesOn(source: string, id: number): string[] {
-    const s = this.sources.find((x) => x.source === source && !x.stops);
-    const c = s?.combo[id];
+  routesOn(sourceLayer: string, id: number): string[] {
+    const t = this.targets.find((x) => x.sourceLayer === sourceLayer);
+    const c = t?.combo[id];
     if (c === undefined || !this.rates) return [];
     const rates = this.rates.trips[c]!;
     const best = new Map<string, number>();
@@ -192,61 +201,10 @@ export class BusFrequencyLayer {
       (u) => this.combos.routeDirs[u.routeDir]!.route === route,
     );
   }
-
-  /**
-   * On each corridor (or stop only such routes serve), the busiest route with its own colour
-   * running then, where it runs at least LIMITED_SHARE as often as at its busiest.
-   */
-  private applyBrands(
-    map: MlMap,
-    s: BusFrequencyLayer["sources"][number],
-    ratesAt: (i: number) => ComboFrequencies,
-  ): void {
-    // Per combo and frequencies: [brand, its trips] of each route with its own colour there (the
-    // busier direction).
-    const perCombo = new Map<
-      ComboFrequencies,
-      Map<number, Map<number, number>>
-    >();
-    const ownOf = (c: number, i: number) => {
-      const rates = ratesAt(i);
-      let cache = perCombo.get(rates);
-      if (!cache) perCombo.set(rates, (cache = new Map()));
-      let own = cache.get(c);
-      if (own) return own;
-      own = new Map();
-      let others = false;
-      this.combos.combos[c]!.units.forEach((u, k) => {
-        const b = this.brandOf[u.routeDir]!;
-        if (b < 0) others = true;
-        else own!.set(b, Math.max(own!.get(b) ?? 0, rates.trips[c]![k]!));
-      });
-      if (s.stops && others) own.clear();
-      cache.set(c, own);
-      return own;
-    };
-    const perFeature = Array.from(s.combo, ownOf);
-    const busiest = new Map<number, number>();
-    for (const own of perFeature)
-      for (const [b, n] of own)
-        busiest.set(b, Math.max(busiest.get(b) ?? 0, n));
-    const best = new Map<number, number>();
-    perFeature.forEach((own, i) => {
-      let top: [number, number] | undefined;
-      for (const [b, n] of own)
-        if (
-          n > 0
-          && n >= LIMITED_SHARE * busiest.get(b)!
-          && n > (top?.[1] ?? 0)
-        )
-          top = [b, n];
-      if (top) best.set(s.ids[i]!, top[0]);
-    });
-    for (const id of this.brandShown.get(s.source) ?? [])
-      if (!best.has(id))
-        map.setFeatureState({ source: s.source, id }, { brand: -1 });
-    for (const [id, b] of best)
-      map.setFeatureState({ source: s.source, id }, { brand: b });
-    this.brandShown.set(s.source, new Set(best.keys()));
-  }
 }
+
+const keyOf = (t: Target) => t.sourceLayer ?? t.source;
+const target = (t: Target): Target =>
+  t.sourceLayer ?
+    { source: t.source, sourceLayer: t.sourceLayer }
+  : { source: t.source };

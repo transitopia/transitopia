@@ -2,33 +2,34 @@
 // RIBBON_ZOOM each line is a stroke along its centreline (both tracks of a pair as one line, split
 // lengthwise in both lines' colours where they share track); from it, a ribbon the guideway's true
 // width, one polygon per line, with the tracks as white hairlines inside, fading to half opacity close
-// in so bus stops and streets under or over the guideway show. Both come from lines.geojson
-// (packages/transit-core/src/infra/line-geometry.ts), which also splits the track into service track and
-// the rest: yards, tail tracks, spurs and track past the last platform are grey; track OSM marks as
-// under works is dashed. With ?debug=1: segment ids, node kinds and mapped GTFS platforms.
+// in so bus stops and streets under or over the guideway show. Both are in the plan's tiles
+// (packages/transit-core/DESIGN.md#plan-tiles), from lines.geojson (packages/transit-core/src/infra/line-geometry.ts),
+// which also splits the track into service track and the rest: yards, tail tracks, spurs and track
+// past the last platform are grey; track OSM marks as under works is dashed. With ?debug=1: segment
+// ids, node kinds and mapped GTFS platforms, from the track network itself.
 
 import type { FeatureCollection } from "geojson";
 import type { GeoJSONSource, Map as MlMap } from "maplibre-gl";
 import type { ExpressionSpecification } from "@maplibre/maplibre-gl-style-spec";
 import type { InfraCollection } from "@transitopia/transit-core/infra/types.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
-import type { LineGeometry } from "@transitopia/transit-core/infra/line-geometry.ts";
 import {
   feedDataPath,
-  type PlanRoute,
   type ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
+import { PLAN_TILE_LAYERS } from "@transitopia/transit-core/plan/tiles.ts";
 import type { Theme } from "@transitopia/map-style/basemap.ts";
 import {
   casingOpacity,
   DIM_OPACITY,
   focusColor,
+  LINES_SOURCE,
   onFocus,
   VEHICLES_BEFORE_LAYER,
 } from "./static.ts";
 
+/** The track network, drawn only with ?debug=1. */
 export const TRACKS_SOURCE = "tracks";
-export const LINES_SOURCE = "rail-lines";
 const TRACK_LAYERS = [
   "tracks-yard",
   "tracks-other",
@@ -75,24 +76,6 @@ export async function loadTracks(
   }
 }
 
-/**
- * The line geometry published next to the tracks (lines.geojson, by build-infra and scenarios), or
- * undefined without it: SkyTrain then falls back to the GTFS shapes, as without tracks.
- */
-export async function loadLines(
-  url: DataUrl,
-  tracksPath: string,
-): Promise<LineGeometry | undefined> {
-  try {
-    const res = await fetch(
-      url(tracksPath.replace(/tracks\.geojson$/, "lines.geojson")),
-    );
-    return res.ok ? ((await res.json()) as LineGeometry) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 export async function loadPlatforms(
   url: DataUrl,
   feed: string,
@@ -108,78 +91,38 @@ export async function loadPlatforms(
   }
 }
 
-function colored(
-  tracks: InfraCollection,
-  routes: PlanRoute[],
-  yardColor: string,
-): FeatureCollection {
-  const color = new Map(routes.map((r) => [r.key, r.color]));
-  return {
-    type: "FeatureCollection",
-    features: tracks.features.map((f) => {
-      if (f.properties.type !== "segment") return f as GeoJSON.Feature;
-      const p = f.properties;
-      const line = p.lines[0];
-      return {
-        ...f,
-        properties: {
-          ...p,
-          line: line ?? "",
-          color:
-            p.kind === "yard" || !line ?
-              yardColor
-            : (color.get(line) ?? yardColor),
-        },
-      } as GeoJSON.Feature;
-    }),
-  };
-}
-
-function coloredLines(
-  lines: LineGeometry,
-  routes: PlanRoute[],
-): FeatureCollection {
-  const color = new Map(routes.map((r) => [r.key, r.color]));
-  return {
-    type: "FeatureCollection",
-    features: lines.features.map((f) => ({
-      ...f,
-      properties: {
-        ...f.properties,
-        color: color.get(f.properties.line) ?? "#888",
-      },
-    })) as GeoJSON.Feature[],
-  };
-}
-
+/** SkyTrain's layers, drawn from the plan's tiles (none there in a region without track-level rail). */
 export function addTrackLayers(
   map: MlMap,
-  tracks: InfraCollection,
-  lines: LineGeometry,
   plan: ServicePlan,
   theme: Theme,
-  debug: boolean,
 ): void {
+  if (map.getLayer("rail-centre")) return;
   const dark = theme === "dark";
   const yard = dark ? "#5b636d" : "#a9b0b8";
   const casing = dark ? "#15181c" : "#ffffff";
-  const data = colored(tracks, plan.routes, yard);
-  const lineData = coloredLines(lines, plan.routes);
   // Above bus stop ticks, so zoomed out the line hides stops under or over the guideway; they show
   // through once it fades close in. Below exchanges, stations and labels.
   const before =
     map.getLayer(VEHICLES_BEFORE_LAYER) && map.getLayer("exchanges") ?
       "exchanges"
     : undefined;
-  if (map.getSource(TRACKS_SOURCE)) {
-    void (map.getSource(TRACKS_SOURCE) as GeoJSONSource).setData(data);
-    void (map.getSource(LINES_SOURCE) as GeoJSONSource).setData(lineData);
-    return;
-  }
-  map.addSource(TRACKS_SOURCE, { type: "geojson", data });
-  map.addSource(LINES_SOURCE, { type: "geojson", data: lineData });
+  const lines = {
+    source: LINES_SOURCE,
+    "source-layer": PLAN_TILE_LAYERS.railLines,
+  } as const;
+  const segments = {
+    source: LINES_SOURCE,
+    "source-layer": PLAN_TILE_LAYERS.railTracks,
+  } as const;
+  /** A line's colour, grey where none runs (yards, track off every line). */
+  const ownColor = [
+    "coalesce",
+    ["get", "color"],
+    yard,
+  ] as ExpressionSpecification;
+
   baseFilters.clear();
-  const seg = ["==", ["get", "type"], "segment"] as ExpressionSpecification;
   const kind = (...k: string[]) =>
     ["in", ["get", "kind"], ["literal", k]] as ExpressionSpecification;
   const width = (lo: number, mid: number, hi: number) =>
@@ -219,7 +162,7 @@ export function addTrackLayers(
   const low = { maxzoom: RIBBON_ZOOM };
   // Off the focused route (its card is open), lines are faded (static.ts → setFocusRoute): strokes
   // by colour, since their pieces overlap; the ribbon, one polygon per line, by opacity.
-  const lineColor = focusColor(plan.routes, theme, "line");
+  const lineColor = focusColor(plan.routes, theme, "line", ownColor);
   const dimmed = (x: number) =>
     ["case", onFocus("line"), x, x * DIM_OPACITY] as ExpressionSpecification;
 
@@ -227,11 +170,11 @@ export function addTrackLayers(
     {
       id: "tracks-yard",
       type: "line",
-      source: TRACKS_SOURCE,
+      ...segments,
       minzoom: 12,
-      filter: ["all", seg, kind("yard")],
+      filter: kind("yard"),
       layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": ["get", "color"], "line-width": width(0.5, 1, 3) },
+      paint: { "line-color": yard, "line-width": width(0.5, 1, 3) },
     },
     before,
   );
@@ -240,7 +183,7 @@ export function addTrackLayers(
     {
       id: "tracks-other",
       type: "line",
-      source: LINES_SOURCE,
+      ...lines,
       minzoom: 12,
       filter: track(false),
       layout: { "line-cap": "round", "line-join": "round" },
@@ -252,7 +195,7 @@ export function addTrackLayers(
     {
       id: "rail-casing",
       type: "line",
-      source: LINES_SOURCE,
+      ...lines,
       ...low,
       filter: centre,
       layout: { "line-cap": "round", "line-join": "round" },
@@ -268,7 +211,7 @@ export function addTrackLayers(
     {
       id: "tracks-minor",
       type: "line",
-      source: LINES_SOURCE,
+      ...lines,
       minzoom: 12.5,
       ...low,
       filter: ["all", track(true), ["!=", ["get", "kind"], "main"]],
@@ -285,7 +228,7 @@ export function addTrackLayers(
     {
       id: "rail-centre",
       type: "line",
-      source: LINES_SOURCE,
+      ...lines,
       ...low,
       filter: ["all", centre, ["!", shared]],
       layout: { "line-cap": "round", "line-join": "round" },
@@ -303,7 +246,7 @@ export function addTrackLayers(
     {
       id: "rail-shared",
       type: "line",
-      source: LINES_SOURCE,
+      ...lines,
       ...low,
       filter: ["all", centre, shared],
       layout: { "line-join": "round" },
@@ -333,11 +276,11 @@ export function addTrackLayers(
     {
       id: "rail-ribbon",
       type: "fill",
-      source: LINES_SOURCE,
+      ...lines,
       minzoom: RIBBON_ZOOM,
       filter: ["==", ["get", "type"], "ribbon"],
       paint: {
-        "fill-color": ["get", "color"],
+        "fill-color": ownColor,
         "fill-opacity": [
           "interpolate",
           ["linear"],
@@ -355,8 +298,8 @@ export function addTrackLayers(
     {
       id: "tracks-works",
       type: "line",
-      source: TRACKS_SOURCE,
-      filter: ["all", seg, ["has", "works"]],
+      ...segments,
+      filter: ["has", "works"],
       paint: {
         "line-color": lineColor,
         "line-width": width(2, 3, 4),
@@ -370,7 +313,7 @@ export function addTrackLayers(
     {
       id: "tracks-hairline",
       type: "line",
-      source: LINES_SOURCE,
+      ...lines,
       minzoom: RIBBON_ZOOM,
       filter: track(true),
       layout: { "line-cap": "butt", "line-join": "round" },
@@ -402,54 +345,56 @@ export function addTrackLayers(
     },
     before,
   );
-  if (debug)
-    map.addLayer(
-      {
-        id: "tracks-nodes",
-        type: "circle",
-        source: TRACKS_SOURCE,
-        minzoom: 15,
-        filter: [
-          "all",
-          ["==", ["get", "type"], "node"],
-          [
-            "in",
-            ["get", "kind"],
-            ["literal", ["switch", "buffer", "end", "crossing"]],
-          ],
-        ],
-        paint: {
-          "circle-radius": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            15,
-            1.5,
-            18,
-            4,
-          ],
-          "circle-color": [
-            "match",
-            ["get", "kind"],
-            "switch",
-            dark ? "#e6e8eb" : "#1f2328",
-            "crossing",
-            "#8e5ac8",
-            "#d92d20",
-          ],
-          "circle-stroke-width": 1,
-          "circle-stroke-color": casing,
-        },
-      },
-      before,
-    );
-
   for (const id of TRACK_LAYERS) {
     const f = map.getFilter(id);
     if (f) baseFilters.set(id, f as ExpressionSpecification);
   }
+}
 
-  if (!debug) return;
+/** ?debug=1: the track network's nodes and segment ids, and where GTFS platforms were mapped. */
+export function addTrackDebugLayers(
+  map: MlMap,
+  tracks: InfraCollection,
+  theme: Theme,
+): void {
+  if (map.getSource(TRACKS_SOURCE)) return;
+  const dark = theme === "dark";
+  const casing = dark ? "#15181c" : "#ffffff";
+  const seg = ["==", ["get", "type"], "segment"] as ExpressionSpecification;
+  map.addSource(TRACKS_SOURCE, {
+    type: "geojson",
+    data: tracks as FeatureCollection,
+  });
+  map.addLayer({
+    id: "tracks-nodes",
+    type: "circle",
+    source: TRACKS_SOURCE,
+    minzoom: 15,
+    filter: [
+      "all",
+      ["==", ["get", "type"], "node"],
+      [
+        "in",
+        ["get", "kind"],
+        ["literal", ["switch", "buffer", "end", "crossing"]],
+      ],
+    ],
+    paint: {
+      "circle-radius": ["interpolate", ["linear"], ["zoom"], 15, 1.5, 18, 4],
+      "circle-color": [
+        "match",
+        ["get", "kind"],
+        "switch",
+        dark ? "#e6e8eb" : "#1f2328",
+        "crossing",
+        "#8e5ac8",
+        "#d92d20",
+      ],
+      "circle-stroke-width": 1,
+      "circle-stroke-color": casing,
+    },
+  });
+
   map.addSource(DEBUG_SOURCE, {
     type: "geojson",
     data: { type: "FeatureCollection", features: [] },
