@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 # tippecanoe, for the plan and overview tiles (packages/transit-core/DESIGN.md#plan-tiles): built from
 # source, since Debian's package is too old to write PMTiles.
 FROM node:26-slim AS tippecanoe
+# Keep in step with .github/actions/setup-tippecanoe.
 ARG TIPPECANOE_VERSION=2.79.0
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl build-essential libsqlite3-dev zlib1g-dev \
   && curl -fsSL "https://github.com/felt/tippecanoe/archive/refs/tags/${TIPPECANOE_VERSION}.tar.gz" | tar xz -C /tmp \
