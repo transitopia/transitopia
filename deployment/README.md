@@ -193,7 +193,8 @@ curated corrections); git and GitHub cover the rest. Test a restore every quarte
 Developers work against real data without polling: `npm run snapshot:pull -- --from 2026-09-20 --to 2026-09-27 [--db]`
 downloads recorded hours for that range from the archive bucket (the last 60 days only; older periods
 have statistics and observed stop times but no raw fixes), and with `--db` restores the nightly
-developer snapshot: every table except users, sessions and raw rows (the feature registry included).
+developer snapshot: every table except users, sessions and raw rows (the feature registry included); then
+`npm run db:import-history` adds the pulled hours' positions and AIS fixes.
 Without it, `npm run features -- pull` (after `npm run db:up`, or with no database at all) loads the
 public registry export, so local places files carry production's IDs ([docs/DESIGN.md → Published features](../docs/DESIGN.md#published-features)). It needs rclone access to
 `transitopia-archive`. Snapshots stay private to the team until each source's terms allow
