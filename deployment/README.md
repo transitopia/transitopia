@@ -84,7 +84,9 @@ One-time setup (done):
    `Cache-Control` on each object when it uploads (5 minutes for the manifest, a day for the rest),
    and a Cache Rule for `data.transitopia.org` makes the edge follow it (Cloudflare doesn't cache
    `.json` by default). Upload by hand with `npm run publish:data -- <remote>`, never a bare
-   `rclone copy`: an overwrite drops the headers, and the files must go up compressed.
+   `rclone copy`: an overwrite drops the headers, and the files must go up compressed. The upload
+   passes `--no-update-modtime`: when only a file's time changed, rclone otherwise updates it by
+   copying the object onto itself with new metadata, which drops the headers too.
 4. Compression: the upload compresses every JSON and GeoJSON file with brotli at its highest
    quality (`apps/server/src/jobs/publish.ts`; staged in `var/publish/data`, recompressed only when
    the file changes) and stores it with `Content-Encoding: br` and `Cache-Control: …, no-transform`,

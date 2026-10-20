@@ -161,11 +161,16 @@ export async function publishData(
   const filters = (names: string[], flag: string) =>
     names.flatMap((n) => [flag, n]);
   const only = include ? filters(include, "--include") : [];
+  // --no-update-modtime: for a file whose content is unchanged but whose time is newer (a rebuild
+  // that wrote the same bytes), rclone would otherwise set the time by copying the object onto
+  // itself with replaced metadata, which drops Content-Encoding and Cache-Control: browsers then
+  // got brotli bytes as JSON (2026-10-20).
   const copy = (from: string, maxAge: number, args: string[], br: boolean) =>
     run("rclone", [
       "copy",
       from,
       dest,
+      "--no-update-modtime",
       ...args,
       "--header-upload",
       `Cache-Control: public, max-age=${maxAge}${br ? ", no-transform" : ""}`,
