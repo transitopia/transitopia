@@ -15,7 +15,7 @@ import { archivedFeeds } from "@transitopia/data/gtfs-day.ts";
 import type { Db } from "@transitopia/db/connect.ts";
 import type { CorrectionsRepo } from "../corrections.ts";
 import type { ServerEnv } from "../env.ts";
-import { run } from "./exec.ts";
+import { run } from "@transitopia/data/exec.ts";
 import { publishData } from "./publish.ts";
 import { isoDate } from "../dates.ts";
 import { reconcileConfig } from "../config.ts";

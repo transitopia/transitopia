@@ -1,4 +1,4 @@
-// Run a command (pipelines, rclone) and collect its output; the server's log gets each line.
+// Run a command (pipelines, rclone, tippecanoe) and collect its output; a caller can log each line.
 
 import { spawn } from "node:child_process";
 

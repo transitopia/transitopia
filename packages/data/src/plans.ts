@@ -12,11 +12,19 @@ import {
 import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
 import { readJson, writeJson } from "./paths.ts";
 
-/** A plan whole, from its plan.json and the files it names. */
-export async function readPlan(path: string): Promise<ServicePlan> {
+/**
+ * A plan whole, from its plan.json and the files it names; with `trips: false`, without its trips
+ * (each pattern keeps its start times), which is all drawing it needs.
+ */
+export async function readPlan(
+  path: string,
+  opts: { trips?: boolean } = {},
+): Promise<ServicePlan> {
   const dir = dirname(path);
-  return assemblePlan(await readJson<PublishedPlan>(path), (file) =>
-    readJson(join(dir, file)),
+  return assemblePlan(
+    await readJson<PublishedPlan>(path),
+    (file) => readJson(join(dir, file)),
+    opts,
   );
 }
 

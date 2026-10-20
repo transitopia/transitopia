@@ -224,6 +224,23 @@ describe("published plans", () => {
     ]);
   });
 
+  it("read back without their trips for drawing, keeping each pattern's start times", async () => {
+    const plan = fixture();
+    const { core, files } = await roundTrip(plan);
+    const read = async (path: string) =>
+      JSON.parse(files.get(path)!) as unknown;
+    const lines = await assemblePlan(core, read, { trips: false });
+    expect(lines.trips).toEqual([]);
+    expect(lines.shapes).toEqual(plan.shapes);
+    expect(lines.corridors!.map((c) => c.coords)).toEqual(
+      plan.corridors!.map((c) => c.coords),
+    );
+    expect(lines.patterns.map((p) => p.starts)).toEqual([
+      { wk: [6 * H, 23.5 * H] },
+      { sun: [9 * H], wk: [8 * H, 8 * H + 600, 24.5 * H] },
+    ]);
+  });
+
   it("keep a service's late trips (and every SkyTrain trip) in a file of their own", async () => {
     const { core } = await roundTrip(fixture());
     const files = core.files.trips.map((f) => [f.path, f.trips]);

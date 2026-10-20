@@ -533,15 +533,16 @@ export function sortTrips(trips: PlanTrip[]): PlanTrip[] {
 
 /**
  * A published plan read back whole, as build-schedule made it, for pipelines and the server: every
- * trip (each once), shapes and corridors. `read` loads a file named relative to the core.
+ * trip (each once), shapes and corridors. `read` loads a file named relative to the core. Without
+ * `trips` (what drawing it needs: build-plan-tiles), its patterns keep their start times instead.
  */
 export async function assemblePlan(
   core: PublishedPlan,
   read: (path: string) => Promise<unknown>,
+  { trips: withTrips = true }: { trips?: boolean } = {},
 ): Promise<ServicePlan> {
   const plan = decodeCore(core);
-  // Its trips are all here: nothing should count frequencies from the summaries instead.
-  for (const p of plan.patterns) delete p.starts;
+  delete plan.files;
   const { files } = core;
   plan.shapes = decodeShapes((await read(files.shapes)) as PublishedShapes);
   if (files.corridors)
@@ -552,6 +553,9 @@ export async function assemblePlan(
     plan.overviewCorridors = decodeCorridors(
       (await read(files.overviewCorridors)) as PublishedCorridors,
     );
+  if (!withTrips) return plan;
+  // Its trips are all here: nothing should count frequencies from the summaries instead.
+  for (const p of plan.patterns) delete p.starts;
   const seen = new Set<string>();
   const trips: PlanTrip[] = [];
   for (const ref of files.trips)
@@ -561,7 +565,6 @@ export async function assemblePlan(
         trips.push(t);
       }
   plan.trips = sortTrips(trips);
-  delete plan.files;
   return plan;
 }
 

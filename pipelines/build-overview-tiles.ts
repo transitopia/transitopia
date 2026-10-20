@@ -18,10 +18,10 @@ import {
 } from "@transitopia/data/paths.ts";
 import {
   OVERVIEW_TILES_FILE,
-  readPlanLines,
   tileInput,
   tippecanoe,
 } from "@transitopia/data/plan-tiles.ts";
+import { readPlan } from "@transitopia/data/plans.ts";
 import {
   CorridorFrequency,
   corridorStyle,
@@ -115,7 +115,7 @@ async function main() {
       log(`${feed.id}: no plan for ${today}; left out of the overview`);
       continue;
     }
-    const f = overviewFeatures(await readPlanLines(path));
+    const f = overviewFeatures(await readPlan(path, { trips: false }));
     log(`${feed.id}: ${f.length} lines from ${entry.version}`);
     features.push(...f);
   }

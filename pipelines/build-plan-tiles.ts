@@ -21,7 +21,8 @@ import {
   readJson,
   regionDataDir,
 } from "@transitopia/data/paths.ts";
-import { readPlanLines, writePlanTiles } from "@transitopia/data/plan-tiles.ts";
+import { writePlanTiles } from "@transitopia/data/plan-tiles.ts";
+import { readPlan } from "@transitopia/data/plans.ts";
 import type { RailInput } from "@transitopia/transit-core/plan/tiles.ts";
 import type { InfraCollection } from "@transitopia/transit-core/infra/types.ts";
 import type { LineGeometry } from "@transitopia/transit-core/infra/line-geometry.ts";
@@ -55,7 +56,7 @@ async function buildFeed(feed: string): Promise<void> {
   for (const v of (await exists(out)) ? (await readdir(out)).sort() : []) {
     const planPath = join(out, v, "plan.json");
     if (!(await exists(planPath))) continue;
-    const plan = await readPlanLines(planPath);
+    const plan = await readPlan(planPath, { trips: false });
     const t = await writePlanTiles(planPath, plan, dir, rail);
     used.add(resolve(out, v, t.path));
     plans++;

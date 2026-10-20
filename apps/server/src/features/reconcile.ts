@@ -17,7 +17,7 @@ import {
   type FeedRecords,
   type ReconcileSettings,
 } from "@transitopia/transit-core/features/reconcile.ts";
-import { run } from "../jobs/exec.ts";
+import { run } from "@transitopia/data/exec.ts";
 import {
   applyDecisions,
   idMinter,
