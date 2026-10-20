@@ -16,7 +16,10 @@ import {
 import { SegmentedChoice } from "../components/SegmentedChoice.tsx";
 import { ProvenanceSwatch } from "./Swatches.tsx";
 import { FREQUENCY_BANDS, bandEvery } from "@transitopia/shared/frequency.ts";
-import { DAY_WINDOW } from "@transitopia/transit-core/schedule/frequency.ts";
+import {
+  DAY_WINDOW,
+  type FrequencyWindow,
+} from "@transitopia/transit-core/schedule/frequency.ts";
 
 const CATEGORIES: {
   id: RouteCategory;
@@ -39,8 +42,9 @@ const CATEGORIES: {
 /** Key line heights per band: thicker for more frequent, as bus corridors are drawn. */
 const BAND_HEIGHTS = ["h-[5px]", "h-[4px]", "h-[2px]", "h-[1.5px]"];
 
-/** " (typical week, 06:00–21:00)" for the day window. */
-function dayWindowText(): string {
+/** The bus frequency window, for the key: " (next hour)" or " (typical week, 06:00–21:00)". */
+function windowText(window: FrequencyWindow): string {
+  if (window === "now") return " (next hour)";
   const hh = (h: number) => `${String(h % 24).padStart(2, "0")}:00`;
   return ` (typical week, ${hh(DAY_WINDOW.fromH)}–${hh(DAY_WINDOW.toH)})`;
 }
@@ -137,7 +141,7 @@ export const TransitLayers: React.FC<{
             </dt>
             <dd>
               {bandEvery(i)}
-              {snap.busFrequency === "day" ? dayWindowText() : ""}
+              {windowText(snap.busFrequency)}
             </dd>
           </React.Fragment>
         ))
