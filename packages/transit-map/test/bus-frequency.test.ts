@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Map as MlMap } from "maplibre-gl";
-import type { PlanCorridor, ServicePlan } from "@transitopia/transit-core/plan/types.ts";
+import type {
+  PlanCorridor,
+  ServicePlan,
+} from "@transitopia/transit-core/plan/types.ts";
 import { serviceDate } from "@transitopia/transit-core/time.ts";
 import { BusFrequencyLayer } from "../src/layers/bus-frequency.ts";
 import { CORRIDORS_SOURCE } from "../src/layers/static.ts";
@@ -25,8 +28,24 @@ const plan = (): ServicePlan =>
     stations: [],
     shapes: {},
     patterns: [
-      { id: 0, route: "R2", direction: 0, shape: "a", stops: [], dist: [], starts },
-      { id: 1, route: "19", direction: 0, shape: "b", stops: [], dist: [], starts },
+      {
+        id: 0,
+        route: "R2",
+        direction: 0,
+        shape: "a",
+        stops: [],
+        dist: [],
+        starts,
+      },
+      {
+        id: 1,
+        route: "19",
+        direction: 0,
+        shape: "b",
+        stops: [],
+        dist: [],
+        starts,
+      },
     ],
     trips: [],
     calendar: {
@@ -80,7 +99,14 @@ describe("BusFrequencyLayer", () => {
     const p = plan();
     const { map, set } = fakeMap();
     const update = (layer: BusFrequencyLayer) =>
-      layer.update(map, serviceDate("20261019"), 8 * 3600, "day", new Set(), undefined);
+      layer.update(
+        map,
+        serviceDate("20261019"),
+        8 * 3600,
+        "day",
+        new Set(),
+        undefined,
+      );
     const before = new BusFrequencyLayer(p);
     before.invalidate(map);
     update(before);
