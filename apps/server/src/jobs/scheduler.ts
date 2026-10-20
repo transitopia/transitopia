@@ -30,7 +30,8 @@ import type { CorrectionsRepo } from "../corrections.ts";
 import type { ServerEnv } from "../env.ts";
 import { archiveRecordings, expireRawData } from "./archive.ts";
 import { dailyStats, hasRecording, type RealtimeFeed } from "./daily.ts";
-import { buildData, publishData, writeFeatureData } from "./data-build.ts";
+import { buildData, writeFeatureData } from "./data-build.ts";
+import { publishData } from "./publish.ts";
 import { sql } from "kysely";
 
 const TICK_MS = 5 * 60_000;
@@ -196,7 +197,10 @@ export class Jobs {
           export: false,
         });
         if (written.length && this.env.dataPublishRemote)
-          await publishData(this.env.dataPublishRemote, ["places.*.json"]);
+          await publishData(this.env.dataPublishRemote, {
+            include: ["places.*.json"],
+            log: this.log,
+          });
         return { written };
       });
     }

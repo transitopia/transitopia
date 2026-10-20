@@ -82,6 +82,8 @@ export const CORRECTIONS_EXPORT_DIR = join(VAR_DIR, "corrections");
 /** Served at the web root by the transit viewer (/data/…, /tiles/…, /basemap-assets/…). */
 export const PUBLIC_DIR = join(VAR_DIR, "public");
 export const PUBLIC_DATA_DIR = join(PUBLIC_DIR, "data");
+/** var/public/data as uploaded, its text files compressed (apps/server/src/jobs/publish.ts). */
+export const PUBLISH_DATA_DIR = join(VAR_DIR, "publish", "data");
 
 /** Where a feed's files are, on disk. */
 export function feedPaths(feed: string): {
