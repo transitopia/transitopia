@@ -9,10 +9,11 @@ import type {
   ExpressionSpecification,
   GeoJSONSourceSpecification,
 } from "@maplibre/maplibre-gl-style-spec";
-import type {
-  PlanCorridor,
-  PlanRoute,
-  ServicePlan,
+import {
+  patternTripCounts,
+  type PlanCorridor,
+  type PlanRoute,
+  type ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
 import { routeSections } from "@transitopia/transit-core/plan/coverage.ts";
 import {
@@ -28,7 +29,7 @@ export const ROUTES_SOURCE = "transit-routes";
 export const CORRIDORS_SOURCE = "transit-corridors";
 /** Corridors below CORRIDOR_DETAIL_ZOOM: divided roads' carriageways merged into one line. */
 export const OVERVIEW_CORRIDORS_SOURCE = "transit-corridors-overview";
-const CORRIDOR_DETAIL_ZOOM = 14;
+export const CORRIDOR_DETAIL_ZOOM = 14;
 export const STATIONS_SOURCE = "transit-stations";
 export const EXCHANGES_SOURCE = "transit-exchanges";
 export const BUS_STOPS_SOURCE = "transit-bus-stops";
@@ -220,7 +221,7 @@ function byTier<T extends string | number>(
 
 /** Bus routes drawn as corridors rather than lines of their own: every bus route, when the plan has corridors. */
 function inCorridors(plan: ServicePlan): Set<string> {
-  if (!plan.corridors?.length) return new Set();
+  if (!overviewCorridors(plan).length) return new Set();
   return new Set(plan.routes.filter((r) => r.kind === "bus").map((r) => r.key));
 }
 
@@ -237,6 +238,11 @@ export function brandedRoutes(plan: ServicePlan): PlanRoute[] {
 /** The corridors drawn zoomed out (plans without overview corridors draw the detailed ones). */
 export function overviewCorridors(plan: ServicePlan): PlanCorridor[] {
   return plan.overviewCorridors ?? plan.corridors ?? [];
+}
+
+/** The corridors drawn zoomed in: the overview's until the detailed ones are in (PlanStore.loadDetailedCorridors). */
+export function detailedCorridors(plan: ServicePlan): PlanCorridor[] {
+  return plan.corridors ?? plan.overviewCorridors ?? [];
 }
 
 function corridorsGeoJson(corridors: PlanCorridor[]): FeatureCollection {
@@ -277,9 +283,9 @@ function routesGeoJson(plan: ServicePlan): FeatureCollection {
       geometry: { type: "LineString", coordinates: sec.coords },
     });
   }
-  const used = new Set(plan.trips.map((t) => t.pattern));
+  const trips = patternTripCounts(plan);
   for (const p of plan.patterns) {
-    if (busRoutes.has(p.route) || corridor.has(p.route) || !used.has(p.id))
+    if (busRoutes.has(p.route) || corridor.has(p.route) || !trips[p.id])
       continue;
     const route = plan.routes.find((r) => r.key === p.route)!;
     // A ferry may use any of its berth pairs on a given day (AIS decides): draw them all, tagged
@@ -488,7 +494,7 @@ export function addStaticLayers(
       routes.data as FeatureCollection,
     );
     void (map.getSource(CORRIDORS_SOURCE) as GeoJSONSource).setData(
-      corridorsGeoJson(plan.corridors ?? []),
+      corridorsGeoJson(detailedCorridors(plan)),
     );
     void (map.getSource(OVERVIEW_CORRIDORS_SOURCE) as GeoJSONSource).setData(
       corridorsGeoJson(overviewCorridors(plan)),
@@ -511,7 +517,7 @@ export function addStaticLayers(
   map.addSource(ROUTES_SOURCE, routes);
   map.addSource(CORRIDORS_SOURCE, {
     type: "geojson",
-    data: corridorsGeoJson(plan.corridors ?? []),
+    data: corridorsGeoJson(detailedCorridors(plan)),
   });
   map.addSource(OVERVIEW_CORRIDORS_SOURCE, {
     type: "geojson",

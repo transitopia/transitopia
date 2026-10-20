@@ -6,9 +6,18 @@
 // Corridors are derived per plan build, not features: they have no persistent ids (OSM ways split
 // and merge), and refer to patterns by their index in the plan.
 
-import { localProjector, simplify, type LonLat, round } from "../geo.ts";
-import type { CorridorRef, PlanCorridor } from "./types.ts";
+import {
+  localProjector,
+  round,
+  roundLine,
+  simplify,
+  type LonLat,
+} from "../geo.ts";
+import { LINE_DECIMALS, type CorridorRef, type PlanCorridor } from "./types.ts";
 import type { MatchPiece, RoadGraph } from "./road-match.ts";
+
+/** A corridor as built, with the patterns along it (published plans keep only its combo). */
+export type BuiltCorridor = PlanCorridor & { refs: CorridorRef[] };
 
 /** A pattern counts as using a road edge when it covers at least this share of it. */
 const MIN_EDGE_SHARE = 0.5;
@@ -56,8 +65,8 @@ function chainEdges(
   keep?: ReadonlySet<number>,
   /** Only continue through edges whose patterns run the same ways (off: geometry only). */
   byDirection = true,
-): PlanCorridor[] {
-  const out: PlanCorridor[] = [];
+): BuiltCorridor[] {
+  const out: BuiltCorridor[] = [];
   const sig = edges.map((e) =>
     [...e.uses.keys()].sort((x, y) => x - y).join(","),
   );
@@ -108,13 +117,10 @@ function chainEdges(
       keep ?
         nodes.filter((n, k) => k === 0 || k === nodes.length - 1 || keep.has(n))
       : undefined;
-    const coords = (
-      kept ?
-        kept.map(at)
-      : simplify(nodes.map(at), simplifyM)).map(([lon, lat]): LonLat => [
-      round(lon, 6),
-      round(lat, 6),
-    ]);
+    const coords = roundLine(
+      kept ? kept.map(at) : simplify(nodes.map(at), simplifyM),
+      LINE_DECIMALS,
+    );
     const [i0, d0] = steps[0]!;
     const [iN] = steps[steps.length - 1]!;
     const refs: CorridorRef[] = [...edges[i0]!.uses].map(([pattern, [dir]]) => {
@@ -144,19 +150,16 @@ export function buildCorridors(
   g: RoadGraph,
   matches: PatternMatch[],
   keep?: ReadonlySet<number>,
-): PlanCorridor[] {
+): BuiltCorridor[] {
   /** Per canonical edge (the lower of an edge and its twin): pattern → [direction, along where it enters]. */
   const uses = new Map<number, Map<number, [1 | -1, number]>>();
-  const out: PlanCorridor[] = [];
+  const out: BuiltCorridor[] = [];
   for (const { pattern, pieces } of matches) {
     let along = 0;
     for (const p of pieces) {
       if ("raw" in p) {
         // No road here: the pattern's own geometry, not merged with others.
-        const coords = p.raw.map(([lon, lat]): LonLat => [
-          round(lon, 6),
-          round(lat, 6),
-        ]);
+        const coords = roundLine(p.raw, LINE_DECIMALS);
         out.push({ coords, refs: [[pattern, 1, Math.round(along)]] });
         for (let k = 1; k < p.raw.length; k++) {
           const [ax, ay] = g.toXY(p.raw[k - 1]!);
@@ -236,7 +239,10 @@ export function keptRoadNodes(
   for (const e of uses.values())
     for (const n of [e.a, e.b]) {
       const [lon, lat] = at(n);
-      byCoord.set(`${round(lon, 6)},${round(lat, 6)}`, n);
+      byCoord.set(
+        `${round(lon, LINE_DECIMALS)},${round(lat, LINE_DECIMALS)}`,
+        n,
+      );
     }
   // Geometry only: the shapes' directions aren't recorded here.
   for (const c of chainEdges(
@@ -261,7 +267,7 @@ export function roadCoords(
 ): LonLat[] {
   const out: LonLat[] = [];
   const add = (p: LonLat) => {
-    const q: LonLat = [round(p[0], 6), round(p[1], 6)];
+    const q: LonLat = [round(p[0], LINE_DECIMALS), round(p[1], LINE_DECIMALS)];
     const l = out[out.length - 1];
     if (!l || l[0] !== q[0] || l[1] !== q[1]) out.push(q);
   };
@@ -288,7 +294,7 @@ export function roadCoords(
  * carrying both directions' patterns: one carriageway moves halfway to the other, onto the centreline,
  * and takes on the other's patterns.
  */
-export function mergeCarriageways(corridors: PlanCorridor[]): PlanCorridor[] {
+export function mergeCarriageways(corridors: BuiltCorridor[]): BuiltCorridor[] {
   if (!corridors.length) return [];
   const proj = localProjector(corridors[0]!.coords[0]![1]);
   interface Line {
@@ -301,6 +307,7 @@ export function mergeCarriageways(corridors: PlanCorridor[]): PlanCorridor[] {
     refs: CorridorRef[];
   }
   const lines: Line[] = corridors.map((c) => {
+    const refs = c.refs;
     const xy = c.coords.map((p) => proj.toXY(p));
     const pts: [number, number][] = [xy[0]!];
     const s = [0];
@@ -314,13 +321,13 @@ export function mergeCarriageways(corridors: PlanCorridor[]): PlanCorridor[] {
         s.push(s[s.length - 1]! + d / n);
       }
     }
-    const dirs = new Set(c.refs.map((r) => r[1]));
+    const dirs = new Set(refs.map((r) => r[1]));
     return {
       pts,
       s,
       length: s[s.length - 1]!,
       oneway: dirs.size === 1 ? [...dirs][0]! : 0,
-      refs: c.refs,
+      refs,
     };
   });
 

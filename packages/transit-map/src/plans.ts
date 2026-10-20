@@ -30,6 +30,7 @@ import type { ScenarioManifest } from "@transitopia/transit-core/scenario/types.
 import {
   preparePlan,
   scheduledVehicles,
+  withServiceTrips,
   type PreparedPlan,
   type ScheduleCorrections,
   type TripPacer,
@@ -39,10 +40,28 @@ import {
   feedDataPath,
   feedForDate,
   manifestRange,
+  patternStarts,
   regionDataPath,
   type FeedManifest,
+  type FeedManifestEntry,
+  type PlanFiles,
+  type PlanTrip,
   type ServicePlan,
+  type TripFileRef,
 } from "@transitopia/transit-core/plan/types.ts";
+import {
+  decodeCore,
+  decodeCorridors,
+  decodeShapes,
+  decodeTrips,
+  railTripFiles,
+  tripFilesFor,
+  type PublishedCorridors,
+  type PublishedPlan,
+  type PublishedShapes,
+  type PublishedTrips,
+} from "@transitopia/transit-core/plan/published.ts";
+import { activeServices } from "@transitopia/transit-core/gtfs/calendar.ts";
 import {
   addDays,
   localDate,
@@ -52,9 +71,32 @@ import {
 import type { VersionPointer } from "@transitopia/transit-core/rt/live.ts";
 import type { RegionConfig } from "./config.ts";
 
+/** Trip files arriving within this long of each other are added to the prepared plan at once (ms). */
+const TRIPS_BATCH_MS = 20;
+
+/** A feed version's plan as loaded so far (packages/transit-core/DESIGN.md#published-plans). */
+interface LoadedVersion {
+  /** Its plan.json's directory (relative to the data root, ending in "/"), which its files are relative to. */
+  dir: string;
+  files: PlanFiles;
+  /** The prepared plan with every trip file loaded so far. */
+  pp: PreparedPlan;
+  /** Trip files by path: loading, or done (loaded, or failed: their trips are missing, as before). */
+  tripFiles: Map<string, "loading" | "done">;
+  /** Each service's trips loaded so far. */
+  byService: Map<string, PlanTrip[]>;
+  /** Services with trips loaded since the prepared plan was made, until `flush` adds them. */
+  pending: Set<string>;
+  flush: ReturnType<typeof setTimeout> | undefined;
+  /** The detailed corridors: undefined until asked for, null once in (or when there are none). */
+  detail: "loading" | null | undefined;
+}
+
 export class PlanStore {
-  private prepared = new Map<string, PreparedPlan>();
-  private loading = new Map<string, Promise<PreparedPlan>>();
+  private versions = new Map<string, LoadedVersion>();
+  private loading = new Map<string, Promise<void>>();
+  /** Trip files requested with their plan's core, by path, until loadTrips takes them. */
+  private prefetched = new Map<string, Promise<PublishedTrips>>();
   private listeners = new Set<() => void>();
   private graph: TrackGraph | undefined;
   private movementIndexes = new Map<string, MovementsIndex | null>();
@@ -300,9 +342,23 @@ export class PlanStore {
   private playbackFor(
     date: ServiceDate,
     pp: PreparedPlan,
+    fromSec: number,
   ): TrainPlayback | undefined {
     if (!this.graph) return undefined;
     const version = pp.plan.feedVersion;
+    // Its movement file references every SkyTrain trip of the date's services: build it only while
+    // its trains can still be running (the day before, early on), once those trips are in.
+    const v = this.versions.get(version);
+    if (!v) return undefined;
+    const railFiles = railTripFiles(v.files, pp.servicesOn(date));
+    if (!railFiles.some((f) => f.until > fromSec)) return undefined;
+    let loaded = true;
+    for (const ref of railFiles) {
+      const state = v.tripFiles.get(ref.path);
+      if (state === undefined) this.loadTrips(v, ref);
+      if (state !== "done" || v.pending.has(ref.service)) loaded = false;
+    }
+    if (!loaded) return undefined;
     const index = this.movementIndexes.get(version);
     if (index === undefined) {
       const entry = this.manifest.feeds.find((f) => f.version === version);
@@ -460,33 +516,155 @@ export class PlanStore {
     ];
   }
 
-  /** Prepared plan for a service date, or undefined while it loads (a change event fires when ready). */
-  planFor(date: ServiceDate): PreparedPlan | undefined {
+  /**
+   * Prepared plan for a service date, with the trips of its services shown from `fromSec` on
+   * (service seconds: the day before needs only its late trips; Infinity for none, only the core),
+   * or undefined while they load (a change event fires when they're in). The same feed version's
+   * plan object (`pp.plan`) stays the same; the prepared plan is a new object whenever trips arrive.
+   */
+  planFor(date: ServiceDate, fromSec = 0): PreparedPlan | undefined {
     const feed = feedForDate(this.manifest, date);
     if (!feed) return undefined;
-    const p = this.prepared.get(feed.version);
-    if (p) return p;
-    if (!this.loading.has(feed.version)) {
-      const promise = fetch(this.dataUrl(feed.path))
-        .then((r) => {
-          if (!r.ok)
-            throw new Error(`Failed to load ${feed.path}: HTTP ${r.status}`);
-          return r.json() as Promise<ServicePlan>;
-        })
-        .then((plan) => {
-          const pp = preparePlan(plan, this.config.kinematics);
-          this.prepared.set(feed.version, pp);
-          this.loading.delete(feed.version);
-          this.emit();
-          return pp;
+    const v = this.versions.get(feed.version);
+    if (!v) {
+      this.loadVersion(feed, date, fromSec);
+      return undefined;
+    }
+    let ready = true;
+    for (const ref of tripFilesFor(v.files, v.pp.servicesOn(date), fromSec)) {
+      const state = v.tripFiles.get(ref.path);
+      if (state === undefined) this.loadTrips(v, ref);
+      // Done once its trips are in the prepared plan.
+      if (state !== "done" || v.pending.has(ref.service)) ready = false;
+    }
+    return ready ? v.pp : undefined;
+  }
+
+  /** A published file, parsed. */
+  private async getJson<T>(path: string): Promise<T> {
+    const r = await fetch(this.dataUrl(path));
+    if (!r.ok) throw new Error(`Failed to load ${path}: HTTP ${r.status}`);
+    return r.json() as Promise<T>;
+  }
+
+  /**
+   * The plan's core and what it's drawn from: shapes and the corridors drawn zoomed out. The trip
+   * files the date asking for it needs start loading with them.
+   */
+  private loadVersion(
+    feed: FeedManifestEntry,
+    date: ServiceDate,
+    fromSec: number,
+  ): void {
+    if (this.loading.has(feed.version)) return;
+    const dir = feed.path.slice(0, feed.path.lastIndexOf("/") + 1);
+    const get = <T>(path: string) => this.getJson<T>(path);
+    const promise = get<PublishedPlan>(feed.path)
+      .then(async (core) => {
+        const { files } = core;
+        for (const ref of tripFilesFor(
+          files,
+          activeServices(core.calendar, date),
+          fromSec,
+        )) {
+          const trips = get<PublishedTrips>(dir + ref.path);
+          // Handled when loadTrips takes it.
+          trips.catch(() => {});
+          this.prefetched.set(dir + ref.path, trips);
+        }
+        const [shapes, overview] = await Promise.all([
+          get<PublishedShapes>(dir + files.shapes),
+          files.overviewCorridors ?
+            get<PublishedCorridors>(dir + files.overviewCorridors)
+          : undefined,
+        ]);
+        const plan = decodeCore(core);
+        plan.shapes = decodeShapes(shapes);
+        if (overview) plan.overviewCorridors = decodeCorridors(overview);
+        this.versions.set(feed.version, {
+          dir,
+          files,
+          pp: preparePlan(plan, this.config.kinematics),
+          tripFiles: new Map(),
+          byService: new Map(),
+          pending: new Set(),
+          flush: undefined,
+          detail: files.corridors ? undefined : null,
         });
-      promise.catch((e) => {
+        this.loading.delete(feed.version);
+        this.emit();
+      })
+      .catch((e: unknown) => {
         console.error(e);
         this.loading.delete(feed.version);
       });
-      this.loading.set(feed.version, promise);
+    this.loading.set(feed.version, promise);
+  }
+
+  /** A file of a service's trips, added to the prepared plan when it's in. */
+  private loadTrips(v: LoadedVersion, ref: TripFileRef): void {
+    v.tripFiles.set(ref.path, "loading");
+    const path = v.dir + ref.path;
+    const json =
+      this.prefetched.get(path) ?? this.getJson<PublishedTrips>(path);
+    this.prefetched.delete(path);
+    void json
+      .then(decodeTrips)
+      .catch((e: unknown) => {
+        console.error(e);
+        return null;
+      })
+      .then((trips) => {
+        v.tripFiles.set(ref.path, "done");
+        if (trips?.length) {
+          v.byService.set(ref.service, [
+            ...(v.byService.get(ref.service) ?? []),
+            ...trips,
+          ]);
+          v.pp.plan.trips.push(...trips);
+          v.pending.add(ref.service);
+        }
+        // Files arriving together are prepared together (each pass copies the trip index).
+        v.flush ??= setTimeout(() => {
+          v.flush = undefined;
+          if (v.pending.size)
+            v.pp = withServiceTrips(
+              v.pp,
+              new Map([...v.pending].map((s) => [s, v.byService.get(s)!])),
+              this.config.kinematics,
+            );
+          v.pending.clear();
+          this.emit();
+        }, TRIPS_BATCH_MS);
+      });
+  }
+
+  /**
+   * Whether the plan's detailed corridors (drawn zoomed in) are in `plan.corridors`: starts loading
+   * them the first time it's asked, and a change event fires when they're in. True for a plan
+   * without any.
+   */
+  loadDetailedCorridors(pp: PreparedPlan): boolean {
+    const v = this.versions.get(pp.plan.feedVersion);
+    if (!v || v.detail === null) return true;
+    if (v.detail === undefined) {
+      v.detail = "loading";
+      void fetch(this.dataUrl(v.dir + v.files.corridors!))
+        .then(async (r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return decodeCorridors((await r.json()) as PublishedCorridors);
+        })
+        .then((cs) => {
+          v.pp.plan.corridors = cs;
+          v.detail = null;
+          this.emit();
+        })
+        .catch((e: unknown) => {
+          console.error("Failed to load the detailed corridors:", e);
+          v.detail = null;
+        });
     }
-    return undefined;
+    return false;
   }
 
   onChange(fn: () => void): () => void {
@@ -518,11 +696,12 @@ export class PlanStore {
     const today = localDate(t);
     const out: VehicleState[] = [];
     for (const date of [addDays(today, -1), today]) {
-      const pp = this.planFor(date);
-      if (!pp) continue;
       const sec = (t - serviceDayStart(date)) / 1000;
       if (sec < 0) continue;
-      const pb = this.playbackFor(date, pp);
+      // The day before: only its trips still running.
+      const pp = this.planFor(date, date === today ? 0 : sec);
+      if (!pp) continue;
+      const pb = this.playbackFor(date, pp, date === today ? 0 : sec);
       if (pb) {
         out.push(...pb.vehiclesAt(sec, date, routes));
         const nonRail = new Set(
@@ -623,21 +802,18 @@ export function hubsOf(plan: ServicePlan): BusHub[] {
   return c.hubs;
 }
 
-const railServiceCache = new WeakMap<PreparedPlan, Set<string>>();
+const railServiceCache = new WeakMap<ServicePlan, Set<string>>();
 /** Service ids with SkyTrain trips (movement files are keyed by these only). */
 function railServices(pp: PreparedPlan): Set<string> {
-  let s = railServiceCache.get(pp);
+  let s = railServiceCache.get(pp.plan);
   if (!s) {
+    const starts = patternStarts(pp.plan);
     s = new Set(
-      pp.plan.trips
-        .filter(
-          (t) =>
-            pp.routes.get(pp.plan.patterns[t.pattern]!.route)?.kind
-            === "skytrain",
-        )
-        .map((t) => t.service),
+      pp.plan.patterns
+        .filter((p) => pp.routes.get(p.route)?.kind === "skytrain")
+        .flatMap((p) => Object.keys(starts[p.id]!)),
     );
-    railServiceCache.set(pp, s);
+    railServiceCache.set(pp.plan, s);
   }
   return s;
 }

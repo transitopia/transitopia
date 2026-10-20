@@ -7,11 +7,16 @@
 import {
   distM,
   localProjector,
-  round,
+  roundLine,
   cumulativeLengths,
   type LonLat,
 } from "../geo.ts";
-import type { FerryBerthPlan, PlanTrip, ServicePlan } from "./types.ts";
+import {
+  LINE_DECIMALS,
+  type FerryBerthPlan,
+  type PlanTrip,
+  type ServicePlan,
+} from "./types.ts";
 
 export interface FerryBerth {
   /** Vessel centre when berthed. */
@@ -186,8 +191,8 @@ export function berthPath(
     next.push(pts[pts.length - 1]!);
     pts = next;
   }
-  return pts.map(([x, y]) => {
-    const [lon, lat] = proj.toLonLat(x, y);
-    return [round(lon, 6), round(lat, 6)] as LonLat;
-  });
+  return roundLine(
+    pts.map(([x, y]) => proj.toLonLat(x, y)),
+    LINE_DECIMALS,
+  );
 }

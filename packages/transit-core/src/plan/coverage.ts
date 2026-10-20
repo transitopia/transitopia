@@ -6,7 +6,12 @@
 // are "empty"; sections well below the route's busiest cell are "limited".
 
 import { cumulativeLengths, distM, pointAlong, type LonLat } from "../geo.ts";
-import { passengerLegs, type PlanPattern, type ServicePlan } from "./types.ts";
+import {
+  passengerLegs,
+  patternTripCounts,
+  type PlanPattern,
+  type ServicePlan,
+} from "./types.ts";
 
 export interface RouteSection {
   route: string;
@@ -122,15 +127,13 @@ export function routeSections(
   const minRun = opts.minRunM ?? 150;
   const mergeM = opts.mergeM ?? 10;
   const emptyNearM = opts.emptyNearM ?? 15;
-  const trips = new Map<number, number>();
-  for (const t of plan.trips)
-    trips.set(t.pattern, (trips.get(t.pattern) ?? 0) + 1);
+  const counts = patternTripCounts(plan);
 
   const out: RouteSection[] = [];
   for (const route of routeKeys) {
     // Patterns without trips (e.g. superseded by a scenario) aren't drawn.
     const patterns = plan.patterns.filter(
-      (p) => p.route === route && (trips.get(p.id) ?? 0) > 0,
+      (p) => p.route === route && (counts[p.id] ?? 0) > 0,
     );
     // Samples per shape (every `step` metres plus every vertex, so identical shapes give identical
     // lines, corners included), and passenger-carrying trips per grid cell (each pattern counts a
@@ -182,10 +185,7 @@ export function routeSections(
         if (inner) carriedGrid.add([s.lon, s.lat], [s.lon, s.lat]);
       }
       for (const cell of new Set(carried.map((s) => s.cell)))
-        cellTrips.set(
-          cell,
-          (cellTrips.get(cell) ?? 0) + (trips.get(p.id) ?? 0),
-        );
+        cellTrips.set(cell, (cellTrips.get(cell) ?? 0) + (counts[p.id] ?? 0));
     }
     const max = Math.max(0, ...cellTrips.values());
     const minSamples = Math.ceil(minRun / step);
@@ -195,7 +195,7 @@ export function routeSections(
     for (const p of patterns)
       shapeTrips.set(
         p.shape,
-        (shapeTrips.get(p.shape) ?? 0) + (trips.get(p.id) ?? 0),
+        (shapeTrips.get(p.shape) ?? 0) + (counts[p.id] ?? 0),
       );
     for (const [shape, list] of samples) {
       const cls: Cls[] = list.map((s) => {

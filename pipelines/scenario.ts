@@ -1,7 +1,7 @@
 // Build a scenario (packages/transit-core/DESIGN.md#scenarios): alternate track and/or service defined in
 // config/regions/<region>/scenarios/<name>/scenario.json (a region with track-level rail), run through the same pipeline as the base network:
 // compose tracks → modify service → map platforms → infer runs → movements. Output:
-//   var/public/data/regions/<region>/scenarios/<name>/{manifest.json, plan.json, tracks.geojson, movements/}
+//   var/public/data/regions/<region>/scenarios/<name>/{manifest.json, plan.json and its parts, tracks.geojson, movements/}
 // View with ?scenario=<name>.
 //
 //   npm run scenario -- <name>
@@ -31,6 +31,7 @@ import {
 } from "@transitopia/data/infra.ts";
 import { buildAllMovements } from "./lib/movements.ts";
 import { regionDataPath } from "@transitopia/transit-core/plan/types.ts";
+import { writePlan } from "@transitopia/data/plans.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
 import { mapPlatforms } from "@transitopia/transit-core/infra/platforms.ts";
 import { routePattern } from "@transitopia/transit-core/infra/patterns.ts";
@@ -153,7 +154,7 @@ async function main() {
   });
 
   // 5. Publish.
-  await writeJson(join(out, "plan.json"), plan);
+  await writePlan(join(out, "plan.json"), plan);
   await writeJson(join(out, "tracks.geojson"), tracks);
   // Line-level geometry for drawing, next to the tracks (packages/transit-map/README.md#rendering).
   await writeJson(

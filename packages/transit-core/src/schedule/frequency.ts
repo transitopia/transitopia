@@ -3,6 +3,7 @@
 // and the feed's day types (the distinct sets of services a date can have).
 
 import { addDays, type ServiceDate } from "../time.ts";
+import { patternStarts } from "../plan/types.ts";
 import type { PreparedPlan } from "./engine.ts";
 
 /** The route card's day strip: an hour cell from 05:00 to 01:00 (service hours, may exceed 24). */
@@ -38,15 +39,18 @@ export function routeMinutes(
     const n = Math.max(...perDir);
     return n ? seconds / 60 / n : undefined;
   }
+  // Its patterns' start times, which don't need the trips loaded (plan/published.ts).
+  const starts = patternStarts(pp.plan);
   const perDirection = new Map<number, number>();
-  for (const service of pp.servicesOn(date)) {
-    for (const pt of pp.tripsByService.get(service) ?? []) {
-      if (pt.trip.start >= to) break; // sorted by start
-      if (pt.trip.start < from || pt.route.key !== routeKey) continue;
-      const d = pt.pattern.direction;
-      perDirection.set(d, (perDirection.get(d) ?? 0) + 1);
+  for (const service of pp.servicesOn(date))
+    for (const p of pp.plan.patterns) {
+      if (p.route !== routeKey) continue;
+      let n = 0;
+      for (const s of starts[p.id]![service] ?? [])
+        if (s >= from && s < to) n++;
+      if (n)
+        perDirection.set(p.direction, (perDirection.get(p.direction) ?? 0) + n);
     }
-  }
   const n = Math.max(0, ...perDirection.values());
   return n ? seconds / 60 / n : undefined;
 }

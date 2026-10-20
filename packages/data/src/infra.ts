@@ -3,6 +3,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PUBLIC_DIR, readJson, readManifest, regionPaths } from "./paths.ts";
+import { readPlan } from "./plans.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
 import type { InfraCollection } from "@transitopia/transit-core/infra/types.ts";
 import type {
@@ -65,13 +66,13 @@ export async function loadLatestPlan(feed: string): Promise<ServicePlan> {
     a.start < b.start ? 1 : -1,
   )[0];
   if (!latest) throw new Error(`No built ${feed} plans; run npm run data:gtfs`);
-  return readJson<ServicePlan>(join(PUBLIC_DIR, latest.path));
+  return readPlan(join(PUBLIC_DIR, latest.path));
 }
 
 /** Every built version of a feed's plan. */
 export async function loadAllPlans(feed: string): Promise<ServicePlan[]> {
   const manifest = await readManifest(feed);
   return Promise.all(
-    manifest.feeds.map((f) => readJson<ServicePlan>(join(PUBLIC_DIR, f.path))),
+    manifest.feeds.map((f) => readPlan(join(PUBLIC_DIR, f.path))),
   );
 }

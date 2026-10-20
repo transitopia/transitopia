@@ -22,6 +22,7 @@ import {
   brandedRoutes,
   BUS_TICKS_SOURCE,
   CORRIDORS_SOURCE,
+  detailedCorridors,
   OVERVIEW_CORRIDORS_SOURCE,
   overviewCorridors,
   tickStops,
@@ -38,6 +39,8 @@ const LIMITED_SHARE = 0.25;
 
 export class BusFrequencyLayer {
   readonly plan: ServicePlan;
+  /** The plan's detailed corridors when it was made (they load later: a new layer is made then). */
+  readonly corridors: ServicePlan["corridors"];
   private readonly freq: BusFrequency;
   private readonly combos: CorridorFrequency;
   /** Per source: its features' ids (corridor or stop index) and their combos. */
@@ -63,6 +66,7 @@ export class BusFrequencyLayer {
 
   constructor(plan: ServicePlan) {
     this.plan = plan;
+    this.corridors = plan.corridors;
     this.freq = new BusFrequency(plan);
     this.combos = new CorridorFrequency(plan);
     const brands = brandedRoutes(plan).map((r) => r.key);
@@ -76,7 +80,7 @@ export class BusFrequencyLayer {
     });
     const stopIds = tickStops(plan);
     this.sources = [
-      corridors(CORRIDORS_SOURCE, plan.corridors),
+      corridors(CORRIDORS_SOURCE, detailedCorridors(plan)),
       corridors(OVERVIEW_CORRIDORS_SOURCE, overviewCorridors(plan)),
       {
         source: BUS_TICKS_SOURCE,
@@ -88,10 +92,17 @@ export class BusFrequencyLayer {
     ];
   }
 
-  /** Forget what was applied (after the sources were re-created or their data replaced). */
-  invalidate(): void {
+  /**
+   * Forget what was applied, after the sources were re-created or their data replaced: and clear
+   * their feature state, which MapLibre keeps by feature id across new data, where an id may now be
+   * another corridor (the detailed corridors replacing the overview's, which stand in for them
+   * until they load, or another feed's).
+   */
+  invalidate(map: MlMap): void {
     this.key = "";
     this.brandShown.clear();
+    for (const { source } of this.sources)
+      if (map.getSource(source)) map.removeFeatureState({ source });
   }
 
   update(

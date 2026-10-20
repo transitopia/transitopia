@@ -175,9 +175,9 @@ config/
 
 | Region | Feeds (operator) | Drawn |
 |---|---|---|
-| `metro-vancouver` | `translink` (TransLink) | SkyTrain, SeaBus, West Coast Express, 99, R1–R6, 25 |
-| `greater-victoria` | `bc-transit-victoria` (BC Transit) | 95 Blink RapidBus, 15, 70 |
-| `central-okanagan` | `bc-transit-kelowna` (BC Transit) | 97 Okanagan RapidBus |
+| `metro-vancouver` | `translink` (TransLink) | SkyTrain, SeaBus, West Coast Express, 99, R1–R6, 5, 6, 9, 16, 19, 25, 49 |
+| `greater-victoria` | `bc-transit-victoria` (BC Transit) | Every bus route (95 Blink RapidBus as frequent) |
+| `central-okanagan` | `bc-transit-kelowna` (BC Transit) | Every bus route (97 Okanagan RapidBus as frequent) |
 
 Feeds are separate from regions because neither contains the other: a ferry between two regions (Hullo, Vancouver–Victoria) is one feed in both, and a region can show several agencies. Operators are separate from feeds because one operator publishes many: BC Transit has a feed per transit system, in several regions.
 

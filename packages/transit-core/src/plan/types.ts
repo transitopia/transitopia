@@ -80,6 +80,13 @@ export interface PlanPattern {
    * @ Commercial Dr). Absent when every stop allows both.
    */
   access?: number[];
+  /**
+   * Per service_id, its trips' start times (seconds since service-day start, sorted): what
+   * frequencies are counted from without the trips. Only in a plan whose trips are loaded by
+   * service (the browser's, from the published core: plan/published.ts); elsewhere they're the
+   * trips' own (`patternStarts`).
+   */
+  starts?: Record<string, number[]> | undefined;
 }
 
 /**
@@ -91,8 +98,32 @@ export type CorridorRef = [pattern: number, dir: 1 | -1, along: number];
 /** A stretch of road and the bus patterns running along it (packages/transit-core/DESIGN.md#bus-corridors). */
 export interface PlanCorridor {
   coords: LonLat[];
-  refs: CorridorRef[];
+  /** Only while building the plan: a published plan carries its `combo` instead. */
+  refs?: CorridorRef[] | undefined;
+  /** Its frequency combo (`ServicePlan.frequency`), in a published plan. */
+  combo?: number | undefined;
 }
+
+/**
+ * What the map's corridors and stop ticks are coloured by, worked out when the plan is published
+ * (plan/corridor-frequency.ts): routes by direction, the combinations of them found on corridors
+ * and at stops, and each stop's combination.
+ */
+export interface PlanFrequencyTable {
+  routeDirs: { route: string; patterns: number[] }[];
+  combos: {
+    units: { routeDir: number; patterns: number[] }[];
+    bundles: number[][];
+  }[];
+  /** Per plan stop, its combo (the routes leaving it). */
+  stopCombo: number[];
+}
+
+/**
+ * Shapes and corridors have this many decimals (about 1 m), which their published coding keeps
+ * exactly (plan/published.ts): build-schedule rounds them to it before measuring along them.
+ */
+export const LINE_DECIMALS = 5;
 
 export const STOP_NO_PICKUP = 1;
 export const STOP_NO_DROPOFF = 2;
@@ -124,6 +155,36 @@ export function passengerLegs(p: PlanPattern): boolean[] {
   return Array.from(
     { length: n - 1 },
     (_, i) => boardedBy[i]! && alightFrom[i + 1]!,
+  );
+}
+
+/**
+ * Per pattern, per service_id: its trips' start times (s, sorted). From the patterns' `starts`
+ * where the plan has them (the browser's, whose trips load by service), else from its trips.
+ */
+export function patternStarts(
+  plan: Pick<ServicePlan, "patterns" | "trips">,
+): Record<string, number[]>[] {
+  if (plan.patterns.every((p) => p.starts))
+    return plan.patterns.map((p) => p.starts!);
+  // Per trips array: scenarios and disruptions replace a plan's trips with a new one.
+  const cached = startsOfTrips.get(plan.trips);
+  if (cached?.length === plan.patterns.length) return cached;
+  const out = plan.patterns.map((): Record<string, number[]> => ({}));
+  for (const t of plan.trips) (out[t.pattern]![t.service] ??= []).push(t.start);
+  for (const byService of out)
+    for (const list of Object.values(byService)) list.sort((a, b) => a - b);
+  startsOfTrips.set(plan.trips, out);
+  return out;
+}
+const startsOfTrips = new WeakMap<PlanTrip[], Record<string, number[]>[]>();
+
+/** Per pattern, how many trips follow it on any day (`patternStarts`). */
+export function patternTripCounts(
+  plan: Pick<ServicePlan, "patterns" | "trips">,
+): number[] {
+  return patternStarts(plan).map((byService) =>
+    Object.values(byService).reduce((n, list) => n + list.length, 0),
   );
 }
 
@@ -188,6 +249,34 @@ export interface ServicePlan {
   corridors?: PlanCorridor[];
   /** The same, with the two carriageways of divided roads merged into one line, for zoomed-out views. */
   overviewCorridors?: PlanCorridor[];
+  /** The corridors' and stops' frequency combos, in a published plan with corridors. */
+  frequency?: PlanFrequencyTable | undefined;
+  /**
+   * Where a published plan's other parts are (plan/published.ts): set on the core the browser
+   * loads, whose shapes, corridors and trips come from these files.
+   */
+  files?: PlanFiles | undefined;
+}
+
+/** A published plan's files, relative to its plan.json (packages/transit-core/DESIGN.md#published-plans). */
+export interface PlanFiles {
+  shapes: string;
+  corridors?: string | undefined;
+  overviewCorridors?: string | undefined;
+  trips: TripFileRef[];
+}
+
+/** One file of a service's trips. */
+export interface TripFileRef {
+  service: string;
+  path: string;
+  trips: number;
+  /**
+   * No trip in it is shown after this (service seconds). A service's trips still running towards
+   * midnight are in a late file of their own, and the others' file says 24:00, so the day after
+   * needs only the late file.
+   */
+  until: number;
 }
 
 /**

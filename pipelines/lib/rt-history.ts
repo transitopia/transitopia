@@ -10,19 +10,16 @@ import {
   trackedOnly,
   type RtSnapshot,
 } from "@transitopia/transit-core/rt/types.ts";
-import {
-  feedForDate,
-  type ServicePlan,
-} from "@transitopia/transit-core/plan/types.ts";
+import { feedForDate } from "@transitopia/transit-core/plan/types.ts";
 import {
   preparePlan,
   type PreparedPlan,
 } from "@transitopia/transit-core/schedule/engine.ts";
 import { localDate } from "@transitopia/transit-core/time.ts";
+import { readPlan } from "@transitopia/data/plans.ts";
 import {
   PUBLIC_DIR,
   feedPaths,
-  readJson,
   readManifest,
   regionOfFeed,
   readFeedConfig,
@@ -89,10 +86,7 @@ export async function planLoader(feed: string) {
       if (!pp)
         cache.set(
           feed.version,
-          (pp = preparePlan(
-            await readJson<ServicePlan>(join(PUBLIC_DIR, feed.path)),
-            kin,
-          )),
+          (pp = preparePlan(await readPlan(join(PUBLIC_DIR, feed.path)), kin)),
         );
       return pp;
     },

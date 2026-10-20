@@ -3,6 +3,8 @@
 // (data/feeds/<feed>/<version>/places.<n>.json), written from a registry in its export form, which
 // is what the server reads from its database and what `npm run features -- pull` downloads.
 
+import { decodeCore } from "@transitopia/transit-core/plan/published.ts";
+import { readPlanCore } from "./plans.ts";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -260,7 +262,8 @@ export async function writeFeedPlaces(
     for (const entry of manifest.feeds) {
       const planPath = feedVersionFile(feed, entry.version, "plan.json");
       if (!existsSync(planPath)) continue;
-      const plan = JSON.parse(await readFile(planPath, "utf8")) as ServicePlan;
+      // Its ids are all in the core.
+      const plan = decodeCore(await readPlanCore(planPath));
       const places = buildPlaces(r, plan, feed, entry.version);
       if (!places) {
         log(
