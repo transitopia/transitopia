@@ -349,6 +349,10 @@ export class TransitEngine {
   private shownFeed: PreparedPlan | undefined;
   /** The plan tiles in view have loaded since the lines' source was (re)added (`linesReady`). */
   private linesReady = false;
+  /** Whether the engine is shown (`setVisible`). */
+  private visible = true;
+  /** Layers hidden by `setVisible(false)`, to show again. */
+  private hiddenLayers: string[] = [];
   /** The stations' and exchanges' grouping the static layers were drawn with (hubsOf). */
   private shownHubs: BusHub[] | undefined;
   /** The feed the engine shows (its vehicles' `rt` refs are in it). */
@@ -493,6 +497,7 @@ export class TransitEngine {
       point: { x: number; y: number };
       originalEvent: MouseEvent;
     }) => {
+      if (!this.visible) return;
       // Near several things: ask which (packages/transit-map/README.md#tap-menu).
       const choices = this.choicesAt(e.point.x, e.point.y);
       if (choices.length > 1) {
@@ -524,6 +529,7 @@ export class TransitEngine {
       this.publish();
     };
     const onMouseMove = (e: { point: { x: number; y: number } }) => {
+      if (!this.visible) return;
       map.getCanvas().style.cursor =
         (
           this.vehicles.pickAt(e.point.x, e.point.y)
@@ -532,10 +538,13 @@ export class TransitEngine {
           "pointer"
         : "";
     };
+    // A source loading tiles fires sourcedata; one showing tiles it already had may not: idle
+    // catches those.
     const onSourceData = (e: { sourceId?: string }) => {
       if (
         this.linesReady
-        || e.sourceId !== LINES_SOURCE
+        || !this.visible
+        || (e.sourceId !== undefined && e.sourceId !== LINES_SOURCE)
         || !map.getSource(LINES_SOURCE)
         || !map.isSourceLoaded(LINES_SOURCE)
       )
@@ -544,6 +553,8 @@ export class TransitEngine {
       this.publish();
     };
     map.on("sourcedata", onSourceData);
+    const onIdle = () => onSourceData({});
+    map.on("idle", onIdle);
     map.on("style.load", onStyleLoad);
     map.on("styledata", onStyleData);
     map.on("click", onClick);
@@ -561,6 +572,7 @@ export class TransitEngine {
       map.off("rotatestart", onGesture);
       map.off("move", onMove);
       map.off("sourcedata", onSourceData);
+      map.off("idle", onIdle);
       map.off("style.load", onStyleLoad);
       map.off("styledata", onStyleData);
       map.off("click", onClick);
@@ -1282,6 +1294,45 @@ export class TransitEngine {
 
   getSnapshot = (): TransitSnapshot => this.snapshot;
 
+  /**
+   * Hide the engine (its layers, vehicles, taps) and pause it (no frames, no live polling), or show
+   * it again as it was: a host keeps the engine of a region it zoomed out of, to show it again at
+   * once when zoomed back in (apps/web/README.md#transit-mode). The clock keeps its time.
+   */
+  setVisible(visible: boolean): void {
+    if (visible === this.visible || this.disposed) return;
+    this.visible = visible;
+    const { map } = this;
+    if (!visible) {
+      cancelAnimationFrame(this.raf);
+      this.live.stop();
+      this.setFollow(false);
+      this.vehicles.detach();
+      this.hiddenLayers = [];
+      for (const layer of map.getStyle()?.layers ?? [])
+        if (
+          "source" in layer
+          && SOURCES.includes(layer.source)
+          && map.getLayoutProperty(layer.id, "visibility") !== "none"
+        ) {
+          this.hiddenLayers.push(layer.id);
+          map.setLayoutProperty(layer.id, "visibility", "none");
+        }
+      return;
+    }
+    for (const id of this.hiddenLayers)
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
+    this.hiddenLayers = [];
+    // Its tiles in the new view load from now on (MapLibre loads none for hidden layers).
+    this.linesReady = false;
+    // Layers a new style (a theme switch while hidden) dropped are added again.
+    this.syncStatic(true);
+    this.vehicles.attach();
+    this.invalidate();
+    this.publish();
+    this.raf = requestAnimationFrame(this.frame);
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -1552,6 +1603,7 @@ export class TransitEngine {
    */
   private syncStatic(force = false): void {
     const { map, store } = this;
+    if (!this.visible) return;
     const pp = store.planFor(displayServiceDate(this.clock.now()), Infinity);
     if (!pp || !this.styleReady || this.disposed) return;
     const tiles = store.tilesUrl(pp);

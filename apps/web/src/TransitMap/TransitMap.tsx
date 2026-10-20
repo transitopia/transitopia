@@ -208,8 +208,16 @@ export default function TransitMap() {
   // Bumped when the published data is rebuilt under an engine: the engine is made again.
   const [build, setBuild] = React.useState(0);
   useInitialView(map);
-  useOverview(map, theme, engine);
   const { region, inView, active, ready } = useRegion(map);
+  // The region whose engine is kept: the last one zoomed in to. Zoomed out, its engine is hidden
+  // (and paused) rather than disposed, so zooming back in shows it at once; zooming in to
+  // another region replaces it.
+  const [kept, setKept] = React.useState<SiteRegion>();
+  React.useEffect(() => {
+    if (ready && active) setKept(region);
+  }, [ready, active, region]);
+  const shown = active && kept === region;
+  useOverview(map, theme, shown ? engine : undefined);
   // The first engine takes its selection from the URL; one for a region panned to later starts
   // without it (a vehicle or place of another region), at the same time, unless the map moved
   // there to find the selection (`carry`, from the feature resolver).
@@ -217,7 +225,8 @@ export default function TransitMap() {
   const carry = React.useRef<{ key: string; region: string }>(undefined);
 
   React.useEffect(() => {
-    if (!map || !ready || !active) return;
+    if (!map || !kept) return;
+    const region = kept;
     let cancelled = false;
     let created: TransitEngine | undefined;
     const params = new URLSearchParams(location.search);
@@ -267,7 +276,11 @@ export default function TransitMap() {
       setEngine(undefined);
       delete (window as { transit?: unknown }).transit;
     };
-  }, [map, region, active, ready, build]);
+  }, [map, kept, build]);
+
+  React.useEffect(() => {
+    engine?.setVisible(shown);
+  }, [engine, shown]);
 
   // Runs before the map swaps its style (child effects run first), so the engine re-adds its
   // layers in the new theme's colours when the new style loads.
@@ -278,7 +291,7 @@ export default function TransitMap() {
 
   return (
     <>
-      {error ?
+      {error && active ?
         <MapOverlayWindow className="top-5 sm:top-24 text-red-700 dark:text-red-300">
           <div role="alert">{error}</div>
         </MapOverlayWindow>
@@ -306,7 +319,7 @@ export default function TransitMap() {
           .
         </MapOverlayWindow>
       : null}
-      {engine ?
+      {engine && shown ?
         <EngineControls
           engine={engine}
           onElsewhere={(key, bounds) => {
