@@ -11,7 +11,10 @@ export interface FrequencyBand {
    * and including this (the last band has none).
    */
   maxMinutes?: number;
-  /** Colours per theme: blue → red, never green or amber (those mean other things on the site). */
+  /**
+   * Colours per theme: blue → red, fading to a muted rose for Bad, never green or amber (those mean
+   * other things on the site).
+   */
   color: { light: string; dark: string };
 }
 
@@ -32,9 +35,11 @@ export const FREQUENCY_BANDS: readonly FrequencyBand[] = [
     id: "poor",
     name: "Poor",
     maxMinutes: 20,
-    color: { light: "#ec6a80", dark: "#dc6488" },
+    color: { light: "#e0475f", dark: "#e05470" },
   },
-  { id: "bad", name: "Bad", color: { light: "#b0213a", dark: "#d4333f" } },
+  // Bad is the quietest band, not the loudest: a muted rose, so "a bus runs here" doesn't outshine
+  // the streets that have good service (the map also draws it faded and thin).
+  { id: "bad", name: "Bad", color: { light: "#c9a3ab", dark: "#7a5a62" } },
 ];
 
 /**

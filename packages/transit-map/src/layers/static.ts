@@ -157,6 +157,12 @@ const corridorDim: ExpressionSpecification = [
   ["feature-state", "dim"],
   false,
 ];
+/** A corridor carrying the focused route (its card is open). */
+const corridorFocused: ExpressionSpecification = [
+  "all",
+  ["!=", focusKey, ""],
+  ["!", corridorDim],
+];
 const corridorCasingOpacity: ExpressionSpecification = [
   "case",
   corridorDim,
@@ -176,11 +182,16 @@ const TIER_COLORS = {
 };
 /** Corridor widths per tier at a few zooms. */
 const TIER_WIDTHS: [number, number[]][] = [
-  [10, [2.4, 1.5, 0.8, 0.6]],
-  [13, [5, 3.4, 1.8, 1.1]],
-  [15, [7, 5, 2.6, 1.6]],
-  [17, [10, 7, 3.4, 2]],
+  [10, [2.4, 1.5, 1, 0.6]],
+  [13, [5, 3.4, 2.2, 1]],
+  [15, [7, 5, 3, 1.4]],
+  [17, [10, 7, 4, 1.8]],
 ];
+/**
+ * Corridor opacity per tier: Bad recedes, so worse service is always less prominent (except on the
+ * focused route).
+ */
+const TIER_OPACITY = [1, 1, 1, 0.7];
 const TIER = [
   "coalesce",
   ["feature-state", "tier"],
@@ -612,7 +623,26 @@ export function addStaticLayers(
           ),
           byTier(tierColors, "rgba(0,0,0,0)"),
         ],
-        "line-width": tierWidth(0, [0, 1, 2, 3]),
+        // …and at least as wide as Poor, so a Bad route stands out when its card is open.
+        "line-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          ...TIER_WIDTHS.flatMap(([z, w]) => [
+            z,
+            [
+              "case",
+              corridorFocused,
+              byTier(
+                w.map((x) => Math.max(x, w[2]!)),
+                0,
+              ),
+              byTier(w, 0),
+            ],
+          ]),
+        ] as ExpressionSpecification,
+        // Full strength on the focused route's corridors, however infrequent.
+        "line-opacity": ["case", corridorFocused, 1, byTier(TIER_OPACITY, 1)],
       },
     });
     // Routes with their own colour, over the corridors they run along: the busiest one running at
