@@ -197,11 +197,10 @@ export class Jobs {
           export: false,
         });
         if (written.length && this.env.dataPublishRemote)
-          await publishData(
-            this.env.dataPublishRemote,
-            ["places.*.json"],
-            this.log,
-          );
+          await publishData(this.env.dataPublishRemote, {
+            include: ["places.*.json"],
+            log: this.log,
+          });
         return { written };
       });
     }

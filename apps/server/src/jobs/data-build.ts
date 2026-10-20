@@ -88,7 +88,7 @@ export async function buildData(opts: {
     }
   let published = false;
   if (env.dataPublishRemote) {
-    await publishData(env.dataPublishRemote, undefined, log);
+    await publishData(env.dataPublishRemote, { log });
     published = true;
     log(`published transit data to ${env.dataPublishRemote}`);
   }
