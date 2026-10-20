@@ -48,12 +48,7 @@ export function bandKey(): (Band & { range: string })[] {
   }));
 }
 
-/** "every 8m", or "every ~5m" for a combined estimate. */
-export function everyText(minutes: number, approx = false): string {
-  return `every ${approx ? "~" : ""}${Math.max(1, Math.round(minutes))}m`;
-}
-
-/** "up to 15m": a worst wait. */
-export function upToText(minutes: number): string {
-  return `up to ${Math.max(1, Math.round(minutes))}m`;
+/** "Wait up to 15m" (or "wait up to 15m" within a sentence): a worst wait. */
+export function waitText(minutes: number, inSentence = false): string {
+  return `${inSentence ? "wait" : "Wait"} up to ${Math.max(1, Math.round(minutes))}m`;
 }

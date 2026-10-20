@@ -37,10 +37,15 @@ export const FREQUENCY_BANDS: readonly FrequencyBand[] = [
   { id: "bad", name: "Bad", color: { light: "#b0213a", dark: "#d4333f" } },
 ];
 
-/** The band (index into FREQUENCY_BANDS) for a worst wait of `minutes`. */
+/**
+ * The band (index into FREQUENCY_BANDS) for a worst wait of `minutes`, rounded to whole minutes as
+ * the site shows it: re-timed SkyTrain waits are rarely whole minutes, and "up to 6 min" should
+ * never be OK when 6 is Good.
+ */
 export function bandIndex(minutes: number): number {
+  const shown = Math.round(minutes);
   const i = FREQUENCY_BANDS.findIndex(
-    (b) => b.maxMinutes !== undefined && minutes <= b.maxMinutes,
+    (b) => b.maxMinutes !== undefined && shown <= b.maxMinutes,
   );
   return i >= 0 ? i : FREQUENCY_BANDS.length - 1;
 }

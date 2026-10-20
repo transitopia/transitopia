@@ -30,7 +30,7 @@ import {
   routeColorsFor,
   type RouteColors,
 } from "./RouteBadge.tsx";
-import { bandOf, everyText, upToText } from "./frequency.ts";
+import { bandOf, waitText } from "./frequency.ts";
 
 /** "Eastbound E Hastings St @ Main St" → ["Eastbound", "E Hastings St @ Main St"]. */
 function splitDirection(name: string): [string | undefined, string] {
@@ -72,18 +72,17 @@ function platformsText(platforms: readonly string[], bus: boolean): string {
     : "";
 }
 
-/** "every 8m · up to 15m · OK": the average, the worst wait, and the worst wait's band. */
+/** "Wait up to 15m · OK": the worst wait in the next hour, and its band. */
 const Frequency: React.FC<{
   frequency: FrequencyFigures;
-  approx?: boolean;
-  /** Bold, in the text colour (a bracket's footnote), rather than muted. */
+  /** Bold, in the text colour, within a sentence (a bracket's footnote), rather than muted. */
   strong?: boolean;
-}> = ({ frequency: f, approx, strong }) => {
+}> = ({ frequency: f, strong }) => {
   const band = bandOf(f.wait);
   return (
     <span
       className={`inline-flex flex-wrap items-center gap-x-1.5 text-[12.5px] ${strong ? "font-bold" : "mt-0.5 font-semibold text-(--card-muted)"}`}>
-      {everyText(f.minutes, approx)} · {upToText(f.wait)} ·
+      {waitText(f.wait, strong)} ·
       <span className="inline-flex items-center gap-1">
         <span
           aria-hidden="true"
@@ -221,7 +220,7 @@ const SharedRow: React.FC<{
         </span>
       : null}
       {s.frequency ?
-        <Frequency frequency={s.frequency} approx />
+        <Frequency frequency={s.frequency} />
       : null}
     </div>
   </div>
@@ -251,7 +250,7 @@ const SharedBracket: React.FC<{
         {s.frequency ?
           <>
             {" ·"}
-            <Frequency frequency={s.frequency} approx strong />
+            <Frequency frequency={s.frequency} strong />
           </>
         : null}
       </p>

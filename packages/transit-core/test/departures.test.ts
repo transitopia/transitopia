@@ -213,6 +213,7 @@ describe("grouping, frequency and shared stretches", () => {
     expect(departureFrequency(groups[0]!.departures, at(H8))).toEqual({
       minutes: 10,
       wait: 10,
+      averageWait: 5,
       departures: 6,
     });
     expect(departureFrequency(groups[1]!.departures, at(H8))?.wait).toBe(15);
@@ -230,6 +231,8 @@ describe("grouping, frequency and shared stretches", () => {
     expect(departureFrequency(shared[0]!.departures, at(H8))).toEqual({
       minutes: 6,
       wait: 10,
+      // Uneven: longer than half of every 6.
+      averageWait: expect.closeTo(250 / 60, 5),
       departures: 10,
     });
   });
@@ -377,6 +380,7 @@ describe("route frequency", () => {
     expect(routeFrequency(pp, "A", DATE, H8, 3600)).toEqual({
       minutes: 10,
       wait: 10,
+      averageWait: 5,
       departures: 6,
     });
     expect(routeFrequency(pp, "B", DATE, H8, 3600)?.minutes).toBe(15);
@@ -387,8 +391,8 @@ describe("route frequency", () => {
     const hours = hourlyFrequency(pp, "A", DATE);
     expect(hours).toHaveLength(DAY_HOURS.length);
     expect(hours[DAY_HOURS.indexOf(8)]?.minutes).toBe(10);
-    // The last trip leaves at 09:50 and nothing follows: as an hour without service.
-    expect(hours[DAY_HOURS.indexOf(9)]?.wait).toBe(60);
+    // The last trip leaves at 09:50 and nothing follows: only the gaps before it count.
+    expect(hours[DAY_HOURS.indexOf(9)]?.wait).toBe(10);
     expect(hours[DAY_HOURS.indexOf(10)]).toBeUndefined();
   });
 
@@ -423,6 +427,7 @@ describe("route frequency", () => {
     expect(routeFrequency(withCatalog, "25", DATE, H8, 3600)).toEqual({
       minutes: 15,
       wait: 15,
+      averageWait: 7.5,
       departures: 4,
     });
     expect(withCatalog.catalogAtStop.get("S1")).toEqual(["25"]);

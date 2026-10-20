@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { bandKey, bandOf, everyText } from "../src/TransitMap/frequency.ts";
+import { bandKey, bandOf, waitText } from "../src/TransitMap/frequency.ts";
 
 describe("bandOf", () => {
   it("includes each band's upper limit", () => {
     expect(bandOf(3).id).toBe("good");
     expect(bandOf(6).id).toBe("good");
-    expect(bandOf(6.1).id).toBe("ok");
+    // By whole minutes, as shown: "up to 6" is Good, "up to 7" OK.
+    expect(bandOf(6.4).id).toBe("good");
+    expect(bandOf(6.5).id).toBe("ok");
     expect(bandOf(12).id).toBe("ok");
     expect(bandOf(20).id).toBe("poor");
     expect(bandOf(21).id).toBe("bad");
@@ -28,10 +30,10 @@ describe("bandKey", () => {
   });
 });
 
-describe("everyText", () => {
+describe("waitText", () => {
   it("rounds to whole minutes, at least one", () => {
-    expect(everyText(7.6)).toBe("every 8m");
-    expect(everyText(0.2)).toBe("every 1m");
-    expect(everyText(5, true)).toBe("every ~5m");
+    expect(waitText(7.6)).toBe("Wait up to 8m");
+    expect(waitText(0.2)).toBe("Wait up to 1m");
+    expect(waitText(5, true)).toBe("wait up to 5m");
   });
 });

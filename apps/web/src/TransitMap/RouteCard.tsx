@@ -34,8 +34,8 @@ const CELL_HEIGHT: Record<string, number> = {
 };
 const NO_SERVICE_PX = 2;
 
-/** "Every 4 min", "Every 12 min": the average. */
-const everyMinutes = (m: number) => `Every ${Math.max(1, Math.round(m))} min`;
+/** Whole minutes, at least one. */
+const min = (m: number) => Math.max(1, Math.round(m));
 
 /**
  * A route (apps/web/README.md#route-cards): how often it runs in the hour from the map's time, and
@@ -144,8 +144,8 @@ const RouteCardBody: React.FC<{
       footer={
         <>
           <p>
-            From the timetable, by when trips start, in the better direction.
-            Colours show the longest wait.
+            From the timetable, by when trips start, in the better direction:
+            the wait arriving at a random time. Colours show the longest wait.
           </p>
           {legendsFor(creditsFor(place.datasets)).map((l) => (
             <p key={l} className="mt-1">
@@ -163,22 +163,20 @@ const RouteCardBody: React.FC<{
           />
           {band && next ?
             <div className="flex flex-col gap-[3px]">
-              <div className="flex flex-wrap items-center gap-2.5">
-                <span className="text-[22px] font-extrabold tracking-tight">
-                  {everyMinutes(next.minutes)}
-                </span>
-                <span className="inline-flex items-center gap-[5px] rounded-md bg-(--card-chip-bg) px-2 py-0.5 text-[13px] font-extrabold">
+              <span className="text-[22px] font-extrabold tracking-tight">
+                Avg. wait {min(next.averageWait)} min
+              </span>
+              {/* The band is the worst wait's, so it goes with it, as on stop rows. */}
+              <span className="inline-flex flex-wrap items-center gap-x-1.5 text-[13.5px] leading-snug text-(--card-muted)">
+                Up to {min(next.wait)} min ·
+                <span className="inline-flex items-center gap-1">
                   <span
                     aria-hidden="true"
-                    className="h-2.5 w-2.5 rounded-[3px]"
+                    className="h-2.5 w-2.5 flex-none rounded-[3px]"
                     style={{ background: band.color }}
                   />
-                  {band.name}
+                  <strong className="text-(--card-text)">{band.name}</strong>
                 </span>
-              </div>
-              <span className="text-[13.5px] leading-snug text-(--card-muted)">
-                Wait up to {Math.max(1, Math.round(next.wait))} min, from the
-                timetable
               </span>
             </div>
           : <span className="text-[15px] font-bold text-(--card-muted)">
@@ -223,7 +221,7 @@ const RouteCardBody: React.FC<{
                   <span
                     key={h}
                     role="listitem"
-                    title={`${hh(h)}:00 · ${b && f ? `every ${Math.max(1, Math.round(f.minutes))} min, up to ${Math.max(1, Math.round(f.wait))} · ${b.name}` : "no service"}`}
+                    title={`${hh(h)}:00 · ${b && f ? `avg. wait ${min(f.averageWait)} min, up to ${min(f.wait)} · ${b.name}` : "no service"}`}
                     // The hour's whole column, so "now" is ringed the same however short its cell.
                     className={`flex h-full flex-1 items-end rounded`}>
                     <span

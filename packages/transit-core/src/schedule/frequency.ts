@@ -40,6 +40,8 @@ export interface Frequency {
   minutes: number;
   /** Worst wait (minutes): the longest a rider arriving in the window could wait (`worstWait`). */
   wait: number;
+  /** Average wait (minutes) for a rider arriving at a random time in the window (`averageWait`). */
+  averageWait: number;
   departures: number;
 }
 
@@ -57,24 +59,31 @@ export type ServicesOn = (date: ServiceDate) => Iterable<string>;
 /**
  * The longest a rider arriving in [from, to) waits, in seconds: from the window's start to the first
  * departure, between departures, and from the last to the next one after the window, at most the
- * window's length: a long gap, or the end of service (nothing follows), counts as an hour without
- * service does (NO_SERVICE_WAIT_S). `times` are
- * sorted and include the first departure at or after `to` if there is one. Undefined when nothing
- * departs in the window.
+ * window's length. Where service ends (nothing follows the window's last departure within the
+ * window's length: the last train to Braid, or the evening's last bus), the gap after it doesn't
+ * count, only the gaps before; with no gap before it either (one last trip), the window counts as
+ * one without service. `times` are sorted and include the first departure at or after `to` if there
+ * is one. Undefined when nothing departs in the window.
  */
 export function worstWait(
   times: ArrayLike<number>,
   from: number,
   to: number,
 ): number | undefined {
+  const window = to - from;
   let i = lowerBound(times, from);
   if (i >= times.length || times[i]! >= to) return undefined;
   let worst = times[i]! - from;
-  for (; i + 1 < times.length && times[i]! < to; i++)
-    worst = Math.max(worst, times[i + 1]! - times[i]!);
-  // Nothing follows the last in the window (service ends): as an hour without service.
-  if (times[i]! < to) return to - from;
-  return Math.min(worst, to - from);
+  let gaps = 0;
+  for (; i + 1 < times.length && times[i]! < to; i++) {
+    const gap = times[i + 1]! - times[i]!;
+    // The gap out of the window counts only while service carries on.
+    if (times[i + 1]! < to || gap <= window) {
+      worst = Math.max(worst, gap);
+      gaps++;
+    }
+  }
+  return gaps ? Math.min(worst, window) : window;
 }
 
 /** How often departures at sorted `times` run in [from, from + seconds), or undefined when none do. */
@@ -87,7 +96,47 @@ export function frequencyOf(
   const wait = worstWait(times, from, to);
   if (wait === undefined) return undefined;
   const n = lowerBound(times, to) - lowerBound(times, from);
-  return { minutes: seconds / 60 / n, wait: wait / 60, departures: n };
+  return {
+    minutes: seconds / 60 / n,
+    wait: wait / 60,
+    averageWait: averageWait(times, from, to)! / 60,
+    departures: n,
+  };
+}
+
+/**
+ * The average wait (s) of a rider arriving at a random time in [from, to): over each gap, half of
+ * it, weighted by its length, so uneven service waits longer than half the average gap (more riders
+ * arrive in the long gaps). As in `worstWait`, after the last departure where service ends nobody
+ * is counted, and one last trip counts as no service (half the window). Undefined when nothing
+ * departs in the window.
+ */
+export function averageWait(
+  times: ArrayLike<number>,
+  from: number,
+  to: number,
+): number | undefined {
+  let i = lowerBound(times, from);
+  if (i >= times.length || times[i]! >= to) return undefined;
+  // The integral of the wait over arrival times, and how long arrivals are counted for.
+  let sum = (times[i]! - from) ** 2 / 2;
+  let span = times[i]! - from;
+  let gaps = 0;
+  for (; i + 1 < times.length && times[i]! < to; i++) {
+    const a = times[i]!;
+    const b = times[i + 1]!;
+    if (b < to) {
+      sum += (b - a) ** 2 / 2;
+      span += b - a;
+      gaps++;
+    } else if (b - a <= to - from) {
+      // Arrivals until the window's end, for the next departure after it.
+      sum += ((b - a) ** 2 - (b - to) ** 2) / 2;
+      span += to - a;
+      gaps++;
+    }
+  }
+  return gaps ? sum / span : (to - from) / 2;
 }
 
 /**

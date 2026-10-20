@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { indexCalendar } from "../src/gtfs/calendar.ts";
 import {
+  averageWait,
   departuresAround,
   frequencyOf,
   regularWeek,
@@ -20,6 +21,8 @@ describe("worstWait", () => {
     expect(frequencyOf(times, 0, 60 * M)).toEqual({
       minutes: 15,
       wait: 40,
+      // Most riders arrive in the 40-minute gap: about 15, not half of every 15.
+      averageWait: expect.closeTo(875 / 60, 5),
       departures: 4,
     });
   });
@@ -42,9 +45,45 @@ describe("worstWait", () => {
     ).toBe(30 * M);
   });
 
-  it("is at most the window, and undefined when nothing departs in it", () => {
-    // The last trip of the day at :10.
-    expect(worstWait([10 * M], 0, 60 * M)).toBe(60 * M);
+  it("leaves out the gap after the last departure where service ends", () => {
+    // The last trains to Braid, every 12 min until :36: up to 12, not the rest of the hour.
+    expect(
+      worstWait(
+        [0, 12, 24, 36].map((m) => m * M),
+        0,
+        60 * M,
+      ),
+    ).toBe(12 * M);
+    // …and on average 6, over the time trains still run.
+    expect(
+      averageWait(
+        [0, 12, 24, 36].map((m) => m * M),
+        0,
+        60 * M,
+      ),
+    ).toBe(6 * M);
+    // The evening's last at :50, then tomorrow's first.
+    expect(
+      worstWait(
+        [20, 50, 60 * 8].map((m) => m * M),
+        0,
+        60 * M,
+      ),
+    ).toBe(30 * M);
+    // One last trip and nothing after: as an hour without service, not the few minutes to it.
+    expect(worstWait([3 * M], 0, 60 * M)).toBe(60 * M);
+    expect(averageWait([3 * M], 0, 60 * M)).toBe(30 * M);
+    // An hour's gap to the next still counts, up to the window.
+    expect(
+      worstWait(
+        [50, 110].map((m) => m * M),
+        0,
+        60 * M,
+      ),
+    ).toBe(60 * M);
+  });
+
+  it("is undefined when nothing departs in the window", () => {
     expect(worstWait([70 * M], 0, 60 * M)).toBeUndefined();
   });
 });
