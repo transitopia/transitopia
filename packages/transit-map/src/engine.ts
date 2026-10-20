@@ -299,6 +299,8 @@ const REVEAL_DELAY_MS = 150;
 const PLACE_PICK_PX = 8;
 /** A tap's menu lists at most this many things (packages/transit-map/README.md#tap-menu). */
 const MAX_PICK_CHOICES = 8;
+/** Station and exchange names: a tap menu offers the place wherever its name is tapped. */
+const NAME_LAYERS = new Set(["stations-label", "exchanges-label"]);
 const SLIDER_START_S = SERVICE_DAY_ROLLOVER_H * 3600;
 const SLIDER_END_S = (24 + SERVICE_DAY_ROLLOVER_H) * 3600;
 
@@ -790,8 +792,8 @@ export class TransitEngine {
   }
 
   /**
-   * Everything a tap at a screen point might have meant, within the selected place's ring: vehicles,
-   * then stations, exchanges, stops and route lines. A stop is left out when its exchange or
+   * Everything a tap at a screen point might have meant, within the selected place's ring: stations,
+   * exchanges, vehicles, stops and route lines, in that order. A stop is left out when its exchange or
    * station is in. A route line that a vehicle, station or stop in the list is on doesn't count
    * towards asking, so a tap on a bus or a stop along its route doesn't ask; once the menu is asked
    * for anyway, it's listed too.
@@ -808,10 +810,10 @@ export class TransitEngine {
       return Math.hypot(p.x - x, p.y - y) <= r;
     };
     const covered = new Set<string>();
-    const out: PickChoice[] = [];
+    const vehicles: PickChoice[] = [];
     for (const v of this.vehicles.pickWithin(x, y, r)) {
       covered.add(v.routeKey);
-      out.push({
+      vehicles.push({
         kind: "vehicle",
         id: v.id,
         vehicle: v,
@@ -820,7 +822,9 @@ export class TransitEngine {
     }
     const placeLayers = [
       "stations",
+      "stations-label",
       "exchanges",
+      "exchanges-label",
       "bus-stops",
       VEHICLES_BEFORE_LAYER,
     ].filter((id) => map.getLayer(id));
@@ -834,18 +838,18 @@ export class TransitEngine {
             ],
             { layers: placeLayers },
           )
-          .filter(near)
+          .filter((f) => NAME_LAYERS.has(f.layer.id) || near(f))
       : [];
     const found = new Map<string, Place>();
     for (const kind of ["station", "exchange", "stop"] as const)
       for (const f of hits) {
         const id =
           kind === "station" ?
-            f.layer.id === "stations" ?
+            f.layer.id.startsWith("stations") ?
               f.properties["id"]
             : undefined
           : kind === "exchange" ?
-            f.layer.id === "exchanges" ?
+            f.layer.id.startsWith("exchanges") ?
               f.properties["id"]
             : undefined
           : f.properties["stop"];
@@ -863,13 +867,21 @@ export class TransitEngine {
         for (const b of h.bays) found.delete(`stop:${b}`);
     const routes = this.routesAt(x, y, r);
     const uncovered = routes.filter((key) => !covered.has(key));
-    const asks = out.length + found.size + uncovered.length > 1;
+    const asks = vehicles.length + found.size + uncovered.length > 1;
     for (const key of asks ? routes : uncovered)
       found.set(`route:${key}`, { kind: "route", id: key });
-    for (const place of found.values()) {
-      const c = placeChoice(pp, place);
-      if (c) out.push(c);
-    }
+    // Stations, exchanges, vehicles, stops, then routes, so the list's cut drops the least likely.
+    const out: PickChoice[] = [];
+    const add = (kinds: readonly Place["kind"][]) => {
+      for (const place of found.values()) {
+        if (!kinds.includes(place.kind)) continue;
+        const c = placeChoice(pp, place);
+        if (c) out.push(c);
+      }
+    };
+    add(["station", "exchange"]);
+    out.push(...vehicles);
+    add(["stop", "route"]);
     return out.slice(0, MAX_PICK_CHOICES);
   }
 
