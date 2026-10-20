@@ -123,10 +123,15 @@ interface Acc {
   passes: Map<string, number>;
 }
 
-/** Accumulates fixes into profiles. Feed it snapshots (any order within a vehicle's day), then build(). */
+/**
+ * Accumulates fixes into profiles. Feed it hours of snapshots oldest first, then build(). Fixes are
+ * folded into the accumulators as they arrive, keeping only each vehicle's last fix: weeks of every
+ * bus's fixes don't fit in the heap.
+ */
 export class ProfileBuilder {
   private acc = new Map<string, Acc[]>(); // shape → per band (+1 for all-day)
-  private fixes = new Map<string, RtVehicle[]>();
+  /** Vehicle → its last fix used, and where it was along its trip's shape (undefined: off it). */
+  private last = new Map<string, { v: RtVehicle; along: number | undefined }>();
   /** Shape → its stops (id, along), from the trips seen on it. */
   private shapeStops = new Map<string, Map<string, number>>();
   private hours = new Set<string>();
@@ -139,15 +144,66 @@ export class ProfileBuilder {
     this.cfg = cfg;
   }
 
+  /** One batch (an hour) of snapshots, after every earlier batch; any order within it. */
   add(snapshots: RtSnapshot[], hourLabel?: string): void {
     if (hourLabel) this.hours.add(hourLabel);
+    const byVehicle = new Map<string, RtVehicle[]>();
     for (const s of snapshots)
       for (const v of s.vehicles) {
         if (!v.tripId) continue;
-        let list = this.fixes.get(v.id);
-        if (!list) this.fixes.set(v.id, (list = []));
+        let list = byVehicle.get(v.id);
+        if (!list) byVehicle.set(v.id, (list = []));
         list.push(v);
       }
+    for (const [id, list] of byVehicle) {
+      list.sort((a, b) => a.ts - b.ts);
+      for (const v of list) this.addFix(id, v);
+    }
+  }
+
+  private addFix(id: string, v: RtVehicle): void {
+    const { cfg, pp } = this;
+    const prev = this.last.get(id);
+    // Repeats of a fix in later polls, and fixes older than one already used.
+    if (prev && v.ts <= prev.v.ts) return;
+    const trip = pp.tripIndex.get(v.tripId!);
+    const coords =
+      trip && (pp.plan.shapes[trip.pattern.shape] as LonLat[] | undefined);
+    if (!trip || !coords) {
+      this.last.set(id, { v, along: undefined });
+      return;
+    }
+    const cum =
+      pp.shapeCum.get(trip.pattern.shape) ?? cumulativeLengths(coords);
+    const sameTrip =
+      prev?.along !== undefined && prev.v.tripId === v.tripId ?
+        prev
+      : undefined;
+    const p = projectOnto(
+      coords,
+      cum,
+      [v.lon, v.lat],
+      sameTrip ? Math.max(0, sameTrip.along! - 50) : 0,
+    );
+    if (p.offset > cfg.maxOffsetM) {
+      this.last.set(id, { v, along: undefined });
+      return;
+    }
+    if (
+      sameTrip
+      && (v.ts - sameTrip.v.ts) / 1000 <= cfg.maxPairS
+      && p.along >= sameTrip.along! - cfg.stationaryM
+    ) {
+      this.addPair(
+        trip,
+        cum[cum.length - 1]!,
+        sameTrip.along!,
+        p.along,
+        (v.ts - sameTrip.v.ts) / 1000,
+        bandOf(cfg.bandStartHours, localHour(sameTrip.v.ts, pp.plan.timezone)),
+      );
+    }
+    this.last.set(id, { v, along: p.along });
   }
 
   private accFor(shape: string, bins: number): Acc[] {
@@ -166,50 +222,6 @@ export class ProfileBuilder {
 
   build(): RtProfileFile {
     const { cfg, pp } = this;
-    const tz = pp.plan.timezone;
-    for (const list of this.fixes.values()) {
-      list.sort((a, b) => a.ts - b.ts);
-      let prev: { v: RtVehicle; along: number } | undefined;
-      for (const v of list) {
-        if (prev && v.ts === prev.v.ts) continue;
-        const trip = pp.tripIndex.get(v.tripId!);
-        const coords =
-          trip && (pp.plan.shapes[trip.pattern.shape] as LonLat[] | undefined);
-        if (!trip || !coords) {
-          prev = undefined;
-          continue;
-        }
-        const cum =
-          pp.shapeCum.get(trip.pattern.shape) ?? cumulativeLengths(coords);
-        const sameTrip = prev && prev.v.tripId === v.tripId;
-        const p = projectOnto(
-          coords,
-          cum,
-          [v.lon, v.lat],
-          sameTrip ? Math.max(0, prev!.along - 50) : 0,
-        );
-        if (p.offset > cfg.maxOffsetM) {
-          prev = undefined;
-          continue;
-        }
-        if (
-          prev
-          && sameTrip
-          && (v.ts - prev.v.ts) / 1000 <= cfg.maxPairS
-          && p.along >= prev.along - cfg.stationaryM
-        ) {
-          this.addPair(
-            trip,
-            cum[cum.length - 1]!,
-            prev.along,
-            p.along,
-            (v.ts - prev.v.ts) / 1000,
-            bandOf(cfg.bandStartHours, localHour(prev.v.ts, tz)),
-          );
-        }
-        prev = { v, along: p.along };
-      }
-    }
     const shapes: Record<string, ShapeProfile> = {};
     for (const [shape, accs] of this.acc) {
       const stops = [...(this.shapeStops.get(shape) ?? [])].map(

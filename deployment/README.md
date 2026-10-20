@@ -139,13 +139,13 @@ at the budgeted poll rate: 738 polls, 630,000 positions, up to 1,275 buses in on
 | Statistics for one day of every route (in the server) | +0.8 GB | 27 s |
 | Data build, largest step (`build-dispatch`, a child process) | 0.5 GB | 21 s |
 | Data build, all steps | | ~1 min |
-| `build-rt-profile` on 75 h of history | 0.4 GB (was 12 GB before fix fe149ee) | 2 s |
+| `build-rt-profile` on 523 h (22 days) of every TransLink route, measured 2026-10-20 | 0.74 GB (2.0 GB while it held every fix) | 17 s |
 | PostgreSQL (default settings) during the statistics job | 0.2 GB | |
 
 Jobs run one at a time, so the server container stays under ~1.5 GB, and the whole stack under
-~2.5 GB: 4 GB of RAM is enough, 8 GB lets Postgres cache the recent raw data. Not measured yet: the
-profile build on 28 days of history (it keeps every fix of the drawn routes in memory; estimated
-under 1 GB), and real GPS data rather than synthetic positions.
+~2.5 GB: 4 GB of RAM is enough, 8 GB lets Postgres cache the recent raw data. Not measured yet: real
+GPS data rather than synthetic positions. Node sizes its heap from the container's limit (about half
+of `mem_limit`, so ~1.5 GB for each process), not from the host's RAM.
 
 Disk, per day of every route:
 
