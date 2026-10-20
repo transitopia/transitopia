@@ -117,7 +117,7 @@ const STOP_OFFSET_WARN_M = 150;
  * shapes and corridors keep the same road nodes. 10: matching retries every road in range before a
  * break; divided roads merge round bends. 11: repeated shape points don't break a match. 12: bus
  * exchanges and stations' bays (`hubs`). 13: published in parts (plan/published.ts), lines at 5 decimals.
- * 14: week figures (routes' `weekWait`, combos' `week`) and shared stretches' offsets.
+ * 14: weekday figures (routes' `weekdayWait`, combos' `weekday`) and shared stretches' offsets.
  */
 const PLAN_FORMAT = 14;
 

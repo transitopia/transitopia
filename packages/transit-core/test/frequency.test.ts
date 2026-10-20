@@ -4,7 +4,8 @@ import {
   departuresAround,
   frequencyOf,
   regularWeek,
-  weekWait,
+  regularWeekdays,
+  weekdayWait,
   worstWait,
 } from "../src/schedule/frequency.ts";
 import { serviceDate } from "../src/time.ts";
@@ -91,7 +92,7 @@ describe("departuresAround", () => {
   });
 });
 
-describe("the regular week", () => {
+describe("regular weekdays", () => {
   // Weekdays, Saturdays and Sundays, with Monday 12 October a holiday on Sunday service.
   const calendar = {
     calendar: [
@@ -130,15 +131,26 @@ describe("the regular week", () => {
     );
   });
 
-  it("averages each daytime hour's worst wait over the week", () => {
-    // Every 10 minutes 06:00–21:00 on weekdays only: 5 days at 10, 2 without service at 60.
-    const starts = Array.from({ length: 91 }, (_, i) => 6 * 3600 + i * 600);
-    const w = weekWait(servicesOn, week, [
-      { byService: { wk: starts }, offset: 0 },
+  it("averages each daytime hour's worst wait, Monday to Friday", () => {
+    const days = regularWeekdays(
+      servicesOn,
+      serviceDate("20261001"),
+      serviceDate("20261031"),
+    );
+    expect(days).toEqual(week.slice(0, 5));
+    // Every 10 minutes 06:00–21:00 on weekdays, with an hour's gap at 12:00, and hourly at the
+    // weekend, which doesn't count.
+    const wk = Array.from({ length: 91 }, (_, i) => 6 * 3600 + i * 600).filter(
+      (s) => s <= 12 * 3600 || s >= 13 * 3600,
+    );
+    const sa = Array.from({ length: 16 }, (_, i) => (6 + i) * 3600);
+    const w = weekdayWait(servicesOn, days, [
+      { byService: { wk, sa, su: sa }, offset: 0 },
     ]);
-    expect(w).toBeCloseTo((5 * 10 + 2 * 60) / 7, 5);
+    // 13 hours at 10, 12:00–13:00 at 60, 11:00–12:00 at 10 (12:00 then 13:00 is the next hour's).
+    expect(w).toBeCloseTo((14 * 10 + 60) / 15, 5);
     expect(
-      weekWait(servicesOn, week, [{ byService: {}, offset: 0 }]),
+      weekdayWait(servicesOn, days, [{ byService: {}, offset: 0 }]),
     ).toBeUndefined();
   });
 });

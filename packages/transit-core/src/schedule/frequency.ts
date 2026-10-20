@@ -1,6 +1,6 @@
 // How often something runs, from the timetable (packages/transit-core/DESIGN.md#frequency): the one
 // counter behind the route card, the stop cards' rows, the map's bus corridors and stop ticks, and
-// the plan's week figures. Two numbers: the average minutes between departures (60 ÷ departures an
+// the plan's weekday figures. Two numbers: the average minutes between departures (60 ÷ departures an
 // hour), and the worst wait, the longest a rider arriving in the window could wait. Bands follow
 // the worst wait.
 
@@ -18,17 +18,17 @@ export const DAY_HOURS: readonly number[] = Array.from(
   (_, i) => 5 + i,
 );
 
-/** What the map's bus corridors show: the hour from the shown time, or the regular week. */
+/** What the map's bus corridors show: the hour from the shown time, or regular weekdays. */
 export type FrequencyWindow = "now" | "day";
 
 /**
- * The week figure's hours (from a service day's start): 06:00 to 21:00, the hours most riders
+ * The weekday figure's hours (from a service day's start): 06:00 to 21:00, the hours most riders
  * travel; later hours are a time on the slider away with "now".
  */
 export const DAY_WINDOW = { fromH: 6, toH: 21 } as const;
 
 /**
- * In the week figure an hour without service counts as this wait (s), and no hour counts as worse
+ * In the weekday figure an hour without service counts as this wait (s), and no hour counts as worse
  * (`worstWait` is at most its window): no bus that hour is at least as bad as hourly service, and a
  * route without Sunday service drops a band rather than to nothing. A presentation choice.
  */
@@ -141,7 +141,7 @@ export function countIn(
   return n;
 }
 
-// --- The regular week ---
+// --- Regular weekdays ---
 
 /**
  * A regular week of the feed, Monday to Sunday: for each weekday, the first date with the set of
@@ -172,13 +172,27 @@ export function regularWeek(
 }
 
 /**
- * The week figure (minutes): each hour of DAY_WINDOW on each day of `week`, its worst wait (at most
+ * The regular week's Monday to Friday (`regularWeek`): what the weekday figure is for. Weekend
+ * service, often much less frequent, would set even the most frequent route's band.
+ */
+export function regularWeekdays(
+  servicesOn: ServicesOn,
+  feedStart: ServiceDate,
+  feedEnd: ServiceDate,
+): ServiceDate[] {
+  return regularWeek(servicesOn, feedStart, feedEnd).filter(
+    (d) => dayOfWeek(d) < 5,
+  );
+}
+
+/**
+ * The weekday figure (minutes): each hour of DAY_WINDOW on each of `days`, its worst wait (at most
  * NO_SERVICE_WAIT_S, which an hour without service counts as), averaged. Undefined when nothing
  * runs in any of those hours.
  */
-export function weekWait(
+export function weekdayWait(
   servicesOn: ServicesOn,
-  week: readonly ServiceDate[],
+  days: readonly ServiceDate[],
   sources: readonly Starts[],
 ): number | undefined {
   const from = DAY_WINDOW.fromH * HOUR;
@@ -186,7 +200,7 @@ export function weekWait(
   let sum = 0;
   let hours = 0;
   let any = false;
-  for (const date of week) {
+  for (const date of days) {
     const times = departuresAround(servicesOn, sources, date, from, to);
     for (let h = from; h < to; h += HOUR) {
       const w = worstWait(times, h, h + HOUR);
@@ -198,13 +212,13 @@ export function weekWait(
   return any ? sum / hours / 60 : undefined;
 }
 
-/** How many departures of `sources` are in DAY_WINDOW over `week`. */
-export function weekCount(
+/** How many departures of `sources` are in DAY_WINDOW over `days`. */
+export function weekdayCount(
   servicesOn: ServicesOn,
-  week: readonly ServiceDate[],
+  days: readonly ServiceDate[],
   sources: readonly Starts[],
 ): number {
-  return week.reduce(
+  return days.reduce(
     (n, date) =>
       n
       + countIn(
@@ -325,25 +339,25 @@ export function hourlyFrequency(
   );
 }
 
-/** A route's week figure (`weekWait`) in its better direction, or undefined when it doesn't run then. */
-export function routeWeekWait(
+/** A route's weekday figure (`weekdayWait`) in its better direction, or undefined when it doesn't run then. */
+export function routeWeekdayWait(
   servicesOn: ServicesOn,
-  week: readonly ServiceDate[],
+  days: readonly ServiceDate[],
   dirs: readonly (readonly Starts[])[],
 ): number | undefined {
   let best: number | undefined;
   for (const sources of dirs) {
-    const w = weekWait(servicesOn, week, sources);
+    const w = weekdayWait(servicesOn, days, sources);
     if (w !== undefined && (best === undefined || w < best)) best = w;
   }
   return best;
 }
 
 /**
- * Every route's week figure (`routeWeekWait`, minutes to a tenth), drawn and catalogue routes
- * alike, for the published plan (`PlanRoute.weekWait`).
+ * Every route's weekday figure (`routeWeekdayWait`, minutes to a tenth), drawn and catalogue routes
+ * alike, for the published plan (`PlanRoute.weekdayWait`).
  */
-export function routeWeekWaits(
+export function routeWeekdayWaits(
   plan: Pick<
     ServicePlan,
     | "patterns"
@@ -356,11 +370,15 @@ export function routeWeekWaits(
   >,
 ): Map<string, number> {
   const servicesOn = indexCalendar(plan.calendar);
-  const week = regularWeek(servicesOn, plan.feedStart, plan.feedEnd);
+  const days = regularWeekdays(servicesOn, plan.feedStart, plan.feedEnd);
   const starts = patternStarts(plan);
   const out = new Map<string, number>();
   for (const r of [...plan.routes, ...(plan.catalog ?? [])]) {
-    const w = routeWeekWait(servicesOn, week, routeStarts(plan, starts, r.key));
+    const w = routeWeekdayWait(
+      servicesOn,
+      days,
+      routeStarts(plan, starts, r.key),
+    );
     if (w !== undefined) out.set(r.key, Math.round(w * 10) / 10);
   }
   return out;

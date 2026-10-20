@@ -6,7 +6,7 @@
 // decodes the parts as it loads them (packages/transit-map/src/plans.ts).
 
 import type { LonLat } from "../geo.ts";
-import { routeWeekWaits } from "../schedule/frequency.ts";
+import { routeWeekdayWaits } from "../schedule/frequency.ts";
 import { CorridorFrequency } from "./corridor-frequency.ts";
 import {
   LINE_DECIMALS,
@@ -219,15 +219,15 @@ export function publishPlan(plan: ServicePlan): PlanPublication {
     const stopCombo = cf.stopCombos();
     frequency = {
       routeDirs: cf.routeDirs,
-      combos: cf.combosWithWeek(),
+      combos: cf.combosWithWeekday(),
       stopCombo,
     };
   }
-  const weekWaits = routeWeekWaits(plan);
+  const weekWaits = routeWeekdayWaits(plan);
   const withWeek = <R extends PlanRoute>(r: R): R => {
-    const { weekWait: _w, ...route } = r;
+    const { weekdayWait: _w, ...route } = r;
     const w = weekWaits.get(r.key);
-    return (w === undefined ? route : { ...route, weekWait: w }) as R;
+    return (w === undefined ? route : { ...route, weekdayWait: w }) as R;
   };
 
   // Trips by service: those the day after needs in a file of their own (LATE_MARGIN_S).

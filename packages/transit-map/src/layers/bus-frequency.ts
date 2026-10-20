@@ -119,7 +119,7 @@ export class BusFrequencyLayer {
     const query =
       window === "now" ?
         { date, from: step * NOW_STEP_S, seconds: 3600 }
-      : ("week" as const);
+      : ("weekdays" as const);
     const all = this.combos.frequencies(query, (route) => !hidden.has(route));
     this.rates = all;
     const own =

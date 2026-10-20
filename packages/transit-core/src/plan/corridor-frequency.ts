@@ -12,9 +12,9 @@ import { onwardStops, sharedRuns } from "../schedule/departures.ts";
 import {
   countIn,
   departuresAround,
-  regularWeek,
-  weekCount,
-  weekWait,
+  regularWeekdays,
+  weekdayCount,
+  weekdayWait,
   worstWait,
   type ServicesOn,
   type Starts,
@@ -50,9 +50,9 @@ const OFFSET_STEP_S = 60;
 export type FrequencyCombo = PlanFrequencyTable["combos"][number];
 export type ComboUnit = FrequencyCombo["units"][number];
 
-/** The window frequencies are worked out for: the `seconds` from `from` on a date, or the regular week. */
+/** The window frequencies are worked out for: the `seconds` from `from` on a date, or regular weekdays (`regularWeekdays`). */
 export type FrequencyQuery =
-  { date: ServiceDate; from: number; seconds: number } | "week";
+  { date: ServiceDate; from: number; seconds: number } | "weekdays";
 
 /** What `CorridorFrequency.frequencies` works out. */
 export interface ComboFrequencies {
@@ -72,9 +72,9 @@ export class CorridorFrequency {
   private readonly servicesOn: ServicesOn;
   /** Per pattern, per service: its trips' start times. */
   private readonly starts: Record<string, number[]>[];
-  private weekDates: ServiceDate[] | undefined;
-  /** Week figures by sources, which don't change with the shown date. */
-  private readonly weekMemo = new Map<string, number>();
+  private weekdayDates: ServiceDate[] | undefined;
+  /** Weekday figures by sources, which don't change with the shown date. */
+  private readonly weekdayMemo = new Map<string, number>();
   /** A route in one direction: its key and every pattern of it. */
   readonly routeDirs: { route: string; patterns: number[] }[] = [];
   private readonly routeDirOf: number[];
@@ -340,23 +340,23 @@ export class CorridorFrequency {
   }
 
   /**
-   * The combos found so far, each with its week figure with every route shown (`week`), for the
+   * The combos found so far, each with its weekday figure with every route shown (`weekday`), for the
    * plan's frequency table.
    */
-  combosWithWeek(): FrequencyCombo[] {
-    const { best } = this.frequencies("week", () => true);
+  combosWithWeekday(): FrequencyCombo[] {
+    const { best } = this.frequencies("weekdays", () => true);
     return this.combos.map((c, i) => {
-      const { week: _w, ...rest } = c;
+      const { weekday: _w, ...rest } = c;
       const w = best[i]!;
       return Number.isFinite(w) ?
-          { ...rest, week: Math.round(w * 10) / 10 }
+          { ...rest, weekday: Math.round(w * 10) / 10 }
         : rest;
     });
   }
 
-  /** The regular week (`regularWeek`) the week figures are for. */
-  private week(): ServiceDate[] {
-    return (this.weekDates ??= regularWeek(
+  /** The regular weekdays (`regularWeekdays`) the weekday figures are for. */
+  private weekdays(): ServiceDate[] {
+    return (this.weekdayDates ??= regularWeekdays(
       this.servicesOn,
       this.plan.feedStart,
       this.plan.feedEnd,
@@ -374,8 +374,8 @@ export class CorridorFrequency {
     include: (route: string) => boolean,
   ): ComboFrequencies {
     const { servicesOn } = this;
-    const week = query === "week" ? this.week() : undefined;
-    const memo = week ? this.weekMemo : new Map<string, number>();
+    const days = query === "weekdays" ? this.weekdays() : undefined;
+    const memo = days ? this.weekdayMemo : new Map<string, number>();
     const sourcesOf = (patterns: readonly number[], offsets?: number[]) =>
       patterns.map((p, i): Starts => ({
         byService: this.starts[p]!,
@@ -385,11 +385,11 @@ export class CorridorFrequency {
     const waitOf = (key: string, sources: () => Starts[]): number => {
       let w = memo.get(key);
       if (w !== undefined) return w;
-      if (week) w = weekWait(servicesOn, week, sources()) ?? Infinity;
+      if (days) w = weekdayWait(servicesOn, days, sources()) ?? Infinity;
       else {
         const { date, from, seconds } = query as Exclude<
           FrequencyQuery,
-          "week"
+          "weekdays"
         >;
         const s = worstWait(
           departuresAround(servicesOn, sources(), date, from, from + seconds),
@@ -405,11 +405,11 @@ export class CorridorFrequency {
     const countOf = (key: string, sources: () => Starts[]): number => {
       let n = counts.get(key);
       if (n !== undefined) return n;
-      if (week) n = weekCount(servicesOn, week, sources());
+      if (days) n = weekdayCount(servicesOn, days, sources());
       else {
         const { date, from, seconds } = query as Exclude<
           FrequencyQuery,
-          "week"
+          "weekdays"
         >;
         n = countIn(servicesOn, sources(), date, from, from + seconds);
       }
@@ -426,12 +426,12 @@ export class CorridorFrequency {
     );
     const busier = new Map<string, number>();
     const routeWaits = new Map<string, number>();
-    const stored = new Map(this.plan.routes.map((r) => [r.key, r.weekWait]));
+    const stored = new Map(this.plan.routes.map((r) => [r.key, r.weekdayWait]));
     this.routeDirs.forEach((rd, i) => {
       if (!shown[i]) return;
       busier.set(rd.route, Math.max(busier.get(rd.route) ?? 0, whole[i]!));
       const w =
-        (week && stored.get(rd.route))
+        (days && stored.get(rd.route))
         || waitOf(patternsKey(rd.patterns), () => sourcesOf(rd.patterns));
       routeWaits.set(
         rd.route,
@@ -455,7 +455,7 @@ export class CorridorFrequency {
         w[k] = here ? waitOf(key, sources) : Infinity;
         return here;
       });
-      if (week && everyone && c.week !== undefined) best[i] = c.week;
+      if (days && everyone && c.weekday !== undefined) best[i] = c.weekday;
       else {
         let b = Math.min(Infinity, ...w);
         for (const bundle of c.bundles) {

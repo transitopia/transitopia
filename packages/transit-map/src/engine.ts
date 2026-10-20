@@ -41,9 +41,9 @@ import {
   DAY_HOURS,
   dayTypes,
   hourlyFrequency,
-  regularWeek,
+  regularWeekdays,
   routeStarts,
-  routeWeekWait,
+  routeWeekdayWait,
   type Frequency,
   type FrequencyWindow,
 } from "@transitopia/transit-core/schedule/frequency.ts";
@@ -328,7 +328,7 @@ export class TransitEngine {
   private revealAt: number | undefined;
   /** Per feed and route: its day types and hourly frequencies (they don't change with the time). */
   private routeDayCache = new WeakMap<PreparedPlan, Map<string, RouteDay[]>>();
-  /** Per feed and route: its week figure, where the plan hasn't it (dayWait). */
+  /** Per feed and route: its weekday figure, where the plan hasn't it (dayWait). */
   private dayWaitCache = new WeakMap<
     PreparedPlan,
     Map<string, number | undefined>
@@ -1057,24 +1057,24 @@ export class TransitEngine {
   }
 
   /**
-   * A route's week figure (minutes, `PlanRoute.weekWait`: the mean of each daytime hour's worst
-   * wait over a regular week, as the map's "Day" bus frequency), worked out here for a plan
+   * A route's weekday figure (minutes, `PlanRoute.weekdayWait`: the mean of each daytime hour's worst
+   * wait on regular weekdays, as the map's "Day" bus frequency), worked out here for a plan
    * published without it; undefined when it doesn't run then.
    */
   dayWait(key: string): number | undefined {
     const pp = this.shownFeed;
     if (!pp) return undefined;
     const route = pp.routes.get(key) ?? pp.catalog.get(key);
-    if (route?.weekWait !== undefined) return route.weekWait;
+    if (route?.weekdayWait !== undefined) return route.weekdayWait;
     let byRoute = this.dayWaitCache.get(pp);
     if (!byRoute) this.dayWaitCache.set(pp, (byRoute = new Map()));
     if (!byRoute.has(key)) {
       const { plan } = pp;
       byRoute.set(
         key,
-        routeWeekWait(
+        routeWeekdayWait(
           pp.servicesOn,
-          regularWeek(pp.servicesOn, plan.feedStart, plan.feedEnd),
+          regularWeekdays(pp.servicesOn, plan.feedStart, plan.feedEnd),
           routeStarts(plan, patternStarts(plan), key),
         ),
       );

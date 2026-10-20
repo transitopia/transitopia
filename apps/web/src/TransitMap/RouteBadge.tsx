@@ -18,7 +18,7 @@ export interface RouteColors {
 
 /**
  * The colours cards show a route in (apps/web/README.md#service-frequency): its own, except a regular
- * bus route the map draws, which has none and takes the band of its week figure, as the map's "Day"
+ * bus route the map draws, which has none and takes the band of its weekday figure, as the map's "Day"
  * bus frequency colours it. Catalogue routes (not drawn) keep the plan's grey.
  */
 export function routeColorsFor(

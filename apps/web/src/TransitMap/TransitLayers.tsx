@@ -42,11 +42,11 @@ const CATEGORIES: {
 /** Key line heights per band: thicker for more frequent, as bus corridors are drawn. */
 const BAND_HEIGHTS = ["h-[5px]", "h-[4px]", "h-[2px]", "h-[1.5px]"];
 
-/** The bus frequency window, for the key: " (next hour)" or " (typical week, 06:00–21:00)". */
+/** The bus frequency window, for the key: " (next hour)" or " (typical weekday, 06:00–21:00)". */
 function windowText(window: FrequencyWindow): string {
   if (window === "now") return " (next hour)";
   const hh = (h: number) => `${String(h % 24).padStart(2, "0")}:00`;
-  return ` (typical week, ${hh(DAY_WINDOW.fromH)}–${hh(DAY_WINDOW.toH)})`;
+  return ` (typical weekday, ${hh(DAY_WINDOW.fromH)}–${hh(DAY_WINDOW.toH)})`;
 }
 
 // Plans built before routes had categories are all rapid transit (config/feeds/<feed>/routes.json → category).

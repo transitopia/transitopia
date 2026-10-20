@@ -26,11 +26,11 @@ export interface PlanRoute {
    */
   dataset?: string | undefined;
   /**
-   * How often it runs over a regular week (schedule/frequency.ts → `weekWait`, in its better
+   * How often it runs on regular weekdays (schedule/frequency.ts → `weekdayWait`, in its better
    * direction): the mean of each daytime hour's worst wait, in minutes. Set when the plan is
    * published; absent when it doesn't run in those hours.
    */
-  weekWait?: number | undefined;
+  weekdayWait?: number | undefined;
 }
 
 export interface PlanStop {
@@ -129,8 +129,8 @@ export interface PlanFrequencyTable {
     }[];
     /** Units (indices into `units`) that share a stretch here, two or more each. */
     bundles: number[][];
-    /** Its week figure with every route shown (minutes, `PlanRoute.weekWait`'s measure). */
-    week?: number | undefined;
+    /** Its weekday figure with every route shown (minutes, `PlanRoute.weekdayWait`'s measure). */
+    weekday?: number | undefined;
   }[];
   /** Per plan stop, its combo (the routes leaving it). */
   stopCombo: number[];
