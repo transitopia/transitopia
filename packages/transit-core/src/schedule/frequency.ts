@@ -186,30 +186,75 @@ export function regularWeekdays(
 }
 
 /**
- * The weekday figure (minutes): each hour of DAY_WINDOW on each of `days`, its worst wait (at most
- * NO_SERVICE_WAIT_S, which an hour without service counts as), averaged. Undefined when nothing
- * runs in any of those hours.
+ * Each hour of DAY_WINDOW on each of `days`, in order: the worst wait there (s, at most
+ * NO_SERVICE_WAIT_S, which an hour without service counts as). Undefined when nothing runs in any
+ * of those hours.
  */
-export function weekdayWait(
+export function hourlyWaits(
   servicesOn: ServicesOn,
   days: readonly ServiceDate[],
   sources: readonly Starts[],
-): number | undefined {
+): Float64Array | undefined {
   const from = DAY_WINDOW.fromH * HOUR;
   const to = DAY_WINDOW.toH * HOUR;
-  let sum = 0;
-  let hours = 0;
+  const out = new Float64Array(
+    days.length * (DAY_WINDOW.toH - DAY_WINDOW.fromH),
+  );
+  let k = 0;
   let any = false;
   for (const date of days) {
     const times = departuresAround(servicesOn, sources, date, from, to);
     for (let h = from; h < to; h += HOUR) {
       const w = worstWait(times, h, h + HOUR);
       if (w !== undefined) any = true;
-      sum += w ?? NO_SERVICE_WAIT_S;
-      hours++;
+      out[k++] = w ?? NO_SERVICE_WAIT_S;
     }
   }
-  return any ? sum / hours / 60 : undefined;
+  return any ? out : undefined;
+}
+
+/** Hour by hour, the best (shortest) of several `hourlyWaits`; undefined when none has service. */
+export function bestHourly(
+  options: Iterable<Float64Array | undefined>,
+): Float64Array | undefined {
+  let out: Float64Array | undefined;
+  for (const a of options) {
+    if (!a) continue;
+    if (!out) out = a.slice();
+    else for (let i = 0; i < a.length; i++) out[i] = Math.min(out[i]!, a[i]!);
+  }
+  return out;
+}
+
+/**
+ * The weekday figure (minutes) from `hourlyWaits`: their median, so a few bad hours (an evening
+ * drop) don't set it, though most hours being bad does.
+ */
+export function weekdayFigure(
+  hourly: Float64Array | undefined,
+): number | undefined {
+  if (!hourly?.length) return undefined;
+  const a = hourly.slice().sort();
+  const mid = a.length >> 1;
+  return (a.length % 2 ? a[mid]! : (a[mid - 1]! + a[mid]!) / 2) / 60;
+}
+
+/**
+ * The weekday figure (minutes) of the best of several options (a route's directions, or the routes
+ * and shared stretches along a corridor): each hour of DAY_WINDOW on each of `days`, the shortest
+ * of their worst waits (`bestHourly`), and the median of those (`weekdayFigure`). Undefined when
+ * nothing runs in any of those hours.
+ */
+export function weekdayWait(
+  servicesOn: ServicesOn,
+  days: readonly ServiceDate[],
+  options: readonly (readonly Starts[])[],
+): number | undefined {
+  return weekdayFigure(
+    bestHourly(
+      options.map((sources) => hourlyWaits(servicesOn, days, sources)),
+    ),
+  );
 }
 
 /** How many departures of `sources` are in DAY_WINDOW over `days`. */
@@ -339,18 +384,13 @@ export function hourlyFrequency(
   );
 }
 
-/** A route's weekday figure (`weekdayWait`) in its better direction, or undefined when it doesn't run then. */
+/** A route's weekday figure: its directions' (`weekdayWait`), the better one each hour. */
 export function routeWeekdayWait(
   servicesOn: ServicesOn,
   days: readonly ServiceDate[],
   dirs: readonly (readonly Starts[])[],
 ): number | undefined {
-  let best: number | undefined;
-  for (const sources of dirs) {
-    const w = weekdayWait(servicesOn, days, sources);
-    if (w !== undefined && (best === undefined || w < best)) best = w;
-  }
-  return best;
+  return weekdayWait(servicesOn, days, dirs);
 }
 
 /**

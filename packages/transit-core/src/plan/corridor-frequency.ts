@@ -13,8 +13,10 @@ import {
   countIn,
   departuresAround,
   regularWeekdays,
+  bestHourly,
+  hourlyWaits,
   weekdayCount,
-  weekdayWait,
+  weekdayFigure,
   worstWait,
   type ServicesOn,
   type Starts,
@@ -48,6 +50,8 @@ const SHORT_M = 50;
 const OFFSET_STEP_S = 60;
 
 export type FrequencyCombo = PlanFrequencyTable["combos"][number];
+/** Worst waits (s): a window's (one), or each weekday hour's (`hourlyWaits`); undefined when nothing runs. */
+type Waits = Float64Array | undefined;
 export type ComboUnit = FrequencyCombo["units"][number];
 
 /** The window frequencies are worked out for: the `seconds` from `from` on a date, or regular weekdays (`regularWeekdays`). */
@@ -74,7 +78,7 @@ export class CorridorFrequency {
   private readonly starts: Record<string, number[]>[];
   private weekdayDates: ServiceDate[] | undefined;
   /** Weekday figures by sources, which don't change with the shown date. */
-  private readonly weekdayMemo = new Map<string, number>();
+  private readonly weekdayMemo = new Map<string, Waits>();
   /** A route in one direction: its key and every pattern of it. */
   readonly routeDirs: { route: string; patterns: number[] }[] = [];
   private readonly routeDirOf: number[];
@@ -366,8 +370,8 @@ export class CorridorFrequency {
   /**
    * Every combo's frequency in a window: each unit at its route's whole frequency where
    * WHOLE_ROUTE_SHARE of its trips pass, else its own trips'; each bundle by its units' merged
-   * departures; the best (shortest worst wait) of those. Routes `include` leaves out count for
-   * nothing.
+   * departures; the best (shortest worst wait) of those, for weekdays hour by hour before the
+   * median (`weekdayWait`). Routes `include` leaves out count for nothing.
    */
   frequencies(
     query: FrequencyQuery,
@@ -375,48 +379,51 @@ export class CorridorFrequency {
   ): ComboFrequencies {
     const { servicesOn } = this;
     const days = query === "weekdays" ? this.weekdays() : undefined;
-    const memo = days ? this.weekdayMemo : new Map<string, number>();
+    const now =
+      days ? undefined : (query as Exclude<FrequencyQuery, "weekdays">);
+    const memo = days ? this.weekdayMemo : new Map<string, Waits>();
     const sourcesOf = (patterns: readonly number[], offsets?: number[]) =>
       patterns.map((p, i): Starts => ({
         byService: this.starts[p]!,
         offset: offsets?.[i] ?? 0,
       }));
-    // Worst waits (minutes; Infinity: none) and trip counts, by sources.
-    const waitOf = (key: string, sources: () => Starts[]): number => {
-      let w = memo.get(key);
-      if (w !== undefined) return w;
-      if (days) w = weekdayWait(servicesOn, days, sources()) ?? Infinity;
+    // Worst waits by sources: the window's, or each weekday hour's (`hourlyWaits`), in seconds.
+    const waitsOf = (key: string, sources: () => Starts[]): Waits => {
+      if (memo.has(key)) return memo.get(key);
+      let w: Waits;
+      if (days) w = hourlyWaits(servicesOn, days, sources());
       else {
-        const { date, from, seconds } = query as Exclude<
-          FrequencyQuery,
-          "weekdays"
-        >;
+        const { date, from, seconds } = now!;
         const s = worstWait(
           departuresAround(servicesOn, sources(), date, from, from + seconds),
           from,
           from + seconds,
         );
-        w = s === undefined ? Infinity : s / 60;
+        w = s === undefined ? undefined : Float64Array.of(s);
       }
       memo.set(key, w);
       return w;
     };
+    /** The figure (minutes) for worst waits; Infinity when nothing runs. */
+    const figure = (w: Waits): number =>
+      (days ? weekdayFigure(w) : w && w[0]! / 60) ?? Infinity;
     const counts = new Map<string, number>();
     const countOf = (key: string, sources: () => Starts[]): number => {
       let n = counts.get(key);
       if (n !== undefined) return n;
       if (days) n = weekdayCount(servicesOn, days, sources());
       else {
-        const { date, from, seconds } = query as Exclude<
-          FrequencyQuery,
-          "weekdays"
-        >;
+        const { date, from, seconds } = now!;
         n = countIn(servicesOn, sources(), date, from, from + seconds);
       }
       counts.set(key, n);
       return n;
     };
     const patternsKey = (ps: readonly number[]) => ps.join(",");
+    const rdWaits = (i: number): Waits => {
+      const rd = this.routeDirs[i]!;
+      return waitsOf(patternsKey(rd.patterns), () => sourcesOf(rd.patterns));
+    };
 
     const shown = this.routeDirs.map((rd) => include(rd.route));
     const whole = this.routeDirs.map((rd, i) =>
@@ -425,58 +432,64 @@ export class CorridorFrequency {
       : 0,
     );
     const busier = new Map<string, number>();
-    const routeWaits = new Map<string, number>();
-    const stored = new Map(this.plan.routes.map((r) => [r.key, r.weekdayWait]));
+    const dirsOf = new Map<string, number[]>();
     this.routeDirs.forEach((rd, i) => {
       if (!shown[i]) return;
       busier.set(rd.route, Math.max(busier.get(rd.route) ?? 0, whole[i]!));
-      const w =
-        (days && stored.get(rd.route))
-        || waitOf(patternsKey(rd.patterns), () => sourcesOf(rd.patterns));
-      routeWaits.set(
-        rd.route,
-        Math.min(routeWaits.get(rd.route) ?? Infinity, w),
-      );
+      dirsOf.set(rd.route, [...(dirsOf.get(rd.route) ?? []), i]);
     });
+    // A route's worst waits: its better direction's, hour by hour.
+    const routeMemo = new Map<string, Waits>();
+    const routeWaitsOf = (route: string): Waits => {
+      if (!routeMemo.has(route))
+        routeMemo.set(route, bestHourly(dirsOf.get(route)!.map(rdWaits)));
+      return routeMemo.get(route);
+    };
+    const stored = new Map(this.plan.routes.map((r) => [r.key, r.weekdayWait]));
+    const routeWaits = new Map<string, number>();
+    for (const route of dirsOf.keys())
+      routeWaits.set(
+        route,
+        (days && stored.get(route)) || figure(routeWaitsOf(route)),
+      );
     const everyone = shown.every(Boolean);
     const best = new Float32Array(this.combos.length);
     const trips = this.combos.map((c, i) => {
-      const w = new Float32Array(c.units.length).fill(Infinity);
-      const n = Float32Array.from(c.units, (u, k) => {
+      const options: Waits[] = [];
+      const n = Float32Array.from(c.units, (u) => {
         if (!shown[u.routeDir]) return 0;
         const key = patternsKey(u.patterns);
         const sources = () => sourcesOf(u.patterns);
         const here = countOf(key, sources);
         const route = this.routeDirs[u.routeDir]!.route;
         if (here >= WHOLE_ROUTE_SHARE * whole[u.routeDir]!) {
-          w[k] = routeWaits.get(route)!;
+          options.push(routeWaitsOf(route));
           return busier.get(route)!;
         }
-        w[k] = here ? waitOf(key, sources) : Infinity;
+        if (here) options.push(waitsOf(key, sources));
         return here;
       });
-      if (days && everyone && c.weekday !== undefined) best[i] = c.weekday;
-      else {
-        let b = Math.min(Infinity, ...w);
-        for (const bundle of c.bundles) {
-          const members = bundle.filter((u) => n[u]! > 0);
-          if (members.length < 2) continue;
-          const parts = members.flatMap((u) => {
-            const unit = c.units[u]!;
-            return unit.patterns.map((p, j) => [p, unit.offsets?.[j] ?? 0]);
-          });
-          b = Math.min(
-            b,
-            waitOf(parts.map(([p, o]) => `${p}@${o}`).join(","), () =>
-              parts.map(([p, o]) => ({
-                byService: this.starts[p!]!,
-                offset: o!,
-              })),
-            ),
-          );
-        }
-        best[i] = b;
+      if (days && everyone && c.weekday !== undefined) {
+        best[i] = c.weekday;
+        return n;
       }
+      for (const bundle of c.bundles) {
+        const members = bundle.filter((u) => n[u]! > 0);
+        if (members.length < 2) continue;
+        const parts = members.flatMap((u) => {
+          const unit = c.units[u]!;
+          return unit.patterns.map((p, j) => [p, unit.offsets?.[j] ?? 0]);
+        });
+        options.push(
+          waitsOf(parts.map(([p, o]) => `${p}@${o}`).join(","), () =>
+            parts.map(([p, o]) => ({
+              byService: this.starts[p!]!,
+              offset: o!,
+            })),
+          ),
+        );
+      }
+      best[i] = figure(bestHourly(options));
       return n;
     });
     return { best, trips, routeWaits };

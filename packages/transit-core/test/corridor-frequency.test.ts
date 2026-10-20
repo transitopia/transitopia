@@ -189,13 +189,11 @@ describe("CorridorFrequency", () => {
     expect(routeWaits.get("A")).toBe(Infinity);
   });
 
-  it("works out the weekday figure: each daytime hour's worst wait, an hour without service as 60", () => {
+  it("works out the weekday figure: the median of each daytime hour's worst wait", () => {
     const c = cf.combosOfCorridors([corridor([[0, 50]])])[0]!;
-    // 08:00–09:00 has up to 20; 09:00–10:00 ends the day's service, which counts as 60, as do
-    // the other 13 hours.
-    const week = (14 * 60 + 20) / 15;
-    expect(cf.frequencies("weekdays", () => true).best[c]).toBeCloseTo(week, 4);
-    expect(cf.combosWithWeekday()[c]!.weekday).toBe(Math.round(week * 10) / 10);
+    // Only 08:00–09:00 has a bus up to every 20 min; the other 14 hours count as 60.
+    expect(cf.frequencies("weekdays", () => true).best[c]).toBe(60);
+    expect(cf.combosWithWeekday()[c]!.weekday).toBe(60);
   });
 });
 

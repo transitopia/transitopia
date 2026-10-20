@@ -26,8 +26,8 @@ export interface PlanRoute {
    */
   dataset?: string | undefined;
   /**
-   * How often it runs on regular weekdays (schedule/frequency.ts → `weekdayWait`, in its better
-   * direction): the mean of each daytime hour's worst wait, in minutes. Set when the plan is
+   * How often it runs on regular weekdays (schedule/frequency.ts → `weekdayWait`): the median of
+   * each daytime hour's worst wait in its better direction that hour, in minutes. Set when the plan is
    * published; absent when it doesn't run in those hours.
    */
   weekdayWait?: number | undefined;

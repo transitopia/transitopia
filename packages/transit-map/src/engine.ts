@@ -1057,8 +1057,8 @@ export class TransitEngine {
   }
 
   /**
-   * A route's weekday figure (minutes, `PlanRoute.weekdayWait`: the mean of each daytime hour's worst
-   * wait on regular weekdays, as the map's "Day" bus frequency), worked out here for a plan
+   * A route's weekday figure (minutes, `PlanRoute.weekdayWait`: the median of each daytime hour's
+   * worst wait on regular weekdays, as the map's "Day" bus frequency), worked out here for a plan
    * published without it; undefined when it doesn't run then.
    */
   dayWait(key: string): number | undefined {

@@ -131,26 +131,27 @@ describe("regular weekdays", () => {
     );
   });
 
-  it("averages each daytime hour's worst wait, Monday to Friday", () => {
+  it("takes the median over weekday hours of the better direction's worst wait", () => {
     const days = regularWeekdays(
       servicesOn,
       serviceDate("20261001"),
       serviceDate("20261031"),
     );
     expect(days).toEqual(week.slice(0, 5));
-    // Every 10 minutes 06:00–21:00 on weekdays, with an hour's gap at 12:00, and hourly at the
-    // weekend, which doesn't count.
-    const wk = Array.from({ length: 91 }, (_, i) => 6 * 3600 + i * 600).filter(
-      (s) => s <= 12 * 3600 || s >= 13 * 3600,
-    );
-    const sa = Array.from({ length: 16 }, (_, i) => (6 + i) * 3600);
-    const w = weekdayWait(servicesOn, days, [
-      { byService: { wk, sa, su: sa }, offset: 0 },
-    ]);
-    // 13 hours at 10, 12:00–13:00 at 60, 11:00–12:00 at 10 (12:00 then 13:00 is the next hour's).
-    expect(w).toBeCloseTo((14 * 10 + 60) / 15, 5);
-    expect(
-      weekdayWait(servicesOn, days, [{ byService: {}, offset: 0 }]),
-    ).toBeUndefined();
+    // Every 10 minutes one way until 13:00 and the other way from 14:00, every 30 otherwise.
+    const every = (fromH: number, toH: number, m: number) =>
+      Array.from(
+        { length: ((toH - fromH) * 60) / m },
+        (_, i) => fromH * 3600 + i * m * 60,
+      );
+    const out = [...every(6, 13, 10), ...every(13, 21.5, 30)];
+    const back = [...every(6, 14, 30), ...every(14, 21.5, 10)];
+    const dir = (wk: number[]) => [{ byService: { wk }, offset: 0 }];
+    // Each alone: up to 10 for 7 hours, 30 for 8; the median is 30.
+    expect(weekdayWait(servicesOn, days, [dir(out)])).toBe(30);
+    expect(weekdayWait(servicesOn, days, [dir(back)])).toBe(30);
+    // The better one each hour: 10, except 13:00–14:00.
+    expect(weekdayWait(servicesOn, days, [dir(out), dir(back)])).toBe(10);
+    expect(weekdayWait(servicesOn, days, [dir([])])).toBeUndefined();
   });
 });
