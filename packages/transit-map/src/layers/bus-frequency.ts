@@ -96,13 +96,17 @@ export class BusFrequencyLayer {
    * Forget what was applied, after the sources were re-created or their data replaced: and clear
    * their feature state, which MapLibre keeps by feature id across new data, where an id may now be
    * another corridor (the detailed corridors replacing the overview's, which stand in for them
-   * until they load, or another feed's).
+   * until they load, or another feed's). Removing it isn't enough: MapLibre applies a source's
+   * state changes only while it's drawn, and changes still queued (the detailed corridors' while
+   * zoomed out) outlive a removal followed by new state. So the next update also sets every
+   * feature's `brand`, as for features that had one.
    */
   invalidate(map: MlMap): void {
     this.key = "";
-    this.brandShown.clear();
-    for (const { source } of this.sources)
-      if (map.getSource(source)) map.removeFeatureState({ source });
+    for (const s of this.sources) {
+      this.brandShown.set(s.source, new Set(s.ids));
+      if (map.getSource(s.source)) map.removeFeatureState({ source: s.source });
+    }
   }
 
   update(
