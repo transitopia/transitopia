@@ -232,7 +232,7 @@ function byTier<T extends string | number>(
 
 /** Bus routes drawn as corridors rather than lines of their own: every bus route, when the plan has corridors. */
 function inCorridors(plan: ServicePlan): Set<string> {
-  if (!overviewCorridors(plan).length) return new Set();
+  if (!hasCorridors(plan)) return new Set();
   return new Set(plan.routes.filter((r) => r.kind === "bus").map((r) => r.key));
 }
 
@@ -244,6 +244,14 @@ export function brandedRoutes(plan: ServicePlan): PlanRoute[] {
   return plan.routes.filter(
     (r) => r.kind === "bus" && r.category !== "regular",
   );
+}
+
+/**
+ * Whether the plan draws bus routes as corridors: by its overview corridors, which are in from the
+ * start (`plan.corridors`, the detailed ones, loads only when first zoomed in).
+ */
+function hasCorridors(plan: ServicePlan): boolean {
+  return overviewCorridors(plan).length > 0;
 }
 
 /** The corridors drawn zoomed out (plans without overview corridors draw the detailed ones). */
@@ -357,7 +365,7 @@ function busStopsGeoJson(plan: ServicePlan): FeatureCollection {
 function busTicksGeoJson(plan: ServicePlan): FeatureCollection {
   const color = new Map(plan.routes.map((r) => [r.key, r.color]));
   const ticks = busStopTicks(plan);
-  if (!plan.corridors?.length)
+  if (!hasCorridors(plan))
     return {
       type: "FeatureCollection",
       features: ticks.map((t) => ({
@@ -691,9 +699,9 @@ export function addStaticLayers(
     layout: { "line-join": "round", "line-cap": "round" },
     paint: {
       "line-color": routeColor,
-      "line-opacity": plan.corridors?.length ? 1 : 0.55,
+      "line-opacity": hasCorridors(plan) ? 1 : 0.55,
       "line-width":
-        plan.corridors?.length ?
+        hasCorridors(plan) ?
           [
             "interpolate",
             ["linear"],
