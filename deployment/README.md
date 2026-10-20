@@ -83,8 +83,16 @@ One-time setup (done):
    must keep the query string in the cache key (Cloudflare's default). The upload stores
    `Cache-Control` on each object when it uploads (5 minutes for the manifest, a day for the rest),
    and a Cache Rule for `data.transitopia.org` makes the edge follow it (Cloudflare doesn't cache
-   `.json` by default). Set the same headers when uploading by hand, or an overwrite drops them.
-4. For the fallback workflow, add GitHub secrets `RCLONE_CONFIG_TRANSITOPIA_DATA_R2_ACCESS_KEY_ID` and
+   `.json` by default). Upload by hand with `npm run publish:data -- <remote>`, never a bare
+   `rclone copy`: an overwrite drops the headers, and the files must go up compressed.
+4. Compression: the upload compresses every JSON and GeoJSON file with brotli at its highest
+   quality (`apps/server/src/jobs/publish.ts`; staged in `var/publish/data`, recompressed only when
+   the file changes) and stores it with `Content-Encoding: br` and `Cache-Control: …, no-transform`,
+   so the edge serves our copy as it is instead of compressing the plain file itself, which it does
+   at about brotli quality 4, or with zstd for browsers that accept it (Chrome): a weekday plan was
+   122 KB that way, 84 KB at quality 11. Every browser accepts brotli; Node's `fetch` decodes it
+   too, but `curl` needs `--compressed`.
+5. For the fallback workflow, add GitHub secrets `RCLONE_CONFIG_TRANSITOPIA_DATA_R2_ACCESS_KEY_ID` and
    `RCLONE_CONFIG_TRANSITOPIA_DATA_R2_SECRET_ACCESS_KEY` (an R2 API token that can write the bucket;
    the endpoint is shared with the maps bucket).
 

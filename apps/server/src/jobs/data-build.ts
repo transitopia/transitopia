@@ -9,17 +9,14 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import {
-  CORRECTIONS_EXPORT_DIR,
-  PUBLIC_DATA_DIR,
-  ROOT,
-} from "@transitopia/data/paths.ts";
+import { CORRECTIONS_EXPORT_DIR, ROOT } from "@transitopia/data/paths.ts";
 import type { FeedInfo } from "@transitopia/transit-core/config.ts";
 import { archivedFeeds } from "@transitopia/data/gtfs-day.ts";
 import type { Db } from "@transitopia/db/connect.ts";
 import type { CorrectionsRepo } from "../corrections.ts";
 import type { ServerEnv } from "../env.ts";
 import { run } from "./exec.ts";
+import { publishData } from "./publish.ts";
 import { isoDate } from "../dates.ts";
 import { reconcileConfig } from "../config.ts";
 import { reconcileFeeds } from "../features/reconcile.ts";
@@ -91,7 +88,7 @@ export async function buildData(opts: {
     }
   let published = false;
   if (env.dataPublishRemote) {
-    await publishData(env.dataPublishRemote);
+    await publishData(env.dataPublishRemote, undefined, log);
     published = true;
     log(`published transit data to ${env.dataPublishRemote}`);
   }
@@ -101,46 +98,6 @@ export async function buildData(opts: {
     ...(reconcileError ? { reconcileError } : {}),
     published,
   };
-}
-
-/** Files clients poll to find the current version of the rest: published last, with a short cache. */
-const POINTERS = ["manifest.json", "places.json", "latest.json"];
-
-/**
- * Publish var/public/data (or only the files `include` names, as rclone filters) to `remote`.
- * Everything but the pointers first, so no client reads a manifest or index pointing at files that
- * aren't there yet; old files stay for clients holding an older pointer (copy, not sync). The
- * filters name a file anywhere: every feed's data/feeds/<feed>/manifest.json.
- */
-export async function publishData(
-  remote: string,
-  include?: string[],
-): Promise<void> {
-  const dest = `${remote}/data`;
-  const filters = (names: string[], flag: string) =>
-    names.flatMap((n) => [flag, n]);
-  await run("rclone", [
-    "copy",
-    PUBLIC_DATA_DIR,
-    dest,
-    ...filters(POINTERS, "--exclude"),
-    ...(include ? filters(include, "--include") : []),
-    "--header-upload",
-    "Cache-Control: public, max-age=86400",
-    "--s3-no-check-bucket",
-  ]);
-  await run("rclone", [
-    "copy",
-    PUBLIC_DATA_DIR,
-    dest,
-    ...filters(
-      include ? POINTERS.filter((p) => p !== "manifest.json") : POINTERS,
-      "--include",
-    ),
-    "--header-upload",
-    "Cache-Control: public, max-age=300",
-    "--s3-no-check-bucket",
-  ]);
 }
 
 /** Write every feed's places files (those that changed) and the day's public export from the registry. */
