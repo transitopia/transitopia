@@ -90,8 +90,9 @@ One-time setup (done):
    the file changes) and stores it with `Content-Encoding: br` and `Cache-Control: …, no-transform`,
    so the edge serves our copy as it is instead of compressing the plain file itself, which it does
    at about brotli quality 4, or with zstd for browsers that accept it (Chrome): a weekday plan was
-   122 KB that way, 84 KB at quality 11. Every browser accepts brotli; Node's `fetch` decodes it
-   too, but `curl` needs `--compressed`.
+   122 KB that way, 84 KB at quality 11. Clients that accept brotli get our copy as stored, even
+   when they also accept zstd; for the rest (`curl`, Node's `fetch`), the edge decodes it (tested
+   2026-10-19).
 5. For the fallback workflow, add GitHub secrets `RCLONE_CONFIG_TRANSITOPIA_DATA_R2_ACCESS_KEY_ID` and
    `RCLONE_CONFIG_TRANSITOPIA_DATA_R2_SECRET_ACCESS_KEY` (an R2 API token that can write the bucket;
    the endpoint is shared with the maps bucket).
