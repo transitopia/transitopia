@@ -175,7 +175,7 @@ export async function readManifest(feed: string): Promise<FeedManifest> {
   return readJson<FeedManifest>(path);
 }
 
-/** A feed's routes.json: which of its routes are drawn (config/feeds/<feed>/routes.json). */
+/** A feed's routes.json: overrides and exclusions of its routes (config/feeds/<feed>/routes.json). */
 export async function readFeedRoutes(feed: string): Promise<Config<"routes">> {
   return parseConfig(
     "routes",

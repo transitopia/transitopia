@@ -323,7 +323,7 @@ const PlaceCardBody: React.FC<{
   place: PlaceSnapshot;
 }> = ({ engine, snap, place }) => {
   const state = timeState(snap);
-  const colors = routeColorsFor(engine, snap);
+  const colors = routeColorsFor(engine);
   const station = place.kind === "station";
   const exchange = place.kind === "exchange";
   const isBus = (r: PlanRoute) => r.mode === "bus";
@@ -496,12 +496,6 @@ const PlaceCardBody: React.FC<{
             <p className={rail ? "mt-1" : undefined}>
               Buses: live where the bus reports GPS; otherwise from the
               timetable.
-            </p>
-          : null}
-          {place.listed.length ?
-            <p className={rail || has("bus") ? "mt-1" : undefined}>
-              Routes in grey aren't on the map yet, so their times aren't listed
-              here.
             </p>
           : null}
           {legendsFor(creditsFor(place.datasets)).map((l) => (

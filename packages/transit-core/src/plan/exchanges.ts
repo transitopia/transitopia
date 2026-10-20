@@ -7,7 +7,6 @@ import { distM, type LonLat } from "../geo.ts";
 import {
   isPassengerStop,
   type PlanHub,
-  type PlanStation,
   type PlanStop,
   type ServicePlan,
 } from "./types.ts";
@@ -205,29 +204,18 @@ export function busStopRoutes(
   return out;
 }
 
-/** What `busHubs` reads: the plan's routes, stops, stations, trips and catalogue. */
+/** What `busHubs` reads: the plan's routes, stops, stations and trips. */
 export type HubPlan = Pick<
   ServicePlan,
-  "routes" | "stops" | "stations" | "patterns" | "trips" | "catalog"
+  "routes" | "stops" | "stations" | "patterns" | "trips"
 >;
 
-/**
- * The plan's bus exchanges and stations' bus bays, from the bays its bus patterns stop at, plus the
- * bays at the same places that only catalogue routes use (their routes come from the catalogue, not
- * `routes`). A group of bays that no drawn bus uses and that isn't a station's isn't a hub: an
- * exchange appears once one of its buses is drawn.
- */
+/** The plan's bus exchanges and stations' bus bays, from the bays its bus patterns stop at. */
 export function busHubs(plan: HubPlan): BusHub[] {
   const bays = new Map<number, Set<string>>();
   for (const [si, r] of busStopRoutes(plan))
     if (isBay(plan.stops[si]!.name)) bays.set(si, r);
   const indexOf = new Map(plan.stops.map((s, i) => [s.id, i]));
-  for (const c of plan.catalog ?? [])
-    for (const id of c.stops) {
-      const si = indexOf.get(id);
-      if (si !== undefined && isBay(plan.stops[si]!.name) && !bays.has(si))
-        bays.set(si, new Set());
-    }
   const groups = groupBays(
     [...bays.keys()].map((si) => plan.stops[si]!),
     plan.stations,
@@ -239,7 +227,6 @@ export function busHubs(plan: HubPlan): BusHub[] {
   const out: BusHub[] = [];
   const ids = new Set<string>();
   for (const h of hubs) {
-    if (!h.station && h.stops.every((si) => !bays.get(si)!.size)) continue;
     const stops = h.stops.map((si) => plan.stops[si]!).sort(byBay);
     let id = slug(h.name);
     for (let n = 2; ids.has(id); n++) id = `${slug(h.name)}-${n}`;
@@ -255,32 +242,4 @@ export function busHubs(plan: HubPlan): BusHub[] {
     });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
-}
-
-/**
- * Whether a bay stop not yet in the plan is at a place already on the map, so the plan should keep
- * it (packages/transit-core/DESIGN.md#route-catalogue): it has the name of one of a hub's bays and
- * is within STATION_M of it, or it's beside a station (within STATION_M, the name's first word the
- * station's, as `busHubs` attaches bays to stations).
- */
-export function bayAtPlace(
-  stop: Pick<PlanStop, "name" | "lon" | "lat">,
-  hubBays: readonly PlanStop[],
-  stations: readonly PlanStation[],
-): boolean {
-  if (!isBay(stop.name)) return false;
-  const at: LonLat = [stop.lon, stop.lat];
-  const name = baseName(stop.name).toLowerCase();
-  return (
-    hubBays.some(
-      (b) =>
-        baseName(b.name).toLowerCase() === name
-        && distM([b.lon, b.lat], at) < STATION_M,
-    )
-    || stations.some(
-      (st) =>
-        firstWord(st.name) === firstWord(stop.name)
-        && distM([st.lon, st.lat], at) < STATION_M,
-    )
-  );
 }

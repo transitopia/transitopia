@@ -15,7 +15,7 @@ import type { Place } from "./url.ts";
 
 export interface SelectContext {
   feed: string;
-  plan: Pick<ServicePlan, "stations" | "stops" | "routes" | "catalog">;
+  plan: Pick<ServicePlan, "stations" | "stops" | "routes">;
   hubs: readonly BusHub[];
   /** The plan version's places file; null without one (no registry here). */
   places: PlacesFile | null;
@@ -107,9 +107,7 @@ export function resolveSelect(
       return s ? { place: { kind: "stop", id: s.id } } : "elsewhere";
     }
     case "gtfs-route": {
-      const r = [...plan.routes, ...(plan.catalog ?? [])].find(
-        (x) => x.gtfsRouteId === k.value,
-      );
+      const r = plan.routes.find((x) => x.gtfsRouteId === k.value);
       return r ? { place: { kind: "route", id: r.key } } : "elsewhere";
     }
     default:
@@ -146,9 +144,7 @@ export function selectKey(
     case "route": {
       const key = places?.routes[place.id];
       if (key) return key;
-      const r = [...plan.routes, ...(plan.catalog ?? [])].find(
-        (x) => x.key === place.id,
-      );
+      const r = plan.routes.find((x) => x.key === place.id);
       return formatRef("gtfs-route", feed, r?.gtfsRouteId ?? place.id);
     }
     case "exchange": {

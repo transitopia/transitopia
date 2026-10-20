@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  bayAtPlace,
   baseName,
   bayLabel,
   bayNumber,
@@ -115,38 +114,6 @@ describe("busHubs", () => {
     });
     expect(busHubs(plan)).toHaveLength(2);
   });
-
-  it("adds bays only catalogue routes use, but no exchange of their own", () => {
-    const withCatalog = {
-      ...plan,
-      stops: [
-        ...plan.stops,
-        stop("u3", "UBC Exchange @ Bay 3", -123.2474, 49.2677),
-        stop("s5", "Scott Road Station @ Bay 5", -122.8901, 49.2046),
-        stop("n1", "Newton Exchange @ Bay 1", -122.8418, 49.1328),
-      ],
-      catalog: [
-        { key: "25", stops: ["u3", "n1"] },
-        { key: "319", stops: ["s5"] },
-      ],
-    } as unknown as ServicePlan;
-    const hubs = busHubs(withCatalog);
-    expect(hubs.find((h) => h.id === "ubc-exchange")!.bays).toEqual([
-      "u3",
-      "u7",
-      "u10",
-      "uu",
-    ]);
-    // Routes are the drawn ones; cards add catalogue routes per bay.
-    expect(hubs.find((h) => h.id === "ubc-exchange")!.routes).toEqual(["99"]);
-    expect(hubs.find((h) => h.station === "99949")!.bays).toEqual([
-      "s2",
-      "s3",
-      "s5",
-    ]);
-    // Newton has no drawn bus: not an exchange (yet).
-    expect(hubs).toHaveLength(2);
-  });
 });
 
 describe("bayLabel", () => {
@@ -154,36 +121,5 @@ describe("bayLabel", () => {
     expect(bayLabel("Joyce Station @ Bay 1 Unload Only")).toBe("Bay 1");
     expect(bayLabel("UBC Exchange @ Unloading Only")).toBe("Unloading Only");
     expect(bayLabel("Phibbs Exchange @")).toBe("Bay");
-  });
-});
-
-describe("bayAtPlace", () => {
-  const hubBays = [
-    { id: "u7", name: "UBC Exchange @ Bay 7", lon: -123.2475, lat: 49.2676 },
-  ];
-  const stations = [
-    {
-      id: "99949",
-      name: "Scott Road",
-      lon: -122.8897,
-      lat: 49.2043,
-      routes: [],
-    },
-  ];
-  const at = (name: string, lon: number, lat: number) =>
-    bayAtPlace({ name, lon, lat }, hubBays, stations);
-
-  it("keeps bays at an exchange or beside a station on the map", () => {
-    expect(at("UBC Exchange @ Bay 3", -123.2474, 49.2677)).toBe(true);
-    expect(at("Scott Rd Station @ Bay 5", -122.8901, 49.2046)).toBe(true);
-  });
-
-  it("leaves other bays and street stops out", () => {
-    expect(at("Newton Exchange @ Bay 1", -122.8418, 49.1328)).toBe(false);
-    expect(at("Eastbound W Broadway @ Alma St", -123.2474, 49.2677)).toBe(
-      false,
-    );
-    // Same name, but a different place far away.
-    expect(at("UBC Exchange @ Bay 3", -123.1, 49.2)).toBe(false);
   });
 });

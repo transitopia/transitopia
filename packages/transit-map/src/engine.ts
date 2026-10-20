@@ -1066,7 +1066,7 @@ export class TransitEngine {
   dayWait(key: string): number | undefined {
     const pp = this.shownFeed;
     if (!pp) return undefined;
-    const route = pp.routes.get(key) ?? pp.catalog.get(key);
+    const route = pp.routes.get(key);
     if (route?.weekdayWait !== undefined) return route.weekdayWait;
     let byRoute = this.dayWaitCache.get(pp);
     if (!byRoute) this.dayWaitCache.set(pp, (byRoute = new Map()));

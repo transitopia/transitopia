@@ -201,7 +201,7 @@ export class FeedPoller {
     await this.loadLedger();
     if (this.opts.record) {
       const last = await this.recorder.lastSnapshot();
-      this.latest = last ? trackedOnly(last) : null;
+      this.latest = last ? trackedOnly(last, this.routeKeyById) : null;
     }
     const now = Date.now();
     const s = this.schedule;
@@ -345,7 +345,7 @@ export class FeedPoller {
 
   /**
    * GTFS route_id → our route key, from every built version of the feed (route IDs can differ between
-   * versions). Reloaded whenever the feed's manifest changes, so routes added to its routes.json (and
+   * versions). Reloaded whenever the feed's manifest changes, so routes added to the feed or its routes.json (and
    * rebuilt with `npm run data`) are picked up without restarting.
    */
   private async loadRoutes(): Promise<void> {
@@ -369,11 +369,13 @@ export class FeedPoller {
       }
       if (this.routesLoadedFrom !== undefined)
         this.log(
-          `timetable data changed: now tracking ${[...new Set(map.values())].join(", ")}`,
+          `timetable data changed: now tracking ${new Set(map.values()).size} bus routes`,
         );
       this.routeKeyById = map;
       this.railKeyById = rail;
       this.routesLoadedFrom = mtime;
+      // Filtered hours depend on the routes drawn (trackedOnly).
+      this.historyCache.clear();
     } catch (e) {
       this.log(
         `could not read the timetable manifest (${e instanceof Error ? e.message : String(e)}); run "npm run data:gtfs".`,
@@ -597,6 +599,7 @@ export class FeedPoller {
     date: string,
     hour: string,
   ): Promise<{ body: Buffer; closed: boolean } | undefined> {
+    await this.loadRoutes();
     const f = await this.recorder.hourFile(date, hour);
     if (!f) return undefined;
     const hit = this.historyCache.get(f.path);
@@ -608,7 +611,9 @@ export class FeedPoller {
       .split("\n")) {
       if (!line) continue;
       try {
-        lines.push(encodeSnapshot(trackedOnly(decodeSnapshot(line))));
+        lines.push(
+          encodeSnapshot(trackedOnly(decodeSnapshot(line), this.routeKeyById)),
+        );
       } catch {
         // The open hour's last line may be half written.
       }

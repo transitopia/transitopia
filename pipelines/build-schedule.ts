@@ -38,10 +38,8 @@ import {
 } from "@transitopia/data/paths.ts";
 import { readPlanCore, writePlan } from "@transitopia/data/plans.ts";
 import { shortId } from "@transitopia/transit-core/plan/display.ts";
-import type {
-  FeedInfo,
-  RouteConfig,
-} from "@transitopia/transit-core/config.ts";
+import type { FeedInfo } from "@transitopia/transit-core/config.ts";
+import { selectRoutes } from "@transitopia/transit-core/plan/routes.ts";
 import {
   cumulativeLengths,
   projectOnto,
@@ -78,7 +76,6 @@ import type {
 } from "@transitopia/transit-core/gtfs/calendar.ts";
 import {
   feedDataPath,
-  type CatalogRoute,
   type FeedManifest,
   type PlanPattern,
   type PlanRoute,
@@ -93,10 +90,7 @@ import {
   STOP_NO_DROPOFF,
   STOP_NO_PICKUP,
 } from "@transitopia/transit-core/plan/types.ts";
-import {
-  bayAtPlace,
-  busHubs,
-} from "@transitopia/transit-core/plan/exchanges.ts";
+import { busHubs } from "@transitopia/transit-core/plan/exchanges.ts";
 import {
   groupStations,
   stationName,
@@ -118,8 +112,9 @@ const STOP_OFFSET_WARN_M = 150;
  * break; divided roads merge round bends. 11: repeated shape points don't break a match. 12: bus
  * exchanges and stations' bays (`hubs`). 13: published in parts (plan/published.ts), lines at 5 decimals.
  * 14: weekday figures (routes' `weekdayWait`, combos' `weekday`) and shared stretches' offsets.
+ * 15: every route in the feed by default (plan/routes.ts), no catalogue.
  */
-const PLAN_FORMAT = 14;
+const PLAN_FORMAT = 15;
 
 /** Regions showing the feed with SeaBus berths and lanes (infrastructure/seabus.json): build-schedule applies them. */
 async function ferryRegions(feed: string): Promise<string[]> {
@@ -189,30 +184,6 @@ async function inputsHash(feed: string): Promise<string> {
   return h.digest("hex").slice(0, 16);
 }
 
-/** GTFS route_type for buses: the feed's other bus routes go in the plan's catalogue. */
-const GTFS_BUS = "3";
-/** Catalogue routes have no colour of their own (GTFS gives buses none): one neutral badge. */
-const CATALOG_COLOR = "#4b5563";
-
-/** A bus route's key from its short name, as riders know it: "025" → "25", "N17" → "N17". */
-function catalogKey(row: Row): string {
-  const short = (row.route_short_name ?? "").trim();
-  return short ? short.replace(/^0+(?=\d)/, "") : `gtfs:${row.route_id!}`;
-}
-
-function matchRoute(row: Row, cfg: RouteConfig[]): RouteConfig | undefined {
-  return cfg.find((c) =>
-    Object.entries(c.match).every(
-      ([field, value]) =>
-        (row[field] ?? "").toLowerCase() === value.toLowerCase(),
-    ),
-  );
-}
-
-function hexColor(v: string | undefined, fallback: string): string {
-  return v && /^[0-9a-f]{6}$/i.test(v) ? `#${v.toLowerCase()}` : fallback;
-}
-
 interface StopTimeRow {
   seq: number;
   stopId: string;
@@ -227,7 +198,7 @@ export async function buildPlan(
   feed: FeedInfo,
   roads?: RoadGraph,
 ): Promise<ServicePlan> {
-  const { routes: routeCfg } = await readFeedRoutes(feed.id);
+  const routeCfg = await readFeedRoutes(feed.id);
   const gtfsDataset = feed.dataset;
 
   const [info] = await readCsvAll(zipPath, "feed_info.txt");
@@ -240,68 +211,19 @@ export async function buildPlan(
         `${feed.id}: agency ${a.agency_name} is in ${a.agency_timezone} and the feed says ${feed.timezone}; only ${TIMEZONE} is supported`,
       );
 
-  // Routes, matched by name.
-  const routes: PlanRoute[] = [];
-  const routeByGtfsId = new Map<string, PlanRoute>();
-  for (const row of await readCsvAll(zipPath, "routes.txt")) {
-    const cfg = matchRoute(row, routeCfg);
-    if (!cfg) continue;
-    if (routes.some((r) => r.key === cfg.key))
-      throw new Error(
-        `Route config ${cfg.key} matched more than one GTFS route`,
-      );
-    const r: PlanRoute = {
-      key: cfg.key,
-      label: cfg.label,
-      kind: cfg.kind,
-      mode: cfg.mode,
-      category: cfg.category,
-      color: cfg.color ?? hexColor(row.route_color, "#666666"),
-      textColor: hexColor(row.route_text_color, "#ffffff"),
-      gtfsRouteId: row.route_id!,
-      dataset: gtfsDataset,
-    };
-    routes.push(r);
-    routeByGtfsId.set(r.gtfsRouteId, r);
-  }
-  const missing = routeCfg.filter((c) => !routes.some((r) => r.key === c.key));
-  if (missing.length)
-    throw new Error(
-      `Routes not found in feed: ${missing.map((m) => m.key).join(", ")}`,
+  // Routes: every one in the feed, as routes.json overrides or excludes them (matched by name).
+  const selected = selectRoutes(
+    await readCsvAll(zipPath, "routes.txt"),
+    routeCfg,
+    gtfsDataset,
+  );
+  for (const { row, reason } of selected.skipped)
+    log(
+      `  left out ${row.route_short_name || row.route_long_name || row.route_id}: ${reason}`,
     );
-  routes.sort(
-    (a, b) =>
-      routeCfg.findIndex((c) => c.key === a.key)
-      - routeCfg.findIndex((c) => c.key === b.key),
-  );
-  log(`Matched ${routes.length} routes`);
-
-  // The feed's other bus routes: listed on cards (the catalogue), not drawn.
-  const catalogByGtfsId = new Map<string, CatalogRoute>();
-  for (const row of await readCsvAll(zipPath, "routes.txt")) {
-    if (row.route_type !== GTFS_BUS || routeByGtfsId.has(row.route_id!))
-      continue;
-    const key = catalogKey(row);
-    const long = (row.route_long_name ?? "").trim();
-    catalogByGtfsId.set(row.route_id!, {
-      key,
-      label: long ? `${key} ${long}` : key,
-      kind: "bus",
-      mode: "bus",
-      category: "regular",
-      color: CATALOG_COLOR,
-      textColor: "#ffffff",
-      gtfsRouteId: row.route_id!,
-      dataset: gtfsDataset,
-      stops: [],
-      starts: {},
-    });
-  }
-  const catalogKeys = [...catalogByGtfsId.values()].map((c) => c.key);
-  const clash = catalogKeys.find(
-    (k, i) => catalogKeys.indexOf(k) !== i || routes.some((r) => r.key === k),
-  );
-  if (clash) throw new Error(`Catalogue route key ${clash} isn't unique`);
+  for (const c of selected.unmatched)
+    log(`  warn: routes.json entry ${c.key} matches no route in this feed`);
+  const routeByGtfsId = new Map(selected.routes.map((r) => [r.gtfsRouteId, r]));
 
   // Trips on those routes.
   interface RawTrip {
@@ -314,28 +236,7 @@ export async function buildPlan(
     shape: string;
   }
   const rawTrips = new Map<string, RawTrip>();
-  // Catalogue trips: only where and when they start, and which stops they serve.
-  interface CatalogTrip {
-    route: CatalogRoute;
-    service: string;
-    direction: number;
-    seq: number;
-    start: number;
-  }
-  const catalogTrips = new Map<string, CatalogTrip>();
-  const catalogStops = new Map<CatalogRoute, Set<string>>();
   for await (const row of readCsv(zipPath, "trips.txt")) {
-    const cat = catalogByGtfsId.get(row.route_id!);
-    if (cat) {
-      catalogTrips.set(row.trip_id!, {
-        route: cat,
-        service: row.service_id!,
-        direction: Number(row.direction_id || 0) ? 1 : 0,
-        seq: Infinity,
-        start: NaN,
-      });
-      continue;
-    }
     const route = routeByGtfsId.get(row.route_id!);
     if (!route) continue;
     rawTrips.set(row.trip_id!, {
@@ -355,18 +256,6 @@ export async function buildPlan(
   let scanned = 0;
   for await (const row of readCsv(zipPath, "stop_times.txt")) {
     scanned++;
-    const ct = catalogTrips.get(row.trip_id!);
-    if (ct) {
-      const seq = Number(row.stop_sequence);
-      if (seq < ct.seq) {
-        ct.seq = seq;
-        ct.start = parseGtfsTime(row.departure_time || row.arrival_time || "");
-      }
-      let served = catalogStops.get(ct.route);
-      if (!served) catalogStops.set(ct.route, (served = new Set()));
-      served.add(row.stop_id!);
-      continue;
-    }
     if (!rawTrips.has(row.trip_id!)) continue;
     let list = stopTimes.get(row.trip_id!);
     if (!list) stopTimes.set(row.trip_id!, (list = []));
@@ -549,6 +438,19 @@ export async function buildPlan(
     log(`  … ${warnedOffsets - 20} more stop/shape offset warnings`);
   trips.sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
   log(`Built ${patterns.length} patterns, ${trips.length} trips`);
+  // Routes without trips (HandyDART's placeholder, a route between timetables) aren't drawn.
+  const withTrips = new Set(patterns.map((p) => p.route));
+  const routes = selected.routes.filter((r) => withTrips.has(r.key));
+  log(
+    `${routes.length} routes (${routes.filter((r) => r.kind === "bus").length} bus)${
+      routes.length < selected.routes.length ?
+        `; without trips: ${selected.routes
+          .filter((r) => !withTrips.has(r.key))
+          .map((r) => r.key)
+          .join(", ")}`
+      : ""
+    }`,
+  );
 
   // Stations: parent stations of non-bus stops (bus stops are too numerous to label).
   const stationRoutes = new Map<string, Set<string>>();
@@ -588,59 +490,8 @@ export async function buildPlan(
   stations.length = 0;
   stations.push(...merged.sort((a, b) => a.name.localeCompare(b.name)));
 
-  // The other bays at stations and exchanges on the map, so their cards list every route there
-  // (bays only catalogue routes use); bays elsewhere wait until their buses are drawn.
-  const hubs = busHubs({ routes, stops, stations, patterns, trips });
-  const hubBays = hubs.flatMap((h) =>
-    h.bays.map((id) => stops[stopIndex.get(id)!]!),
-  );
-  const servedByCatalog = new Set(
-    [...catalogStops.values()].flatMap((s) => [...s]),
-  );
-  let addedBays = 0;
-  for (const id of [...servedByCatalog].sort()) {
-    const row = allStops.get(id);
-    if (stopIndex.has(id) || !row) continue;
-    const s: PlanStop = {
-      id,
-      name: row.stop_name!,
-      lon: Number(row.stop_lon),
-      lat: Number(row.stop_lat),
-    };
-    if (!bayAtPlace(s, hubBays, stations)) continue;
-    if (row.stop_code) s.code = row.stop_code;
-    stopIndex.set(id, stops.length);
-    stops.push(s);
-    addedBays++;
-  }
-  log(`Added ${addedBays} bays at stations and exchanges for catalogue routes`);
-
-  // The catalogue: each route's stops among the plan's, and its trips' start times.
-  for (const t of catalogTrips.values()) {
-    if (Number.isNaN(t.start)) continue;
-    const byDir = (t.route.starts[t.service] ??= [[], []]);
-    byDir[t.direction as 0 | 1].push(Math.round(t.start / 60));
-  }
-  const catalog = [...catalogByGtfsId.values()]
-    .filter((c) => Object.keys(c.starts).length)
-    .map((c) => {
-      for (const dirs of Object.values(c.starts))
-        for (const list of dirs) list.sort((a, b) => a - b);
-      c.stops = [...(catalogStops.get(c) ?? [])]
-        .filter((id) => stopIndex.has(id))
-        .sort();
-      return c;
-    })
-    .sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true }));
-  log(
-    `Catalogued ${catalog.length} other bus routes (${catalog.filter((c) => c.stops.length).length} at the plan's stops)`,
-  );
-
   // Calendar.
-  const usedServices = new Set([
-    ...trips.map((t) => t.service),
-    ...catalog.flatMap((c) => Object.keys(c.starts)),
-  ]);
+  const usedServices = new Set(trips.map((t) => t.service));
   const calendar: CalendarEntry[] = (await readCsvAll(zipPath, "calendar.txt"))
     .filter((r) => usedServices.has(r.service_id!))
     .map((r) => ({
@@ -685,10 +536,9 @@ export async function buildPlan(
     patterns,
     trips,
     calendar: { calendar, exceptions },
-    catalog,
-    // The plan's own grouping of bays, with the catalogue's bays kept above; the browser never runs
-    // busHubs (it groups by the registry's places file where there is one).
-    hubs: busHubs({ routes, stops, stations, patterns, trips, catalog }),
+    // The plan's own grouping of bays; the browser never runs busHubs (it groups by the
+    // registry's places file where there is one).
+    hubs: busHubs({ routes, stops, stations, patterns, trips }),
   };
   if (roads && matched.size) {
     const corridors = buildCorridors(

@@ -30,7 +30,7 @@ export const PickMenu: React.FC<{
 }> = ({ engine, snap }) => {
   const pick = snap.pick;
   if (!pick) return null;
-  const colors = routeColorsFor(engine, snap);
+  const colors = routeColorsFor(engine);
   // Within the part of the map the header, cards and time bar leave clear.
   const map = document.getElementById("map");
   const box = map?.getBoundingClientRect();

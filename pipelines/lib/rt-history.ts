@@ -16,7 +16,7 @@ import {
   type PreparedPlan,
 } from "@transitopia/transit-core/schedule/engine.ts";
 import { localDate } from "@transitopia/transit-core/time.ts";
-import { readPlan } from "@transitopia/data/plans.ts";
+import { readPlan, readPlanCore } from "@transitopia/data/plans.ts";
 import {
   PUBLIC_DIR,
   feedPaths,
@@ -49,6 +49,7 @@ export async function* eachRecordedHour(
 ): AsyncGenerator<RecordedHour> {
   const dir = feedPaths(feed).rtHistory;
   if (!existsSync(dir)) return;
+  const keyById = await busRouteKeys(feed);
   for (const day of (await readdir(dir))
     .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= sinceDate)
     .sort()) {
@@ -61,7 +62,7 @@ export async function* eachRecordedHour(
       for (const line of text.split("\n")) {
         if (!line.trim()) continue;
         try {
-          snapshots.push(trackedOnly(decodeSnapshot(line)));
+          snapshots.push(trackedOnly(decodeSnapshot(line), keyById));
         } catch {
           // Partial last line of an open file.
         }
@@ -69,6 +70,18 @@ export async function* eachRecordedHour(
       yield { label: `${day}T${m[1]}`, open: !m[2], snapshots };
     }
   }
+}
+
+/**
+ * GTFS route_id → route key for the buses every built version of the feed draws, so hours recorded
+ * before a route was drawn count it too (trackedOnly).
+ */
+async function busRouteKeys(feed: string): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (const f of (await readManifest(feed)).feeds)
+    for (const r of (await readPlanCore(join(PUBLIC_DIR, f.path))).routes)
+      if (r.kind === "bus") out.set(r.gtfsRouteId, r.key);
+  return out;
 }
 
 /** A feed's prepared plans by version, loaded on demand; `forTime` picks the version for an instant. */

@@ -58,8 +58,6 @@ export interface RouteSnapshot {
   kind: "route";
   id: string;
   route: PlanRoute;
-  /** False for a catalogue route: in the feed, listed on cards, but not drawn (no line or vehicles). */
-  drawn: boolean;
   /** How often its trips start in the hour from the shown time (timetable), better direction. */
   nextHour: Frequency | undefined;
   /** Its vehicles drawn now, and how many of them have real positions. */
@@ -77,8 +75,6 @@ export interface PlaceSnapshot extends Place {
   lon: number;
   lat: number;
   routes: PlanRoute[];
-  /** Keys of `routes` the map doesn't draw (catalogue routes): listed, without departures. */
-  listed: string[];
   groups: PlaceGroup[];
   /** Registry ids of the data behind its departures, for its card's credits. */
   datasets: string[];
@@ -193,7 +189,7 @@ export function placeSnapshot(
 ): PlaceSnapshot | RouteSnapshot | undefined {
   const { pp, t } = ctx;
   if (p.kind === "route") {
-    const route = pp.routes.get(p.id) ?? pp.catalog.get(p.id);
+    const route = pp.routes.get(p.id);
     if (!route) return undefined;
     const date = displayServiceDate(t);
     // Whole seconds, so the value only changes when a trip enters or leaves the hour.
@@ -203,7 +199,6 @@ export function placeSnapshot(
       kind: "route",
       id: p.id,
       route,
-      drawn: pp.routes.has(p.id),
       nextHour: routeFrequency(pp, p.id, date, sec, 3600),
       vehicles: mine.length,
       live: mine.filter((v) => v.provenance !== "estimated").length,
@@ -236,8 +231,8 @@ export function placeSnapshot(
     ctx.corrections,
   );
   const groups = groupDepartures(deps);
-  const routeOf = (k: string): PlanRoute =>
-    pp.routes.get(k) ?? pp.catalog.get(k)!;
+  // Departures' routes are the plan's; a places file's hub may name one this version hasn't.
+  const routeOf = (k: string): PlanRoute => pp.routes.get(k)!;
   // Vehicles on the map by the trip they're running, for "View bus" on a departure.
   const drawn = new Map(
     ctx.vehicles
@@ -259,11 +254,6 @@ export function placeSnapshot(
             .map((pt) => pt.route),
         ),
       ];
-  // The feed's other bus routes stopping here: listed, not drawn (ServicePlan.catalog).
-  const catalogKeys = [
-    ...new Set([...stopIds].flatMap((id) => pp.catalogAtStop.get(id) ?? [])),
-  ].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  routeKeys.push(...catalogKeys.filter((k) => !routeKeys.includes(k)));
   const stopName = (id: string) => pp.stopById.get(id)?.name ?? id;
   const parent =
     p.kind === "stop" ? hubs.find((h) => h.bays.includes(p.id)) : undefined;
@@ -311,8 +301,7 @@ export function placeSnapshot(
       : { kind: "exchange", id: parent.id, name: parent.name }),
     lon: where.lon,
     lat: where.lat,
-    routes: routeKeys.map(routeOf).filter(Boolean),
-    listed: catalogKeys,
+    routes: routeKeys.flatMap((k) => pp.routes.get(k) ?? []),
     datasets: ctx.datasetsOf([
       ...routeKeys.map((k): [PlanRoute | undefined, boolean] => [
         routeOf(k),

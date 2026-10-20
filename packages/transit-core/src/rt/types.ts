@@ -1,7 +1,8 @@
 // Real-time snapshot format shared by the RT service (apps/server/src/) and the browser. One snapshot is one
 // upstream poll. History files store one compact snapshot per line (NDJSON) with every route's
 // vehicles (docs/DESIGN.md#upstream-request-budget: recording all routes costs no extra requests); vehicles on routes we
-// don't draw have an untracked route key, and readers keep only tracked ones (trackedOnly).
+// didn't draw when they were recorded have an untracked route key, and readers keep only tracked
+// ones, with the routes drawn now (trackedOnly).
 
 export interface RtVehicle {
   /** GTFS-RT vehicle.id (stable fleet identifier). */
@@ -47,11 +48,24 @@ export const untrackedRouteKey = (gtfsRouteId: string | undefined): string =>
 export const isTracked = (v: Pick<RtVehicle, "routeKey">): boolean =>
   !v.routeKey.startsWith(UNTRACKED);
 
-/** The snapshot with only the vehicles on routes we draw. */
-export function trackedOnly(s: RtSnapshot): RtSnapshot {
-  return s.vehicles.every(isTracked) ?
-      s
-    : { ...s, vehicles: s.vehicles.filter(isTracked) };
+/**
+ * The snapshot with only the vehicles on routes we draw. With `keyById` (GTFS route_id → route key,
+ * from the plans built now), vehicles recorded on a route drawn since then get its key.
+ */
+export function trackedOnly(
+  s: RtSnapshot,
+  keyById?: ReadonlyMap<string, string>,
+): RtSnapshot {
+  if (s.vehicles.every(isTracked)) return s;
+  const vehicles: RtVehicle[] = [];
+  for (const v of s.vehicles) {
+    if (isTracked(v)) vehicles.push(v);
+    else {
+      const key = keyById?.get(v.routeKey.slice(UNTRACKED.length));
+      if (key) vehicles.push({ ...v, routeKey: key });
+    }
+  }
+  return { ...s, vehicles };
 }
 
 /** Response of GET /rt/coverage: recorder coverage as merged [start, end] epoch-ms intervals. */

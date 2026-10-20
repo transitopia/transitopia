@@ -5,6 +5,8 @@ import {
   decodeSnapshot,
   encodeSnapshot,
   extendCoverage,
+  trackedOnly,
+  untrackedRouteKey,
   type RtSnapshot,
 } from "../src/rt/types.ts";
 import { RtTimeline } from "../src/rt/timeline.ts";
@@ -768,6 +770,22 @@ describe("snapshot encoding", () => {
     });
     expect(d.vehicles[0]!.lon).toBeCloseTo(-123.12346, 5);
     expect(d.vehicles[0]!.bearing).toBeUndefined();
+  });
+});
+
+describe("trackedOnly", () => {
+  it("keeps tracked buses, and buses on routes drawn since they were recorded", () => {
+    const s = snap(0, [
+      [-123.1, 49.2],
+      [-123.2, 49.2],
+      [-123.3, 49.2],
+    ]);
+    s.vehicles[1]!.routeKey = untrackedRouteKey("6627");
+    s.vehicles[2]!.routeKey = untrackedRouteKey("9999");
+    expect(trackedOnly(s).vehicles.map((v) => v.routeKey)).toEqual(["99"]);
+    expect(
+      trackedOnly(s, new Map([["6627", "25"]])).vehicles.map((v) => v.routeKey),
+    ).toEqual(["99", "25"]);
   });
 });
 

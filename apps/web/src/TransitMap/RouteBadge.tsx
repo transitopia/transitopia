@@ -1,8 +1,5 @@
 import React from "react";
-import type {
-  TransitEngine,
-  TransitSnapshot,
-} from "@transitopia/transit-map/engine.ts";
+import type { TransitEngine } from "@transitopia/transit-map/engine.ts";
 import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
 import { bandOf } from "./frequency.ts";
 
@@ -18,17 +15,14 @@ export interface RouteColors {
 
 /**
  * The colours cards show a route in (apps/web/README.md#service-frequency): its own, except a regular
- * bus route the map draws, which has none and takes the band of its weekday figure, as the map's "Day"
- * bus frequency colours it. Catalogue routes (not drawn) keep the plan's grey.
+ * bus route, which takes the band of its weekday figure, as the map's "Day" bus frequency colours it.
  */
 export function routeColorsFor(
   engine: TransitEngine,
-  snap: TransitSnapshot,
 ): (r: PlanRoute) => RouteColors {
   return (r) => {
     const own = { bg: r.color, fg: r.textColor };
     if (r.mode !== "bus" || r.category !== "regular") return own;
-    if (!snap.routes.some((x) => x.key === r.key)) return own;
     const wait = engine.dayWait(r.key);
     return wait === undefined ? own : { bg: bandOf(wait).color, fg: "#ffffff" };
   };

@@ -393,45 +393,6 @@ describe("route frequency", () => {
     expect(hours[DAY_HOURS.indexOf(10)]).toBeUndefined();
   });
 
-  it("counts a catalogue route's trip starts, in its better direction", () => {
-    const withCatalog = preparePlan(
-      {
-        ...plan,
-        catalog: [
-          {
-            key: "25",
-            label: "25 Brentwood Station/UBC",
-            kind: "bus",
-            mode: "bus",
-            category: "regular",
-            color: "#4b5563",
-            textColor: "#ffffff",
-            gtfsRouteId: "x25",
-            stops: ["S1"],
-            // 08:00–08:59: four trips one way (every 15 min), three the other (up to 20 apart);
-            // one at 09:00.
-            starts: {
-              sa: [
-                [480, 495, 510, 525, 540],
-                [485, 505, 525],
-              ],
-            },
-          },
-        ],
-      },
-      kin,
-    );
-    expect(routeFrequency(withCatalog, "25", DATE, H8, 3600)).toEqual({
-      wait: 15,
-      averageWait: 7.5,
-      departures: 4,
-    });
-    expect(withCatalog.catalogAtStop.get("S1")).toEqual(["25"]);
-    expect(
-      routeFrequency(withCatalog, "25", serviceDate("20260927"), H8, 3600),
-    ).toBeUndefined();
-  });
-
   it("lists the feed's kinds of day from a date, that date's first", () => {
     // Only Saturdays have service in the fixture.
     expect(dayTypes(pp, serviceDate("20260924"))).toEqual([

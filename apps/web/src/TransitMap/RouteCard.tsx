@@ -61,7 +61,7 @@ const RouteCardBody: React.FC<{
   place: RouteSnapshot;
 }> = ({ engine, snap, place }) => {
   const { route } = place;
-  const colors = routeColorsFor(engine, snap)(route);
+  const colors = routeColorsFor(engine)(route);
   const days = engine.routeDays(route.key);
   const [dayIndex, setDayIndex] = React.useState(0);
   const day = days[Math.min(dayIndex, days.length - 1)];
@@ -78,38 +78,31 @@ const RouteCardBody: React.FC<{
     icon: "share",
     onSelect: () => shareLink(location.href, `${route.label} · Transitopia`),
   };
-  // A route the map doesn't draw (the catalogue) has no line to centre on. While the card is open,
-  // the map dims every other route (packages/transit-map/README.md#route-focus).
-  const actions: CardAction[] =
-    !place.drawn ?
-      [share]
-    : [
-        {
-          id: "centre",
-          label: "Centre on map",
-          icon: "crosshair",
-          onSelect: () => engine.locateSelected(),
-        },
-        share,
-      ];
+  // While the card is open, the map dims every other route (packages/transit-map/README.md#route-focus).
+  const actions: CardAction[] = [
+    {
+      id: "centre",
+      label: "Centre on map",
+      icon: "crosshair",
+      onSelect: () => engine.locateSelected(),
+    },
+    share,
+  ];
   const noun =
     route.mode === "bus" ? "buses"
     : route.mode === "ferry" ? "vessels"
     : "trains";
-  const chips: CardChip[] =
-    !place.drawn ?
-      [{ label: "Not on the map yet" }]
-    : [
-        { label: `${place.vehicles} ${noun} running` },
-        // Green only when live; real positions in the past are recorded.
-        ...(place.live ?
-          [
-            snap.live ?
-              { label: `${place.live} live`, tone: "good" as const }
-            : { label: `${place.live} recorded` },
-          ]
-        : []),
-      ];
+  const chips: CardChip[] = [
+    { label: `${place.vehicles} ${noun} running` },
+    // Green only when live; real positions in the past are recorded.
+    ...(place.live ?
+      [
+        snap.live ?
+          { label: `${place.live} live`, tone: "good" as const }
+        : { label: `${place.live} recorded` },
+      ]
+    : []),
+  ];
   const next = place.nextHour;
   const band = next ? bandOf(next.wait) : undefined;
   return (

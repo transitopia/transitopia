@@ -1,5 +1,5 @@
 {
-  "$comment": "TransLink routes shown on the map. Matched against GTFS routes.txt by name (never route_id, which changes between feeds). 'kind' drives how vehicles are modelled: 'skytrain' = track-level (packages/transit-core/DESIGN.md#track-graph–4.4), 'shape' = interpolated along GTFS shapes, 'bus' = GTFS-RT with schedule fallback. 'kinematics' overrides the vehicle settings of the route's mode (config/defaults/kinematics.json, then its operator's). 'color' is optional; when omitted the GTFS route_color is used (#666666 without one). Only routes drawn in their own colour need one: TransLink's GTFS has none for most buses, so the 99 B-Line is orange and every RapidBus (R1–R6) the same green, as on TransLink's maps. Regular buses are drawn by frequency, not their own colour, so they have none. 'category' is the layer the route belongs to in the site's layers panel: 'rapid' (dedicated right of way: SkyTrain, SeaBus, West Coast Express), 'frequent' (the 99 B-Line and RapidBus R1–R6: frequent, but not true BRT, without dedicated right of way) or 'regular' (every other bus: the 5, 6, 9, 16, 19, 25 and 49 are drawn, the feed's other bus routes listed on cards from the plan's catalogue but not drawn until the plan is smaller, issue #194). Set by hand for now (the user's call, 2026-10-14); 'frequent' vs 'regular' should later be computed from scheduled frequency when the plan is built.",
+  "$comment": "How TransLink's routes are drawn where the GTFS alone doesn't say (packages/transit-core/DESIGN.md#routes). Every route in the feed is drawn by default, modelled from its GTFS route_type (buses: GTFS-RT with schedule fallback, category 'regular'; rail and ferries: along their shapes, 'rapid'), keyed by its short name without leading zeros ('025' → '25') or else its long name, labelled '<key> <long name>', in its GTFS route_color (#666666 without one). An entry here overrides any of that for the route it matches, by name (route_long_name / route_short_name, never route_id, which changes between feeds): 'kind' is how vehicles are modelled ('skytrain' = track-level, packages/transit-core/DESIGN.md#track-graph; 'shape' = interpolated along GTFS shapes; 'bus' = GTFS-RT with schedule fallback), 'kinematics' overrides the vehicle settings of the route's mode (config/defaults/kinematics.json, then its operator's), 'color' is the colour it's drawn in, and 'category' is its layer in the site's layers panel: 'rapid' (dedicated right of way: SkyTrain, SeaBus, West Coast Express), 'frequent' (the 99 B-Line and RapidBus R1–R6: frequent, but not true BRT, without dedicated right of way) or 'regular' (every other bus, drawn by frequency rather than in its own colour). Set by hand for now (the user's call, 2026-10-14); 'frequent' vs 'regular' should later be computed from scheduled frequency when the plan is built. The 99 is orange and every RapidBus the same green, as on TransLink's maps (the GTFS has other shades). 'exclude' leaves routes out of the plan altogether: not drawn, on cards or tracked.",
   "routes": [
     {
       "key": "expo",
@@ -74,8 +74,6 @@
       "match": {
         "route_short_name": "099"
       },
-      "kind": "bus",
-      "mode": "bus",
       "category": "frequent",
       "color": "#f76707"
     },
@@ -85,8 +83,6 @@
       "match": {
         "route_short_name": "R1"
       },
-      "kind": "bus",
-      "mode": "bus",
       "category": "frequent",
       "color": "#3a9a48"
     },
@@ -96,8 +92,6 @@
       "match": {
         "route_short_name": "R2"
       },
-      "kind": "bus",
-      "mode": "bus",
       "category": "frequent",
       "color": "#3a9a48"
     },
@@ -107,8 +101,6 @@
       "match": {
         "route_short_name": "R3"
       },
-      "kind": "bus",
-      "mode": "bus",
       "category": "frequent",
       "color": "#3a9a48"
     },
@@ -118,8 +110,6 @@
       "match": {
         "route_short_name": "R4"
       },
-      "kind": "bus",
-      "mode": "bus",
       "category": "frequent",
       "color": "#3a9a48"
     },
@@ -129,8 +119,6 @@
       "match": {
         "route_short_name": "R5"
       },
-      "kind": "bus",
-      "mode": "bus",
       "category": "frequent",
       "color": "#3a9a48"
     },
@@ -140,80 +128,16 @@
       "match": {
         "route_short_name": "R6"
       },
-      "kind": "bus",
-      "mode": "bus",
       "category": "frequent",
       "color": "#3a9a48"
-    },
+    }
+  ],
+  "exclude": [
     {
-      "key": "25",
-      "label": "25 King Edward",
+      "$comment": "HandyDART: door-to-door service booked ahead (route_type 715), with one placeholder trip and no stops",
       "match": {
-        "route_short_name": "025"
-      },
-      "kind": "bus",
-      "mode": "bus",
-      "category": "regular"
-    },
-    {
-      "key": "5",
-      "label": "5 Robson",
-      "match": {
-        "route_short_name": "005"
-      },
-      "kind": "bus",
-      "mode": "bus",
-      "category": "regular"
-    },
-    {
-      "key": "6",
-      "label": "6 Davie",
-      "match": {
-        "route_short_name": "006"
-      },
-      "kind": "bus",
-      "mode": "bus",
-      "category": "regular"
-    },
-    {
-      "key": "9",
-      "label": "9 Broadway",
-      "match": {
-        "route_short_name": "009"
-      },
-      "kind": "bus",
-      "mode": "bus",
-      "category": "regular"
-    },
-    {
-      "key": "16",
-      "label": "16 29th Avenue Station/Arbutus",
-      "match": {
-        "route_short_name": "016"
-      },
-      "kind": "bus",
-      "mode": "bus",
-      "category": "regular"
-    },
-    {
-      "key": "19",
-      "label": "19 Kingsway",
-      "match": {
-        "route_short_name": "019"
-      },
-      "kind": "bus",
-      "mode": "bus",
-      "category": "regular"
-    },
-    {
-      "key": "49",
-      "label": "49 49th Avenue",
-      "match": {
-        "route_short_name": "049"
-      },
-      "kind": "bus",
-      "mode": "bus",
-      "category": "regular"
+        "route_short_name": "HD"
+      }
     }
   ]
 }

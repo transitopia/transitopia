@@ -326,24 +326,13 @@ export function weekdayCount(
 
 /**
  * A route's trips by start time in each direction: its patterns' (`ServicePlan.patterns[].starts`,
- * or its trips') or, for a catalogue route, the catalogue's. Empty when the plan hasn't the route.
+ * or its trips'). Empty when the plan hasn't the route.
  */
 export function routeStarts(
-  plan: Pick<ServicePlan, "patterns" | "trips" | "catalog">,
+  plan: Pick<ServicePlan, "patterns" | "trips">,
   starts: readonly Record<string, number[]>[],
   routeKey: string,
 ): Starts[][] {
-  const cat = plan.catalog?.find((c) => c.key === routeKey);
-  if (cat) {
-    const dirs: Starts[][] = [[], []];
-    for (const d of [0, 1]) {
-      const byService: Record<string, number[]> = {};
-      for (const [service, lists] of Object.entries(cat.starts))
-        byService[service] = lists[d]!.map((m) => m * 60);
-      dirs[d]!.push({ byService, offset: 0 });
-    }
-    return dirs;
-  }
   const byDir = new Map<number, Starts[]>();
   for (const p of plan.patterns) {
     if (p.route !== routeKey) continue;
@@ -439,26 +428,20 @@ export function routeWeekdayWait(
 }
 
 /**
- * Every route's weekday figure (`routeWeekdayWait`, minutes to a tenth), drawn and catalogue routes
- * alike, for the published plan (`PlanRoute.weekdayWait`).
+ * Every route's weekday figure (`routeWeekdayWait`, minutes to a tenth), for the published plan
+ * (`PlanRoute.weekdayWait`).
  */
 export function routeWeekdayWaits(
   plan: Pick<
     ServicePlan,
-    | "patterns"
-    | "trips"
-    | "catalog"
-    | "routes"
-    | "calendar"
-    | "feedStart"
-    | "feedEnd"
+    "patterns" | "trips" | "routes" | "calendar" | "feedStart" | "feedEnd"
   >,
 ): Map<string, number> {
   const servicesOn = indexCalendar(plan.calendar);
   const days = regularWeekdays(servicesOn, plan.feedStart, plan.feedEnd);
   const starts = patternStarts(plan);
   const out = new Map<string, number>();
-  for (const r of [...plan.routes, ...(plan.catalog ?? [])]) {
+  for (const r of plan.routes) {
     const w = routeWeekdayWait(
       servicesOn,
       days,
