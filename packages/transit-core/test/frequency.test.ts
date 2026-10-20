@@ -15,11 +15,10 @@ const M = 60;
 
 describe("worstWait", () => {
   it("counts the gaps a rider arriving in the window could fall into", () => {
-    // Four buses bunched in 20 minutes, then 40 minutes to the next: every 15 on average, but up to 40.
+    // Four buses bunched in 20 minutes, then 40 minutes to the next: four an hour, but up to 40.
     const times = [0, 5, 10, 20, 60].map((m) => m * M);
     expect(worstWait(times, 0, 60 * M)).toBe(40 * M);
     expect(frequencyOf(times, 0, 60 * M)).toEqual({
-      minutes: 15,
       wait: 40,
       // Most riders arrive in the 40-minute gap: about 15, not half of every 15.
       averageWait: expect.closeTo(875 / 60, 5),

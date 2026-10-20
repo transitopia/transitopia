@@ -211,7 +211,6 @@ describe("grouping, frequency and shared stretches", () => {
   it("says how often each group leaves in the next hour", () => {
     // From S1 at 08:02, 08:12, …: up to 10 min, the last gap to 09:02 included.
     expect(departureFrequency(groups[0]!.departures, at(H8))).toEqual({
-      minutes: 10,
       wait: 10,
       averageWait: 5,
       departures: 6,
@@ -229,7 +228,6 @@ describe("grouping, frequency and shared stretches", () => {
     expect(placeName(plan, shared[0]!.toStopId)).toBe("Renfrew St");
     // Ten departures an hour, but A's and B's coincide at :02 and :32: up to 10 min apart.
     expect(departureFrequency(shared[0]!.departures, at(H8))).toEqual({
-      minutes: 6,
       wait: 10,
       // Uneven: longer than half of every 6.
       averageWait: expect.closeTo(250 / 60, 5),
@@ -376,21 +374,20 @@ describe("stopsOf", () => {
 });
 
 describe("route frequency", () => {
-  it("averages minutes between trips in an hour, per route, with the worst wait", () => {
+  it("counts an hour's waits and departures, per route", () => {
     expect(routeFrequency(pp, "A", DATE, H8, 3600)).toEqual({
-      minutes: 10,
       wait: 10,
       averageWait: 5,
       departures: 6,
     });
-    expect(routeFrequency(pp, "B", DATE, H8, 3600)?.minutes).toBe(15);
+    expect(routeFrequency(pp, "B", DATE, H8, 3600)?.departures).toBe(4);
     expect(routeFrequency(pp, "A", DATE, H8 - 3600, 3600)).toBeUndefined();
   });
 
   it("fills the day strip hour by hour", () => {
     const hours = hourlyFrequency(pp, "A", DATE);
     expect(hours).toHaveLength(DAY_HOURS.length);
-    expect(hours[DAY_HOURS.indexOf(8)]?.minutes).toBe(10);
+    expect(hours[DAY_HOURS.indexOf(8)]?.wait).toBe(10);
     // The last trip leaves at 09:50 and nothing follows: only the gaps before it count.
     expect(hours[DAY_HOURS.indexOf(9)]?.wait).toBe(10);
     expect(hours[DAY_HOURS.indexOf(10)]).toBeUndefined();
@@ -425,7 +422,6 @@ describe("route frequency", () => {
       kin,
     );
     expect(routeFrequency(withCatalog, "25", DATE, H8, 3600)).toEqual({
-      minutes: 15,
       wait: 15,
       averageWait: 7.5,
       departures: 4,

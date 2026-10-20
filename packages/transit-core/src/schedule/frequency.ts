@@ -1,8 +1,7 @@
 // How often something runs, from the timetable (packages/transit-core/DESIGN.md#frequency): the one
 // counter behind the route card, the stop cards' rows, the map's bus corridors and stop ticks, and
-// the plan's weekday figures. Two numbers: the average minutes between departures (60 ÷ departures an
-// hour), and the worst wait, the longest a rider arriving in the window could wait. Bands follow
-// the worst wait.
+// the plan's weekday figures. Two numbers: the worst wait, the longest a rider arriving in the window
+// could wait, and the average wait of one arriving at a random time. Bands follow the worst wait.
 
 import { indexCalendar } from "../gtfs/calendar.ts";
 import { patternStarts, type ServicePlan } from "../plan/types.ts";
@@ -36,8 +35,6 @@ export const NO_SERVICE_WAIT_S = HOUR;
 
 /** How often something runs in a window. */
 export interface Frequency {
-  /** Average minutes between departures. */
-  minutes: number;
   /** Worst wait (minutes): the longest a rider arriving in the window could wait (`worstWait`). */
   wait: number;
   /** Average wait (minutes) for a rider arriving at a random time in the window (`averageWait`). */
@@ -97,7 +94,6 @@ export function frequencyOf(
   if (wait === undefined) return undefined;
   const n = lowerBound(times, to) - lowerBound(times, from);
   return {
-    minutes: seconds / 60 / n,
     wait: wait / 60,
     averageWait: averageWait(times, from, to)! / 60,
     departures: n,
