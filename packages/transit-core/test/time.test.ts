@@ -135,11 +135,28 @@ describe("toWallTime", () => {
     };
   };
   it("matches the runtime's tzdata through offset changes", () => {
+    // ~150k comparisons: a deep-equality expect() for each takes seconds, so compare cheaply and
+    // report the mismatches once.
+    const mismatches: string[] = [];
+    const check = (t: number, tz: string) => {
+      const ours = toWallTime(t, tz);
+      const theirs = icu(t, tz);
+      if (
+        ours.year !== theirs.year
+        || ours.month !== theirs.month
+        || ours.day !== theirs.day
+        || ours.hour !== theirs.hour
+        || ours.minute !== theirs.minute
+        || ours.second !== theirs.second
+      )
+        mismatches.push(
+          `${tz} ${new Date(t).toISOString()}: ${JSON.stringify(ours)} ≠ ${JSON.stringify(theirs)}`,
+        );
+    };
     for (const tz of zones) {
       const from = Date.parse("2025-01-01T00:00:00Z");
       const to = Date.parse("2027-01-01T00:00:00Z");
-      for (let t = from; t < to; t += 37 * 60_000 + 1234)
-        expect(toWallTime(t, tz)).toEqual(icu(t, tz));
+      for (let t = from; t < to; t += 37 * 60_000 + 1234) check(t, tz);
     }
     for (const [at, tz] of [
       ["2026-03-08T10:00:00Z", "America/Vancouver"],
@@ -152,8 +169,9 @@ describe("toWallTime", () => {
         t < Date.parse(at) + 2 * 3600_000;
         t += 4999
       )
-        expect(toWallTime(t, tz)).toEqual(icu(t, tz));
-  });
+        check(t, tz);
+    expect(mismatches).toEqual([]);
+  }, 20_000); // about a second alone, several times that when the whole suite shares the CPU
 });
 
 describe("checkTimezoneData", () => {
