@@ -119,11 +119,20 @@ const operations: z.ZodType<OperationsConfig> = z.strictObject({
 
 // --- config/server/: server.json, recording.json ---
 
+/** When /healthz fails a feed's trip updates for matching too few buses (apps/server/README.md#real-time-service). */
+const tripUpdatesHealth = z.strictObject({
+  minCoverage: share,
+  minBuses: z.number().int().positive(),
+  lowForS: pos,
+});
+
 const server = z.strictObject({
   port: z.number().int().min(1).max(65535),
   /** Live dispatch (apps/server/README.md#live-dispatch-and-previews). */
   dispatchCheckS: pos,
   dispatchWindowDays: count,
+  /** The default for every feed; feed.json → realtime.tripUpdatesHealth overrides it. */
+  tripUpdatesHealth,
 });
 
 const observed: z.ZodType<ObservedConfig> = z.strictObject({
@@ -390,9 +399,8 @@ const feedRealtime = z
     coverageSlackS: nonNeg,
     interpolateSlackS: nonNeg,
     extrapolateSlackS: nonNeg,
-    tripUpdatesMinCoverage: share,
-    tripUpdatesMinBuses: z.number().int().positive(),
-    tripUpdatesLowForS: pos,
+    /** Overrides of config/server/server.json → tripUpdatesHealth. */
+    tripUpdatesHealth: tripUpdatesHealth.partial().exactOptional(),
   })
   .refine(
     (r) =>

@@ -49,6 +49,7 @@ import type { ProviderStatus } from "@transitopia/shared/admin-api.ts";
 import { Recorder } from "./recorder.ts";
 import { ServiceChanges } from "./changes.ts";
 import type { Store } from "../store.ts";
+import { serverConfig } from "../config.ts";
 import {
   delayFor,
   fetchAlerts,
@@ -146,6 +147,17 @@ export class FeedPoller {
       opts.record,
     );
     this.ledger = new RequestLedger(this.schedule.dailyCap);
+  }
+
+  /** When /healthz fails trip updates: the server's default, with the feed's overrides. */
+  private get tripUpdatesHealth() {
+    const d = serverConfig.tripUpdatesHealth;
+    const o = this.feed.realtime.tripUpdatesHealth;
+    return {
+      minCoverage: o?.minCoverage ?? d.minCoverage,
+      minBuses: o?.minBuses ?? d.minBuses,
+      lowForS: o?.lowForS ?? d.lowForS,
+    };
   }
 
   private get schedule() {
@@ -443,9 +455,8 @@ export class FeedPoller {
 
   private tripFeedLow(t: TripFeedSummary): boolean {
     return (
-      t.busesOnTrips >= this.feed.realtime.tripUpdatesMinBuses
-      && t.busesMatched / t.busesOnTrips
-        < this.feed.realtime.tripUpdatesMinCoverage
+      t.busesOnTrips >= this.tripUpdatesHealth.minBuses
+      && t.busesMatched / t.busesOnTrips < this.tripUpdatesHealth.minCoverage
     );
   }
 
@@ -495,11 +506,11 @@ export class FeedPoller {
         withDelay / onTrips
       : null;
     this.busesOnTrips = onTrips;
-    const rt = this.feed.realtime;
+    const { minBuses, minCoverage } = this.tripUpdatesHealth;
     const low =
       this.delayCoverage !== null
-      && onTrips >= rt.tripUpdatesMinBuses
-      && this.delayCoverage < rt.tripUpdatesMinCoverage;
+      && onTrips >= minBuses
+      && this.delayCoverage < minCoverage;
     this.lowCoverageSince =
       low ? (this.lowCoverageSince ?? fetchedAt) : undefined;
     if (this.opts.record) await this.recorder.record(all);
@@ -667,8 +678,8 @@ export class FeedPoller {
           null
         : Math.round((now - this.lowCoverageSince) / 1000),
       tripFeed: this.tripFeed,
-      minDelayCoverage: this.feed.realtime.tripUpdatesMinCoverage,
-      maxLowCoverageS: this.feed.realtime.tripUpdatesLowForS,
+      minDelayCoverage: this.tripUpdatesHealth.minCoverage,
+      maxLowCoverageS: this.tripUpdatesHealth.lowForS,
     };
   }
 }

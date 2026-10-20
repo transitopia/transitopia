@@ -513,7 +513,7 @@ describe("RtService", () => {
         /0 % of 12 vehicles have a delay \(below 20 % for 0 s, limit \d+ s\)/,
       ),
     });
-    // Still none once the limit has passed (config/feeds/translink/feed.json → tripUpdatesLowForS).
+    // Still none once the limit has passed (config/server/server.json → tripUpdatesHealth.lowForS).
     const now = Date.now();
     vi.spyOn(Date, "now").mockReturnValue(now + 3_600_000);
     await poller.pollPositions();
@@ -525,7 +525,7 @@ describe("RtService", () => {
 
   it("summarises each trip-updates poll against the buses, and logs when few match", async () => {
     dir = await mkdtemp(join(tmpdir(), "rt-test-"));
-    // Enough buses to judge (config/feeds/translink/feed.json → tripUpdatesMinBuses).
+    // Enough buses to judge (config/server/server.json → tripUpdatesHealth.minBuses).
     const trips = Array.from({ length: 10 }, (_, i) => `b${i + 1}`);
     vi.stubGlobal(
       "fetch",
