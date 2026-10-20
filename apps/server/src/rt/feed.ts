@@ -107,6 +107,10 @@ export class FeedPoller {
   > = { positions: {}, tripUpdates: {}, alerts: {} };
   /** Share of the latest poll's vehicles on a trip that have a delay (null before a poll). */
   private delayCoverage: number | null = null;
+  /** Buses on a trip in the latest positions poll. */
+  private busesOnTrips = 0;
+  /** Since when coverage has been low with enough buses to judge (/healthz). */
+  private lowCoverageSince: number | undefined;
   /** Trip id → route id of every bus on a trip in the latest positions poll (every route). */
   private busTrips = new Map<string, string | undefined>();
   /** The latest trip-updates poll, matched against busTrips (/rt/status → tripFeed). */
@@ -439,7 +443,7 @@ export class FeedPoller {
 
   private tripFeedLow(t: TripFeedSummary): boolean {
     return (
-      t.busesOnTrips > 0
+      t.busesOnTrips >= this.feed.realtime.tripUpdatesMinBuses
       && t.busesMatched / t.busesOnTrips
         < this.feed.realtime.tripUpdatesMinCoverage
     );
@@ -490,6 +494,14 @@ export class FeedPoller {
       onTrips && this.endpoints.tripUpdates.lastOkAt !== undefined ?
         withDelay / onTrips
       : null;
+    this.busesOnTrips = onTrips;
+    const rt = this.feed.realtime;
+    const low =
+      this.delayCoverage !== null
+      && onTrips >= rt.tripUpdatesMinBuses
+      && this.delayCoverage < rt.tripUpdatesMinCoverage;
+    this.lowCoverageSince =
+      low ? (this.lowCoverageSince ?? fetchedAt) : undefined;
     if (this.opts.record) await this.recorder.record(all);
     await this.opts.store?.recordPositions(
       this.feed.id,
@@ -649,8 +661,14 @@ export class FeedPoller {
         ]),
       ),
       delayCoverage: this.delayCoverage,
+      busesOnTrips: this.busesOnTrips,
+      lowCoverageForS:
+        this.lowCoverageSince === undefined ?
+          null
+        : Math.round((now - this.lowCoverageSince) / 1000),
       tripFeed: this.tripFeed,
       minDelayCoverage: this.feed.realtime.tripUpdatesMinCoverage,
+      maxLowCoverageS: this.feed.realtime.tripUpdatesLowForS,
     };
   }
 }

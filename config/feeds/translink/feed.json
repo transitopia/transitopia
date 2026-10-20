@@ -47,7 +47,11 @@
     "$extrapolateSlackS": "At the live edge, predict a vehicle forward along its route for at most the positions poll interval plus this (fixes are already ~20-60 s old when fetched). Was 90 s at a fixed 20 s interval.",
     "extrapolateSlackS": 70,
     "$tripUpdatesMinCoverage": "/healthz fails when fewer than this share of the vehicles in a positions poll (those on a trip) have a delay from TransLink's trip updates: the trip-updates feed is empty or no longer matches the positions. Measured 2026-10-01 to 10-11: 75-85 % in service hours, 36-60 % at night; 0 from 04:00 on 2026-10-12 while polls kept succeeding (apps/server/README.md#real-time-service). Guess at the threshold.",
-    "tripUpdatesMinCoverage": 0.2
+    "tripUpdatesMinCoverage": 0.2,
+    "$tripUpdatesMinBuses": "Coverage is judged only on positions polls with at least this many buses on a trip: with a handful, one bus is a large share. Guess.",
+    "tripUpdatesMinBuses": 10,
+    "$tripUpdatesLowForS": "/healthz fails only once coverage has stayed below tripUpdatesMinCoverage (with enough buses) this long: the outage of 2026-10-12 lasted hours, while single polls can dip. Guess.",
+    "tripUpdatesLowForS": 1200
   },
   "ais": {
     "$comment": "Live vessel positions from aisstream.io (packages/transit-core/DESIGN.md#seabus-ais; key AISSTREAM_API_KEY in .secrets). The RT service's leader keeps one WebSocket open, records fixes to var/ais-history/translink/ and serves them by the day and in the live endpoint (<feed>/ais); the browser turns them into timetable anchors (packages/transit-core/src/ais/match.ts).",

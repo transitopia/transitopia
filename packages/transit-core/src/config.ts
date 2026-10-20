@@ -391,6 +391,8 @@ const feedRealtime = z
     interpolateSlackS: nonNeg,
     extrapolateSlackS: nonNeg,
     tripUpdatesMinCoverage: share,
+    tripUpdatesMinBuses: z.number().int().positive(),
+    tripUpdatesLowForS: pos,
   })
   .refine(
     (r) =>
