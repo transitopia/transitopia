@@ -16,9 +16,6 @@ export const MapLibreGLContext: React.Context<{ maplibregl?: MapLibreGLType }> =
   React.createContext({});
 
 export const useMap = () => React.useContext(MapContext)?.map;
-/** The transit overview tileset's source in the site's style (packages/transit-map/src/overview.ts). */
-export const OVERVIEW_SOURCE = "transitopia-transit-overview";
-
 export const useStyleGeneration = () =>
   React.useContext(MapContext).styleGeneration;
 

@@ -8,17 +8,11 @@ import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&ur
 import type { StyleSpecification } from "maplibre-gl";
 import { basemapStyle, type Theme } from "@transitopia/map-style/basemap.ts";
 
-import {
-  basemapAssets,
-  basemapTiles,
-  cyclingTiles,
-  transitOverviewTiles,
-} from "../config.ts";
+import { basemapAssets, basemapTiles, cyclingTiles } from "../config.ts";
 import { ThemeToggle, useTheme } from "../Theme/Theme.tsx";
 import {
   MapContext,
   MapLibreGLContext,
-  OVERVIEW_SOURCE,
   type MapLibreGLType,
   type MapType,
 } from "./MapUtils.ts";
@@ -47,10 +41,6 @@ function siteStyle(theme: Theme): StyleSpecification {
     ],
   });
   style.sources["transitopia-cycling"] = { type: "vector", url: cyclingTiles };
-  style.sources[OVERVIEW_SOURCE] = {
-    type: "vector",
-    url: transitOverviewTiles,
-  };
   return style as StyleSpecification;
 }
 

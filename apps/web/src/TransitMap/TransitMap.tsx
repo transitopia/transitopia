@@ -10,14 +10,9 @@ import {
 } from "@transitopia/transit-map/overview.ts";
 import { ENGINE_MIN_ZOOM } from "@transitopia/shared/transit-overview.ts";
 
-import { transitApi, transitData } from "../config.ts";
+import { transitApi, transitData, transitOverviewTiles } from "../config.ts";
 import { openedPath, openedWithPosition } from "../startup.ts";
-import {
-  OVERVIEW_SOURCE,
-  useMap,
-  useStyleGeneration,
-  type MapType,
-} from "../Map/MapUtils.ts";
+import { useMap, useStyleGeneration, type MapType } from "../Map/MapUtils.ts";
 import { MapOverlayWindow } from "../Map/MapOverlayWindow.tsx";
 import { useTheme } from "../Theme/Theme.tsx";
 import { useDatasets } from "../Attribution/Attribution.tsx";
@@ -142,6 +137,9 @@ function useRegion(map: MapType | undefined): RegionState {
   return state;
 }
 
+/** The transit overview tileset's source (packages/transit-map/src/overview.ts), only on /transit. */
+const OVERVIEW_SOURCE = "transitopia-transit-overview";
+
 /** What the overview draws: every region's feed. */
 const OVERVIEW_DATASETS = REGIONS.map((r) => r.config.feed.dataset);
 
@@ -178,14 +176,21 @@ function useOverview(
   const maxzoom = overviewMaxZoom(engineLines);
   const maxzoomRef = React.useRef(maxzoom);
   maxzoomRef.current = maxzoom;
+  // Only /transit loads the tileset: its source comes and goes with its layers.
   React.useEffect(() => {
     if (!map) return;
+    if (!map.getSource(OVERVIEW_SOURCE))
+      map.addSource(OVERVIEW_SOURCE, {
+        type: "vector",
+        url: transitOverviewTiles,
+      });
     const layers = overviewLayers(OVERVIEW_SOURCE, theme, maxzoomRef.current);
     for (const layer of layers)
       if (!map.getLayer(layer.id)) map.addLayer(layer);
     return () => {
       for (const layer of layers)
         if (map.getLayer(layer.id)) map.removeLayer(layer.id);
+      if (map.getSource(OVERVIEW_SOURCE)) map.removeSource(OVERVIEW_SOURCE);
     };
   }, [map, theme, styleGeneration]);
   React.useEffect(() => {
