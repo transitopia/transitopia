@@ -201,7 +201,15 @@ describe("published plans", () => {
     const { plan: back } = await roundTrip(plan);
     const { corridors, ...rest } = back;
     const { corridors: _c, ...want } = plan;
-    expect(rest).toEqual({ ...want, frequency: expect.any(Object) });
+    // Routes gain their weekday figures.
+    expect(rest).toEqual({
+      ...want,
+      routes: want.routes.map((r) => ({
+        ...r,
+        weekdayWait: expect.any(Number),
+      })),
+      frequency: expect.any(Object),
+    });
     // Corridors keep their geometry and gain their combos in place of their refs.
     expect(corridors!.map((c) => c.coords)).toEqual(
       plan.corridors!.map((c) => c.coords),

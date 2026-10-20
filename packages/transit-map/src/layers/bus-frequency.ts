@@ -1,21 +1,18 @@
 // Colours bus corridors and stop ticks by how often buses pass (packages/transit-map/README.md#bus-corridors):
-// tiers from CorridorFrequency, written as MapLibre feature state so changing the time or the window
+// tiers from CorridorFrequency's worst waits, written as MapLibre feature state so changing the time or the window
 // never re-tiles a source. Recomputed only when the date, window, hidden routes, focused route or
 // (for "now") the five-minute bucket of the time change. While a route is focused (its card is open),
 // the corridors it runs on show its own frequency and colour, and the rest are dimmed (`dim`).
 
 import type { Map as MlMap } from "maplibre-gl";
-import {
-  BusFrequency,
-  type FrequencyWindow,
-} from "@transitopia/transit-core/plan/bus-frequency.ts";
+import type { FrequencyWindow } from "@transitopia/transit-core/schedule/frequency.ts";
 import {
   capShort,
   CorridorFrequency,
   shortCorridorNeighbours,
-  type ComboRates,
+  type ComboFrequencies,
 } from "@transitopia/transit-core/plan/corridor-frequency.ts";
-import { bandIndexPerHour as frequencyTier } from "@transitopia/shared/frequency.ts";
+import { bandIndex } from "@transitopia/shared/frequency.ts";
 import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
 import type { ServiceDate } from "@transitopia/transit-core/time.ts";
 import {
@@ -28,8 +25,16 @@ import {
   tickStops,
 } from "./static.ts";
 
-/** "Now" counts trips starting in the hour from the shown time, refreshed in steps of this many seconds. */
+/** "Now" counts trips in the hour from the shown time, refreshed in steps of this many seconds. */
 const NOW_STEP_S = 300;
+
+/**
+ * Where "Now"'s hour starts for a shown time (service seconds): the time, to the step before it
+ * (NOW_STEP_S), so the colours change only every few minutes. Hosts label the window with it.
+ */
+export function nowWindowStart(seconds: number): number {
+  return Math.floor(seconds / NOW_STEP_S) * NOW_STEP_S;
+}
 /**
  * A route with its own colour is drawn in it only where it runs at least this share as often as on
  * its busiest stretch; elsewhere (limited service, e.g. the 99 east of Commercial–Broadway) its buses
@@ -41,7 +46,6 @@ export class BusFrequencyLayer {
   readonly plan: ServicePlan;
   /** The plan's detailed corridors when it was made (they load later: a new layer is made then). */
   readonly corridors: ServicePlan["corridors"];
-  private readonly freq: BusFrequency;
   private readonly combos: CorridorFrequency;
   /** Per source: its features' ids (corridor or stop index) and their combos. */
   private readonly sources: {
@@ -57,17 +61,14 @@ export class BusFrequencyLayer {
   /** Per source, the corridors (or stops) last given a `brand`. */
   private readonly brandShown = new Map<string, Set<number>>();
   private key = "";
-  /** Every shown route's rates, as last applied. */
-  private rates: ComboRates | undefined;
-  /** Per route, trips an hour in its busier direction, as last applied. */
-  private routeRates = new Map<string, number>();
+  /** Every shown route's frequencies, as last applied. */
+  private rates: ComboFrequencies | undefined;
   /** Bumped whenever update applies new rates (so the engine knows to re-colour vehicles). */
   version = 0;
 
   constructor(plan: ServicePlan) {
     this.plan = plan;
     this.corridors = plan.corridors;
-    this.freq = new BusFrequency(plan);
     this.combos = new CorridorFrequency(plan);
     const brands = brandedRoutes(plan).map((r) => r.key);
     this.brandOf = this.combos.routeDirs.map((rd) => brands.indexOf(rd.route));
@@ -118,25 +119,20 @@ export class BusFrequencyLayer {
     focus: string | undefined,
   ): void {
     if (!map.getSource(CORRIDORS_SOURCE)) return;
-    const step = window === "now" ? Math.floor(seconds / NOW_STEP_S) : 0;
+    const step = window === "now" ? nowWindowStart(seconds) : 0;
     const key = `${date}|${window}|${step}|${[...hidden].join(",")}|${focus ?? ""}`;
     if (key === this.key) return;
     this.key = key;
     this.version++;
-    const perHour = this.freq.perHour(date, window, step * NOW_STEP_S);
-    this.routeRates.clear();
-    for (const rd of this.combos.routeDirs) {
-      const n = rd.patterns.reduce((sum, p) => sum + perHour[p]!, 0);
-      this.routeRates.set(
-        rd.route,
-        Math.max(this.routeRates.get(rd.route) ?? 0, n),
-      );
-    }
-    const all = this.combos.rates(perHour, (route) => !hidden.has(route));
+    const query =
+      window === "now" ?
+        { date, from: step, seconds: 3600 }
+      : ("weekdays" as const);
+    const all = this.combos.frequencies(query, (route) => !hidden.has(route));
     this.rates = all;
     const own =
       focus === undefined ? undefined : (
-        this.combos.rates(perHour, (route) => route === focus)
+        this.combos.frequencies(query, (route) => route === focus)
       );
     // Frequency tiers count every route: where a route with its own colour is drawn in it, it
     // covers the tier line; where it isn't (limited service), its buses count like any other.
@@ -146,14 +142,17 @@ export class BusFrequencyLayer {
         (c) => focus === undefined || this.serves(c, focus),
       );
       const ratesAt = (i: number) => (own && onFocus[i] ? own : all);
-      const tiers = capShort(
+      const waits = capShort(
         Float32Array.from(s.combo, (c, i) => ratesAt(i).best[c]!),
         s.short,
       );
       s.ids.forEach((id, i) =>
         map.setFeatureState(
           { source: s.source, id },
-          { tier: frequencyTier(tiers[i]!), dim: !onFocus[i] },
+          {
+            tier: Number.isFinite(waits[i]) ? bandIndex(waits[i]!) : -1,
+            dim: !onFocus[i],
+          },
         ),
       );
       this.applyBrands(map, s, ratesAt);
@@ -168,7 +167,7 @@ export class BusFrequencyLayer {
     const s = this.sources.find((x) => x.source === source && !x.stops);
     const c = s?.combo[id];
     if (c === undefined || !this.rates) return [];
-    const rates = this.rates.units[c]!;
+    const rates = this.rates.trips[c]!;
     const best = new Map<string, number>();
     this.combos.combos[c]!.units.forEach((u, k) => {
       const route = this.combos.routeDirs[u.routeDir]!.route;
@@ -179,11 +178,12 @@ export class BusFrequencyLayer {
   }
 
   /**
-   * A route's trips an hour in its busier direction, in the window last applied: the frequency its
-   * corridors show while it's focused (wherever it runs its whole service), and its vehicles' colour.
+   * A route's worst wait (minutes) in its better direction, in the window last applied: the
+   * frequency its corridors show while it's focused (wherever it runs its whole service), and its
+   * vehicles' colour. Infinity when it doesn't run then; undefined for a route not shown.
    */
-  routePerHour(route: string): number | undefined {
-    return this.routeRates.get(route);
+  routeWait(route: string): number | undefined {
+    return this.rates?.routeWaits.get(route);
   }
 
   /** Whether a combo's buses include the route's. */
@@ -200,11 +200,14 @@ export class BusFrequencyLayer {
   private applyBrands(
     map: MlMap,
     s: BusFrequencyLayer["sources"][number],
-    ratesAt: (i: number) => ComboRates,
+    ratesAt: (i: number) => ComboFrequencies,
   ): void {
-    // Per combo and rates: [brand, its rate] of each route with its own colour there (the busier
-    // direction).
-    const perCombo = new Map<ComboRates, Map<number, Map<number, number>>>();
+    // Per combo and frequencies: [brand, its trips] of each route with its own colour there (the
+    // busier direction).
+    const perCombo = new Map<
+      ComboFrequencies,
+      Map<number, Map<number, number>>
+    >();
     const ownOf = (c: number, i: number) => {
       const rates = ratesAt(i);
       let cache = perCombo.get(rates);
@@ -216,7 +219,7 @@ export class BusFrequencyLayer {
       this.combos.combos[c]!.units.forEach((u, k) => {
         const b = this.brandOf[u.routeDir]!;
         if (b < 0) others = true;
-        else own!.set(b, Math.max(own!.get(b) ?? 0, rates.units[c]![k]!));
+        else own!.set(b, Math.max(own!.get(b) ?? 0, rates.trips[c]![k]!));
       });
       if (s.stops && others) own.clear();
       cache.set(c, own);

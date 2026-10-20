@@ -18,15 +18,18 @@ import type {
   VehicleState,
 } from "@transitopia/transit-core/schedule/engine.ts";
 import {
+  departureFrequency,
   departuresAt,
   groupDepartures,
-  minutesBetween,
   placeName,
   sharedStretches,
   stopsOf,
   type Departure,
 } from "@transitopia/transit-core/schedule/departures.ts";
-import { routeMinutes } from "@transitopia/transit-core/schedule/frequency.ts";
+import {
+  routeFrequency,
+  type Frequency,
+} from "@transitopia/transit-core/schedule/frequency.ts";
 import { displayServiceDate, hubsOf } from "./plans.ts";
 import type { Place } from "./url.ts";
 
@@ -37,8 +40,8 @@ export interface PlaceGroup {
   platforms: string[];
   /** The next few departures (cancelled ones included, marked). */
   departures: Departure[];
-  /** Average minutes between departures in the hour from the shown time (timetable). */
-  minutes: number | undefined;
+  /** How often it leaves in the hour from the shown time (timetable, real-time where known). */
+  frequency: Frequency | undefined;
   /** Stops it leaves from (at a station: platforms or bus bays), by GTFS stop_id. */
   stopIds: string[];
   /** The vehicle on the map running its next departure, if that trip is drawn yet. */
@@ -57,8 +60,8 @@ export interface RouteSnapshot {
   route: PlanRoute;
   /** False for a catalogue route: in the feed, listed on cards, but not drawn (no line or vehicles). */
   drawn: boolean;
-  /** Average minutes between trips in the hour from the shown time (timetable), busier direction. */
-  nextHour: number | undefined;
+  /** How often its trips start in the hour from the shown time (timetable), better direction. */
+  nextHour: Frequency | undefined;
   /** Its vehicles drawn now, and how many of them have real positions. */
   vehicles: number;
   live: number;
@@ -94,7 +97,7 @@ export interface PlaceSnapshot extends Place {
     /** The groups it combines, as `${route key}|${headsign}`. */
     groups: string[];
     to: string;
-    minutes: number | undefined;
+    frequency: Frequency | undefined;
   }[];
 }
 
@@ -201,7 +204,7 @@ export function placeSnapshot(
       id: p.id,
       route,
       drawn: pp.routes.has(p.id),
-      nextHour: routeMinutes(pp, p.id, date, sec, 3600),
+      nextHour: routeFrequency(pp, p.id, date, sec, 3600),
       vehicles: mine.length,
       live: mine.filter((v) => v.provenance !== "estimated").length,
       datasets: ctx.datasetsOf([
@@ -325,7 +328,7 @@ export function placeSnapshot(
       headsign: g.headsign,
       platforms: g.platforms,
       departures: g.departures.slice(0, DEPARTURES_PER_GROUP),
-      minutes: minutesBetween(g.departures, t),
+      frequency: departureFrequency(g.departures, t),
       stopIds: [...new Set(g.departures.map((d) => d.stopId))],
       vehicle: (() => {
         const next = g.departures.find((d) => !d.cancelled);
@@ -340,7 +343,7 @@ export function placeSnapshot(
       platforms: [...new Set(s.groups.flatMap((g) => g.platforms))].sort(),
       groups: s.groups.map((g) => `${g.routeKey}|${g.headsign}`),
       to: placeName(plan, s.toStopId),
-      minutes: minutesBetween(s.departures, t),
+      frequency: departureFrequency(s.departures, t),
     })),
   };
 }

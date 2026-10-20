@@ -1,6 +1,7 @@
 import React from "react";
 import type {
   Departure,
+  Frequency as FrequencyFigures,
   PlaceGroup,
   PlaceSnapshot,
   TransitEngine,
@@ -29,7 +30,7 @@ import {
   routeColorsFor,
   type RouteColors,
 } from "./RouteBadge.tsx";
-import { bandOf, everyText } from "./frequency.ts";
+import { bandOf, waitText } from "./frequency.ts";
 
 /** "Eastbound E Hastings St @ Main St" → ["Eastbound", "E Hastings St @ Main St"]. */
 function splitDirection(name: string): [string | undefined, string] {
@@ -71,17 +72,17 @@ function platformsText(platforms: readonly string[], bus: boolean): string {
     : "";
 }
 
+/** "Wait up to 15m · OK": the worst wait in the next hour, and its band. */
 const Frequency: React.FC<{
-  minutes: number;
-  approx?: boolean;
-  /** Bold, in the text colour (a bracket's footnote), rather than muted. */
+  frequency: FrequencyFigures;
+  /** Bold, in the text colour, within a sentence (a bracket's footnote), rather than muted. */
   strong?: boolean;
-}> = ({ minutes, approx, strong }) => {
-  const band = bandOf(minutes);
+}> = ({ frequency: f, strong }) => {
+  const band = bandOf(f.wait);
   return (
     <span
-      className={`inline-flex items-center gap-1.5 text-[12.5px] ${strong ? "font-bold" : "mt-0.5 font-semibold text-(--card-muted)"}`}>
-      {everyText(minutes, approx)} ·
+      className={`inline-flex flex-wrap items-center gap-x-1.5 text-[12.5px] ${strong ? "font-bold" : "mt-0.5 font-semibold text-(--card-muted)"}`}>
+      {waitText(f.wait, strong)} ·
       <span className="inline-flex items-center gap-1">
         <span
           aria-hidden="true"
@@ -142,8 +143,8 @@ const GroupRow: React.FC<{
             {note}
           </span>
         : null}
-        {group.minutes !== undefined ?
-          <Frequency minutes={group.minutes} />
+        {group.frequency ?
+          <Frequency frequency={group.frequency} />
         : null}
       </span>
       {first ?
@@ -218,8 +219,8 @@ const SharedRow: React.FC<{
           {platformsText(s.platforms, s.routes[0]?.mode === "bus")}
         </span>
       : null}
-      {s.minutes !== undefined ?
-        <Frequency minutes={s.minutes} approx />
+      {s.frequency ?
+        <Frequency frequency={s.frequency} />
       : null}
     </div>
   </div>
@@ -246,10 +247,10 @@ const SharedBracket: React.FC<{
       <div className="divide-y divide-(--card-divider)">{children}</div>
       <p className="flex flex-wrap items-center gap-x-1.5 pb-2 text-[12.5px] leading-snug font-bold">
         {count === 2 ? "Either one" : "Any of these"}, to {s.to}
-        {s.minutes !== undefined ?
+        {s.frequency ?
           <>
             {" ·"}
-            <Frequency minutes={s.minutes} approx strong />
+            <Frequency frequency={s.frequency} strong />
           </>
         : null}
       </p>

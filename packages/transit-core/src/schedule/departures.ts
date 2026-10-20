@@ -7,6 +7,7 @@ import { STOP_NO_PICKUP, type ServicePlan } from "../plan/types.ts";
 import { placeName as stopName } from "../plan/display.ts";
 import { bayNumber } from "../plan/exchanges.ts";
 import { serviceDayStart, type ServiceDate } from "../time.ts";
+import { frequencyOf, type Frequency } from "./frequency.ts";
 import {
   shiftAt,
   type PreparedPlan,
@@ -171,17 +172,16 @@ function comparePlatforms(
 }
 
 /**
- * Average minutes between departures in the hour from `from` (60 / departures that hour), or
- * undefined when nothing departs then. Cancelled trips don't count.
+ * How often departures run in the hour from `from` (epoch ms), measured at the stop: the average
+ * and the worst wait (schedule/frequency.ts → `frequencyOf`), or undefined when nothing departs
+ * then. Cancelled trips don't count.
  */
-export function minutesBetween(
+export function departureFrequency(
   deps: readonly Departure[],
   from: number,
-): number | undefined {
-  const n = deps.filter(
-    (d) => !d.cancelled && d.t >= from && d.t < from + 3600_000,
-  ).length;
-  return n ? 60 / n : undefined;
+): Frequency | undefined {
+  const times = deps.filter((d) => !d.cancelled).map((d) => d.t / 1000);
+  return frequencyOf(times, from / 1000, 3600);
 }
 
 /** A stop's name for "to …" (plan/display.ts → placeName): the station ("Columbia"), exchange, or cross street ("Renfrew St"). */
