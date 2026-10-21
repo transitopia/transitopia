@@ -73,7 +73,7 @@ describe("RtService", () => {
   let service: RtService | undefined;
 
   afterEach(async () => {
-    service?.stop();
+    await service?.stop();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     if (dir) await rm(dir, { recursive: true, force: true });
@@ -241,7 +241,7 @@ describe("RtService", () => {
         ).requests,
       ).toHaveLength(3),
     );
-    service.stop();
+    await service.stop();
 
     // A restart right away polls nothing until each feed's interval has passed.
     service = new RtService(opts);
@@ -285,9 +285,8 @@ describe("RtService", () => {
       ).toHaveLength(3);
     } finally {
       vi.useRealTimers();
-      service?.stop();
-      // The last poll's ledger write, before the directory goes.
-      await service?.pollers.get("translink")?.["ledgerWrite"];
+      // Including the last poll's ledger write, before the directory goes.
+      await service?.stop();
     }
   });
 

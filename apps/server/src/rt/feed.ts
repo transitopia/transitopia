@@ -100,6 +100,8 @@ export class FeedPoller {
   private routesLoadedFrom: number | undefined;
   /** Each endpoint's pending poll (one per endpoint: a tick schedules the next). */
   private timers: Partial<Record<PollFeed, ReturnType<typeof setTimeout>>> = {};
+  /** Polls under way, which `stop` waits for. */
+  private inFlight = new Set<Promise<void>>();
   private running = false;
   /** Per endpoint: when it last polled successfully and its last error, so one's success can't hide another's failure. */
   private endpoints: Record<
@@ -216,10 +218,13 @@ export class FeedPoller {
     this.loop("alerts", () => this.pollAlerts());
   }
 
-  stop(): void {
+  /** Stop polling; resolves once polls under way and the ledger's last save have finished. */
+  async stop(): Promise<void> {
     this.running = false;
     for (const t of Object.values(this.timers)) clearTimeout(t);
     this.timers = {};
+    await Promise.allSettled(this.inFlight);
+    await this.ledgerWrite;
   }
 
   // --- the request ledger ---
@@ -280,7 +285,13 @@ export class FeedPoller {
       this.nextPollAt[endpoint] = at;
       clearTimeout(this.timers[endpoint]);
       if (this.running)
-        this.timers[endpoint] = setTimeout(tick, Math.max(0, at - Date.now()));
+        this.timers[endpoint] = setTimeout(
+          () => {
+            const p = tick().finally(() => this.inFlight.delete(p));
+            this.inFlight.add(p);
+          },
+          Math.max(0, at - Date.now()),
+        );
     };
     const record = (r: {
       ts: number;
