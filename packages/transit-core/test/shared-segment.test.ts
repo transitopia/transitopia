@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  segmentCorridors,
+  segmentSteps,
   segmentFrequency,
   segmentStarts,
   segmentStops,
@@ -9,7 +9,11 @@ import {
   startOffsets,
 } from "../src/schedule/shared-segment.ts";
 import { indexCalendar } from "../src/gtfs/calendar.ts";
-import { patternStarts, type ServicePlan } from "../src/plan/types.ts";
+import {
+  patternStarts,
+  type PathStep,
+  type ServicePlan,
+} from "../src/plan/types.ts";
 import { serviceDate } from "../src/time.ts";
 
 // A and B come together at S1 (from S0 and Y) and run to S4, where they split; C runs S1 to S4 too
@@ -200,32 +204,49 @@ describe("sharedSegment", () => {
   });
 });
 
-describe("segmentCorridors", () => {
-  it("keeps the corridors a segment covers half of", () => {
+describe("segmentSteps", () => {
+  it("keeps the features a segment covers half of", () => {
     const seg = sharedSegment(plan, "S1", "S4")!;
-    // Along A: 0–100 (S0 to S1, before), 100–350 (S1 to the middle of S3–S4), 350–600 (its middle
-    // past S4), and one on D's way only.
-    const refs: [number, 1 | -1, number][][] = [
-      [[0, 1, 0]],
-      [
-        [0, 1, 100],
-        [1, 1, 100],
+    // Along A (S1 at 100 m, S4 at 400 m): 0–100 (before), 100–350, then 350–600 (its middle past
+    // S4); B along the second too; D's own.
+    const paths: Record<number, PathStep[]> = {
+      0: [
+        [0, 0, 100],
+        [1, 100, 350],
+        [2, 350, 600],
       ],
-      [[0, 1, 350]],
-      [[3, 1, 100]],
-    ];
-    expect([...segmentCorridors(plan, seg, refs, () => 600)]).toEqual([1]);
+      1: [[1, 100, 350]],
+      3: [[3, 100, 200]],
+    };
+    expect([...segmentSteps(plan, seg, (p) => paths[p])]).toEqual([1]);
   });
 
-  it("keeps a long corridor the segment starts partway along", () => {
-    // From S2 (200 m along A) to S4 (400 m): A's first corridor runs 0–300 m, its middle before
+  it("keeps a long feature the segment starts partway along", () => {
+    // From S2 (200 m along A) to S4 (400 m): A's first feature runs 0–300 m, its middle before
     // S2, but the segment covers 100 m of it; the next ends 20 m past S4.
     const seg = sharedSegment(plan, "S2", "S4")!;
-    const refs: [number, 1 | -1, number][][] = [
-      [[0, 1, 0]],
-      [[0, 1, 300]],
-      [[0, 1, 420]],
+    const path: PathStep[] = [
+      [0, 0, 300],
+      [1, 300, 420],
+      [2, 420, 600],
     ];
-    expect([...segmentCorridors(plan, seg, refs, () => 600)]).toEqual([0, 1]);
+    expect([...segmentSteps(plan, seg, (p) => (p === 0 ? path : []))]).toEqual([
+      0, 1,
+    ]);
+  });
+
+  it("keeps each time a pattern runs along a feature", () => {
+    // A out along feature 5 and back along it within the segment (S1–S4, 100–400 m).
+    const seg = sharedSegment(plan, "S1", "S4")!;
+    const path: PathStep[] = [
+      [5, 0, 90],
+      [6, 90, 250],
+      [5, 250, 340],
+    ];
+    expect(
+      [...segmentSteps(plan, seg, (p) => (p === 0 ? path : []))].sort(
+        (a, b) => a - b,
+      ),
+    ).toEqual([5, 6]);
   });
 });

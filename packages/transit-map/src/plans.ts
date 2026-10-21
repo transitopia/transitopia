@@ -44,7 +44,9 @@ import {
   regionDataPath,
   type FeedManifest,
   type FeedManifestEntry,
-  type PlanCorridorRefs,
+  pathGroup,
+  type PathStep,
+  type PatternPath,
   type PlanFiles,
   type PlanTrip,
   type ServicePlan,
@@ -53,13 +55,15 @@ import {
 import {
   decodeCore,
   decodeCorridorInfo,
-  decodeCorridorRefs,
+  decodePatternPaths,
+  decodeRailPaths,
   decodeShapes,
   decodeTrips,
   railTripFiles,
   tripFilesFor,
   type PublishedCorridorInfo,
-  type PublishedCorridorRefs,
+  type PublishedPatternPaths,
+  type PublishedRailPaths,
   type PublishedPlan,
   type PublishedShapes,
   type PublishedTrips,
@@ -125,8 +129,9 @@ export class PlanStore {
   /** The feed's places index (data/feeds/<feed>/places.json) and files, by path. */
   private placesIndex = new Map<string, PlacesIndex | null>();
   private placesFiles = new Map<string, PlacesFile | null>();
-  /** Each plan version's corridor refs, once asked for (`corridorRefsFor`). */
-  private corridorRefs = new Map<string, PlanCorridorRefs | null>();
+  /** Pattern path files, by URL path, once asked for (`patternPathsFor`, `railPathsFor`). */
+  private patternPaths = new Map<string, Map<number, PatternPath> | null>();
+  private railPaths = new Map<string, Map<number, PathStep[]> | null>();
   private movementFiles = new Map<string, MovementsFile | null>();
   private playbacks = new Map<string, TrainPlayback>();
   private preview: Record<string, string> = {};
@@ -328,22 +333,46 @@ export class PlanStore {
   }
 
   /**
-   * A loaded plan's corridor refs (`PlanCorridorRefs`: the patterns along each corridor), for
-   * drawing a stretch of a pattern over its corridors (a combined route,
-   * packages/transit-map/README.md#route-focus). Loaded only when first asked for: undefined while
-   * it loads (a change event fires), null when the plan has none.
+   * The bus patterns' paths over the corridors (`PatternPath`) of these routes, for drawing a stretch
+   * of them (a combined route, packages/transit-map/README.md#route-focus): their groups' files,
+   * loaded the first time they're asked for. Undefined while any loads (a change event fires), null
+   * when the plan has none. A file that fails to load counts as empty.
    */
-  corridorRefsFor(pp: PreparedPlan): PlanCorridorRefs | null | undefined {
+  patternPathsFor(
+    pp: PreparedPlan,
+    routes: readonly string[],
+  ): Map<number, PatternPath> | null | undefined {
     const v = this.versions.get(pp.plan.feedVersion);
-    if (!v?.files.corridorRefs) return null;
-    const key = `corridor-refs:${pp.plan.feedVersion}`;
-    this.fetchOnce(
-      key,
-      this.dataUrl(v.dir + v.files.corridorRefs),
-      this.corridorRefs,
-      (j) => decodeCorridorRefs(j as PublishedCorridorRefs),
+    if (!v?.files.paths) return null;
+    const out = new Map<number, PatternPath>();
+    let ready = true;
+    for (const g of new Set(routes.map(pathGroup))) {
+      const file = v.files.paths[g];
+      if (!file) continue;
+      const path = v.dir + file;
+      this.fetchOnce(path, this.dataUrl(path), this.patternPaths, (j) =>
+        decodePatternPaths(j as PublishedPatternPaths),
+      );
+      const got = this.patternPaths.get(path);
+      if (got === undefined) ready = false;
+      else for (const [p, steps] of got ?? []) out.set(p, steps);
+    }
+    return ready ? out : undefined;
+  }
+
+  /**
+   * The SkyTrain patterns' paths over its line pieces in the plan's tiles, as `patternPathsFor`.
+   * Null where the plan has none (no track-level rail).
+   */
+  railPathsFor(pp: PreparedPlan): Map<number, PathStep[]> | null | undefined {
+    const v = this.versions.get(pp.plan.feedVersion);
+    if (!v?.files.railPaths) return null;
+    const path = v.dir + v.files.railPaths;
+    this.fetchOnce(path, this.dataUrl(path), this.railPaths, (j) =>
+      decodeRailPaths(j as PublishedRailPaths),
     );
-    return this.corridorRefs.get(key);
+    const got = this.railPaths.get(path);
+    return got === undefined ? undefined : (got ?? new Map());
   }
 
   /**

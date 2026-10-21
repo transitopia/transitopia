@@ -5,7 +5,8 @@
 
 import type { LonLat } from "../geo.ts";
 import { cumulativeLengths, projectOnto, sliceLine } from "../geo.ts";
-import type { PlanTrip, ServicePlan } from "../plan/types.ts";
+import { MIN_OVERLAP_M } from "../plan/paths.ts";
+import type { PathStep, PlanTrip, ServicePlan } from "../plan/types.ts";
 import type { ServiceDate } from "../time.ts";
 import {
   bestDirection,
@@ -229,47 +230,21 @@ export function onSegment(
 const ON_SEGMENT_SLACK_M = 20;
 
 /**
- * A corridor is drawn whole, so one the segment covers only part of is drawn with it when the
- * segment runs along at least this much of it (m), or half of it. A segment usually starts partway
- * along a corridor: where its routes' stops first match, not where their roads join (UVic's Ring Rd,
- * one corridor from the exchange, is shared from its second stop on). A presentation choice.
+ * The features a segment is drawn over (its patterns' paths, `PathStep`s: corridors or SkyTrain's
+ * line pieces): those it covers at least half of, or MIN_OVERLAP_M of, along one of its patterns.
  */
-const MIN_OVERLAP_M = 100;
-
-/**
- * The corridors a segment runs along (`PlanCorridorRefs`, one set: detailed or overview): those
- * it covers at least half of, or MIN_OVERLAP_M of, along one of its patterns. A corridor's length
- * along a pattern is up to where the pattern enters its next corridor (or its shape ends).
- */
-export function segmentCorridors(
+export function segmentSteps(
   plan: ServicePlan,
   segment: SharedSegment,
-  refs: readonly (readonly [number, 1 | -1, number])[][],
-  shapeLength: (shape: string) => number,
+  pathOf: (pattern: number) => readonly PathStep[] | undefined,
 ): Set<number> {
-  const ranges = segmentRanges(plan, segment);
-  // Per pattern of the segment: [corridor, where it enters] along it, in order.
-  const entries = new Map<number, [number, number][]>();
-  refs.forEach((rs, corridor) => {
-    for (const [p, , along] of rs) {
-      if (!ranges.has(p)) continue;
-      let list = entries.get(p);
-      if (!list) entries.set(p, (list = []));
-      list.push([corridor, along]);
-    }
-  });
   const out = new Set<number>();
-  for (const [p, list] of entries) {
-    list.sort((a, b) => a[1] - b[1]);
-    const [a, b] = ranges.get(p)!;
-    const end = shapeLength(plan.patterns[p]!.shape);
-    list.forEach(([corridor, along], i) => {
-      const to = list[i + 1]?.[1] ?? end;
-      const overlap = Math.min(to, b) - Math.max(along, a);
-      if (overlap >= Math.min(MIN_OVERLAP_M, (to - along) / 2) && overlap > 0)
-        out.add(corridor);
-    });
-  }
+  for (const [p, [a, b]] of segmentRanges(plan, segment))
+    for (const [id, from, to] of pathOf(p) ?? []) {
+      const overlap = Math.min(to, b) - Math.max(from, a);
+      if (overlap > 0 && overlap >= Math.min(MIN_OVERLAP_M, (to - from) / 2))
+        out.add(id);
+    }
   return out;
 }
 

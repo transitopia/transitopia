@@ -15,11 +15,12 @@ import { detailedCorridors, overviewCorridors } from "./tiles.ts";
 import {
   LINE_DECIMALS,
   patternStarts,
-  type CorridorRef,
   type CorridorSet,
   type PlanCorridor,
   type PlanCorridorInfo,
-  type PlanCorridorRefs,
+  pathGroup,
+  type PathStep,
+  type PatternPath,
   type PlanFiles,
   type PlanPattern,
   type PlanRoute,
@@ -53,6 +54,7 @@ export interface PublishedPlan extends Omit<
   | "corridors"
   | "overviewCorridors"
   | "corridorInfo"
+  | "paths"
   | "files"
 > {
   schema: 2;
@@ -100,13 +102,18 @@ export interface PublishedCorridorInfo {
 }
 
 /**
- * The patterns along each corridor (`PlanCorridorRefs`), flat: pattern, along, … per corridor, the
- * pattern as -(pattern + 1) where it runs against the corridor's coordinates.
+ * Bus patterns' paths over the corridors (`PatternPath`) whose routes are in one group (`pathGroup`):
+ * per pattern (by index), its detailed (`d`) and overview (`o`) steps, flat: id, from, to, ….
  */
-export interface PublishedCorridorRefs {
-  schema: 2;
-  detailed: number[][];
-  overview: number[][];
+export interface PublishedPatternPaths {
+  schema: 1;
+  patterns: Record<string, { d: number[]; o: number[] }>;
+}
+
+/** SkyTrain patterns' paths over its line pieces (`PlanFiles.railPaths`): per pattern, id, from, to, …. */
+export interface PublishedRailPaths {
+  schema: 1;
+  patterns: Record<string, number[]>;
 }
 
 /**
@@ -198,7 +205,7 @@ export interface PlanPublication {
     | PublishedShapes
     | PublishedCorridors
     | PublishedCorridorInfo
-    | PublishedCorridorRefs
+    | PublishedPatternPaths
     | PublishedTrips
   >;
 }
@@ -216,6 +223,7 @@ export function publishPlan(plan: ServicePlan): PlanPublication {
     corridors,
     overviewCorridors: _overview,
     corridorInfo: _info,
+    paths: _paths,
     files: _files,
     frequency: _frequency,
     ...rest
@@ -265,19 +273,22 @@ export function publishPlan(plan: ServicePlan): PlanPublication {
       overview: set(overviewCorridors(plan)),
     } satisfies PublishedCorridorInfo);
     refs.corridorInfo = "corridor-info.json";
-    const flat = (cs: readonly PlanCorridor[]) =>
-      cs.map((c) =>
-        (c.refs ?? []).flatMap(([p, dir, along]) => [
-          dir === 1 ? p : -(p + 1),
-          along,
-        ]),
-      );
-    files.set("corridor-refs.json", {
-      schema: 2,
-      detailed: flat(detailedCorridors(plan)),
-      overview: flat(overviewCorridors(plan)),
-    } satisfies PublishedCorridorRefs);
-    refs.corridorRefs = "corridor-refs.json";
+    // Each pattern's path over them, in a file per route group.
+    const groups = new Map<string, PublishedPatternPaths>();
+    for (const [p, path] of plan.paths ?? []) {
+      const g = pathGroup(plan.patterns[p]!.route);
+      let f = groups.get(g);
+      if (!f) groups.set(g, (f = { schema: 1, patterns: {} }));
+      f.patterns[p] = {
+        d: path.detailed.flat(),
+        o: path.overview.flat(),
+      };
+    }
+    if (groups.size) refs.paths = {};
+    for (const g of [...groups.keys()].sort()) {
+      files.set(`paths/${g}.json`, groups.get(g)!);
+      refs.paths![g] = `paths/${g}.json`;
+    }
     const stopCombo = cf.stopCombos();
     frequency = {
       routeDirs: cf.routeDirs,
@@ -479,17 +490,48 @@ export function decodeCorridorInfo(f: PublishedCorridorInfo): PlanCorridorInfo {
   return { detailed: f.detailed, overview: f.overview };
 }
 
-export function decodeCorridorRefs(f: PublishedCorridorRefs): PlanCorridorRefs {
-  const set = (s: number[][]) =>
-    s.map((flat) => {
-      const out: CorridorRef[] = [];
-      for (let i = 0; i + 1 < flat.length; i += 2) {
-        const p = flat[i]!;
-        out.push(p >= 0 ? [p, 1, flat[i + 1]!] : [-p - 1, -1, flat[i + 1]!]);
-      }
-      return out;
-    });
-  return { detailed: set(f.detailed), overview: set(f.overview) };
+/** Steps from their flat form: id, from, to, …. */
+function decodeSteps(flat: readonly number[]): PathStep[] {
+  const out: PathStep[] = [];
+  for (let i = 0; i + 2 < flat.length; i += 3)
+    out.push([flat[i]!, flat[i + 1]!, flat[i + 2]!]);
+  return out;
+}
+
+/** A group file's patterns' paths, by pattern index. */
+export function decodePatternPaths(
+  f: PublishedPatternPaths,
+): Map<number, PatternPath> {
+  return new Map(
+    Object.entries(f.patterns).map(([p, { d, o }]) => [
+      Number(p),
+      { detailed: decodeSteps(d), overview: decodeSteps(o) },
+    ]),
+  );
+}
+
+/** SkyTrain patterns' paths over its line pieces, by pattern index. */
+export function decodeRailPaths(
+  f: PublishedRailPaths,
+): Map<number, PathStep[]> {
+  return new Map(
+    Object.entries(f.patterns).map(([p, flat]) => [
+      Number(p),
+      decodeSteps(flat),
+    ]),
+  );
+}
+
+/** SkyTrain patterns' paths in their published form. */
+export function encodeRailPaths(
+  paths: ReadonlyMap<number, readonly PathStep[]>,
+): PublishedRailPaths {
+  return {
+    schema: 1,
+    patterns: Object.fromEntries(
+      [...paths].map(([p, steps]) => [String(p), steps.flat()]),
+    ),
+  };
 }
 
 export function decodeTrips(f: PublishedTrips): PlanTrip[] {

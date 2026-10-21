@@ -376,22 +376,20 @@ export function placeSnapshot(
         groups: s.groups.map((g) => `${g.routeKey}|${g.headsign}`),
         to: placeName(plan, s.toStopId),
         frequency: departureFrequency(s.departures, t),
-        segment: sharedSegmentOf(plan, s, routes),
+        segment: sharedSegmentOf(plan, s),
       };
     }),
   };
 }
 
 /**
- * A shared stretch's combined route (buses only, for now): from where its routes came together,
- * comparing stops by their station or exchange (`placeOfStop`), to where they split.
+ * A shared stretch's combined route: from where its routes came together, comparing stops by their
+ * station or exchange (`placeOfStop`), to where they split.
  */
 function sharedSegmentOf(
   plan: ServicePlan,
   s: SharedStretch,
-  routes: PlanRoute[],
 ): Place | undefined {
-  if (!routes.every((r) => r.mode === "bus")) return undefined;
   const placeOf = placeOfStop(plan);
   const from = sharedStart(
     plan,

@@ -7,6 +7,7 @@
 // and merge), and refer to patterns by their index in the plan.
 
 import {
+  cumulativeLengths,
   localProjector,
   round,
   roundLine,
@@ -35,16 +36,37 @@ const MAX_UNPAIRED_M = 150;
 /** Merged corridors' geometry tolerance (m): they're drawn zoomed out. */
 const MERGED_SIMPLIFY_M = 3;
 
-/**
- * A stretch between two nodes and the patterns along it: [direction from a to b, along where it
- * enters], the first time it does, and `again`, each later time (a route out along a street and back
- * the same way round a loop).
- */
+/** A stretch between two nodes and the patterns along it: [direction from a to b, along where it first enters]. */
 interface UsedEdge {
   a: number;
   b: number;
   uses: Map<number, [1 | -1, number]>;
-  again?: Map<number, [1 | -1, number][]>;
+}
+
+/**
+ * Where a pattern runs along a built corridor, each time it does: from and to where along the
+ * pattern's shape (m), and between which points along the corridor's coordinates (as fractions of
+ * its length: `uFrom` > `uTo` where it runs against them).
+ */
+export interface BuiltStep {
+  corridor: BuiltCorridor;
+  from: number;
+  to: number;
+  uFrom: number;
+  uTo: number;
+}
+
+/** Corridors as built, and each pattern's path over them, in order along it. */
+export interface BuiltCorridors {
+  corridors: BuiltCorridor[];
+  paths: Map<number, BuiltStep[]>;
+}
+
+/** Where an edge is in the corridor chained from it: the corridor, and the fractions of its length at the edge's a and b. */
+interface EdgePlace {
+  corridor: BuiltCorridor;
+  ua: number;
+  ub: number;
 }
 
 function nearestOnSegment(
@@ -70,8 +92,9 @@ function chainEdges(
   keep?: ReadonlySet<number>,
   /** Only continue through edges whose patterns run the same ways (off: geometry only). */
   byDirection = true,
-): BuiltCorridor[] {
+): { corridors: BuiltCorridor[]; places: Map<UsedEdge, EdgePlace> } {
   const out: BuiltCorridor[] = [];
+  const places = new Map<UsedEdge, EdgePlace>();
   const sig = edges.map((e) =>
     [...e.uses.keys()].sort((x, y) => x - y).join(","),
   );
@@ -127,22 +150,26 @@ function chainEdges(
       LINE_DECIMALS,
     );
     const [i0, d0] = steps[0]!;
-    const [iN, dN] = steps[steps.length - 1]!;
+    const [iN] = steps[steps.length - 1]!;
     const refs: CorridorRef[] = [...edges[i0]!.uses].map(([pattern, [dir]]) => {
       const rel = (dir * d0) as 1 | -1;
       // Where the pattern enters this corridor: its first edge, or its last when it runs the other way.
       const entry = (rel === 1 ? edges[i0]! : edges[iN]!).uses.get(pattern)!;
       return [pattern, rel, entry[1]];
     });
-    // Each later time a pattern runs along it, entering at its first edge or, the other way, its last.
-    for (const [x, d, rel] of [
-      [i0, d0, 1],
-      [iN, dN, -1],
-    ] as const)
-      for (const [pattern, again] of edges[x]!.again ?? [])
-        for (const [dir, along] of again)
-          if (dir * d === rel) refs.push([pattern, rel, along]);
-    out.push({ coords, refs });
+    const corridor: BuiltCorridor = { coords, refs };
+    // Where each edge is along it, by the length of the road (its nodes) to there.
+    const cum = cumulativeLengths(nodes.map(at));
+    const length = cum.at(-1)! || 1;
+    steps.forEach(([x, d], k) => {
+      const [u0, u1] = [cum[k]! / length, cum[k + 1]! / length];
+      places.set(edges[x]!, {
+        corridor,
+        ua: d === 1 ? u0 : u1,
+        ub: d === 1 ? u1 : u0,
+      });
+    });
+    out.push(corridor);
   };
   for (const [v, list] of byNode)
     for (const i of list)
@@ -151,7 +178,46 @@ function chainEdges(
   edges.forEach((e, i) => {
     if (!used.has(i)) walk(e.a, i);
   });
+  return { corridors: out, places };
+}
+
+/** Each pattern's path from its pieces, in order: consecutive pieces along one corridor are one step. */
+function joinSteps(pieces: Map<number, BuiltStep[]>): Map<number, BuiltStep[]> {
+  const out = new Map<number, BuiltStep[]>();
+  for (const [pattern, list] of pieces) {
+    const steps: BuiltStep[] = [];
+    for (const p of list) {
+      const last = steps[steps.length - 1];
+      // The same pass carries on: the same corridor, the same way along it, from where it left off
+      // along both.
+      if (
+        last?.corridor === p.corridor
+        && Math.sign(p.uTo - p.uFrom) === Math.sign(last.uTo - last.uFrom)
+        && Math.abs(p.from - last.to) < JOIN_M
+        && Math.abs(p.uFrom - last.uTo) * lengthOf(p.corridor) < JOIN_M
+      ) {
+        last.to = p.to;
+        last.uTo = p.uTo;
+      } else steps.push({ ...p });
+    }
+    out.set(pattern, steps);
+  }
   return out;
+}
+
+/** Pieces of a pattern's path this close (m), along it and along the corridor, are one pass. */
+const JOIN_M = 2;
+
+const lengths = new WeakMap<BuiltCorridor, number>();
+/** A corridor's length (m). */
+function lengthOf(c: BuiltCorridor): number {
+  let l = lengths.get(c);
+  if (l === undefined)
+    lengths.set(
+      c,
+      (l = c.coords.length < 2 ? 0 : cumulativeLengths(c.coords).at(-1)!),
+    );
+  return l;
 }
 
 export interface PatternMatch {
@@ -159,67 +225,104 @@ export interface PatternMatch {
   pieces: MatchPiece[];
 }
 
+/**
+ * The corridors the patterns' matched shapes run along, and each pattern's path over them: every
+ * piece of road it runs along, in order, each time it does (a route out along a street and back
+ * the same way round a loop runs along it twice).
+ */
 export function buildCorridors(
   g: RoadGraph,
   matches: PatternMatch[],
   keep?: ReadonlySet<number>,
-): BuiltCorridor[] {
-  /** Per canonical edge (the lower of an edge and its twin): its patterns' passes (`UsedEdge`). */
-  const uses = new Map<number, Pick<UsedEdge, "uses" | "again">>();
+): BuiltCorridors {
+  /** Per canonical edge (the lower of an edge and its twin): its patterns (`UsedEdge`). */
+  const uses = new Map<number, UsedEdge>();
   const out: BuiltCorridor[] = [];
+  /** Per pattern, its pieces in order: on a road edge (canonical, with where along it), or its own line. */
+  type Piece =
+    | { canon: number; t0: number; t1: number; from: number; to: number }
+    | BuiltStep;
+  const walked = new Map<number, Piece[]>();
   for (const { pattern, pieces } of matches) {
     let along = 0;
+    const list: Piece[] = [];
+    walked.set(pattern, list);
     for (const p of pieces) {
       if ("raw" in p) {
         // No road here: the pattern's own geometry, not merged with others.
         const coords = roundLine(p.raw, LINE_DECIMALS);
-        out.push({ coords, refs: [[pattern, 1, Math.round(along)]] });
+        const corridor: BuiltCorridor = {
+          coords,
+          refs: [[pattern, 1, Math.round(along)]],
+        };
+        out.push(corridor);
+        const from = along;
         for (let k = 1; k < p.raw.length; k++) {
           const [ax, ay] = g.toXY(p.raw[k - 1]!);
           const [bx, by] = g.toXY(p.raw[k]!);
           along += Math.hypot(bx - ax, by - ay);
         }
+        list.push({ corridor, from, to: along, uFrom: 0, uTo: 1 });
         continue;
       }
       const len = (p.f1 - p.f0) * g.edgeLen[p.edge]!;
       if (p.f1 - p.f0 >= MIN_EDGE_SHARE) {
         const twin = g.edgeTwin[p.edge]!;
         const canon = twin >= 0 && twin < p.edge ? twin : p.edge;
-        let m = uses.get(canon);
-        if (!m) uses.set(canon, (m = { uses: new Map() }));
-        const use: [1 | -1, number] = [
-          canon === p.edge ? 1 : -1,
-          Math.round(along - p.f0 * g.edgeLen[p.edge]!),
-        ];
-        const first = m.uses.get(pattern);
-        if (!first) m.uses.set(pattern, use);
-        // Along it again, not another piece of the same pass (its entry no more than the edge on).
-        else if (
-          [first, ...(m.again?.get(pattern) ?? [])].every(
-            (u) => Math.abs(u[1] - use[1]) > g.edgeLen[p.edge]!,
-          )
-        ) {
-          m.again ??= new Map();
-          m.again.set(pattern, [...(m.again.get(pattern) ?? []), use]);
-        }
+        const fwd = canon === p.edge;
+        let e = uses.get(canon);
+        if (!e)
+          uses.set(
+            canon,
+            (e = {
+              a: g.edgeFrom[canon]!,
+              b: g.edgeTo[canon]!,
+              uses: new Map(),
+            }),
+          );
+        if (!e.uses.has(pattern))
+          e.uses.set(pattern, [
+            fwd ? 1 : -1,
+            Math.round(along - p.f0 * g.edgeLen[p.edge]!),
+          ]);
+        // Where along the canonical edge (a to b) it runs from and to.
+        list.push({
+          canon,
+          t0: fwd ? p.f0 : 1 - p.f0,
+          t1: fwd ? p.f1 : 1 - p.f1,
+          from: along,
+          to: along + len,
+        });
       }
       along += len;
     }
   }
 
-  out.push(
-    ...chainEdges(
-      [...uses].map(([e, m]) => ({
-        a: g.edgeFrom[e]!,
-        b: g.edgeTo[e]!,
-        ...m,
-      })),
-      (n) => g.toLonLat(g.x[n]!, g.y[n]!),
-      SIMPLIFY_M,
-      keep,
-    ),
+  const chained = chainEdges(
+    [...uses.values()],
+    (n) => g.toLonLat(g.x[n]!, g.y[n]!),
+    SIMPLIFY_M,
+    keep,
   );
-  return out;
+  out.push(...chained.corridors);
+  const pieces = new Map<number, BuiltStep[]>();
+  for (const [pattern, list] of walked)
+    pieces.set(
+      pattern,
+      list.map((p) => {
+        if ("corridor" in p) return p;
+        const place = chained.places.get(uses.get(p.canon)!)!;
+        const u = (t: number) => place.ua + t * (place.ub - place.ua);
+        return {
+          corridor: place.corridor,
+          from: p.from,
+          to: p.to,
+          uFrom: u(p.t0),
+          uTo: u(p.t1),
+        };
+      }),
+    );
+  return { corridors: out, paths: joinSteps(pieces) };
 }
 
 /** Road nodes along a matched shape, in order, with where its road pieces start and end. */
@@ -274,7 +377,7 @@ export function keptRoadNodes(
     SIMPLIFY_M,
     undefined,
     false,
-  ))
+  ).corridors)
     for (const [lon, lat] of c.coords) {
       const n = byCoord.get(`${lon},${lat}`);
       if (n !== undefined) keep.add(n);
@@ -317,8 +420,11 @@ export function roadCoords(
  * carrying both directions' patterns: one carriageway moves halfway to the other, onto the centreline,
  * and takes on the other's patterns.
  */
-export function mergeCarriageways(corridors: BuiltCorridor[]): BuiltCorridor[] {
-  if (!corridors.length) return [];
+export function mergeCarriageways(
+  corridors: BuiltCorridor[],
+  paths: ReadonlyMap<number, readonly BuiltStep[]> = new Map(),
+): BuiltCorridors {
+  if (!corridors.length) return { corridors: [], paths: new Map() };
   const proj = localProjector(corridors[0]!.coords[0]![1]);
   interface Line {
     pts: [number, number][];
@@ -558,6 +664,8 @@ export function mergeCarriageways(corridors: BuiltCorridor[]): BuiltCorridor[] {
       );
     return [e, orient];
   }
+  /** Per line and point: the merged stretch the line's segment ending there is drawn as. */
+  const drawnAs = reached.map((seq) => seq.map((r) => r?.[0]));
   // The other carriageway's patterns, on the stretches alongside it.
   lines.forEach((l, j) =>
     l.pts.forEach((_, k) => {
@@ -567,6 +675,7 @@ export function mergeCarriageways(corridors: BuiltCorridor[]): BuiltCorridor[] {
       const hit = reached[q.line]![q.seg + 1] ?? reached[q.line]![q.seg];
       if (!hit) return;
       const [e, orient] = hit;
+      drawnAs[j]![k] = e;
       // Paired carriageways run opposite ways: this one's patterns against the other's (its
       // direction of drawing can be across this one's where the two spread apart round a bend).
       const along = -o.oneway;
@@ -598,9 +707,45 @@ export function mergeCarriageways(corridors: BuiltCorridor[]): BuiltCorridor[] {
       }
     }
   }
-  return chainEdges(
+  const chained = chainEdges(
     [...edges.values()],
     (n) => proj.toLonLat(nodes[n]![0], nodes[n]![1]),
     MERGED_SIMPLIFY_M,
   );
+  // Each pattern's path over the merged corridors: each step along a corridor, a segment of its line
+  // at a time, as the merged corridor that segment is drawn as.
+  const lineOf = new Map(corridors.map((c, i) => [c, i]));
+  const pieces = new Map<number, BuiltStep[]>();
+  for (const [pattern, steps] of paths) {
+    const list: BuiltStep[] = [];
+    for (const st of steps) {
+      const i = lineOf.get(st.corridor);
+      if (i === undefined) continue;
+      const l = lines[i]!;
+      const fwd = st.uTo >= st.uFrom;
+      const [lo, hi] = fwd ? [st.uFrom, st.uTo] : [st.uTo, st.uFrom];
+      const along = (u: number) =>
+        st.from
+        + ((u - st.uFrom) / (st.uTo - st.uFrom || 1)) * (st.to - st.from);
+      const ks = l.pts.map((_, k) => k).slice(1);
+      for (const k of fwd ? ks : ks.reverse()) {
+        const a = Math.max(lo, l.s[k - 1]! / (l.length || 1));
+        const b = Math.min(hi, l.s[k]! / (l.length || 1));
+        const e = drawnAs[i]![k];
+        const place = e && chained.places.get(e);
+        if (b <= a || !place) continue;
+        const [u0, u1] = fwd ? [a, b] : [b, a];
+        // Along the merged corridor, only its continuity counts (`joinSteps`): kept at 0.
+        list.push({
+          corridor: place.corridor,
+          from: along(u0),
+          to: along(u1),
+          uFrom: 0,
+          uTo: 0,
+        });
+      }
+    }
+    pieces.set(pattern, list);
+  }
+  return { corridors: chained.corridors, paths: joinSteps(pieces) };
 }

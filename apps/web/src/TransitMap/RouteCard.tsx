@@ -120,6 +120,8 @@ const SharedCardBody: React.FC<{
 }> = ({ engine, snap, place }) => {
   const title = `${place.from} to ${place.to}`;
   const colors = routeColorsFor(engine);
+  const vehicles =
+    place.routes.every((r) => r.mode === "bus") ? "buses" : "trains";
   return (
     <InfoCard
       tile={{ icon: "segment", bg: "#4b5563", fg: "#fff" }}
@@ -145,7 +147,7 @@ const SharedCardBody: React.FC<{
       {...cardFrame(engine, snap)}
       footer={
         <Footer datasets={place.datasets}>
-          From the timetable, by when buses leave {place.from}, all routes
+          From the timetable, by when {vehicles} leave {place.from}, all routes
           together: the wait arriving at a random time. Colours show the longest
           wait.
         </Footer>

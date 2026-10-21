@@ -66,6 +66,7 @@ import {
   mergeCarriageways,
   roadCoords,
 } from "@transitopia/transit-core/plan/corridors.ts";
+import { corridorPaths } from "@transitopia/transit-core/plan/paths.ts";
 import {
   applyFerryBerths,
   type FerryInfra,
@@ -116,7 +117,8 @@ const STOP_OFFSET_WARN_M = 150;
  * 15: every route in the feed by default (plan/routes.ts), no catalogue. 16: corridors numbered by
  * their geometry, and their metadata in a part of its own (corridor-info.json) for plan tiles. 17:
  * corridors list every time a pattern runs along them (a route out and back round a loop), not
- * only the first.
+ * only the first, and patterns' paths over them are published per route group (paths/<g>.json) in
+ * place of corridor-refs.json.
  */
 const PLAN_FORMAT = 17;
 
@@ -545,7 +547,7 @@ export async function buildPlan(
     hubs: busHubs({ routes, stops, stations, patterns, trips }),
   };
   if (roads && matched.size) {
-    const corridors = buildCorridors(
+    const built = buildCorridors(
       roads,
       patterns.flatMap((p) => {
         const pieces = matched.get(p.shape);
@@ -553,12 +555,16 @@ export async function buildPlan(
       }),
       keep,
     );
+    const merged = mergeCarriageways(built.corridors, built.paths);
     // Numbered by their geometry (then their patterns): their index is their feature id in the
     // plan's tiles, so a feed version whose corridors didn't change gets the same tiles.
-    plan.corridors = byGeometry(corridors);
-    plan.overviewCorridors = byGeometry(mergeCarriageways(corridors));
+    const detailed = byGeometry(built.corridors);
+    const overview = byGeometry(merged.corridors);
+    plan.corridors = detailed;
+    plan.overviewCorridors = overview;
+    plan.paths = corridorPaths(detailed, built.paths, overview, merged.paths);
     log(
-      `Built ${corridors.length} bus corridors (${plan.overviewCorridors.length} with divided roads merged)`,
+      `Built ${plan.corridors.length} bus corridors (${plan.overviewCorridors.length} with divided roads merged)`,
     );
   }
 

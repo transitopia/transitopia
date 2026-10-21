@@ -1,7 +1,8 @@
 // What a plan's tiles hold (packages/transit-core/DESIGN.md#plan-tiles): every line the map draws for it,
 // as GeoJSON features tagged with their tile layer and zooms for tippecanoe. The map styles these
 // lines; it doesn't draw any of its own. Bus corridors are numbered as in the plan (their feature
-// id), so the map's feature state finds them; everything else is styled by its properties.
+// id), and SkyTrain's line pieces as in lines.geojson, so the map's feature state finds them;
+// everything else is styled by its properties.
 
 import type { Feature, Geometry } from "geojson";
 import type { InfraCollection } from "../infra/types.ts";
@@ -203,18 +204,20 @@ function railFeatures(
 ): TileFeature[] {
   const color = new Map(routes.map((r) => [r.key, r.color]));
   const out: TileFeature[] = [];
-  for (const f of rail.lines.features) {
+  // Numbered by their place in lines.geojson, as patterns' paths over them (plan/paths.ts) are.
+  rail.lines.features.forEach((f, id) => {
     const { lines: _lines, ...p } = f.properties as typeof f.properties & {
       lines?: string[];
     };
     const c = color.get(p.line);
     out.push({
       type: "Feature",
+      id,
       properties: { ...p, ...(c ? { color: c } : {}) },
       geometry: f.geometry,
       tippecanoe: { layer: PLAN_TILE_LAYERS.railLines },
     });
-  }
+  });
   for (const f of rail.tracks.features) {
     if (f.properties.type !== "segment") continue;
     const p = f.properties;

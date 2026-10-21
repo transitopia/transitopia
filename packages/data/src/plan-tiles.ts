@@ -6,7 +6,11 @@
 import { createHash } from "node:crypto";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
-import type { PublishedPlan } from "@transitopia/transit-core/plan/published.ts";
+import {
+  encodeRailPaths,
+  type PublishedPlan,
+} from "@transitopia/transit-core/plan/published.ts";
+import { railPaths as railPathsOf } from "@transitopia/transit-core/plan/paths.ts";
 import {
   PLAN_TILES_MAX_ZOOM,
   PLAN_TILES_MIN_ZOOM,
@@ -26,6 +30,8 @@ export const OVERVIEW_TILES_FILE = join(
   `${OVERVIEW_TILES_NAME}.pmtiles`,
 );
 
+/** SkyTrain patterns' paths, beside the plan's core. */
+const RAIL_PATHS = "rail-paths.json";
 /** Hash characters in a plan tiles' name. */
 const HASH_LENGTH = 16;
 
@@ -59,8 +65,10 @@ export function tileInput(features: readonly TileFeature[]): string {
 }
 
 /**
- * Make a plan's tiles in `dir` (unless they're there already) and name them in its plan.json.
- * Returns their path, relative to the plan's directory, and whether they were made.
+ * Make a plan's tiles in `dir` (unless they're there already) and name them in its plan.json, and
+ * with `rail`, its SkyTrain patterns' paths over the line pieces they number (rail-paths.json,
+ * `PlanFiles.railPaths`). Returns the tiles' path, relative to the plan's directory, and whether
+ * they were made.
  */
 export async function writePlanTiles(
   planPath: string,
@@ -79,8 +87,17 @@ export async function writePlanTiles(
   if (built) await tippecanoe(input, file, PLAN_TILE_OPTIONS);
   const path = relative(dirname(planPath), file).split("\\").join("/");
   const core = await readJson<PublishedPlan>(planPath);
-  if (core.files.tiles !== path) {
+  const railPaths = rail ? RAIL_PATHS : undefined;
+  if (rail)
+    await writeJson(
+      join(dirname(planPath), RAIL_PATHS),
+      encodeRailPaths(railPathsOf(plan, rail.lines)),
+    );
+  else await rm(join(dirname(planPath), RAIL_PATHS), { force: true });
+  if (core.files.tiles !== path || core.files.railPaths !== railPaths) {
     core.files.tiles = path;
+    if (railPaths) core.files.railPaths = railPaths;
+    else delete core.files.railPaths;
     await writeJson(planPath, core);
   }
   return { path, built };

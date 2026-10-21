@@ -37,7 +37,7 @@ import type {
 import type { Departure } from "@transitopia/transit-core/schedule/departures.ts";
 import {
   onSegment,
-  segmentCorridors,
+  segmentSteps,
   segmentHourly,
   segmentLines,
   segmentRanges,
@@ -100,6 +100,7 @@ import {
   loadTracks,
   PICKABLE_TRACK_LAYERS,
   setDebugPlatforms,
+  setRailFocus,
 } from "./layers/tracks.ts";
 import {
   brandedRoutes,
@@ -214,15 +215,19 @@ interface SegmentInfo extends SegmentContext {
   /** Its stops (plan indices) and their ids, for the map's focus. */
   stops: Set<number>;
   stopIds: string[];
-  /** The corridors it runs along, once the plan's corridor refs are in. */
+  /** The corridors it runs along, once its patterns' paths are in. */
   corridors:
     | { detailed: ReadonlySet<number>; overview: ReadonlySet<number> }
     | undefined;
+  /** SkyTrain's line pieces (their feature ids in the plan's tiles) it runs along, once they're in. */
+  rail: ReadonlySet<number> | undefined;
   /** The hubs (`hubsOf`) its places were worked out with. */
   hubs: BusHub[];
   /** Its `sharedDays`, by the date they're from. */
   days: Record<string, RouteDay[]>;
 }
+
+const NO_IDS: ReadonlySet<number> = new Set();
 
 export { DAY_HOURS };
 export type { Frequency };
@@ -378,6 +383,9 @@ export class TransitEngine {
   private routeDayCache = new WeakMap<PreparedPlan, Map<string, RouteDay[]>>();
   /** Per feed and combined route (`Place` id): what its card and the map's focus need (`segmentInfo`). */
   private segmentCache = new WeakMap<PreparedPlan, Map<string, SegmentInfo>>();
+  /** SkyTrain pieces last marked as on a combined route (`syncRailFocus`), and for what. */
+  private railFocused: ReadonlySet<number> = NO_IDS;
+  private railFocusFor: ReadonlySet<number> | undefined;
   /** Per feed and route: its weekday figure, where the plan hasn't it (dayWait). */
   private dayWaitCache = new WeakMap<
     PreparedPlan,
@@ -1047,6 +1055,25 @@ export class TransitEngine {
       : undefined;
   }
 
+  /**
+   * Keep the open combined route's SkyTrain pieces marked (`setRailFocus`): those of the last ones
+   * marked it no longer has unmarked, and after the lines' source was re-created (`railFocusFor`
+   * cleared), every one marked again, since MapLibre keeps state by feature id across new data.
+   */
+  private syncRailFocus(): void {
+    const want = this.segmentInfo()?.rail ?? NO_IDS;
+    if (want === this.railFocusFor) return;
+    const was = this.railFocused;
+    setRailFocus(
+      this.map,
+      [...was].filter((id) => !want.has(id)),
+      false,
+    );
+    setRailFocus(this.map, want, true);
+    this.railFocused = want;
+    this.railFocusFor = want;
+  }
+
   private syncPlaceHighlight(): void {
     const route = this.focusRoute();
     const info = route === undefined ? this.segmentInfo() : undefined;
@@ -1101,6 +1128,7 @@ export class TransitEngine {
         stops,
         stopIds: [...stops].map((i) => plan.stops[i]!.id),
         corridors: undefined,
+        rail: undefined,
         hubs,
         days: {},
         onSegment: (v) => {
@@ -1113,27 +1141,23 @@ export class TransitEngine {
       };
       byId.set(place.id, info);
     }
-    // Its corridors, once the plan's corridor refs are in.
-    const refs =
-      info.segment && !info.corridors && pp.plan.corridorInfo ?
-        this.store.corridorRefsFor(pp)
-      : undefined;
-    if (refs && info.segment) {
-      const length = (shape: string) => pp.shapeCum.get(shape)?.at(-1) ?? 0;
-      info.corridors = {
-        detailed: segmentCorridors(
-          pp.plan,
-          info.segment,
-          refs.detailed,
-          length,
-        ),
-        overview: segmentCorridors(
-          pp.plan,
-          info.segment,
-          refs.overview,
-          length,
-        ),
-      };
+    // What it's drawn over, once its patterns' paths are in: corridors, and SkyTrain's line pieces.
+    const seg = info.segment;
+    if (seg && !info.corridors && pp.plan.corridorInfo) {
+      const paths = this.store.patternPathsFor(pp, seg.routes);
+      if (paths !== undefined)
+        info.corridors = {
+          detailed: segmentSteps(pp.plan, seg, (p) => paths?.get(p)?.detailed),
+          overview: segmentSteps(pp.plan, seg, (p) => paths?.get(p)?.overview),
+        };
+    }
+    if (seg && !info.rail) {
+      const rail =
+        seg.routes.some((r) => pp.routes.get(r)?.mode === "skytrain") ?
+          this.store.railPathsFor(pp)
+        : null;
+      if (rail !== undefined)
+        info.rail = segmentSteps(pp.plan, seg, (p) => rail?.get(p));
     }
     return info;
   }
@@ -1822,6 +1846,7 @@ export class TransitEngine {
     else if (!this.frequencyLayer || this.frequencyLayer.plan !== pp.plan)
       this.frequencyLayer = new BusFrequencyLayer(pp.plan);
     this.frequencyLayer?.invalidate(map);
+    this.railFocusFor = undefined;
     this.syncPlaceHighlight();
     this.ferryPair = undefined;
     // SkyTrain's track, in the tiles of a region with track-level rail (they replace its GTFS shapes).
@@ -1922,6 +1947,7 @@ export class TransitEngine {
         this.focus(),
       );
     }
+    if (this.styleReady) this.syncRailFocus();
     if (this.syncVehicleColors()) this.inputsChanged = true;
     if (this.following && this.styleReady) this.keepCentred();
     else if (this.clearPaddingPending && !map.isMoving())
