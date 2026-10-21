@@ -89,6 +89,8 @@ const icons = {
     <path d="M8 2v8M4.667 5.333l3.333-3.333 3.333 3.333M3.333 8.667v4a1.333 1.333 0 0 0 1.333 1.333h6.667a1.333 1.333 0 0 0 1.333-1.333v-4" />,
   ),
   filter: line(<path d="M2 3.333h12l-4.667 5.333v4l-2.667-1.333v-2.667z" />),
+  /** A combined route: a stretch of line. */
+  segment: line(<path d="M2.667 8h10.667" />, 2.5),
   /** Card tiles. */
   // A station on its line: an open ring over a thick route line, which stops inside the ring's stroke.
   station: line(

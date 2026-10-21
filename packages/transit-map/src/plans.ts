@@ -44,6 +44,7 @@ import {
   regionDataPath,
   type FeedManifest,
   type FeedManifestEntry,
+  type PlanCorridorRefs,
   type PlanFiles,
   type PlanTrip,
   type ServicePlan,
@@ -52,11 +53,13 @@ import {
 import {
   decodeCore,
   decodeCorridorInfo,
+  decodeCorridorRefs,
   decodeShapes,
   decodeTrips,
   railTripFiles,
   tripFilesFor,
   type PublishedCorridorInfo,
+  type PublishedCorridorRefs,
   type PublishedPlan,
   type PublishedShapes,
   type PublishedTrips,
@@ -118,6 +121,8 @@ export class PlanStore {
   /** The feed's places index (data/feeds/<feed>/places.json) and files, by path. */
   private placesIndex = new Map<string, PlacesIndex | null>();
   private placesFiles = new Map<string, PlacesFile | null>();
+  /** Each plan version's corridor refs, once asked for (`corridorRefsFor`). */
+  private corridorRefs = new Map<string, PlanCorridorRefs | null>();
   private movementFiles = new Map<string, MovementsFile | null>();
   private playbacks = new Map<string, TrainPlayback>();
   private preview: Record<string, string> = {};
@@ -316,6 +321,25 @@ export class PlanStore {
       );
     }
     return this.reconciledScheduled.get(key);
+  }
+
+  /**
+   * A loaded plan's corridor refs (`PlanCorridorRefs`: the patterns along each corridor), for
+   * drawing a stretch of a pattern over its corridors (a combined route,
+   * packages/transit-map/README.md#route-focus). Loaded only when first asked for: undefined while
+   * it loads (a change event fires), null when the plan has none.
+   */
+  corridorRefsFor(pp: PreparedPlan): PlanCorridorRefs | null | undefined {
+    const v = this.versions.get(pp.plan.feedVersion);
+    if (!v?.files.corridorRefs) return null;
+    const key = `corridor-refs:${pp.plan.feedVersion}`;
+    this.fetchOnce(
+      key,
+      this.dataUrl(v.dir + v.files.corridorRefs),
+      this.corridorRefs,
+      (j) => decodeCorridorRefs(j as PublishedCorridorRefs),
+    );
+    return this.corridorRefs.get(key);
   }
 
   /**

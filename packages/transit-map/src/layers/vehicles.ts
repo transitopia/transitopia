@@ -45,8 +45,11 @@ export class VehicleLayer {
   )[] = [];
   private mercPerPx = 0;
   selectedId: string | undefined;
-  /** The route whose card is open: other routes' vehicles are dimmed (static.ts → setFocusRoute). */
-  focusRoute: string | undefined;
+  /**
+   * Whether a vehicle is on what the open card focuses on (a route, or a combined route's stretch):
+   * the rest are dimmed (static.ts → setFocus). Undefined when nothing is focused.
+   */
+  focus: ((v: VehicleState) => boolean) | undefined;
 
   private map: MlMap;
   private sizing: KinematicsConfig["sizing"];
@@ -134,10 +137,7 @@ export class VehicleLayer {
       const rgb = this.colors.get(v.routeKey) ?? [110, 110, 110];
       const estimated = v.provenance === "estimated";
       const selected = v.id === this.selectedId;
-      dim =
-        this.focusRoute === undefined || v.routeKey === this.focusRoute ?
-          1
-        : DIM_OPACITY;
+      dim = !this.focus || this.focus(v) ? 1 : DIM_OPACITY;
       const fill: RGBA =
         estimated ?
           [...rgb, Math.round(255 * ESTIMATED_OPACITY)]

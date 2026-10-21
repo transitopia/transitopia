@@ -358,6 +358,26 @@ export class CorridorFrequency {
     });
   }
 
+  /**
+   * The worst wait (minutes) of departures from `sources` in a window, or for "weekdays" their
+   * weekday figure; Infinity when none run. For what the corridors don't combine on their own: a
+   * combined route (schedule/shared-segment.ts).
+   */
+  waitOf(query: FrequencyQuery, sources: readonly Starts[]): number {
+    if (query === "weekdays")
+      return (
+        weekdayFigure(hourlyWaits(this.servicesOn, this.weekdays(), sources))
+        ?? Infinity
+      );
+    const { date, from, seconds } = query;
+    const w = worstWait(
+      departuresAround(this.servicesOn, sources, date, from, from + seconds),
+      from,
+      from + seconds,
+    );
+    return w === undefined ? Infinity : w / 60;
+  }
+
   /** The regular weekdays (`regularWeekdays`) the weekday figures are for. */
   private weekdays(): ServiceDate[] {
     return (this.weekdayDates ??= regularWeekdays(

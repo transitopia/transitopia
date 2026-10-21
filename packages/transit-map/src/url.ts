@@ -1,6 +1,6 @@
 // Shareable view state in the query string: ?date=2026-09-28&t=08:15:00&rate=10&paused=1&select=<key>
-// (apps/web/README.md#modes-and-url-state). `select` names a station, exchange, stop, route or
-// vehicle by a feature key (packages/shared/src/features.ts, src/select.ts): an ID or a ref.
+// (apps/web/README.md#modes-and-url-state). `select` names a station, exchange, stop, route,
+// combined route or vehicle by a feature key (packages/shared/src/features.ts, src/select.ts): an ID or a ref.
 // No time parameters means "live". The map position lives in the hash (MapLibre's hash option).
 // `t` is service-day time, so it may exceed 24:00 for after-midnight trips.
 
@@ -14,11 +14,28 @@ import { parseKey } from "@transitopia/shared/features.ts";
 import { displayServiceDate } from "./plans.ts";
 import type { Clock } from "./clock.ts";
 
-/** A tapped station, bus exchange, bus stop or route line (its card). */
+/** A tapped station, bus exchange, bus stop or route line (its card), or a combined route. */
 export interface Place {
-  kind: "station" | "exchange" | "stop" | "route";
-  /** Station (parent stop_id), exchange id (BusHub), GTFS stop_id, or route key. */
+  kind: "station" | "exchange" | "stop" | "route" | "shared";
+  /**
+   * Station (parent stop_id), exchange id (BusHub), GTFS stop_id, route key, or a combined route's
+   * ends (`sharedPlace`).
+   */
   id: string;
+}
+
+/**
+ * A combined route between two stops or stations (stop keys: a station's id or a stop's,
+ * packages/transit-core/DESIGN.md#combined-routes).
+ */
+export function sharedPlace(from: string, to: string): Place {
+  return { kind: "shared", id: `${from}>${to}` };
+}
+
+/** A combined route's ends (`sharedPlace`). */
+export function sharedEnds(place: Place): { from: string; to: string } {
+  const i = place.id.indexOf(">");
+  return { from: place.id.slice(0, i), to: place.id.slice(i + 1) };
 }
 
 export interface UrlState {

@@ -23,6 +23,7 @@ import {
   feedForDate,
   patternStarts,
   type PlanRoute,
+  type ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
 import {
   firstBoarding,
@@ -35,6 +36,19 @@ import type {
   VehicleState,
 } from "@transitopia/transit-core/schedule/engine.ts";
 import type { Departure } from "@transitopia/transit-core/schedule/departures.ts";
+import {
+  onSegment,
+  segmentCorridors,
+  segmentHourly,
+  segmentLines,
+  segmentRanges,
+  segmentStarts,
+  segmentStops,
+  sharedSegment,
+  startOffsets,
+  type SharedSegment,
+} from "@transitopia/transit-core/schedule/shared-segment.ts";
+import type { LonLat } from "@transitopia/transit-core/geo.ts";
 import {
   DAY_HOURS,
   dayTypes,
@@ -67,11 +81,15 @@ import {
   applyStopsVisibility,
   removeSources,
   setFerryPair,
-  setFocusRoute,
+  setFocus,
   setSelectedPlace,
 } from "./layers/static.ts";
 import { VehicleLayer } from "./layers/vehicles.ts";
-import { BusFrequencyLayer, nowWindowStart } from "./layers/bus-frequency.ts";
+import {
+  BusFrequencyLayer,
+  nowWindowStart,
+  type Focus,
+} from "./layers/bus-frequency.ts";
 import {
   DEBUG_SOURCE,
   TRACKS_SOURCE,
@@ -87,7 +105,13 @@ import {
   brandedRoutes,
   PLAN_TILE_LAYERS,
 } from "@transitopia/transit-core/plan/tiles.ts";
-import { readUrl, writeUrl, type Place, type UrlState } from "./url.ts";
+import {
+  readUrl,
+  sharedEnds,
+  writeUrl,
+  type Place,
+  type UrlState,
+} from "./url.ts";
 import type { BusHub } from "@transitopia/transit-core/plan/exchanges.ts";
 import {
   resolveSelect,
@@ -109,6 +133,8 @@ import {
   type PlaceGroup,
   type PlaceSnapshot,
   type RouteSnapshot,
+  type SegmentContext,
+  type SharedSnapshot,
 } from "./places.ts";
 import { loadPref, savePref } from "./prefs.ts";
 import type { RegionConfig } from "./config.ts";
@@ -163,7 +189,14 @@ export interface SelectedVehicle {
 
 export type { Place };
 export type { Departure };
-export type { PickChoice, PickMenu, PlaceGroup, PlaceSnapshot, RouteSnapshot };
+export type {
+  PickChoice,
+  PickMenu,
+  PlaceGroup,
+  PlaceSnapshot,
+  RouteSnapshot,
+  SharedSnapshot,
+};
 
 /** A card to open: a vehicle's, or a place's (station, exchange, stop or route line). */
 export type CardTarget = { vehicle: string } | { place: Place };
@@ -173,6 +206,20 @@ export interface RouteDay {
   date: ServiceDate;
   label: string;
   hours: (Frequency | undefined)[];
+}
+
+/** A combined route in a prepared plan (`segmentInfo`). */
+interface SegmentInfo extends SegmentContext {
+  segment: SharedSegment | undefined;
+  /** Its stops (plan indices) and their ids, for the map's focus. */
+  stops: Set<number>;
+  stopIds: string[];
+  /** The corridors it runs along, once the plan's corridor refs are in. */
+  corridors:
+    | { detailed: ReadonlySet<number>; overview: ReadonlySet<number> }
+    | undefined;
+  /** Its `sharedDays`, by the date they're from. */
+  days: Record<string, RouteDay[]>;
 }
 
 export { DAY_HOURS };
@@ -218,8 +265,8 @@ export interface TransitSnapshot {
   /** The camera keeps the selected vehicle in view. */
   following: boolean;
   selected: SelectedVehicle | undefined;
-  /** The selected station, stop or route line (exclusive with a selected vehicle). */
-  place: PlaceSnapshot | RouteSnapshot | undefined;
+  /** The selected station, stop, route line or combined route (exclusive with a selected vehicle). */
+  place: PlaceSnapshot | RouteSnapshot | SharedSnapshot | undefined;
   /** The title of the card `back()` returns to, when this one was opened from another card. */
   back: string | undefined;
   /** A tap near several things: what it might have meant, to choose from (`choose`). */
@@ -327,6 +374,13 @@ export class TransitEngine {
   private revealAt: number | undefined;
   /** Per feed and route: its day types and hourly frequencies (they don't change with the time). */
   private routeDayCache = new WeakMap<PreparedPlan, Map<string, RouteDay[]>>();
+  /** Per feed and combined route (`Place` id): what its card and the map's focus need (`segmentInfo`). */
+  private segmentCache = new WeakMap<PreparedPlan, Map<string, SegmentInfo>>();
+  /** Per plan and combined route: the corridors it runs along, once the plan's refs are in. */
+  private segmentCorridorCache = new WeakMap<
+    ServicePlan,
+    Map<string, NonNullable<SegmentInfo["corridors"]>>
+  >();
   /** Per feed and route: its weekday figure, where the plan hasn't it (dayWait). */
   private dayWaitCache = new WeakMap<
     PreparedPlan,
@@ -724,6 +778,9 @@ export class TransitEngine {
       : undefined;
     if (here) this.trail.push({ target: here, label: from });
     this.show(target);
+    // A combined route can start well before the stop it was opened from.
+    if ("place" in target && target.place.kind === "shared")
+      this.locateSelected();
   }
 
   /** Back to the card the showing one was opened from. */
@@ -974,17 +1031,128 @@ export class TransitEngine {
       : undefined;
   }
 
+  /**
+   * What the map focuses on (packages/transit-map/README.md#route-focus): the route whose card is
+   * open, or the combined route's stretch.
+   */
+  private focus(): Focus | undefined {
+    const route = this.focusRoute();
+    if (route !== undefined) return { route };
+    const info = this.segmentInfo();
+    return info?.segment && this.place ?
+        {
+          key: this.place.id,
+          routes: new Set(info.segment.routes),
+          sources: info.sources,
+          corridors: info.corridors,
+          stops: info.stops,
+        }
+      : undefined;
+  }
+
   private syncPlaceHighlight(): void {
-    this.vehicles.focusRoute = this.focusRoute();
+    const route = this.focusRoute();
+    const info = route === undefined ? this.segmentInfo() : undefined;
+    this.vehicles.focus =
+      route !== undefined ? (v) => v.routeKey === route
+      : info?.segment ? info.onSegment
+      : undefined;
     if (!this.styleReady || this.disposed) return;
     setSelectedPlace(this.map, this.placePoint());
-    setFocusRoute(this.map, this.focusRoute());
+    setFocus(
+      this.map,
+      route !== undefined ? { route }
+      : info?.segment ? { stops: info.stopIds }
+      : undefined,
+    );
+  }
+
+  /**
+   * The open combined route in the shown feed (packages/transit-core/DESIGN.md#combined-routes):
+   * its segment (undefined when no route runs it in this feed) and what the card and the map's
+   * focus need of it, worked out once per prepared plan (its departures' offsets come from the
+   * trips loaded) and, for its corridors, once the plan's corridor refs are in.
+   */
+  private segmentInfo(): SegmentInfo | undefined {
+    const pp = this.shownFeed;
+    const place = this.place;
+    if (!pp || place?.kind !== "shared") return undefined;
+    let byId = this.segmentCache.get(pp);
+    if (!byId) this.segmentCache.set(pp, (byId = new Map()));
+    let info = byId.get(place.id);
+    if (!info) {
+      const { from, to } = sharedEnds(place);
+      const segment = sharedSegment(pp.plan, from, to);
+      const cumOf = (shape: string) => pp.shapeCum.get(shape);
+      const ranges = segment ? segmentRanges(pp.plan, segment) : new Map();
+      const stops =
+        segment ? segmentStops(pp.plan, segment) : new Set<number>();
+      const plan = pp.plan;
+      info = {
+        segment,
+        routes: segment?.routes ?? [],
+        sources:
+          segment ?
+            segmentStarts(
+              segment,
+              patternStarts(plan),
+              startOffsets(segment, plan.trips),
+            )
+          : [],
+        stops,
+        stopIds: [...stops].map((i) => plan.stops[i]!.id),
+        corridors: undefined,
+        days: {},
+        onSegment: (v) => {
+          const pattern = pp.tripIndex.get(v.tripId)?.pattern.id;
+          return (
+            pattern !== undefined
+            && onSegment(plan, ranges, pattern, [v.lon, v.lat], cumOf)
+          );
+        },
+      };
+      byId.set(place.id, info);
+    }
+    if (info.segment && !info.corridors)
+      info.corridors = this.segmentCorridorsOf(pp, place.id, info.segment);
+    return info;
+  }
+
+  /** The corridors a combined route runs along, once the plan's corridor refs are in. */
+  private segmentCorridorsOf(
+    pp: PreparedPlan,
+    id: string,
+    segment: SharedSegment,
+  ): SegmentInfo["corridors"] {
+    const { plan } = pp;
+    let byId = this.segmentCorridorCache.get(plan);
+    if (!byId) this.segmentCorridorCache.set(plan, (byId = new Map()));
+    const cached = byId.get(id);
+    if (cached) return cached;
+    const refs = plan.corridorInfo ? this.store.corridorRefsFor(pp) : null;
+    if (!refs) return undefined;
+    const length = (shape: string) => pp.shapeCum.get(shape)?.at(-1) ?? 0;
+    const corridors = {
+      detailed: segmentCorridors(plan, segment, refs.detailed, length),
+      overview: segmentCorridors(plan, segment, refs.overview, length),
+    };
+    byId.set(id, corridors);
+    return corridors;
   }
 
   /** Centre the map on the selected vehicle (or station or stop), in the part of the map the host's chrome leaves clear. */
   locateSelected(): void {
     if (this.place?.kind === "route") {
       this.fitRoute(this.place.id);
+      return;
+    }
+    if (this.place?.kind === "shared") {
+      const pp = this.shownFeed;
+      const segment = this.segmentInfo()?.segment;
+      if (pp && segment)
+        this.fitLines(
+          segmentLines(pp.plan, segment, (s) => pp.shapeCum.get(s)),
+        );
       return;
     }
     const v =
@@ -1022,15 +1190,23 @@ export class TransitEngine {
   private fitRoute(key: string): void {
     const plan = this.shownFeed?.plan;
     if (!plan) return;
+    this.fitLines(
+      plan.patterns
+        .filter((p) => p.route === key)
+        .map((p) => (plan.shapes[p.shape] ?? []) as LonLat[]),
+    );
+  }
+
+  /** Fit lines into the area the host's chrome leaves clear. */
+  private fitLines(lines: readonly LonLat[][]): void {
     let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
-    for (const p of plan.patterns)
-      if (p.route === key)
-        for (const [lon, lat] of plan.shapes[p.shape] ?? []) {
-          w = Math.min(w, lon);
-          e = Math.max(e, lon);
-          s = Math.min(s, lat);
-          n = Math.max(n, lat);
-        }
+    for (const line of lines)
+      for (const [lon, lat] of line) {
+        w = Math.min(w, lon);
+        e = Math.max(e, lon);
+        s = Math.min(s, lat);
+        n = Math.max(n, lat);
+      }
     if (!Number.isFinite(w)) return;
     const pad = this.viewPadding;
     const margin = 40;
@@ -1072,6 +1248,22 @@ export class TransitEngine {
       byRoute.set(cacheKey, days);
     }
     return days;
+  }
+
+  /**
+   * The open combined route's hourly frequency (its buses leaving its start) for each kind of day in
+   * the shown feed, the shown date's kind first, as `routeDays`.
+   */
+  sharedDays(): RouteDay[] {
+    const pp = this.shownFeed;
+    const info = this.segmentInfo();
+    if (!pp || !info?.segment) return [];
+    const from = displayServiceDate(this.clock.now());
+    return (info.days[from] ??= dayTypes(pp, from).map((d) => ({
+      date: d.date,
+      label: this.describeDate(d.date),
+      hours: segmentHourly(pp.servicesOn, info.sources, d.date),
+    })));
   }
 
   /**
@@ -1561,7 +1753,9 @@ export class TransitEngine {
     };
   }
 
-  private placeSnapshot(t: number): PlaceSnapshot | RouteSnapshot | undefined {
+  private placeSnapshot(
+    t: number,
+  ): PlaceSnapshot | RouteSnapshot | SharedSnapshot | undefined {
     const pp = this.shownFeed;
     if (!this.place || !pp) return undefined;
     return placeSnapshot(this.place, {
@@ -1573,6 +1767,7 @@ export class TransitEngine {
         && !(this.liveOnly && v.provenance === "estimated"),
       corrections: (d) => this.lastCorrections?.get(d),
       datasetsOf: (routes) => this.datasetsOf(routes),
+      segment: () => this.segmentInfo(),
     });
   }
 
@@ -1726,7 +1921,7 @@ export class TransitEngine {
         (t - serviceDayStart(date)) / 1000,
         this.busFrequency,
         this.hidden,
-        this.focusRoute(),
+        this.focus(),
       );
     }
     if (this.syncVehicleColors()) this.inputsChanged = true;
@@ -1766,6 +1961,7 @@ export class TransitEngine {
     const keep = new Set<string>();
     if (this.selectedRoute) keep.add(this.selectedRoute);
     if (this.place?.kind === "route") keep.add(this.place.id);
+    for (const r of this.segmentInfo()?.routes ?? []) keep.add(r);
     const visible =
       !this.hidden.size || (this.selectedId && !this.selectedRoute) ?
         undefined

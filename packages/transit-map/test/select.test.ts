@@ -128,6 +128,23 @@ describe("?select=", () => {
     );
   });
 
+  it("names a combined route by its ends' keys", () => {
+    const shared = { place: { kind: "shared" as const, id: "12034>13001" } };
+    expect(selectKey(shared, ctx)).toBe(
+      "shared:sn-00000001-waterfront:st-00000004-60001",
+    );
+    expect(
+      resolveSelect("shared:sn-00000001-waterfront:st-00000004-60001", ctx),
+    ).toEqual(shared);
+    // Without a registry, refs: their colons don't confuse the split.
+    const key = selectKey(shared, bare)!;
+    expect(key).toBe("shared:gtfs-stop:translink:12034:stop:translink:60001");
+    expect(resolveSelect(key, bare)).toEqual(shared);
+    expect(resolveSelect("shared:sn-00000001:st-0000000z", ctx)).toBe(
+      undefined,
+    );
+  });
+
   it("names vehicles by their engine id", () => {
     expect(vehicleKey("translink", "expo-005")).toBe("run:expo-005");
     expect(vehicleKey("translink", "rt:9401")).toBe("rt:translink:9401");

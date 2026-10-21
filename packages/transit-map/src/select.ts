@@ -2,7 +2,8 @@
 // feature key, an ID (`sn-k3v9qd7m-waterfront`) or a ref (`stop:translink:50123`), turned into the
 // engine's selection, and back. IDs are found in the plan version's places file; refs in the plan
 // itself. Vehicles are the engine's own refs: `run:<run id>` (inferred runs, timetable vehicles)
-// and `rt:<feed>:<vehicle id>` (GTFS-RT).
+// and `rt:<feed>:<vehicle id>` (GTFS-RT), and so are combined routes: `shared:<from>:<to>`, the keys
+// of the stops or stations where they start and end.
 
 import {
   formatRef,
@@ -11,7 +12,7 @@ import {
 } from "@transitopia/shared/features.ts";
 import type { BusHub } from "@transitopia/transit-core/plan/exchanges.ts";
 import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
-import type { Place } from "./url.ts";
+import { sharedEnds, sharedPlace, type Place } from "./url.ts";
 
 export interface SelectContext {
   feed: string;
@@ -55,6 +56,8 @@ export function resolveSelect(
   if (!k) return undefined;
   const vehicle = vehicleOfKey(key, ctx.feed);
   if (vehicle) return { vehicle };
+  if (k.form === "ref" && k.scheme === "shared")
+    return resolveShared(k.value, ctx);
   const { plan, places } = ctx;
   if (k.form === "id") {
     if (!places) return "elsewhere";
@@ -116,6 +119,28 @@ export function resolveSelect(
 }
 
 /**
+ * A combined route's selection from its ends' keys ("<from>:<to>"; either may be a ref, which has
+ * colons of its own: the first split where both halves name a stop or station here), or undefined.
+ */
+function resolveShared(
+  value: string,
+  ctx: SelectContext,
+): Selection | undefined {
+  const end = (key: string) => {
+    const r = parseKey(key) && resolveSelect(key, ctx);
+    if (!r || r === "elsewhere" || !("place" in r)) return undefined;
+    const { kind, id } = r.place;
+    return kind === "stop" || kind === "station" ? id : undefined;
+  };
+  for (let i = value.indexOf(":"); i > 0; i = value.indexOf(":", i + 1)) {
+    const from = end(value.slice(0, i));
+    const to = from && end(value.slice(i + 1));
+    if (from && to) return { place: sharedPlace(from, to) };
+  }
+  return undefined;
+}
+
+/**
  * The canonical key of a selection: the feature's ID with its current name suffix where the places
  * file has it, else a ref (a development machine without a registry, a preview, a feed version not
  * reconciled yet). An exchange has no ref (GTFS has no record of it), so without its ID it has no
@@ -146,6 +171,21 @@ export function selectKey(
       if (key) return key;
       const r = plan.routes.find((x) => x.key === place.id);
       return formatRef("gtfs-route", feed, r?.gtfsRouteId ?? place.id);
+    }
+    case "shared": {
+      // Each end: a station, else a stop.
+      const key = (id: string) =>
+        selectKey(
+          {
+            place: {
+              kind: plan.stations.some((s) => s.id === id) ? "station" : "stop",
+              id,
+            },
+          },
+          ctx,
+        );
+      const { from, to } = sharedEnds(place);
+      return formatRef("shared", "", `${key(from)}:${key(to)}`);
     }
     case "exchange": {
       if (places?.places[place.id]) return places.places[place.id]!.key;

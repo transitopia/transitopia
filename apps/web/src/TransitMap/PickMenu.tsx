@@ -17,6 +17,8 @@ const PLACE_NOTE = {
   exchange: "Bus exchange",
   stop: "Bus stop",
   route: "Route",
+  // Never in a tap menu: a combined route has no line of its own.
+  shared: "Combined route",
 } as const;
 
 /**

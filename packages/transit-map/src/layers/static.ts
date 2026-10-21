@@ -99,11 +99,26 @@ export const onFocus = (prop = "route"): ExpressionSpecification => [
   ["==", focusKey, ""],
   ["==", ["get", prop], focusKey],
 ];
-/** True where the focused route stops (a stop's `routes`, ",99,R4,"), or nothing is focused. */
+/**
+ * Map global state while a combined route is focused: its stops' ids (",50123,50124,"). The focused
+ * route is then SEGMENT_FOCUS, which no route has, so every route line is dimmed; its corridors are
+ * kept by feature state (BusFrequencyLayer).
+ */
+const FOCUS_STOPS = "focusStops";
+export const SEGMENT_FOCUS = "*segment";
+/**
+ * True where the focused route stops (a stop's `routes`, ",99,R4,"), where a focused combined route
+ * stops, or where nothing is focused.
+ */
 const stopOnFocus: ExpressionSpecification = [
   "any",
   ["==", focusKey, ""],
   ["in", ["concat", ",", focusKey, ","], ["get", "routes"]],
+  [
+    "in",
+    ["concat", ",", ["to-string", ["get", "stop"]], ","],
+    ["coalesce", ["global-state", FOCUS_STOPS], ""],
+  ],
 ];
 /** An opacity, dimmed off the focused route (for symbols, which don't overlap themselves). */
 export const focusOpacity = (
@@ -170,9 +185,24 @@ const corridorCasingOpacity: ExpressionSpecification = [
   1,
 ];
 
-/** Focus the map on one route (its card is open), dimming the rest, or on none. */
-export function setFocusRoute(map: MlMap, route: string | undefined): void {
-  map.setGlobalStateProperty(FOCUS_ROUTE, route ?? null);
+/**
+ * Focus the map on one route (its card is open), or a combined route (its stops' ids), dimming
+ * the rest, or on none.
+ */
+export function setFocus(
+  map: MlMap,
+  focus: { route: string } | { stops: readonly string[] } | undefined,
+): void {
+  map.setGlobalStateProperty(
+    FOCUS_ROUTE,
+    !focus ? null
+    : "route" in focus ? focus.route
+    : SEGMENT_FOCUS,
+  );
+  map.setGlobalStateProperty(
+    FOCUS_STOPS,
+    focus && "stops" in focus ? `,${focus.stops.join(",")},` : null,
+  );
 }
 
 /** Frequency tier colours, every 6 min or better first (packages/transit-map/README.md#bus-corridors). */
