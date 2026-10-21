@@ -120,7 +120,8 @@ export function resolveSelect(
 
 /**
  * A combined route's selection from its ends' keys ("<from>:<to>"; either may be a ref, which has
- * colons of its own: the first split where both halves name a stop or station here), or undefined.
+ * colons of its own: the first split where both halves name a station, exchange or stop here), or
+ * undefined. An exchange stands for its bays: the end is one of them (`placeOfStop`).
  */
 function resolveShared(
   value: string,
@@ -130,6 +131,7 @@ function resolveShared(
     const r = parseKey(key) && resolveSelect(key, ctx);
     if (!r || r === "elsewhere" || !("place" in r)) return undefined;
     const { kind, id } = r.place;
+    if (kind === "exchange") return ctx.hubs.find((h) => h.id === id)?.bays[0];
     return kind === "stop" || kind === "station" ? id : undefined;
   };
   for (let i = value.indexOf(":"); i > 0; i = value.indexOf(":", i + 1)) {
@@ -173,17 +175,20 @@ export function selectKey(
       return formatRef("gtfs-route", feed, r?.gtfsRouteId ?? place.id);
     }
     case "shared": {
-      // Each end: a station, else a stop.
-      const key = (id: string) =>
-        selectKey(
-          {
-            place: {
-              kind: plan.stations.some((s) => s.id === id) ? "station" : "stop",
-              id,
-            },
-          },
-          ctx,
+      // Each end: a station, an exchange (by one of its bays; the bay itself where the exchange
+      // has no key), else a stop.
+      const key = (id: string) => {
+        if (plan.stations.some((s) => s.id === id))
+          return selectKey({ place: { kind: "station", id } }, ctx);
+        const exchange = ctx.hubs.find(
+          (h) => !h.station && h.bays.includes(id),
         );
+        return (
+          (exchange
+            && selectKey({ place: { kind: "exchange", id: exchange.id } }, ctx))
+          || selectKey({ place: { kind: "stop", id } }, ctx)
+        );
+      };
       const { from, to } = sharedEnds(place);
       return formatRef("shared", "", `${key(from)}:${key(to)}`);
     }

@@ -23,7 +23,6 @@ import {
   feedForDate,
   patternStarts,
   type PlanRoute,
-  type ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
 import {
   firstBoarding,
@@ -65,6 +64,7 @@ import {
   SERVICE_DAY_ROLLOVER_H,
   displayServiceDate,
   hubsOf,
+  placeOfStop,
   mergeCorrections,
 } from "./plans.ts";
 import {
@@ -218,6 +218,8 @@ interface SegmentInfo extends SegmentContext {
   corridors:
     | { detailed: ReadonlySet<number>; overview: ReadonlySet<number> }
     | undefined;
+  /** The hubs (`hubsOf`) its places were worked out with. */
+  hubs: BusHub[];
   /** Its `sharedDays`, by the date they're from. */
   days: Record<string, RouteDay[]>;
 }
@@ -376,11 +378,6 @@ export class TransitEngine {
   private routeDayCache = new WeakMap<PreparedPlan, Map<string, RouteDay[]>>();
   /** Per feed and combined route (`Place` id): what its card and the map's focus need (`segmentInfo`). */
   private segmentCache = new WeakMap<PreparedPlan, Map<string, SegmentInfo>>();
-  /** Per plan and combined route: the corridors it runs along, once the plan's refs are in. */
-  private segmentCorridorCache = new WeakMap<
-    ServicePlan,
-    Map<string, NonNullable<SegmentInfo["corridors"]>>
-  >();
   /** Per feed and route: its weekday figure, where the plan hasn't it (dayWait). */
   private dayWaitCache = new WeakMap<
     PreparedPlan,
@@ -1079,10 +1076,12 @@ export class TransitEngine {
     if (!pp || place?.kind !== "shared") return undefined;
     let byId = this.segmentCache.get(pp);
     if (!byId) this.segmentCache.set(pp, (byId = new Map()));
+    // Its places are the hubs' (stations' bays, exchanges), which change when the places file arrives.
+    const hubs = hubsOf(pp.plan);
     let info = byId.get(place.id);
-    if (!info) {
+    if (!info || info.hubs !== hubs) {
       const { from, to } = sharedEnds(place);
-      const segment = sharedSegment(pp.plan, from, to);
+      const segment = sharedSegment(pp.plan, from, to, placeOfStop(pp.plan));
       const cumOf = (shape: string) => pp.shapeCum.get(shape);
       const ranges = segment ? segmentRanges(pp.plan, segment) : new Map();
       const stops =
@@ -1102,6 +1101,7 @@ export class TransitEngine {
         stops,
         stopIds: [...stops].map((i) => plan.stops[i]!.id),
         corridors: undefined,
+        hubs,
         days: {},
         onSegment: (v) => {
           const pattern = pp.tripIndex.get(v.tripId)?.pattern.id;
@@ -1113,31 +1113,29 @@ export class TransitEngine {
       };
       byId.set(place.id, info);
     }
-    if (info.segment && !info.corridors)
-      info.corridors = this.segmentCorridorsOf(pp, place.id, info.segment);
+    // Its corridors, once the plan's corridor refs are in.
+    const refs =
+      info.segment && !info.corridors && pp.plan.corridorInfo ?
+        this.store.corridorRefsFor(pp)
+      : undefined;
+    if (refs && info.segment) {
+      const length = (shape: string) => pp.shapeCum.get(shape)?.at(-1) ?? 0;
+      info.corridors = {
+        detailed: segmentCorridors(
+          pp.plan,
+          info.segment,
+          refs.detailed,
+          length,
+        ),
+        overview: segmentCorridors(
+          pp.plan,
+          info.segment,
+          refs.overview,
+          length,
+        ),
+      };
+    }
     return info;
-  }
-
-  /** The corridors a combined route runs along, once the plan's corridor refs are in. */
-  private segmentCorridorsOf(
-    pp: PreparedPlan,
-    id: string,
-    segment: SharedSegment,
-  ): SegmentInfo["corridors"] {
-    const { plan } = pp;
-    let byId = this.segmentCorridorCache.get(plan);
-    if (!byId) this.segmentCorridorCache.set(plan, (byId = new Map()));
-    const cached = byId.get(id);
-    if (cached) return cached;
-    const refs = plan.corridorInfo ? this.store.corridorRefsFor(pp) : null;
-    if (!refs) return undefined;
-    const length = (shape: string) => pp.shapeCum.get(shape)?.at(-1) ?? 0;
-    const corridors = {
-      detailed: segmentCorridors(plan, segment, refs.detailed, length),
-      overview: segmentCorridors(plan, segment, refs.overview, length),
-    };
-    byId.set(id, corridors);
-    return corridors;
   }
 
   /** Centre the map on the selected vehicle (or station or stop), in the part of the map the host's chrome leaves clear. */

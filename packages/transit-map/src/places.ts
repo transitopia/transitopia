@@ -7,7 +7,10 @@ import {
   serviceDayStart,
   type ServiceDate,
 } from "@transitopia/transit-core/time.ts";
-import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
+import type {
+  PlanRoute,
+  ServicePlan,
+} from "@transitopia/transit-core/plan/types.ts";
 import {
   bayLabel,
   type BusHub,
@@ -23,6 +26,7 @@ import {
   groupDepartures,
   placeName,
   sharedStretches,
+  type SharedStretch,
   stopsOf,
   type Departure,
 } from "@transitopia/transit-core/schedule/departures.ts";
@@ -35,7 +39,7 @@ import {
   segmentFrequency,
   sharedStart,
 } from "@transitopia/transit-core/schedule/shared-segment.ts";
-import { displayServiceDate, hubsOf } from "./plans.ts";
+import { displayServiceDate, hubsOf, placeOfStop } from "./plans.ts";
 import { sharedPlace, type Place } from "./url.ts";
 
 /** A route + destination leaving a station or stop, with its next departures. */
@@ -372,25 +376,34 @@ export function placeSnapshot(
         groups: s.groups.map((g) => `${g.routeKey}|${g.headsign}`),
         to: placeName(plan, s.toStopId),
         frequency: departureFrequency(s.departures, t),
-        segment:
-          routes.every((r) => r.mode === "bus") ?
-            sharedPlace(
-              sharedStart(
-                plan,
-                s.groups.map((g) => ({
-                  pattern: g.departures[0]!.pattern,
-                  index: g.departures[0]!.index,
-                })),
-              ),
-              (() => {
-                const end = pp.stopById.get(s.toStopId)!;
-                return end.parent ?? end.id;
-              })(),
-            )
-          : undefined,
+        segment: sharedSegmentOf(plan, s, routes),
       };
     }),
   };
+}
+
+/**
+ * A shared stretch's combined route (buses only, for now): from where its routes came together,
+ * comparing stops by their station or exchange (`placeOfStop`), to where they split.
+ */
+function sharedSegmentOf(
+  plan: ServicePlan,
+  s: SharedStretch,
+  routes: PlanRoute[],
+): Place | undefined {
+  if (!routes.every((r) => r.mode === "bus")) return undefined;
+  const placeOf = placeOfStop(plan);
+  const from = sharedStart(
+    plan,
+    s.groups.map((g) => ({
+      pattern: g.departures[0]!.pattern,
+      index: g.departures[0]!.index,
+    })),
+    placeOf,
+  );
+  const end = placeOf(s.toStopId);
+  const to = plan.stations.some((x) => x.id === end) ? end : s.toStopId;
+  return placeOf(from) === end ? undefined : sharedPlace(from, to);
 }
 
 /** A combined route's card at ctx.t (`SharedSnapshot`). */
@@ -409,8 +422,11 @@ function sharedSnapshot(p: Place, ctx: PlaceContext): SharedSnapshot {
         (v) => v.provenance !== "estimated" && seg.onSegment(v),
       )
     : [];
+  // A station, an exchange (by one of its bays), or a stop's cross street.
   const name = (key: string) =>
-    plan.stations.find((s) => s.id === key)?.name ?? placeName(plan, key);
+    plan.stations.find((s) => s.id === key)?.name.replace(/\s+Station$/i, "")
+    ?? hubsOf(plan).find((h) => !h.station && h.bays.includes(key))?.name
+    ?? placeName(plan, key);
   return {
     kind: "shared",
     id: p.id,

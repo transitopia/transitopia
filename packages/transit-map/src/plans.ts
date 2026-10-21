@@ -66,6 +66,10 @@ import {
 } from "@transitopia/transit-core/plan/published.ts";
 import { activeServices } from "@transitopia/transit-core/gtfs/calendar.ts";
 import {
+  stationsOnly,
+  type PlaceOf,
+} from "@transitopia/transit-core/schedule/shared-segment.ts";
+import {
   addDays,
   localDate,
   serviceDayStart,
@@ -851,6 +855,25 @@ export function hubsOf(plan: ServicePlan): BusHub[] {
       }),
     );
   return c.hubs;
+}
+
+const placeOfCache = new WeakMap<BusHub[], PlaceOf>();
+/**
+ * Which place a stop counts as for combined routes (packages/transit-core/DESIGN.md#combined-routes):
+ * its station (a platform, or one of the station's bus bays), its exchange (one of its bays), or
+ * itself. Exchanges are named by their hub's id, which only ever compares within one set of hubs.
+ */
+export function placeOfStop(plan: ServicePlan): PlaceOf {
+  const hubs = hubsOf(plan);
+  let f = placeOfCache.get(hubs);
+  if (!f) {
+    const base = stationsOnly(plan);
+    const hubOf = new Map<string, string>();
+    for (const h of hubs)
+      for (const b of h.bays) hubOf.set(b, h.station ?? `exchange:${h.id}`);
+    placeOfCache.set(hubs, (f = (id) => hubOf.get(id) ?? base(id)));
+  }
+  return f;
 }
 
 const railServiceCache = new WeakMap<ServicePlan, Set<string>>();

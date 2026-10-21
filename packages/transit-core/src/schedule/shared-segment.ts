@@ -17,38 +17,48 @@ import {
 
 const HOUR = 3600;
 
-/** A stop as stretches compare stops (`onwardStops`): its station, or itself. */
-export function stopKey(plan: ServicePlan, stop: number): string {
-  const s = plan.stops[stop]!;
-  return s.parent ?? s.id;
+/**
+ * Which place a stop counts as, by id (a station's own id gives itself): its station, its exchange,
+ * or itself. Routes leaving a station or an exchange from different bays have come together there.
+ */
+export type PlaceOf = (id: string) => string;
+
+/** Places as the plan alone has them: platforms are their station's (GTFS parents). */
+export function stationsOnly(plan: Pick<ServicePlan, "stops">): PlaceOf {
+  const parent = new Map(plan.stops.map((s) => [s.id, s.parent ?? s.id]));
+  return (id) => parent.get(id) ?? id;
 }
 
 /**
  * Where routes leaving a stop together (`sharedRuns`) came together: each member is its pattern and
- * its index at the stop, and the walk goes back while every member's previous stop is the same one.
- * Members leaving from different stops of the place (an exchange's bays) start at the first stop
- * they share, the next one. The start's stop key (`stopKey`).
+ * its index at the stop, and the walk goes back while every member's previous stop is at the same
+ * place (`placeOf`). Members leaving from different places start at the next stop, the first they
+ * share. The start, as a combined route's end: a station's id, else a stop's (for an exchange, one
+ * of its bays).
  */
 export function sharedStart(
   plan: ServicePlan,
   members: readonly { pattern: number; index: number }[],
+  placeOf: PlaceOf = stationsOnly(plan),
 ): string {
-  const keyAt = (m: { pattern: number }, i: number) =>
-    stopKey(plan, plan.patterns[m.pattern]!.stops[i]!);
+  const stopAt = (m: { pattern: number }, i: number) =>
+    plan.stops[plan.patterns[m.pattern]!.stops[i]!]!.id;
   const same = (back: number) => {
     if (members.some((m) => m.index - back < 0)) return false;
-    const k = keyAt(members[0]!, members[0]!.index - back);
-    return members.every((m) => keyAt(m, m.index - back) === k);
+    const k = placeOf(stopAt(members[0]!, members[0]!.index - back));
+    return members.every((m) => placeOf(stopAt(m, m.index - back)) === k);
   };
   let back = 0;
   if (!same(0)) back = -1;
   else while (same(back + 1)) back++;
-  return keyAt(members[0]!, members[0]!.index - back);
+  const stop = stopAt(members[0]!, members[0]!.index - back);
+  const place = placeOf(stop);
+  return plan.stations.some((s) => s.id === place) ? place : stop;
 }
 
-/** A combined route: the patterns running from one stop to another through the same stops. */
+/** A combined route: the patterns running from one place to another through the same places. */
 export interface SharedSegment {
-  /** Stop keys (`stopKey`) where it starts and ends. */
+  /** Where it starts and ends, as given: a station's id or a stop's. */
   from: string;
   to: string;
   /** Each pattern along it, with its indices at the start and the end. */
@@ -58,20 +68,25 @@ export interface SharedSegment {
 }
 
 /**
- * The combined route from `from` to `to` (stop keys): every pattern serving both, in that order,
- * with the stops between that the most routes share (the routes a shared row combined, and any
- * other running the whole stretch with them: a night bus). Undefined when no pattern does.
+ * The combined route from `from` to `to` (a station's id or a stop's, each standing for its place,
+ * `placeOf`): every pattern serving both, in that order, with the places between that the most
+ * routes share (the routes a shared row combined, and any other running the whole stretch with
+ * them: a night bus). Undefined when no pattern does, or both ends are one place.
  */
 export function sharedSegment(
   plan: ServicePlan,
   from: string,
   to: string,
+  placeOf: PlaceOf = stationsOnly(plan),
 ): SharedSegment | undefined {
+  const start = placeOf(from);
+  const end = placeOf(to);
+  if (start === end) return undefined;
   const bySequence = new Map<string, SharedSegment["patterns"]>();
   for (const p of plan.patterns) {
-    const keys = p.stops.map((s) => stopKey(plan, s));
-    const i = keys.indexOf(from);
-    const j = i < 0 ? -1 : keys.indexOf(to, i + 1);
+    const keys = p.stops.map((s) => placeOf(plan.stops[s]!.id));
+    const i = keys.indexOf(start);
+    const j = i < 0 ? -1 : keys.indexOf(end, i + 1);
     if (j < 0) continue;
     const seq = keys.slice(i, j + 1).join("\n");
     bySequence.set(seq, [

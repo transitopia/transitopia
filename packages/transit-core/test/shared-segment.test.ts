@@ -134,6 +134,33 @@ describe("sharedStart", () => {
   });
 });
 
+describe("bays of one exchange (placeOf)", () => {
+  // X0 and X1 are bays of one exchange.
+  const placeOf = (id: string) =>
+    id === "X0" || id === "X1" ? "exchange" : id;
+
+  it("start at the exchange, named by one of its bays", () => {
+    expect(
+      sharedStart(
+        plan,
+        [
+          { pattern: 4, index: 0 },
+          { pattern: 5, index: 0 },
+        ],
+        placeOf,
+      ),
+    ).toBe("X0");
+  });
+
+  it("match from any of its bays", () => {
+    expect(sharedSegment(plan, "X1", "S3", placeOf)!.patterns).toEqual([
+      { pattern: 4, from: 0, to: 3 },
+      { pattern: 5, from: 0, to: 3 },
+    ]);
+    expect(sharedSegment(plan, "X0", "X1", placeOf)).toBeUndefined();
+  });
+});
+
 describe("sharedSegment", () => {
   it("has every pattern running between its ends through the same stops", () => {
     const seg = sharedSegment(plan, "S1", "S4")!;
