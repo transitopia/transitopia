@@ -51,12 +51,12 @@ import {
 } from "@transitopia/transit-core/plan/types.ts";
 import {
   decodeCore,
-  decodeCorridors,
+  decodeCorridorInfo,
   decodeShapes,
   decodeTrips,
   railTripFiles,
   tripFilesFor,
-  type PublishedCorridors,
+  type PublishedCorridorInfo,
   type PublishedPlan,
   type PublishedShapes,
   type PublishedTrips,
@@ -94,8 +94,6 @@ interface LoadedVersion {
   /** Services with trips loaded since the prepared plan was made, until `flush` adds them. */
   pending: Set<string>;
   flush: ReturnType<typeof setTimeout> | undefined;
-  /** The detailed corridors: undefined until asked for, null once in (or when there are none). */
-  detail: "loading" | null | undefined;
 }
 
 export class PlanStore {
@@ -563,8 +561,8 @@ export class PlanStore {
   }
 
   /**
-   * The plan's core and what it's drawn from: shapes and the corridors drawn zoomed out. The trip
-   * files the date asking for it needs start loading with them.
+   * The plan's core and what it's drawn with besides its tiles: shapes (vehicles move along them)
+   * and the corridors' metadata. The trip files the date asking for it needs start loading with them.
    */
   private loadVersion(
     feed: FeedManifestEntry,
@@ -589,15 +587,19 @@ export class PlanStore {
           trips.catch(() => {});
           this.prefetched.set(dir + ref.path, trips);
         }
-        const [shapes, overview] = await Promise.all([
+        if (!files.tiles)
+          throw new Error(
+            `The plan for ${feed.version} has no tiles: run "npm run build:plan-tiles"`,
+          );
+        const [shapes, info] = await Promise.all([
           get<PublishedShapes>(dir + files.shapes),
-          files.overviewCorridors ?
-            get<PublishedCorridors>(dir + files.overviewCorridors)
+          files.corridorInfo ?
+            get<PublishedCorridorInfo>(dir + files.corridorInfo)
           : undefined,
         ]);
         const plan = decodeCore(core);
         plan.shapes = decodeShapes(shapes);
-        if (overview) plan.overviewCorridors = decodeCorridors(overview);
+        if (info) plan.corridorInfo = decodeCorridorInfo(info);
         this.versions.set(feed.version, {
           dir,
           files,
@@ -606,7 +608,6 @@ export class PlanStore {
           byService: new Map(),
           pending: new Set(),
           flush: undefined,
-          detail: files.corridors ? undefined : null,
         });
         this.loading.delete(feed.version);
         this.failed.delete(feed.version);
@@ -684,31 +685,13 @@ export class PlanStore {
   }
 
   /**
-   * Whether the plan's detailed corridors (drawn zoomed in) are in `plan.corridors`: starts loading
-   * them the first time it's asked, and a change event fires when they're in. True for a plan
-   * without any.
+   * The URL of a loaded plan's tiles, for a MapLibre vector source (the pmtiles protocol): named by
+   * their content, so without the build in it (`dataUrl`).
    */
-  loadDetailedCorridors(pp: PreparedPlan): boolean {
+  tilesUrl(pp: PreparedPlan): string | undefined {
     const v = this.versions.get(pp.plan.feedVersion);
-    if (!v || v.detail === null) return true;
-    if (v.detail === undefined) {
-      v.detail = "loading";
-      void fetch(this.dataUrl(v.dir + v.files.corridors!))
-        .then(async (r) => {
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          return decodeCorridors((await r.json()) as PublishedCorridors);
-        })
-        .then((cs) => {
-          v.pp.plan.corridors = cs;
-          v.detail = null;
-          this.emit();
-        })
-        .catch((e: unknown) => {
-          console.error("Failed to load the detailed corridors:", e);
-          v.detail = null;
-        });
-    }
-    return false;
+    if (!v?.files.tiles) return undefined;
+    return `pmtiles://${new URL(this.dataBase + v.dir + v.files.tiles, location.href).href}`;
   }
 
   onChange(fn: () => void): () => void {

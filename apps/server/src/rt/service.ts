@@ -413,14 +413,15 @@ export class RtService {
     for (const p of this.pollers.values()) await p.start();
   }
 
-  stop(): void {
+  /** Stop everything; resolves once the pollers' work under way has finished (nothing writes after). */
+  async stop(): Promise<void> {
     this.running = false;
     this.isLeader = false;
     this.dispatcher?.stop();
     for (const a of this.aisFeeds.values()) a.stream?.stop();
-    for (const p of this.pollers.values()) p.stop();
     if (this.leaderRetry) clearTimeout(this.leaderRetry);
     void this.leaderLock?.release();
+    await Promise.all([...this.pollers.values()].map((p) => p.stop()));
   }
 
   /** Relay a request to the leader process. */

@@ -544,3 +544,79 @@ function lengthM(c: PlanCorridor): number {
   }
   return m;
 }
+
+/**
+ * A route with its own colour is drawn in it only where it runs at least this share as often as on
+ * its busiest stretch; elsewhere (limited service, e.g. the 99 east of Commercial–Broadway) its buses
+ * count towards the frequency colour like any other (plan/coverage.ts).
+ */
+export const LIMITED_SHARE = 0.25;
+
+/**
+ * What corridors (or stops) show (packages/transit-map/README.md#bus-corridors): per feature, the worst
+ * wait its colour tier is for, and the route with its own colour drawn along it, if any. The map's
+ * engine works this out for the time shown, the overview tiles for regular weekdays.
+ */
+export interface CorridorStyle {
+  /** Per feature: the worst wait (minutes), a short corridor's no better than its best neighbour's. */
+  waits: Float32Array;
+  /** Feature index → brand (an index into the plan's routes with their own colour). */
+  brands: Map<number, number>;
+}
+
+/**
+ * @param combo Per feature, its combo.
+ * @param short Short corridors and their neighbours (`shortCorridorNeighbours`; none for stops).
+ * @param brandOf Per routeDir of `cf`, its brand, or -1 for a route without its own colour.
+ * @param ratesAt Per feature, the frequencies it shows (a focused route's own, on its corridors).
+ * @param stops Features are stops: one shows a brand only where only such routes serve it.
+ */
+export function corridorStyle(
+  cf: CorridorFrequency,
+  combo: Int32Array,
+  short: readonly [number, number[]][],
+  brandOf: readonly number[],
+  ratesAt: (i: number) => ComboFrequencies,
+  stops = false,
+): CorridorStyle {
+  const waits = capShort(
+    Float32Array.from(combo, (c, i) => ratesAt(i).best[c]!),
+    short,
+  );
+  // Per combo and frequencies: [brand, its trips] of each route with its own colour there (the
+  // busier direction).
+  const perCombo = new Map<
+    ComboFrequencies,
+    Map<number, Map<number, number>>
+  >();
+  const ownOf = (c: number, i: number) => {
+    const rates = ratesAt(i);
+    let cache = perCombo.get(rates);
+    if (!cache) perCombo.set(rates, (cache = new Map()));
+    let own = cache.get(c);
+    if (own) return own;
+    own = new Map();
+    let others = false;
+    cf.combos[c]!.units.forEach((u, k) => {
+      const b = brandOf[u.routeDir]!;
+      if (b < 0) others = true;
+      else own!.set(b, Math.max(own!.get(b) ?? 0, rates.trips[c]![k]!));
+    });
+    if (stops && others) own.clear();
+    cache.set(c, own);
+    return own;
+  };
+  const perFeature = Array.from(combo, ownOf);
+  const busiest = new Map<number, number>();
+  for (const own of perFeature)
+    for (const [b, n] of own) busiest.set(b, Math.max(busiest.get(b) ?? 0, n));
+  const brands = new Map<number, number>();
+  perFeature.forEach((own, i) => {
+    let top: [number, number] | undefined;
+    for (const [b, n] of own)
+      if (n > 0 && n >= LIMITED_SHARE * busiest.get(b)! && n > (top?.[1] ?? 0))
+        top = [b, n];
+    if (top) brands.set(i, top[0]);
+  });
+  return { waits, brands };
+}

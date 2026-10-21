@@ -4,10 +4,15 @@ import {
   type TransitSnapshot,
 } from "@transitopia/transit-map/engine.ts";
 import { readUrl } from "@transitopia/transit-map/url.ts";
+import {
+  overviewLayers,
+  overviewMaxZoom,
+} from "@transitopia/transit-map/overview.ts";
+import { ENGINE_MIN_ZOOM } from "@transitopia/shared/transit-overview.ts";
 
-import { transitApi, transitData } from "../config.ts";
+import { transitApi, transitData, transitOverviewTiles } from "../config.ts";
 import { openedPath, openedWithPosition } from "../startup.ts";
-import { useMap, type MapType } from "../Map/MapUtils.ts";
+import { useMap, useStyleGeneration, type MapType } from "../Map/MapUtils.ts";
 import { MapOverlayWindow } from "../Map/MapOverlayWindow.tsx";
 import { useTheme } from "../Theme/Theme.tsx";
 import { useDatasets } from "../Attribution/Attribution.tsx";
@@ -30,6 +35,28 @@ import {
 const PADDING = { top: 90, bottom: 150, left: 20, right: 50 };
 
 /**
+ * Move the map to bounds, zoomed in at least as far as a region's engine starts (on a phone, a
+ * region's first view fits only further out).
+ */
+function showBounds(
+  map: MapType,
+  bounds: [[number, number], [number, number]],
+  opts: { animate?: boolean; maxZoom?: number } = {},
+): void {
+  const camera = map.cameraForBounds(bounds, {
+    padding: PADDING,
+    ...(opts.maxZoom === undefined ? {} : { maxZoom: opts.maxZoom }),
+  });
+  if (!camera) return;
+  const to = {
+    ...camera,
+    zoom: Math.max(camera.zoom ?? ENGINE_MIN_ZOOM, ENGINE_MIN_ZOOM),
+  };
+  if (opts.animate === false) map.jumpTo(to);
+  else map.flyTo(to);
+}
+
+/**
  * Show the default region's network when the site was opened on /transit (or /) without a map
  * position. Only once: switching modes later keeps wherever the map is.
  */
@@ -41,8 +68,7 @@ function useInitialView(map: MapType | undefined): void {
     const openedOnTransit =
       openedPath === "/" || openedPath.startsWith("/transit");
     if (openedOnTransit && !openedWithPosition)
-      map.fitBounds(lngLatBounds(DEFAULT_REGION.info.initialBounds), {
-        padding: PADDING,
+      showBounds(map, lngLatBounds(DEFAULT_REGION.info.initialBounds), {
         animate: false,
       });
   }, [map]);
@@ -62,32 +88,45 @@ interface RegionState {
   region: SiteRegion;
   /** Whether any region is in view. */
   inView: boolean;
+  /** Whether its engine runs: it's in view, zoomed in to ENGINE_MIN_ZOOM or further. */
+  active: boolean;
   /** Whether the map has been looked at yet (until then `region` is only the default). */
   ready: boolean;
 }
 
 /**
  * The region the engine shows (docs/DESIGN.md#regions-and-feeds): the one in view, or while the
- * view is outside every region, the last one shown (at first, the default).
+ * view is outside every region, the last one shown (at first, the default). Its engine runs only
+ * zoomed in to ENGINE_MIN_ZOOM; further out, the overview shows every region.
  */
 function useRegion(map: MapType | undefined): RegionState {
   const [state, setState] = React.useState<RegionState>({
     region: DEFAULT_REGION,
     inView: true,
+    active: false,
     ready: false,
   });
   React.useEffect(() => {
     if (!map) return;
     const update = () => {
       const r = viewOf(map);
-      setState((prev) =>
-        r ?
-          prev.ready && prev.region === r && prev.inView ?
+      const active = r !== undefined && map.getZoom() >= ENGINE_MIN_ZOOM;
+      setState((prev) => {
+        const next = {
+          region: r ?? prev.region,
+          inView: r !== undefined,
+          active,
+          ready: true,
+        };
+        return (
+            prev.ready
+              && prev.region === next.region
+              && prev.inView === next.inView
+              && prev.active === next.active
+          ) ?
             prev
-          : { region: r, inView: true, ready: true }
-        : prev.ready && !prev.inView ? prev
-        : { region: prev.region, inView: false, ready: true },
-      );
+          : next;
+      });
     };
     update();
     map.on("moveend", update);
@@ -96,6 +135,69 @@ function useRegion(map: MapType | undefined): RegionState {
     };
   }, [map]);
   return state;
+}
+
+/** The transit overview tileset's source (packages/transit-map/src/overview.ts), only on /transit. */
+const OVERVIEW_SOURCE = "transitopia-transit-overview";
+
+/** What the overview draws: every region's feed. */
+const OVERVIEW_DATASETS = REGIONS.map((r) => r.config.feed.dataset);
+
+/**
+ * Every region's routes zoomed out (packages/transit-core/DESIGN.md#overview-tiles), below the zoom
+ * a region's engine starts at, and further in until the engine draws its own lines (so zooming in
+ * never leaves the map without any); again after a theme switch replaces the style.
+ */
+function useOverview(
+  map: MapType | undefined,
+  theme: "light" | "dark",
+  engine: TransitEngine | undefined,
+): void {
+  const styleGeneration = useStyleGeneration();
+  const engineLines = React.useSyncExternalStore(
+    React.useCallback(
+      (fn: () => void) => engine?.subscribe(fn) ?? (() => {}),
+      [engine],
+    ),
+    () => engine?.getSnapshot().linesReady ?? false,
+  );
+  const [zoomedOut, setZoomedOut] = React.useState(false);
+  // Credit every feed while it's drawn.
+  useDatasets(zoomedOut || !engineLines ? OVERVIEW_DATASETS : []);
+  React.useEffect(() => {
+    if (!map) return;
+    const update = () => setZoomedOut(map.getZoom() < ENGINE_MIN_ZOOM);
+    update();
+    map.on("zoomend", update);
+    return () => {
+      map.off("zoomend", update);
+    };
+  }, [map]);
+  const maxzoom = overviewMaxZoom(engineLines);
+  const maxzoomRef = React.useRef(maxzoom);
+  maxzoomRef.current = maxzoom;
+  // Only /transit loads the tileset: its source comes and goes with its layers.
+  React.useEffect(() => {
+    if (!map) return;
+    if (!map.getSource(OVERVIEW_SOURCE))
+      map.addSource(OVERVIEW_SOURCE, {
+        type: "vector",
+        url: transitOverviewTiles,
+      });
+    const layers = overviewLayers(OVERVIEW_SOURCE, theme, maxzoomRef.current);
+    for (const layer of layers)
+      if (!map.getLayer(layer.id)) map.addLayer(layer);
+    return () => {
+      for (const layer of layers)
+        if (map.getLayer(layer.id)) map.removeLayer(layer.id);
+      if (map.getSource(OVERVIEW_SOURCE)) map.removeSource(OVERVIEW_SOURCE);
+    };
+  }, [map, theme, styleGeneration]);
+  React.useEffect(() => {
+    if (!map) return;
+    for (const layer of overviewLayers(OVERVIEW_SOURCE, theme))
+      if (map.getLayer(layer.id)) map.setLayerZoomRange(layer.id, 0, maxzoom);
+  }, [map, theme, styleGeneration, maxzoom]);
 }
 
 /**
@@ -111,7 +213,16 @@ export default function TransitMap() {
   // Bumped when the published data is rebuilt under an engine: the engine is made again.
   const [build, setBuild] = React.useState(0);
   useInitialView(map);
-  const { region, inView, ready } = useRegion(map);
+  const { region, inView, active, ready } = useRegion(map);
+  // The region whose engine is kept: the last one zoomed in to. Zoomed out, its engine is hidden
+  // (and paused) rather than disposed, so zooming back in shows it at once; zooming in to
+  // another region replaces it.
+  const [kept, setKept] = React.useState<SiteRegion>();
+  React.useEffect(() => {
+    if (ready && active) setKept(region);
+  }, [ready, active, region]);
+  const shown = active && kept === region;
+  useOverview(map, theme, shown ? engine : undefined);
   // The first engine takes its selection from the URL; one for a region panned to later starts
   // without it (a vehicle or place of another region), at the same time, unless the map moved
   // there to find the selection (`carry`, from the feature resolver).
@@ -119,7 +230,8 @@ export default function TransitMap() {
   const carry = React.useRef<{ key: string; region: string }>(undefined);
 
   React.useEffect(() => {
-    if (!map || !ready) return;
+    if (!map || !kept) return;
+    const region = kept;
     let cancelled = false;
     let created: TransitEngine | undefined;
     const params = new URLSearchParams(location.search);
@@ -169,7 +281,11 @@ export default function TransitMap() {
       setEngine(undefined);
       delete (window as { transit?: unknown }).transit;
     };
-  }, [map, region, ready, build]);
+  }, [map, kept, build]);
+
+  React.useEffect(() => {
+    engine?.setVisible(shown);
+  }, [engine, shown]);
 
   // Runs before the map swaps its style (child effects run first), so the engine re-adds its
   // layers in the new theme's colours when the new style loads.
@@ -180,7 +296,7 @@ export default function TransitMap() {
 
   return (
     <>
-      {error ?
+      {error && active ?
         <MapOverlayWindow className="top-5 sm:top-24 text-red-700 dark:text-red-300">
           <div role="alert">{error}</div>
         </MapOverlayWindow>
@@ -199,9 +315,7 @@ export default function TransitMap() {
                 type="button"
                 className="underline"
                 onClick={() =>
-                  map?.fitBounds(lngLatBounds(r.info.initialBounds), {
-                    padding: PADDING,
-                  })
+                  map && showBounds(map, lngLatBounds(r.info.initialBounds))
                 }>
                 {r.info.name}
               </button>
@@ -210,7 +324,7 @@ export default function TransitMap() {
           .
         </MapOverlayWindow>
       : null}
-      {engine ?
+      {engine && shown ?
         <EngineControls
           engine={engine}
           onElsewhere={(key, bounds) => {
@@ -229,7 +343,7 @@ export default function TransitMap() {
               target && target.info.id !== region.info.id ?
                 { key, region: target.info.id }
               : undefined;
-            map?.fitBounds(bounds, { padding: PADDING, maxZoom: 16 });
+            if (map) showBounds(map, lngLatBounds(bounds), { maxZoom: 16 });
           }}
         />
       : null}

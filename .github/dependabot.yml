@@ -40,7 +40,10 @@ updates:
           - "minor"
           - "patch"
   - package-ecosystem: github-actions
-    directory: "/"
+    # The workflows, and the composite actions they share.
+    directories:
+      - "/"
+      - "/.github/actions/*"
     open-pull-requests-limit: 1
     schedule:
       interval: monthly

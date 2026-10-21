@@ -128,9 +128,10 @@ const server = serve({ fetch: app.fetch, port: env.port }, (info) => {
 
 const shutdown = () => {
   jobs?.stop();
-  service.stop();
+  const stopped = service.stop();
   server.close(() => {
-    void db?.db.destroy().finally(() => process.exit(0));
+    // After the pollers' last writes, which can use the database.
+    void stopped.then(() => db?.db.destroy()).finally(() => process.exit(0));
   });
   setTimeout(() => process.exit(0), 10_000).unref();
 };

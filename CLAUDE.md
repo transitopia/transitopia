@@ -120,6 +120,8 @@ npm run tiles -- --region bc # the site's basemap, var/public/tiles/protomaps-bc
 npm run data:osm         # fetch OSM tracks + import → config/regions/<rail region>/infrastructure/*.generated.geojson
 npm run data:roads       # fetch OSM roads per feed → var/raw/osm-roads/<feed>/ (build-schedule then matches bus shapes and builds corridors)
 npm run build:infra      # publish tracks + per-feed platform mapping to var/public/data
+npm run build:plan-tiles # each plan's lines as vector tiles (tippecanoe ≥ 2.17: brew install tippecanoe), named in plan.json
+npm run build:overview-tiles # every region's routes zoomed out → var/public/tiles/transit-overview-v<N>.pmtiles
 npm run validate:infra   # graph / platform / routing / turnback / checklist checks
 npm run build:movements  # infer + dispatch train runs → var/public/data/feeds/translink/<v>/movements/*.json [--verbose] [--no-dispatch]
 npm run validate:plan    # teleports (fail), conflicts, dispatch delays and broken deadlocks (report), fleet peaks
@@ -144,6 +146,7 @@ npx tsx pipelines/screenshot.ts out.png "/transit?date=2026-09-28&t=08:00:00&pau
 - Browser-facing URLs (`/data/…`, `/tiles/…`) are paths under `var/public/`, not repo paths: published indexes store them as `data/…`.
 - Database changes: add `packages/db/migrations/NNN_<name>.sql` (never edit one that's deployed) and the matching types in `packages/db/src/schema.ts`. The server applies migrations when it starts. Raw per-poll tables are partitioned by day; `Store` creates a missing partition on demand.
 - Where the site reads its data: `apps/web/src/config.ts` (local defaults: `var/public` via `/dev-data/`) and `apps/web/.env.production`. Without `VITE_TRANSIT_API` the engine makes no RT requests at all (schedules only).
+- **The engine draws no lines of its own**: every route, corridor and track line is in the plan's tiles (`packages/transit-core/DESIGN.md#plan-tiles`), which it styles with feature state, global state and filters; a new property it styles on goes into `planTileFeatures` (and a plan rebuild). Below z10 no engine runs: the overview tileset shows every region.
 - Every map overlay re-adds its layers after a theme switch: depend on `useStyleGeneration()` (cycling) or call `engine.setTheme()` before the style swaps (transit). Declare what a mode draws with `useDatasets([...])` so the attribution control credits it.
 - TypeScript is strict repo-wide (`tsconfig.base.json`: `exactOptionalPropertyTypes`, `erasableSyntaxOnly`, no unused locals): write optional properties as `x?: T | undefined` when `undefined` is passed explicitly, and no constructor parameter properties (Node's type stripping rejects them).
 - Route colours, names and categories are baked into `plan.json` from the GTFS and the feed's `config/feeds/<feed>/routes.json` overrides. `build-schedule` rebuilds a plan when that file (or another config it reads) changes, or when its `PLAN_FORMAT` is bumped: bump it whenever the script writes something different from the same feed and config.

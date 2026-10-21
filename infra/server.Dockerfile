@@ -12,10 +12,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
   && curl -fsSL -o /tmp/rclone.zip "https://downloads.rclone.org/v${RCLONE_VERSION}/rclone-v${RCLONE_VERSION}-linux-${ARCH}.zip" \
   && unzip -j /tmp/rclone.zip '*/rclone' -d /usr/local/bin
 
+# tippecanoe, for the plan and overview tiles (packages/transit-core/DESIGN.md#plan-tiles): built from
+# source, since Debian's package is too old to write PMTiles.
+FROM node:26-slim AS tippecanoe
+# Keep in step with .github/actions/setup-tippecanoe.
+ARG TIPPECANOE_VERSION=2.79.0
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl build-essential libsqlite3-dev zlib1g-dev \
+  && curl -fsSL "https://github.com/felt/tippecanoe/archive/refs/tags/${TIPPECANOE_VERSION}.tar.gz" | tar xz -C /tmp \
+  && make -C "/tmp/tippecanoe-${TIPPECANOE_VERSION}" -j"$(nproc)" tippecanoe \
+  && install -m 755 "/tmp/tippecanoe-${TIPPECANOE_VERSION}/tippecanoe" /usr/local/bin/tippecanoe
+
 FROM node:26-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libsqlite3-0 zlib1g \
   && rm -rf /var/lib/apt/lists/*
 COPY --from=rclone /usr/local/bin/rclone /usr/local/bin/rclone
+COPY --from=tippecanoe /usr/local/bin/tippecanoe /usr/local/bin/tippecanoe
 WORKDIR /app
 # Dependencies first, for the layer cache. Every workspace's package.json is needed for npm ci.
 COPY package.json package-lock.json ./

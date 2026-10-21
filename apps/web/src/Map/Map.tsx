@@ -8,12 +8,7 @@ import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&ur
 import type { StyleSpecification } from "maplibre-gl";
 import { basemapStyle, type Theme } from "@transitopia/map-style/basemap.ts";
 
-import {
-  basemapAssets,
-  basemapTiles,
-  cyclingTiles,
-  needPmTiles,
-} from "../config.ts";
+import { basemapAssets, basemapTiles, cyclingTiles } from "../config.ts";
 import { ThemeToggle, useTheme } from "../Theme/Theme.tsx";
 import {
   MapContext,
@@ -68,8 +63,10 @@ export const Map: React.FC<{
   const [controlGroup, setControlGroup] = React.useState<HTMLElement>();
 
   React.useEffect(() => {
-    if (needPmTiles && !pmTilesInitialized) {
-      // Load the "pmtiles" protocol that allows us to serve all the vector tiles for the map from a single large static .pmtiles file.
+    if (!pmTilesInitialized) {
+      // Load the "pmtiles" protocol that allows us to serve all the vector tiles for the map from a
+      // single large static .pmtiles file: local tilesets, and the transit plans' tiles everywhere
+      // (packages/transit-core/DESIGN.md#plan-tiles).
       const protocol = new pmtiles.Protocol();
       maplibregl.addProtocol("pmtiles", protocol.tile);
       pmTilesInitialized = true;

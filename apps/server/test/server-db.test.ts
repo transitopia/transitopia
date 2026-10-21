@@ -91,7 +91,7 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
   });
   afterAll(() => t?.drop());
   afterEach(async () => {
-    for (const s of services.splice(0)) s.stop();
+    await Promise.all(services.splice(0).map((s) => s.stop()));
     vi.unstubAllGlobals();
     if (dir) await rm(dir, { recursive: true, force: true });
   });
@@ -168,7 +168,7 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
     ).toEqual([]);
 
     // A restart continues from the database's ledger instead of polling everything again.
-    service.stop();
+    await service.stop();
     service = await newService();
     const status = JSON.parse(
       String((await service.handle("/rt/status", new URLSearchParams())).body),

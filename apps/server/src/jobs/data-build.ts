@@ -15,7 +15,7 @@ import { archivedFeeds } from "@transitopia/data/gtfs-day.ts";
 import type { Db } from "@transitopia/db/connect.ts";
 import type { CorrectionsRepo } from "../corrections.ts";
 import type { ServerEnv } from "../env.ts";
-import { run } from "./exec.ts";
+import { run } from "@transitopia/data/exec.ts";
 import { publishData } from "./publish.ts";
 import { isoDate } from "../dates.ts";
 import { reconcileConfig } from "../config.ts";
@@ -23,6 +23,8 @@ import { reconcileFeeds } from "../features/reconcile.ts";
 import { registryFromDb } from "../features/export.ts";
 import { writeExport, writeFeedPlaces } from "@transitopia/data/features.ts";
 import { localDate } from "@transitopia/transit-core/time.ts";
+import { OVERVIEW_TILES_NAME } from "@transitopia/shared/transit-overview.ts";
+import { OVERVIEW_TILES_FILE } from "@transitopia/data/plan-tiles.ts";
 
 export interface DataBuildResult {
   newFeeds: string[];
@@ -31,6 +33,8 @@ export interface DataBuildResult {
   /** Why reconciliation failed, if it did: it never stops the build from publishing. */
   reconcileError?: string;
   published: boolean;
+  /** Whether the overview tileset was published to the maps bucket. */
+  overviewPublished: boolean;
 }
 
 export async function buildData(opts: {
@@ -92,11 +96,24 @@ export async function buildData(opts: {
     published = true;
     log(`published transit data to ${env.dataPublishRemote}`);
   }
+  // The overview replaces the day before's: the tile worker serves its tiles for a day.
+  let overviewPublished = false;
+  if (env.mapsPublishRemote) {
+    await run("rclone", [
+      "copyto",
+      OVERVIEW_TILES_FILE,
+      `${env.mapsPublishRemote}/${OVERVIEW_TILES_NAME}.pmtiles`,
+      "--s3-no-check-bucket",
+    ]);
+    overviewPublished = true;
+    log(`published ${OVERVIEW_TILES_NAME} to ${env.mapsPublishRemote}`);
+  }
   return {
     newFeeds,
     reconciled,
     ...(reconcileError ? { reconcileError } : {}),
     published,
+    overviewPublished,
   };
 }
 

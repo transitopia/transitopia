@@ -1,5 +1,5 @@
 // Rebuild all data in order (pipelines/README.md): latest GTFS → OSM roads → service plans → track
-// network → platform mapping → movements → validation. OSM tracks are committed
+// network → platform mapping → plan and overview tiles → movements → validation. OSM tracks are committed
 // (config/regions/metro-vancouver/infrastructure/), so they are only re-fetched with --osm. OSM roads
 // (for bus corridors) aren't: they're fetched for a feed without them, or once they're
 // ROADS_MAX_AGE_DAYS old (every feed with --osm). A failed roads fetch doesn't stop the build:
@@ -41,6 +41,8 @@ const steps: [string, string[], boolean?][] = [
   : []),
   ["Validate track network", ["pipelines/validate-infra.ts"]],
   ["Publish tracks and platforms", ["pipelines/build-infra.ts"]],
+  ["Make plan tiles", ["pipelines/build-plan-tiles.ts"]],
+  ["Make the overview tiles", ["pipelines/build-overview-tiles.ts"]],
   ["Infer and dispatch train runs", ["pipelines/build-movements.ts"]],
   ["Publish observations", ["pipelines/build-observations.ts"]],
   ["Dispatch dates with observations", ["pipelines/build-dispatch.ts"]],

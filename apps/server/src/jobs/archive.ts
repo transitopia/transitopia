@@ -12,7 +12,7 @@ import {
 import type { Db } from "@transitopia/db/connect.ts";
 import { dropExpiredPartitions } from "@transitopia/db/partitions.ts";
 import { toWallTime } from "@transitopia/transit-core/time.ts";
-import { run } from "./exec.ts";
+import { run } from "@transitopia/data/exec.ts";
 
 /**
  * Upload closed hour files (and the kept records) to `remote`. The open hour is left for later.

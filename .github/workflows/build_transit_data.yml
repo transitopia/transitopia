@@ -31,10 +31,16 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Install tippecanoe
+        uses: ./.github/actions/setup-tippecanoe
       - name: Fetch the latest GTFS feeds and build service plans
         run: npm run data:gtfs
       - name: Build the track network and platform mapping
         run: npm run build:infra
+      # Again, with the track (plans' tiles draw SkyTrain from it). The overview tileset goes to the
+      # maps bucket, which only the server publishes to.
+      - name: Make plan tiles
+        run: npm run build:plan-tiles
       - name: Validate infrastructure
         run: npm run validate:infra
       - name: Build movements (runs through the dispatcher)

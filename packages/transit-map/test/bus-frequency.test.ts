@@ -1,24 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { Map as MlMap } from "maplibre-gl";
 import type {
-  PlanCorridor,
+  CorridorSet,
   ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
 import { serviceDate } from "@transitopia/transit-core/time.ts";
+import { PLAN_TILE_LAYERS } from "@transitopia/transit-core/plan/tiles.ts";
 import { BusFrequencyLayer } from "../src/layers/bus-frequency.ts";
-import { CORRIDORS_SOURCE } from "../src/layers/static.ts";
 
 // Two routes on corridors of their own: the R2 (its own colour) and the 19 (regular), each every
 // 10 minutes all day.
 const starts = { wk: Array.from({ length: 90 }, (_, i) => 6 * 3600 + i * 600) };
-const corridor = (combo: number, lat: number): PlanCorridor => ({
-  coords: [
-    [-123.1, lat],
-    [-123.09, lat],
-  ],
-  combo,
-});
-const plan = (): ServicePlan =>
+const corridors = (...combo: number[]): CorridorSet => ({ combo, short: [] });
+const plan = (cs: CorridorSet): ServicePlan =>
   ({
     feedStart: serviceDate("20261001"),
     feedEnd: serviceDate("20261031"),
@@ -72,8 +66,7 @@ const plan = (): ServicePlan =>
       ],
       stopCombo: [],
     },
-    // Until the detailed corridors load, the overview's stand in for them.
-    overviewCorridors: [corridor(0, 49.3), corridor(1, 49.31)],
+    corridorInfo: { detailed: cs, overview: cs },
   }) as unknown as ServicePlan;
 
 /** A map that keeps the feature state set since the last removal, as MapLibre's queue would. */
@@ -82,15 +75,26 @@ function fakeMap() {
   const map = {
     getSource: () => ({}),
     setFeatureState(
-      { source, id }: { source: string; id: number },
+      {
+        sourceLayer,
+        source,
+        id,
+      }: { source: string; sourceLayer?: string; id: number },
       state: Record<string, unknown>,
     ) {
-      if (!set.has(source)) set.set(source, new Map());
-      const s = set.get(source)!;
+      const key = sourceLayer ?? source;
+      if (!set.has(key)) set.set(key, new Map());
+      const s = set.get(key)!;
       s.set(id, { ...s.get(id), ...state });
     },
-    removeFeatureState({ source }: { source: string }) {
-      set.delete(source);
+    removeFeatureState({
+      source,
+      sourceLayer,
+    }: {
+      source: string;
+      sourceLayer?: string;
+    }) {
+      set.delete(sourceLayer ?? source);
     },
   };
   return { map: map as unknown as MlMap, set };
@@ -98,7 +102,6 @@ function fakeMap() {
 
 describe("BusFrequencyLayer", () => {
   it("sets every corridor's brand after its data is replaced", () => {
-    const p = plan();
     const { map, set } = fakeMap();
     const update = (layer: BusFrequencyLayer) =>
       layer.update(
@@ -109,19 +112,18 @@ describe("BusFrequencyLayer", () => {
         new Set(),
         undefined,
       );
-    const before = new BusFrequencyLayer(p);
+    const before = new BusFrequencyLayer(plan(corridors(0, 1)));
     before.invalidate(map);
     update(before);
-    expect(set.get(CORRIDORS_SOURCE)?.get(0)?.["brand"]).toBe(0);
+    expect(set.get(PLAN_TILE_LAYERS.corridors)?.get(0)?.["brand"]).toBe(0);
 
-    // The detailed corridors arrive, numbered differently: corridor 0 is now the 19's. MapLibre
-    // may still apply the stand-in's queued brand (packages/transit-map/src/layers/bus-frequency.ts
-    // → invalidate), unless the new state sets one explicitly.
-    p.corridors = [corridor(1, 49.31), corridor(0, 49.3)];
-    const after = new BusFrequencyLayer(p);
+    // Another plan's tiles, numbered differently: corridor 0 is now the 19's. MapLibre may still
+    // apply the old plan's queued brand (packages/transit-map/src/layers/bus-frequency.ts →
+    // invalidate), unless the new state sets one explicitly.
+    const after = new BusFrequencyLayer(plan(corridors(1, 0)));
     after.invalidate(map);
     update(after);
-    const detailed = set.get(CORRIDORS_SOURCE)!;
+    const detailed = set.get(PLAN_TILE_LAYERS.corridors)!;
     expect(detailed.get(0)?.["brand"]).toBe(-1);
     expect(detailed.get(1)?.["brand"]).toBe(0);
   });

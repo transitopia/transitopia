@@ -7,11 +7,19 @@
 
 import type { LonLat } from "../geo.ts";
 import { routeWeekdayWaits } from "../schedule/frequency.ts";
-import { CorridorFrequency } from "./corridor-frequency.ts";
+import {
+  CorridorFrequency,
+  shortCorridorNeighbours,
+} from "./corridor-frequency.ts";
+import { detailedCorridors, overviewCorridors } from "./tiles.ts";
 import {
   LINE_DECIMALS,
   patternStarts,
+  type CorridorRef,
+  type CorridorSet,
   type PlanCorridor,
+  type PlanCorridorInfo,
+  type PlanCorridorRefs,
   type PlanFiles,
   type PlanPattern,
   type PlanRoute,
@@ -44,6 +52,7 @@ export interface PublishedPlan extends Omit<
   | "trips"
   | "corridors"
   | "overviewCorridors"
+  | "corridorInfo"
   | "files"
 > {
   schema: 2;
@@ -81,6 +90,23 @@ export interface PublishedCorridors {
   coords: number[][];
   /** Per corridor, its combo in the plan's frequency table. */
   combo: number[];
+}
+
+/** The corridors' metadata (`PlanCorridorInfo`), what the browser loads of them: their geometry is in the plan's tiles. */
+export interface PublishedCorridorInfo {
+  schema: 2;
+  detailed: CorridorSet;
+  overview: CorridorSet;
+}
+
+/**
+ * The patterns along each corridor (`PlanCorridorRefs`), flat: pattern, along, … per corridor, the
+ * pattern as -(pattern + 1) where it runs against the corridor's coordinates.
+ */
+export interface PublishedCorridorRefs {
+  schema: 2;
+  detailed: number[][];
+  overview: number[][];
 }
 
 /**
@@ -167,7 +193,14 @@ function decodeIds(ids: PublishedIds): string[] {
 /** A published plan: its core and the files it names (paths relative to the core). */
 export interface PlanPublication {
   core: PublishedPlan;
-  files: Map<string, PublishedShapes | PublishedCorridors | PublishedTrips>;
+  files: Map<
+    string,
+    | PublishedShapes
+    | PublishedCorridors
+    | PublishedCorridorInfo
+    | PublishedCorridorRefs
+    | PublishedTrips
+  >;
 }
 
 /** A whole plan in its published form (the trips, starts and frequency table are worked out from it). */
@@ -181,7 +214,8 @@ export function publishPlan(plan: ServicePlan): PlanPublication {
     shapes,
     trips,
     corridors,
-    overviewCorridors,
+    overviewCorridors: _overview,
+    corridorInfo: _info,
     files: _files,
     frequency: _frequency,
     ...rest
@@ -210,12 +244,40 @@ export function publishPlan(plan: ServicePlan): PlanPublication {
       coords: cs.map((c) => encodeLine(c.coords, LINE_DECIMALS)),
       combo: [...cf.combosOfCorridors(cs)],
     });
+    // Geometry for pipelines (assemblePlan, build-plan-tiles); the browser draws it from the tiles
+    // and loads only the metadata.
     files.set("corridors.json", corridorFile(corridors));
     refs.corridors = "corridors.json";
-    if (overviewCorridors?.length) {
-      files.set("corridors-overview.json", corridorFile(overviewCorridors));
+    if (plan.overviewCorridors?.length) {
+      files.set(
+        "corridors-overview.json",
+        corridorFile(plan.overviewCorridors),
+      );
       refs.overviewCorridors = "corridors-overview.json";
     }
+    const set = (cs: readonly PlanCorridor[]): CorridorSet => ({
+      combo: [...cf.combosOfCorridors(cs)],
+      short: shortCorridorNeighbours(cs),
+    });
+    files.set("corridor-info.json", {
+      schema: 2,
+      detailed: set(detailedCorridors(plan)),
+      overview: set(overviewCorridors(plan)),
+    } satisfies PublishedCorridorInfo);
+    refs.corridorInfo = "corridor-info.json";
+    const flat = (cs: readonly PlanCorridor[]) =>
+      cs.map((c) =>
+        (c.refs ?? []).flatMap(([p, dir, along]) => [
+          dir === 1 ? p : -(p + 1),
+          along,
+        ]),
+      );
+    files.set("corridor-refs.json", {
+      schema: 2,
+      detailed: flat(detailedCorridors(plan)),
+      overview: flat(overviewCorridors(plan)),
+    } satisfies PublishedCorridorRefs);
+    refs.corridorRefs = "corridor-refs.json";
     const stopCombo = cf.stopCombos();
     frequency = {
       routeDirs: cf.routeDirs,
@@ -413,6 +475,23 @@ export function decodeCorridors(f: PublishedCorridors): PlanCorridor[] {
   }));
 }
 
+export function decodeCorridorInfo(f: PublishedCorridorInfo): PlanCorridorInfo {
+  return { detailed: f.detailed, overview: f.overview };
+}
+
+export function decodeCorridorRefs(f: PublishedCorridorRefs): PlanCorridorRefs {
+  const set = (s: number[][]) =>
+    s.map((flat) => {
+      const out: CorridorRef[] = [];
+      for (let i = 0; i + 1 < flat.length; i += 2) {
+        const p = flat[i]!;
+        out.push(p >= 0 ? [p, 1, flat[i + 1]!] : [-p - 1, -1, flat[i + 1]!]);
+      }
+      return out;
+    });
+  return { detailed: set(f.detailed), overview: set(f.overview) };
+}
+
 export function decodeTrips(f: PublishedTrips): PlanTrip[] {
   const ids = decodeIds(f.ids);
   const blocks = decodeIds(f.blocks);
@@ -454,15 +533,16 @@ export function sortTrips(trips: PlanTrip[]): PlanTrip[] {
 
 /**
  * A published plan read back whole, as build-schedule made it, for pipelines and the server: every
- * trip (each once), shapes and corridors. `read` loads a file named relative to the core.
+ * trip (each once), shapes and corridors. `read` loads a file named relative to the core. Without
+ * `trips` (what drawing it needs: build-plan-tiles), its patterns keep their start times instead.
  */
 export async function assemblePlan(
   core: PublishedPlan,
   read: (path: string) => Promise<unknown>,
+  { trips: withTrips = true }: { trips?: boolean } = {},
 ): Promise<ServicePlan> {
   const plan = decodeCore(core);
-  // Its trips are all here: nothing should count frequencies from the summaries instead.
-  for (const p of plan.patterns) delete p.starts;
+  delete plan.files;
   const { files } = core;
   plan.shapes = decodeShapes((await read(files.shapes)) as PublishedShapes);
   if (files.corridors)
@@ -473,6 +553,9 @@ export async function assemblePlan(
     plan.overviewCorridors = decodeCorridors(
       (await read(files.overviewCorridors)) as PublishedCorridors,
     );
+  if (!withTrips) return plan;
+  // Its trips are all here: nothing should count frequencies from the summaries instead.
+  for (const p of plan.patterns) delete p.starts;
   const seen = new Set<string>();
   const trips: PlanTrip[] = [];
   for (const ref of files.trips)
@@ -482,7 +565,6 @@ export async function assemblePlan(
         trips.push(t);
       }
   plan.trips = sortTrips(trips);
-  delete plan.files;
   return plan;
 }
 

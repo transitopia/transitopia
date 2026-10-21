@@ -69,10 +69,13 @@ jobs:
           key: gtfs-fixture-translink-${{ env.FIXTURE_FEED_DATE }}
       - name: Fetch the fixture feed
         run: npx tsx pipelines/fetch-gtfs.ts --feed translink --history "$FIXTURE_FEED_DATE"
-      - name: Build the timetable and track data
+      - name: Install tippecanoe
+        uses: ./.github/actions/setup-tippecanoe
+      - name: Build the timetable, track data and plan tiles
         run: |
           npx tsx pipelines/build-schedule.ts --feed translink
           npm run build:infra
+          npm run build:plan-tiles -- --feed translink
       - name: Validate infrastructure
         run: npm run validate:infra
       - name: Build movements (runs through the dispatcher)

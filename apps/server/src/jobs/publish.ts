@@ -20,7 +20,7 @@ import { basename, dirname, join, relative } from "node:path";
 import { promisify } from "node:util";
 import { brotliCompress, brotliDecompress, constants } from "node:zlib";
 import { PUBLIC_DATA_DIR, PUBLISH_DATA_DIR } from "@transitopia/data/paths.ts";
-import { run } from "./exec.ts";
+import { run } from "@transitopia/data/exec.ts";
 
 /** Extensions of the files uploaded compressed; anything else (the features export is already gzipped) goes as it is. */
 const COMPRESSED_EXTENSIONS = ["json", "geojson"];
