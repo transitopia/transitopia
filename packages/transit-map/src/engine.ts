@@ -540,12 +540,12 @@ export class TransitEngine {
       this.ferryPair = undefined;
       this.syncStatic(true);
     };
-    const onStyleData = () => {
-      // A new style (theme switch) replaces our sources and layers; wait for it to load. Sources
-      // removed from the loaded style (a previous engine disposed, e.g. for another region) aren't
-      // a new style, and no style.load would follow.
-      if (!map.getSource(LINES_SOURCE) && !map.isStyleLoaded())
-        this.styleReady = false;
+    // A new style (theme switch) replaces our sources and layers: wait for it to load. Only a new
+    // style starting to load says so: 'styledata' also follows every layer change (the overview's,
+    // a previous engine's removal), and while any tiles load the style doesn't count as loaded, so
+    // a new engine still waiting for its plan would wait for a style.load that never comes.
+    const onStyleLoading = () => {
+      this.styleReady = false;
     };
     const onClick = (e: {
       point: { x: number; y: number };
@@ -610,7 +610,7 @@ export class TransitEngine {
     const onIdle = () => onSourceData({});
     map.on("idle", onIdle);
     map.on("style.load", onStyleLoad);
-    map.on("styledata", onStyleData);
+    map.on("styledataloading", onStyleLoading);
     map.on("click", onClick);
     map.on("mousemove", onMouseMove);
     const onMove = () => {
@@ -628,7 +628,7 @@ export class TransitEngine {
       map.off("sourcedata", onSourceData);
       map.off("idle", onIdle);
       map.off("style.load", onStyleLoad);
-      map.off("styledata", onStyleData);
+      map.off("styledataloading", onStyleLoading);
       map.off("click", onClick);
       map.off("mousemove", onMouseMove);
       map.getCanvas().style.cursor = "";
