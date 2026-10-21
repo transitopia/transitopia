@@ -66,7 +66,7 @@ describe("ids as riders see them", () => {
     expect([0, 1, 2, 3].map((i) => placeName(plan, i))).toEqual([
       "Waterfront",
       "Langford Exchange",
-      "Douglas St at Bay St",
+      "Bay St",
       "Boundary Loop",
     ]);
   });

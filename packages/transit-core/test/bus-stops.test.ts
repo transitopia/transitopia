@@ -16,6 +16,9 @@ describe("busStopLabel", () => {
     expect(busStopLabel("UBC Exchange @ Bay 7")).toBe("UBC Exchange");
     expect(busStopLabel("UBC Exchange @ Unloading Only")).toBe("UBC Exchange");
     expect(busStopLabel("Phibbs Exchange @")).toBe("Phibbs Exchange");
+    // BC Transit's names: "at" for the cross street, and some without one.
+    expect(busStopLabel("Ring Rd at University Club")).toBe("University Club");
+    expect(busStopLabel("800 Blk Esquimalt Rd")).toBe("800 Blk Esquimalt Rd");
   });
   it("drops station bays and layovers", () => {
     expect(busStopLabel("Commercial-Broadway Station @ Bay 5")).toBeUndefined();
