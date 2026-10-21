@@ -35,11 +35,16 @@ const MAX_UNPAIRED_M = 150;
 /** Merged corridors' geometry tolerance (m): they're drawn zoomed out. */
 const MERGED_SIMPLIFY_M = 3;
 
-/** A stretch between two nodes and the patterns along it: [direction from a to b, along where it enters]. */
+/**
+ * A stretch between two nodes and the patterns along it: [direction from a to b, along where it
+ * enters], the first time it does, and `again`, each later time (a route out along a street and back
+ * the same way round a loop).
+ */
 interface UsedEdge {
   a: number;
   b: number;
   uses: Map<number, [1 | -1, number]>;
+  again?: Map<number, [1 | -1, number][]>;
 }
 
 function nearestOnSegment(
@@ -122,13 +127,21 @@ function chainEdges(
       LINE_DECIMALS,
     );
     const [i0, d0] = steps[0]!;
-    const [iN] = steps[steps.length - 1]!;
+    const [iN, dN] = steps[steps.length - 1]!;
     const refs: CorridorRef[] = [...edges[i0]!.uses].map(([pattern, [dir]]) => {
       const rel = (dir * d0) as 1 | -1;
       // Where the pattern enters this corridor: its first edge, or its last when it runs the other way.
       const entry = (rel === 1 ? edges[i0]! : edges[iN]!).uses.get(pattern)!;
       return [pattern, rel, entry[1]];
     });
+    // Each later time a pattern runs along it, entering at its first edge or, the other way, its last.
+    for (const [x, d, rel] of [
+      [i0, d0, 1],
+      [iN, dN, -1],
+    ] as const)
+      for (const [pattern, again] of edges[x]!.again ?? [])
+        for (const [dir, along] of again)
+          if (dir * d === rel) refs.push([pattern, rel, along]);
     out.push({ coords, refs });
   };
   for (const [v, list] of byNode)
@@ -151,8 +164,8 @@ export function buildCorridors(
   matches: PatternMatch[],
   keep?: ReadonlySet<number>,
 ): BuiltCorridor[] {
-  /** Per canonical edge (the lower of an edge and its twin): pattern → [direction, along where it enters]. */
-  const uses = new Map<number, Map<number, [1 | -1, number]>>();
+  /** Per canonical edge (the lower of an edge and its twin): its patterns' passes (`UsedEdge`). */
+  const uses = new Map<number, Pick<UsedEdge, "uses" | "again">>();
   const out: BuiltCorridor[] = [];
   for (const { pattern, pieces } of matches) {
     let along = 0;
@@ -173,12 +186,22 @@ export function buildCorridors(
         const twin = g.edgeTwin[p.edge]!;
         const canon = twin >= 0 && twin < p.edge ? twin : p.edge;
         let m = uses.get(canon);
-        if (!m) uses.set(canon, (m = new Map()));
-        if (!m.has(pattern))
-          m.set(pattern, [
-            canon === p.edge ? 1 : -1,
-            Math.round(along - p.f0 * g.edgeLen[p.edge]!),
-          ]);
+        if (!m) uses.set(canon, (m = { uses: new Map() }));
+        const use: [1 | -1, number] = [
+          canon === p.edge ? 1 : -1,
+          Math.round(along - p.f0 * g.edgeLen[p.edge]!),
+        ];
+        const first = m.uses.get(pattern);
+        if (!first) m.uses.set(pattern, use);
+        // Along it again, not another piece of the same pass (its entry no more than the edge on).
+        else if (
+          [first, ...(m.again?.get(pattern) ?? [])].every(
+            (u) => Math.abs(u[1] - use[1]) > g.edgeLen[p.edge]!,
+          )
+        ) {
+          m.again ??= new Map();
+          m.again.set(pattern, [...(m.again.get(pattern) ?? []), use]);
+        }
       }
       along += len;
     }
@@ -189,7 +212,7 @@ export function buildCorridors(
       [...uses].map(([e, m]) => ({
         a: g.edgeFrom[e]!,
         b: g.edgeTo[e]!,
-        uses: m,
+        ...m,
       })),
       (n) => g.toLonLat(g.x[n]!, g.y[n]!),
       SIMPLIFY_M,

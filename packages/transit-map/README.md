@@ -53,6 +53,8 @@ While a route's card is open (`place` of kind `route`, a route the map draws), t
 
 A combined route's card (`place` of kind `shared`, [packages/transit-core → Combined routes](../transit-core/DESIGN.md#combined-routes)) focuses the map on its stretch the same way: the global state `focusRoute` is `SEGMENT_FOCUS`, which no route has, so every route line is dimmed; `focusStops` lists its stops, whose ticks and labels stay; its corridors (from the plan's corridor refs, which `PlanStore.corridorRefsFor` loads the first time one is opened; until they're in, the corridors carrying all its routes) aren't dimmed and are drawn in its frequency (its buses' merged departures from its start, `CorridorFrequency.waitOf`); and only its vehicles on the stretch stay (`VehicleLayer.focus`).
 
+The focused corridors are drawn a second time, on top (`corridors-focus`, `corridors-overview-focus` and their casings): on a two-way street another route's corridor, or the other direction's, can share the line and come later in the tile, and lines can't be ordered by feature state. These layers have the same source, zooms, layout and filter as the ones beneath, so MapLibre builds one set of buffers for both, and nothing in their filters or layout reads the focus (a change to global state those read reloads the source's tiles): off the focus they're zero wide.
+
 
 ## Tap menu
 

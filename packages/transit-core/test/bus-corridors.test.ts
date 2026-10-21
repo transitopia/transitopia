@@ -193,6 +193,28 @@ describe("buildCorridors", () => {
     expect(own.refs[0]![2]).toBeGreaterThan(350);
     expect(own.refs[0]![2]).toBeLessThan(380);
   });
+
+  it("lists each time a pattern runs along a corridor", () => {
+    // Out along B (two-way) and back: one corridor, entered at its start and, on the way back,
+    // at its end, about 730 m on.
+    const outAndBack: LonLat[] = [
+      [lon(0), LAT_B],
+      [lon(4), LAT_B],
+      [lon(0), LAT_B],
+    ];
+    const [c, ...rest] = buildCorridors(g, [
+      { pattern: 0, pieces: matchShape(g, outAndBack).pieces },
+    ]);
+    expect(rest).toHaveLength(0);
+    const refs = [...c!.refs].sort((a, b) => a[2] - b[2]);
+    expect(refs.map((r) => [r[0], r[1]])).toEqual([
+      [0, c!.coords[0]![0] < c!.coords.at(-1)![0] ? 1 : -1],
+      [0, c!.coords[0]![0] < c!.coords.at(-1)![0] ? -1 : 1],
+    ]);
+    expect(refs[0]![2]).toBe(0);
+    expect(refs[1]![2]).toBeGreaterThan(700);
+    expect(refs[1]![2]).toBeLessThan(760);
+  });
 });
 
 describe("mergeCarriageways", () => {

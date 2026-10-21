@@ -114,9 +114,11 @@ const STOP_OFFSET_WARN_M = 150;
  * exchanges and stations' bays (`hubs`). 13: published in parts (plan/published.ts), lines at 5 decimals.
  * 14: weekday figures (routes' `weekdayWait`, combos' `weekday`) and shared stretches' offsets.
  * 15: every route in the feed by default (plan/routes.ts), no catalogue. 16: corridors numbered by
- * their geometry, and their metadata in a part of its own (corridor-info.json) for plan tiles.
+ * their geometry, and their metadata in a part of its own (corridor-info.json) for plan tiles. 17:
+ * corridors list every time a pattern runs along them (a route out and back round a loop), not
+ * only the first.
  */
-const PLAN_FORMAT = 16;
+const PLAN_FORMAT = 17;
 
 /** Regions showing the feed with SeaBus berths and lanes (infrastructure/seabus.json): build-schedule applies them. */
 async function ferryRegions(feed: string): Promise<string[]> {
