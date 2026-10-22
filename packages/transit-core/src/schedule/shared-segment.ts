@@ -6,7 +6,12 @@
 import type { LonLat } from "../geo.ts";
 import { cumulativeLengths, projectOnto, sliceLine } from "../geo.ts";
 import { MIN_OVERLAP_M } from "../plan/paths.ts";
-import type { PathStep, PlanTrip, ServicePlan } from "../plan/types.ts";
+import type {
+  PathStep,
+  PlanHub,
+  PlanTrip,
+  ServicePlan,
+} from "../plan/types.ts";
 import type { ServiceDate } from "../time.ts";
 import {
   bestDirection,
@@ -28,6 +33,21 @@ export type PlaceOf = (id: string) => string;
 export function stationsOnly(plan: Pick<ServicePlan, "stops">): PlaceOf {
   const parent = new Map(plan.stops.map((s) => [s.id, s.parent ?? s.id]));
   return (id) => parent.get(id) ?? id;
+}
+
+/**
+ * Places with bus bays: a station's bays are the station, an exchange's are the exchange (named by
+ * its hub's id, which only ever compares within one set of hubs); by default the plan's own hubs.
+ */
+export function stationsAndHubs(
+  plan: Pick<ServicePlan, "stops" | "hubs">,
+  hubs: readonly Pick<PlanHub, "id" | "bays" | "station">[] = plan.hubs ?? [],
+): PlaceOf {
+  const base = stationsOnly(plan);
+  const hubOf = new Map<string, string>();
+  for (const h of hubs)
+    for (const b of h.bays) hubOf.set(b, h.station ?? `exchange:${h.id}`);
+  return (id) => hubOf.get(id) ?? base(id);
 }
 
 /**

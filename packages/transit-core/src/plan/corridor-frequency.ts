@@ -9,6 +9,7 @@
 import { indexCalendar } from "../gtfs/calendar.ts";
 import { localProjector } from "../geo.ts";
 import { onwardStops, sharedRuns } from "../schedule/departures.ts";
+import { stationsAndHubs } from "../schedule/shared-segment.ts";
 import {
   countIn,
   departuresAround,
@@ -137,6 +138,8 @@ export class CorridorFrequency {
    */
   private findShared(): void {
     const { plan } = this;
+    // The plan's own hubs: published with the plan, before the site's places file regroups them.
+    const placeOf = stationsAndHubs(plan);
     const tripsBy = new Map<string, number>();
     for (const t of plan.trips) {
       const k = `${t.pattern}|${t.headsign}`;
@@ -159,7 +162,9 @@ export class CorridorFrequency {
     for (const [stop, at] of groups) {
       const reps = [...at.values()];
       if (reps.length < 2) continue;
-      const runs = sharedRuns(reps.map(([p, i]) => onwardStops(plan, p, i)));
+      const runs = sharedRuns(
+        reps.map(([p, i]) => onwardStops(plan, p, i, placeOf)),
+      );
       for (const { members, stops } of runs) {
         const rds = [
           ...new Set(members.map((m) => this.routeDirOf[reps[m]![0]]!)),

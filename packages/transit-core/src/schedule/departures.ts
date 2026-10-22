@@ -8,6 +8,7 @@ import { placeName as stopName } from "../plan/display.ts";
 import { bayNumber } from "../plan/exchanges.ts";
 import { serviceDayStart, type ServiceDate } from "../time.ts";
 import { frequencyOf, type Frequency } from "./frequency.ts";
+import type { PlaceOf } from "./shared-segment.ts";
 import {
   shiftAt,
   type PreparedPlan,
@@ -217,18 +218,23 @@ export interface OnwardStop {
   m: number;
 }
 
-/** The stops after stop `index` of a pattern. Stations are compared by station, not platform. */
+/**
+ * The stops after stop `index` of a pattern, keyed by place (`placeOf`): stations are compared by
+ * station, not platform, and exchanges by exchange, not bay (two routes into Mission Rec Exchange
+ * at Bays B and C both run to it).
+ */
 export function onwardStops(
   plan: ServicePlan,
   pattern: number,
   index: number,
+  placeOf: PlaceOf,
 ): OnwardStop[] {
   const p = plan.patterns[pattern]!;
   return p.stops.slice(index + 1).map((si, k) => {
     const s = plan.stops[si]!;
     return {
       stop: si,
-      key: s.parent ?? s.id,
+      key: placeOf(s.id),
       m: p.dist[index + 1 + k]! - p.dist[index]!,
     };
   });
@@ -325,10 +331,16 @@ export function sharedRuns(
 export function sharedStretches(
   plan: ServicePlan,
   groups: readonly DepartureGroup[],
+  placeOf: PlaceOf,
 ): SharedStretch[] {
   // Each group's onward stops, from its soonest departure's pattern.
   const onward = groups.map((g) =>
-    onwardStops(plan, g.departures[0]!.pattern, g.departures[0]!.index),
+    onwardStops(
+      plan,
+      g.departures[0]!.pattern,
+      g.departures[0]!.index,
+      placeOf,
+    ),
   );
   const runs = sharedRuns(
     onward,

@@ -13,6 +13,7 @@ import {
   type ScheduleCorrections,
 } from "../src/schedule/engine.ts";
 import type { PlanTrip, ServicePlan } from "../src/plan/types.ts";
+import { stationsAndHubs } from "../src/schedule/shared-segment.ts";
 import type { KinematicsConfig } from "../src/movement/kinematics.ts";
 import { serviceDayStart, serviceDate } from "../src/time.ts";
 import {
@@ -222,7 +223,7 @@ describe("grouping, frequency and shared stretches", () => {
   });
 
   it("finds the stretch both routes share, up to where they split", () => {
-    const shared = sharedStretches(plan, groups);
+    const shared = sharedStretches(plan, groups, stationsAndHubs(plan));
     expect(shared).toHaveLength(1);
     expect(shared[0]!.groups).toHaveLength(2);
     expect(placeName(plan, shared[0]!.toStopId)).toBe("Renfrew St");
@@ -233,6 +234,25 @@ describe("grouping, frequency and shared stretches", () => {
       averageWait: expect.closeTo(250 / 60, 5),
       departures: 10,
     });
+  });
+
+  it("runs on to an exchange the routes end at from different bays", () => {
+    // S4a and S4b as two bays of one exchange (Mission Rec Exchange's Bays B and C).
+    const withHub: ServicePlan = {
+      ...plan,
+      hubs: [
+        {
+          id: "x",
+          name: "Exchange",
+          lon: -123.096,
+          lat: 49.28,
+          bays: ["S4a", "S4b"],
+          routes: ["A", "B"],
+        },
+      ],
+    };
+    const [s] = sharedStretches(withHub, groups, stationsAndHubs(withHub));
+    expect(s?.toStopId).toBe("S4a");
   });
 });
 
@@ -273,6 +293,7 @@ describe("shared stretches of short-turns", () => {
         dep(0, "UBCO", at(H8)),
         dep(1, "Downtown", at(H8 + 300)),
       ]),
+      stationsAndHubs(plan),
     );
   };
 

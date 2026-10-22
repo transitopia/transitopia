@@ -370,7 +370,7 @@ export function placeSnapshot(
         g.departures.find((d) => !d.cancelled) ?? g.departures[0]!,
       ),
     })),
-    shared: sharedStretches(plan, groups).map((s) => {
+    shared: sharedStretches(plan, groups, placeOfStop(plan)).map((s) => {
       const routes = [...new Set(s.groups.map((g) => g.routeKey))].map(routeOf);
       return {
         routes,
