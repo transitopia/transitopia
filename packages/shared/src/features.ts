@@ -27,8 +27,9 @@ const KIND_OF_PREFIX = new Map<string, FeatureKind>(
 );
 
 /**
- * Ref schemes, and whether each has a namespace (a feed, operator or GBFS system). `run` is the
- * engine's own: only it resolves `run:<run id>`, never the registry.
+ * Ref schemes, and whether each has a namespace (a feed, operator or GBFS system). `run` and
+ * `shared` are the engine's own, never the registry's: `run:<run id>`, and `shared:<from>:<to>`, a
+ * combined route between two stops or stations, each named by its key.
  */
 export const REF_SCHEMES = {
   "gtfs-stop": true,
@@ -43,6 +44,7 @@ export const REF_SCHEMES = {
   onestop: false,
   "gbfs-station": true,
   run: false,
+  shared: false,
 } as const;
 
 export type RefScheme = keyof typeof REF_SCHEMES;

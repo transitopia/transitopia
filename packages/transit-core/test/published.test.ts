@@ -4,7 +4,6 @@ import {
   assemblePlan,
   decodeCore,
   decodeCorridorInfo,
-  decodeCorridorRefs,
   decodeCorridors,
   decodeLine,
   decodeShapes,
@@ -15,14 +14,15 @@ import {
   sortTrips,
   tripFilesFor,
   type PublishedCorridorInfo,
-  type PublishedCorridorRefs,
+  decodePatternPaths,
+  type PublishedPatternPaths,
   type PublishedCorridors,
   type PublishedShapes,
   type PublishedTrips,
 } from "../src/plan/published.ts";
 import { CorridorFrequency } from "../src/plan/corridor-frequency.ts";
 import { PLAN_TILE_LAYERS, planTileFeatures } from "../src/plan/tiles.ts";
-import type { PlanTrip, ServicePlan } from "../src/plan/types.ts";
+import type { PathStep, PlanTrip, ServicePlan } from "../src/plan/types.ts";
 import {
   preparePlan,
   scheduledVehicles,
@@ -334,7 +334,7 @@ describe("line coding", () => {
 });
 
 describe("corridor metadata", () => {
-  it("carries each corridor's combo and short neighbours, and its patterns beside them", async () => {
+  it("carries each corridor's combo and short neighbours", async () => {
     const plan = fixture();
     const { core, files } = await roundTrip(plan);
     const info = decodeCorridorInfo(
@@ -346,21 +346,24 @@ describe("corridor metadata", () => {
     // Without overview corridors, both sets are the detailed ones.
     for (const set of [info.detailed, info.overview])
       expect(set).toEqual({ combo: combos, short: [] });
-    const refs = decodeCorridorRefs(
-      JSON.parse(files.get(core.files.corridorRefs!)!) as PublishedCorridorRefs,
-    );
-    expect(refs.detailed).toEqual(plan.corridors!.map((c) => c.refs));
-    expect(refs.overview).toEqual(refs.detailed);
   });
 
-  it("keeps a pattern's direction against the corridor", async () => {
+  it("publishes patterns' paths in their route group's file, each pass in order", async () => {
     const plan = fixture();
-    plan.corridors![0]!.refs = [[1, -1, 250]];
+    // Pattern 1 (route 9) along both corridors, then back along the first.
+    const detailed: PathStep[] = [
+      [0, 0, 1000],
+      [1, 1000, 2000],
+      [0, 2000, 3000],
+    ];
+    plan.paths = new Map([[1, { detailed, overview: detailed.slice(0, 2) }]]);
     const { core, files } = await roundTrip(plan);
-    const refs = decodeCorridorRefs(
-      JSON.parse(files.get(core.files.corridorRefs!)!) as PublishedCorridorRefs,
+    expect(Object.keys(core.files.paths!)).toEqual(["9"]);
+    expect(core).not.toHaveProperty("paths");
+    const paths = decodePatternPaths(
+      JSON.parse(files.get(core.files.paths!["9"]!)!) as PublishedPatternPaths,
     );
-    expect(refs.detailed[0]).toEqual([[1, -1, 250]]);
+    expect(paths.get(1)).toEqual({ detailed, overview: detailed.slice(0, 2) });
   });
 });
 

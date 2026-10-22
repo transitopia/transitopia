@@ -4,7 +4,11 @@
 // plan as GeoJSON.
 
 import type { FeatureCollection } from "geojson";
-import type { GeoJSONSource, Map as MlMap } from "maplibre-gl";
+import type {
+  GeoJSONSource,
+  LineLayerSpecification,
+  Map as MlMap,
+} from "maplibre-gl";
 import type {
   ExpressionSpecification,
   GeoJSONSourceSpecification,
@@ -99,11 +103,26 @@ export const onFocus = (prop = "route"): ExpressionSpecification => [
   ["==", focusKey, ""],
   ["==", ["get", prop], focusKey],
 ];
-/** True where the focused route stops (a stop's `routes`, ",99,R4,"), or nothing is focused. */
+/**
+ * Map global state while a combined route is focused: its stops' ids (",50123,50124,"). The focused
+ * route is then SEGMENT_FOCUS, which no route has, so every route line is dimmed; its corridors are
+ * kept by feature state (BusFrequencyLayer).
+ */
+const FOCUS_STOPS = "focusStops";
+export const SEGMENT_FOCUS = "*segment";
+/**
+ * True where the focused route stops (a stop's `routes`, ",99,R4,"), where a focused combined route
+ * stops, or where nothing is focused.
+ */
 const stopOnFocus: ExpressionSpecification = [
   "any",
   ["==", focusKey, ""],
   ["in", ["concat", ",", focusKey, ","], ["get", "routes"]],
+  [
+    "in",
+    ["concat", ",", ["to-string", ["get", "stop"]], ","],
+    ["coalesce", ["global-state", FOCUS_STOPS], ""],
+  ],
 ];
 /** An opacity, dimmed off the focused route (for symbols, which don't overlap themselves). */
 export const focusOpacity = (
@@ -170,9 +189,24 @@ const corridorCasingOpacity: ExpressionSpecification = [
   1,
 ];
 
-/** Focus the map on one route (its card is open), dimming the rest, or on none. */
-export function setFocusRoute(map: MlMap, route: string | undefined): void {
-  map.setGlobalStateProperty(FOCUS_ROUTE, route ?? null);
+/**
+ * Focus the map on one route (its card is open), or a combined route (its stops' ids), dimming
+ * the rest, or on none.
+ */
+export function setFocus(
+  map: MlMap,
+  focus: { route: string } | { stops: readonly string[] } | undefined,
+): void {
+  map.setGlobalStateProperty(
+    FOCUS_ROUTE,
+    !focus ? null
+    : "route" in focus ? focus.route
+    : SEGMENT_FOCUS,
+  );
+  map.setGlobalStateProperty(
+    FOCUS_STOPS,
+    focus && "stops" in focus ? `,${focus.stops.join(",")},` : null,
+  );
 }
 
 /** Frequency tier colours, every 6 min or better first (packages/transit-map/README.md#bus-corridors). */
@@ -458,18 +492,23 @@ export function addStaticLayers(
   const brandColor = brandColorOf((r) => r.color);
   const fadedBrandColor = brandColorOf((r) => fadeColor(r.color, theme));
   const routeColor = focusColor(plan.routes, theme);
-  const tierWidth = (extra: number, tiers: number[]): ExpressionSpecification =>
+  /** Widths per tier at each zoom; with `only`, zero where it's false. */
+  const tierWidth = (
+    extra: number,
+    tiers: number[],
+    only?: ExpressionSpecification,
+  ): ExpressionSpecification =>
     [
       "interpolate",
       ["linear"],
       ["zoom"],
-      ...TIER_WIDTHS.flatMap(([z, w]) => [
-        z,
-        byTier(
+      ...TIER_WIDTHS.flatMap(([z, w]) => {
+        const width = byTier(
           w.map((x, i) => (tiers.includes(i) ? x + extra : 0)),
           0,
-        ),
-      ]),
+        );
+        return [z, only ? ["case", only, width, 0] : width];
+      }),
     ] as ExpressionSpecification;
 
   // Bus corridors: one line per street, coloured and weighted by how often buses pass; the most
@@ -492,22 +531,27 @@ export function addStaticLayers(
       { minzoom: CORRIDOR_DETAIL_ZOOM },
     ],
   ] as const) {
-    map.addLayer({
-      id: `${prefix}-casing`,
-      type: "line",
-      source,
-      "source-layer": sourceLayer,
-      minzoom: Math.max(12, "minzoom" in zooms ? zooms.minzoom : 0),
-      ...("maxzoom" in zooms ? { maxzoom: zooms.maxzoom } : {}),
-      layout: { "line-join": "round", "line-cap": "round" },
-      paint: {
-        "line-color": casing,
-        "line-width": tierWidth(2, [0, 1]),
-        "line-opacity": corridorCasingOpacity,
-      },
-    });
-    map.addLayer({
-      id: prefix,
+    const casingLayer = (
+      id: string,
+      opacity: ExpressionSpecification,
+      only?: ExpressionSpecification,
+    ) =>
+      map.addLayer({
+        id,
+        type: "line",
+        source,
+        "source-layer": sourceLayer,
+        minzoom: Math.max(12, "minzoom" in zooms ? zooms.minzoom : 0),
+        ...("maxzoom" in zooms ? { maxzoom: zooms.maxzoom } : {}),
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: {
+          "line-color": casing,
+          "line-width": tierWidth(2, [0, 1], only),
+          "line-opacity": opacity,
+        },
+      });
+    casingLayer(`${prefix}-casing`, corridorCasingOpacity);
+    const line: Omit<LineLayerSpecification, "id"> = {
       type: "line",
       source,
       "source-layer": sourceLayer,
@@ -543,6 +587,41 @@ export function addStaticLayers(
         ] as ExpressionSpecification,
         // Full strength on the focused route's corridors, however infrequent.
         "line-opacity": ["case", corridorFocused, 1, byTier(TIER_OPACITY, 1)],
+      },
+    };
+    map.addLayer({ id: prefix, ...line });
+    // The focused corridors again, on top: another route's corridor along the same street (the
+    // other direction) can come later in the tile and cover them, and lines can't be ordered by
+    // feature state. The same type, source, zooms, layout and (no) filter as the layers beneath,
+    // so MapLibre builds one set of buffers for both, and no filter or layout reads the focus (a
+    // change to global state those read reloads the source's tiles): elsewhere they're zero wide.
+    casingLayer(
+      `${prefix}-focus-casing`,
+      corridorCasingOpacity,
+      corridorFocused,
+    );
+    map.addLayer({
+      id: `${prefix}-focus`,
+      ...line,
+      paint: {
+        ...line.paint,
+        "line-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          ...TIER_WIDTHS.flatMap(([z, w]) => [
+            z,
+            [
+              "case",
+              corridorFocused,
+              byTier(
+                w.map((x) => Math.max(x, w[2]!)),
+                0,
+              ),
+              0,
+            ],
+          ]),
+        ] as ExpressionSpecification,
       },
     });
     // Routes with their own colour, over the corridors they run along: the busiest one running at

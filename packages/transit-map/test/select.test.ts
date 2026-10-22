@@ -128,6 +128,40 @@ describe("?select=", () => {
     );
   });
 
+  it("names a combined route by its ends' keys", () => {
+    // From a station to a street stop.
+    const shared = { place: { kind: "shared" as const, id: "12034>11001" } };
+    expect(selectKey(shared, ctx)).toBe(
+      "shared:sn-00000001-waterfront:gtfs-stop:translink:11001",
+    );
+    expect(
+      resolveSelect(
+        "shared:sn-00000001-waterfront:gtfs-stop:translink:11001",
+        ctx,
+      ),
+    ).toEqual(shared);
+    // An exchange stands for its bays: named by its key, read back as one of them.
+    const exchange = {
+      place: { kind: "shared" as const, id: "13001>12034" },
+    };
+    expect(selectKey(exchange, ctx)).toBe(
+      "shared:ex-00000002-ubc-exchange:sn-00000001-waterfront",
+    );
+    expect(
+      resolveSelect(
+        "shared:ex-00000002-ubc-exchange:sn-00000001-waterfront",
+        ctx,
+      ),
+    ).toEqual(exchange);
+    // Without a registry, refs (the exchange's bay by its own): their colons don't confuse the split.
+    const key = selectKey(exchange, bare)!;
+    expect(key).toBe("shared:stop:translink:60001:gtfs-stop:translink:12034");
+    expect(resolveSelect(key, bare)).toEqual(exchange);
+    expect(resolveSelect("shared:sn-00000001:st-0000000z", ctx)).toBe(
+      undefined,
+    );
+  });
+
   it("names vehicles by their engine id", () => {
     expect(vehicleKey("translink", "expo-005")).toBe("run:expo-005");
     expect(vehicleKey("translink", "rt:9401")).toBe("rt:translink:9401");

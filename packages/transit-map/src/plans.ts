@@ -44,6 +44,9 @@ import {
   regionDataPath,
   type FeedManifest,
   type FeedManifestEntry,
+  pathGroup,
+  type PathStep,
+  type PatternPath,
   type PlanFiles,
   type PlanTrip,
   type ServicePlan,
@@ -52,16 +55,24 @@ import {
 import {
   decodeCore,
   decodeCorridorInfo,
+  decodePatternPaths,
+  decodeRailPaths,
   decodeShapes,
   decodeTrips,
   railTripFiles,
   tripFilesFor,
   type PublishedCorridorInfo,
+  type PublishedPatternPaths,
+  type PublishedRailPaths,
   type PublishedPlan,
   type PublishedShapes,
   type PublishedTrips,
 } from "@transitopia/transit-core/plan/published.ts";
 import { activeServices } from "@transitopia/transit-core/gtfs/calendar.ts";
+import {
+  stationsOnly,
+  type PlaceOf,
+} from "@transitopia/transit-core/schedule/shared-segment.ts";
 import {
   addDays,
   localDate,
@@ -118,6 +129,9 @@ export class PlanStore {
   /** The feed's places index (data/feeds/<feed>/places.json) and files, by path. */
   private placesIndex = new Map<string, PlacesIndex | null>();
   private placesFiles = new Map<string, PlacesFile | null>();
+  /** Pattern path files, by URL path, once asked for (`patternPathsFor`, `railPathsFor`). */
+  private patternPaths = new Map<string, Map<number, PatternPath> | null>();
+  private railPaths = new Map<string, Map<number, PathStep[]> | null>();
   private movementFiles = new Map<string, MovementsFile | null>();
   private playbacks = new Map<string, TrainPlayback>();
   private preview: Record<string, string> = {};
@@ -316,6 +330,49 @@ export class PlanStore {
       );
     }
     return this.reconciledScheduled.get(key);
+  }
+
+  /**
+   * The bus patterns' paths over the corridors (`PatternPath`) of these routes, for drawing a stretch
+   * of them (a combined route, packages/transit-map/README.md#route-focus): their groups' files,
+   * loaded the first time they're asked for. Undefined while any loads (a change event fires), null
+   * when the plan has none. A file that fails to load counts as empty.
+   */
+  patternPathsFor(
+    pp: PreparedPlan,
+    routes: readonly string[],
+  ): Map<number, PatternPath> | null | undefined {
+    const v = this.versions.get(pp.plan.feedVersion);
+    if (!v?.files.paths) return null;
+    const out = new Map<number, PatternPath>();
+    let ready = true;
+    for (const g of new Set(routes.map(pathGroup))) {
+      const file = v.files.paths[g];
+      if (!file) continue;
+      const path = v.dir + file;
+      this.fetchOnce(path, this.dataUrl(path), this.patternPaths, (j) =>
+        decodePatternPaths(j as PublishedPatternPaths),
+      );
+      const got = this.patternPaths.get(path);
+      if (got === undefined) ready = false;
+      else for (const [p, steps] of got ?? []) out.set(p, steps);
+    }
+    return ready ? out : undefined;
+  }
+
+  /**
+   * The SkyTrain patterns' paths over its line pieces in the plan's tiles, as `patternPathsFor`.
+   * Null where the plan has none (no track-level rail).
+   */
+  railPathsFor(pp: PreparedPlan): Map<number, PathStep[]> | null | undefined {
+    const v = this.versions.get(pp.plan.feedVersion);
+    if (!v?.files.railPaths) return null;
+    const path = v.dir + v.files.railPaths;
+    this.fetchOnce(path, this.dataUrl(path), this.railPaths, (j) =>
+      decodeRailPaths(j as PublishedRailPaths),
+    );
+    const got = this.railPaths.get(path);
+    return got === undefined ? undefined : (got ?? new Map());
   }
 
   /**
@@ -827,6 +884,25 @@ export function hubsOf(plan: ServicePlan): BusHub[] {
       }),
     );
   return c.hubs;
+}
+
+const placeOfCache = new WeakMap<BusHub[], PlaceOf>();
+/**
+ * Which place a stop counts as for combined routes (packages/transit-core/DESIGN.md#combined-routes):
+ * its station (a platform, or one of the station's bus bays), its exchange (one of its bays), or
+ * itself. Exchanges are named by their hub's id, which only ever compares within one set of hubs.
+ */
+export function placeOfStop(plan: ServicePlan): PlaceOf {
+  const hubs = hubsOf(plan);
+  let f = placeOfCache.get(hubs);
+  if (!f) {
+    const base = stationsOnly(plan);
+    const hubOf = new Map<string, string>();
+    for (const h of hubs)
+      for (const b of h.bays) hubOf.set(b, h.station ?? `exchange:${h.id}`);
+    placeOfCache.set(hubs, (f = (id) => hubOf.get(id) ?? base(id)));
+  }
+  return f;
 }
 
 const railServiceCache = new WeakMap<ServicePlan, Set<string>>();

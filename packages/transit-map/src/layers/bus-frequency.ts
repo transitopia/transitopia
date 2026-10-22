@@ -2,10 +2,14 @@
 // tiers from CorridorFrequency's worst waits, written as MapLibre feature state so changing the time or the window
 // never re-tiles a source. Recomputed only when the date, window, hidden routes, focused route or
 // (for "now") the five-minute bucket of the time change. While a route is focused (its card is open),
-// the corridors it runs on show its own frequency and colour, and the rest are dimmed (`dim`).
+// the corridors it runs on show its own frequency and colour, and the rest are dimmed (`dim`); a
+// combined route likewise, on the corridors of its stretch (packages/transit-map/README.md#route-focus).
 
 import type { Map as MlMap } from "maplibre-gl";
-import type { FrequencyWindow } from "@transitopia/transit-core/schedule/frequency.ts";
+import type {
+  FrequencyWindow,
+  Starts,
+} from "@transitopia/transit-core/schedule/frequency.ts";
 import {
   CorridorFrequency,
   corridorStyle,
@@ -30,6 +34,25 @@ const NOW_STEP_S = 300;
 export function nowWindowStart(seconds: number): number {
   return Math.floor(seconds / NOW_STEP_S) * NOW_STEP_S;
 }
+/**
+ * What the map focuses on: a route (its card is open), or a combined route: its routes, its
+ * departures from its start (`sources`: its stretch is drawn in their frequency, as its card shows
+ * it), and the corridors (per set, by id) and stops (plan indices) along its stretch. Without its
+ * corridors (their refs still loading, or none published), those carrying all its routes stand in.
+ */
+export type Focus =
+  | { route: string }
+  | {
+      /** Tells one combined route from another. */
+      key: string;
+      routes: ReadonlySet<string>;
+      sources: readonly Starts[];
+      corridors:
+        | { detailed: ReadonlySet<number>; overview: ReadonlySet<number> }
+        | undefined;
+      stops: ReadonlySet<number>;
+    };
+
 /** Where a set of features' state goes: a tile layer of the plan's tiles, or the stop ticks' source. */
 interface Target {
   source: string;
@@ -41,6 +64,7 @@ export class BusFrequencyLayer {
   private readonly combos: CorridorFrequency;
   /** Per target: its features' ids (corridor or stop index) and their combos. */
   private readonly targets: (Target & {
+    set: "detailed" | "overview" | "stops";
     ids: number[];
     combo: Int32Array;
     /** Short corridors and the corridors they join (none for stops). */
@@ -67,7 +91,9 @@ export class BusFrequencyLayer {
     const corridors = (
       sourceLayer: string,
       set: (typeof info)["detailed"],
+      name: "detailed" | "overview",
     ) => ({
+      set: name,
       source: LINES_SOURCE,
       sourceLayer,
       ids: set.combo.map((_, i) => i),
@@ -77,9 +103,10 @@ export class BusFrequencyLayer {
     });
     const stopIds = tickStops(plan);
     this.targets = [
-      corridors(PLAN_TILE_LAYERS.corridors, info.detailed),
-      corridors(PLAN_TILE_LAYERS.overviewCorridors, info.overview),
+      corridors(PLAN_TILE_LAYERS.corridors, info.detailed, "detailed"),
+      corridors(PLAN_TILE_LAYERS.overviewCorridors, info.overview, "overview"),
       {
+        set: "stops",
         source: BUS_TICKS_SOURCE,
         ids: stopIds,
         combo: this.combos.combosOfStops(stopIds),
@@ -115,11 +142,15 @@ export class BusFrequencyLayer {
     seconds: number,
     window: FrequencyWindow,
     hidden: ReadonlySet<string>,
-    focus: string | undefined,
+    focus: Focus | undefined,
   ): void {
     if (!map.getSource(LINES_SOURCE)) return;
     const step = window === "now" ? nowWindowStart(seconds) : 0;
-    const key = `${date}|${window}|${step}|${[...hidden].join(",")}|${focus ?? ""}`;
+    const focusKey =
+      !focus ? ""
+      : "route" in focus ? focus.route
+      : `${focus.key}|${focus.corridors ? 1 : 0}|${focus.sources.map((x) => x.offset).join()}`;
+    const key = `${date}|${window}|${step}|${[...hidden].join(",")}|${focusKey}`;
     if (key === this.key) return;
     this.key = key;
     this.version++;
@@ -129,17 +160,27 @@ export class BusFrequencyLayer {
       : ("weekdays" as const);
     const all = this.combos.frequencies(query, (route) => !hidden.has(route));
     this.rates = all;
-    const own =
-      focus === undefined ? undefined : (
-        this.combos.frequencies(query, (route) => route === focus)
-      );
+    const focused: (route: string) => boolean =
+      !focus ? () => true
+      : "route" in focus ? (route) => route === focus.route
+      : (route) => focus.routes.has(route);
+    const own = focus && this.combos.frequencies(query, focused);
+    // A combined route's stretch is one frequency, its buses' merged departures from its start.
+    const segmentWait =
+      focus && "sources" in focus ?
+        this.combos.waitOf(query, focus.sources)
+      : undefined;
     // Frequency tiers count every route: where a route with its own colour is drawn in it, it
     // covers the tier line; where it isn't (limited service), its buses count like any other.
     for (const t of this.targets) {
-      const onFocus = Array.from(
-        t.combo,
-        (c) => focus === undefined || this.serves(c, focus),
-      );
+      const onFocus = Array.from(t.combo, (c, i) => {
+        if (!focus) return true;
+        if ("route" in focus) return this.serves(c, focus.route);
+        const id = t.ids[i]!;
+        if (t.set === "stops") return focus.stops.has(id);
+        if (focus.corridors) return focus.corridors[t.set].has(id);
+        return [...focus.routes].every((r) => this.serves(c, r));
+      });
       const ratesAt = (i: number) => (own && onFocus[i] ? own : all);
       const { waits, brands } = corridorStyle(
         this.combos,
@@ -149,15 +190,17 @@ export class BusFrequencyLayer {
         ratesAt,
         t.stops,
       );
-      t.ids.forEach((id, i) =>
+      t.ids.forEach((id, i) => {
+        const wait =
+          segmentWait !== undefined && onFocus[i] ? segmentWait : waits[i]!;
         map.setFeatureState(
           { ...target(t), id },
           {
-            tier: Number.isFinite(waits[i]) ? bandIndex(waits[i]!) : -1,
+            tier: Number.isFinite(wait) ? bandIndex(wait) : -1,
             dim: !onFocus[i],
           },
-        ),
-      );
+        );
+      });
       const shown = new Map([...brands].map(([i, b]) => [t.ids[i]!, b]));
       for (const id of this.brandShown.get(keyOf(t)) ?? [])
         if (!shown.has(id))

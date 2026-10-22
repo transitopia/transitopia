@@ -183,7 +183,7 @@ export const PlaceCard: React.FC<{
   snap: TransitSnapshot;
 }> = ({ engine, snap }) => {
   const place = snap.place;
-  if (!place || place.kind === "route") return null;
+  if (!place || place.kind === "route" || place.kind === "shared") return null;
   return <PlaceCardBody engine={engine} snap={snap} place={place} />;
 };
 
@@ -204,11 +204,39 @@ const NOUNS: Record<DepartureKind, string> = {
   bus: "buses",
 };
 
+/**
+ * What a shared stretch's row (or a bracket's footnote) opens (apps/web/README.md#cross-references):
+ * its combined route, where it has one. Without, it's plain text.
+ */
+const SharedMenu: React.FC<{
+  shared: Shared;
+  items: MenuItem[];
+  triggerClassName: (open: boolean) => string;
+  plain: string;
+  children: React.ReactNode;
+}> = ({ shared: s, items, triggerClassName, plain, children }) =>
+  items.length ?
+    <Menu
+      label={sharedLabel(s.routes, s.to)}
+      iconTrigger={false}
+      trigger={children}
+      items={items}
+      triggerClassName={triggerClassName}
+    />
+  : <div className={plain}>{children}</div>;
+
 const SharedRow: React.FC<{
   shared: Shared;
   colors: (r: PlanRoute) => RouteColors;
-}> = ({ shared: s, colors }) => (
-  <div className="my-1 flex items-center gap-2.5 rounded-[10px] border-0! bg-(--card-combined-bg) px-3 py-2.5">
+  items: MenuItem[];
+}> = ({ shared: s, colors, items }) => (
+  <SharedMenu
+    shared={s}
+    items={items}
+    plain="my-1 flex items-center gap-2.5 rounded-[10px] border-0! bg-(--card-combined-bg) px-3 py-2.5"
+    triggerClassName={(open) =>
+      `my-1 flex w-full items-center gap-2.5 rounded-[10px] bg-(--card-combined-bg) px-3 py-2.5 text-left hover:ring-1 hover:ring-(--card-border) ${open ? "ring-1 ring-(--card-border)" : ""}`
+    }>
     <RouteBadgeStack routes={s.routes} colors={colors} />
     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
       <span className="text-sm leading-snug font-bold">
@@ -223,7 +251,7 @@ const SharedRow: React.FC<{
         <Frequency frequency={s.frequency} />
       : null}
     </div>
-  </div>
+  </SharedMenu>
 );
 
 const groupKey = (g: PlaceGroup) => `${g.route.key}|${g.headsign}`;
@@ -237,7 +265,8 @@ const SharedBracket: React.FC<{
   shared: Shared;
   children: React.ReactNode;
   count: number;
-}> = ({ shared: s, children, count }) => (
+  items: MenuItem[];
+}> = ({ shared: s, children, count, items }) => (
   <div className="flex gap-2">
     <span
       aria-hidden="true"
@@ -245,7 +274,13 @@ const SharedBracket: React.FC<{
     />
     <div className="min-w-0 flex-1">
       <div className="divide-y divide-(--card-divider)">{children}</div>
-      <p className="flex flex-wrap items-center gap-x-1.5 pb-2 text-[12.5px] leading-snug font-bold">
+      <SharedMenu
+        shared={s}
+        items={items}
+        plain="mb-2 flex flex-wrap items-center gap-x-1.5 text-[12.5px] leading-snug font-bold"
+        triggerClassName={(open) =>
+          `-mx-1 mb-1 flex w-[calc(100%+0.5rem)] flex-wrap items-center gap-x-1.5 rounded-md px-1 py-1 text-left text-[12.5px] leading-snug font-bold hover:bg-(--card-hover) ${open ? "bg-(--card-combined-bg)" : ""}`
+        }>
         {count === 2 ? "Either one" : "Any of these"}, to {s.to}
         {s.frequency ?
           <>
@@ -253,7 +288,7 @@ const SharedBracket: React.FC<{
             <Frequency frequency={s.frequency} strong />
           </>
         : null}
-      </p>
+      </SharedMenu>
     </div>
   </div>
 );
@@ -270,8 +305,18 @@ const DepartureList: React.FC<{
   empty: string;
   snap: TransitSnapshot;
   itemsFor: (g: PlaceGroup) => MenuItem[];
+  sharedItems: (s: Shared) => MenuItem[];
   colors: (r: PlanRoute) => RouteColors;
-}> = ({ title, groups, shared, empty, snap, itemsFor, colors }) => {
+}> = ({
+  title,
+  groups,
+  shared,
+  empty,
+  snap,
+  itemsFor,
+  sharedItems,
+  colors,
+}) => {
   const owner = new Map<string, Shared>();
   for (const s of shared)
     if (s.platforms.length === 1) for (const k of s.groups) owner.set(k, s);
@@ -295,7 +340,11 @@ const DepartureList: React.FC<{
     else if (!done.has(s)) {
       done.add(s);
       blocks.push(
-        <SharedBracket key={sharedKey(s)} shared={s} count={members.length}>
+        <SharedBracket
+          key={sharedKey(s)}
+          shared={s}
+          count={members.length}
+          items={sharedItems(s)}>
           {members.map(row)}
         </SharedBracket>,
       );
@@ -308,7 +357,12 @@ const DepartureList: React.FC<{
   return (
     <CardSection title={title}>
       {onTop.map((s) => (
-        <SharedRow key={sharedKey(s)} shared={s} colors={colors} />
+        <SharedRow
+          key={sharedKey(s)}
+          shared={s}
+          colors={colors}
+          items={sharedItems(s)}
+        />
       ))}
       {groups.length ?
         blocks
@@ -397,6 +451,18 @@ const PlaceCardBody: React.FC<{
     }
     return items;
   };
+  // A shared stretch's combined route (packages/transit-core/DESIGN.md#combined-routes).
+  const sharedItems = (s: Shared): MenuItem[] =>
+    s.segment ?
+      [
+        {
+          id: "combined",
+          label: "Show combined route",
+          icon: "segment",
+          onSelect: go(s.segment),
+        },
+      ]
+    : [];
   const actions: CardAction[] = [
     {
       id: "centre",
@@ -514,6 +580,7 @@ const PlaceCardBody: React.FC<{
           groups={x.groups}
           shared={x.shared}
           itemsFor={itemsFor}
+          sharedItems={sharedItems}
           colors={colors}
           empty={
             sections.length > 1 ?

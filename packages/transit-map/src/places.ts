@@ -7,7 +7,10 @@ import {
   serviceDayStart,
   type ServiceDate,
 } from "@transitopia/transit-core/time.ts";
-import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
+import type {
+  PlanRoute,
+  ServicePlan,
+} from "@transitopia/transit-core/plan/types.ts";
 import {
   bayLabel,
   type BusHub,
@@ -23,15 +26,21 @@ import {
   groupDepartures,
   placeName,
   sharedStretches,
+  type SharedStretch,
   stopsOf,
   type Departure,
 } from "@transitopia/transit-core/schedule/departures.ts";
 import {
   routeFrequency,
   type Frequency,
+  type Starts,
 } from "@transitopia/transit-core/schedule/frequency.ts";
-import { displayServiceDate, hubsOf } from "./plans.ts";
-import type { Place } from "./url.ts";
+import {
+  segmentFrequency,
+  sharedStart,
+} from "@transitopia/transit-core/schedule/shared-segment.ts";
+import { displayServiceDate, hubsOf, placeOfStop } from "./plans.ts";
+import { sharedPlace, type Place } from "./url.ts";
 
 /** A route + destination leaving a station or stop, with its next departures. */
 export interface PlaceGroup {
@@ -67,6 +76,24 @@ export interface RouteSnapshot {
   datasets: string[];
 }
 
+/**
+ * The selected combined route (packages/transit-core/DESIGN.md#combined-routes): the routes running
+ * together from one stop to another, and how often they leave its start.
+ */
+export interface SharedSnapshot {
+  kind: "shared";
+  id: string;
+  /** Its routes, in the plan's order; none when no route runs the stretch in this timetable. */
+  routes: PlanRoute[];
+  /** Where it starts and ends ("Commercial-Broadway", "17 St"). */
+  from: string;
+  to: string;
+  /** How often its buses leave its start in the hour from the shown time (timetable). */
+  nextHour: Frequency | undefined;
+  /** Registry ids of the data behind it, for its card's credits. */
+  datasets: string[];
+}
+
 /** The selected station, bus exchange or bus stop and what leaves it after the shown time. */
 export interface PlaceSnapshot extends Place {
   kind: "station" | "exchange" | "stop";
@@ -94,6 +121,8 @@ export interface PlaceSnapshot extends Place {
     groups: string[];
     to: string;
     frequency: Frequency | undefined;
+    /** The combined route it's part of, from where its routes come together (buses only, for now). */
+    segment: Place | undefined;
   }[];
 }
 
@@ -132,6 +161,7 @@ export function placeChoice(
   place: Place,
 ): PickChoice | undefined {
   const { plan } = pp;
+  if (place.kind === "shared") return undefined;
   if (place.kind === "route") {
     const route = pp.routes.get(place.id);
     return route && { kind: "place", place, name: route.label, route };
@@ -166,6 +196,16 @@ export interface PlaceContext {
   corrections: (date: ServiceDate) => ScheduleCorrections | undefined;
   /** The datasets behind routes (each with whether real-time data is shown for it), for credits. */
   datasetsOf: (routes: Iterable<[PlanRoute | undefined, boolean]>) => string[];
+  /** A combined route's segment and whether a vehicle is on it, for its card. */
+  segment: (p: Place) => SegmentContext | undefined;
+}
+
+/** What a combined route's card is worked out from (the engine keeps it per plan). */
+export interface SegmentContext {
+  routes: string[];
+  /** Its departures from its start, as frequency sources. */
+  sources: Starts[];
+  onSegment: (v: VehicleState) => boolean;
 }
 
 /** Where a station, exchange or stop is ([lon, lat]), for its highlight and "Centre on map". */
@@ -174,7 +214,7 @@ export function placeLocation(
   p: Place,
 ): [number, number] | undefined {
   const { plan } = pp;
-  if (p.kind === "route") return undefined;
+  if (p.kind === "route" || p.kind === "shared") return undefined;
   const at =
     p.kind === "station" ? plan.stations.find((s) => s.id === p.id)
     : p.kind === "exchange" ? hubsOf(plan).find((h) => h.id === p.id)
@@ -186,8 +226,9 @@ export function placeLocation(
 export function placeSnapshot(
   p: Place,
   ctx: PlaceContext,
-): PlaceSnapshot | RouteSnapshot | undefined {
+): PlaceSnapshot | RouteSnapshot | SharedSnapshot | undefined {
   const { pp, t } = ctx;
+  if (p.kind === "shared") return sharedSnapshot(p, ctx);
   if (p.kind === "route") {
     const route = pp.routes.get(p.id);
     if (!route) return undefined;
@@ -327,13 +368,77 @@ export function placeSnapshot(
         g.departures.find((d) => !d.cancelled) ?? g.departures[0]!,
       ),
     })),
-    shared: sharedStretches(plan, groups).map((s) => ({
-      routes: [...new Set(s.groups.map((g) => g.routeKey))].map(routeOf),
-      platforms: [...new Set(s.groups.flatMap((g) => g.platforms))].sort(),
-      groups: s.groups.map((g) => `${g.routeKey}|${g.headsign}`),
-      to: placeName(plan, s.toStopId),
-      frequency: departureFrequency(s.departures, t),
+    shared: sharedStretches(plan, groups).map((s) => {
+      const routes = [...new Set(s.groups.map((g) => g.routeKey))].map(routeOf);
+      return {
+        routes,
+        platforms: [...new Set(s.groups.flatMap((g) => g.platforms))].sort(),
+        groups: s.groups.map((g) => `${g.routeKey}|${g.headsign}`),
+        to: placeName(plan, s.toStopId),
+        frequency: departureFrequency(s.departures, t),
+        segment: sharedSegmentOf(plan, s),
+      };
+    }),
+  };
+}
+
+/**
+ * A shared stretch's combined route: from where its routes came together, comparing stops by their
+ * station or exchange (`placeOfStop`), to where they split.
+ */
+function sharedSegmentOf(
+  plan: ServicePlan,
+  s: SharedStretch,
+): Place | undefined {
+  const placeOf = placeOfStop(plan);
+  const from = sharedStart(
+    plan,
+    s.groups.map((g) => ({
+      pattern: g.departures[0]!.pattern,
+      index: g.departures[0]!.index,
     })),
+    placeOf,
+  );
+  const end = placeOf(s.toStopId);
+  const to = plan.stations.some((x) => x.id === end) ? end : s.toStopId;
+  return placeOf(from) === end ? undefined : sharedPlace(from, to);
+}
+
+/** A combined route's card at ctx.t (`SharedSnapshot`). */
+function sharedSnapshot(p: Place, ctx: PlaceContext): SharedSnapshot {
+  const { pp, t } = ctx;
+  const { plan } = pp;
+  const [from, to] = p.id.split(">") as [string, string];
+  const seg = ctx.segment(p);
+  const routes = (seg?.routes ?? []).flatMap((k) => pp.routes.get(k) ?? []);
+  const date = displayServiceDate(t);
+  const sec = Math.floor((t - serviceDayStart(date)) / 1000);
+  // Real positions on it, for the credits.
+  const live =
+    seg ?
+      ctx.vehicles.filter(
+        (v) => v.provenance !== "estimated" && seg.onSegment(v),
+      )
+    : [];
+  // A station, an exchange (by one of its bays), or a stop's cross street.
+  const name = (key: string) =>
+    plan.stations.find((s) => s.id === key)?.name.replace(/\s+Station$/i, "")
+    ?? hubsOf(plan).find((h) => !h.station && h.bays.includes(key))?.name
+    ?? placeName(plan, key);
+  return {
+    kind: "shared",
+    id: p.id,
+    routes,
+    from: name(from),
+    to: name(to),
+    nextHour:
+      seg && segmentFrequency(pp.servicesOn, seg.sources, date, sec, 3600),
+    datasets: ctx.datasetsOf(
+      routes.map((r): [PlanRoute, boolean] => [
+        r,
+        live.some((v) => v.routeKey === r.key),
+      ]),
+    ),
   };
 }
 

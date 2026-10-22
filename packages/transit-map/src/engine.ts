@@ -36,6 +36,19 @@ import type {
 } from "@transitopia/transit-core/schedule/engine.ts";
 import type { Departure } from "@transitopia/transit-core/schedule/departures.ts";
 import {
+  onSegment,
+  segmentSteps,
+  segmentHourly,
+  segmentLines,
+  segmentRanges,
+  segmentStarts,
+  segmentStops,
+  sharedSegment,
+  startOffsets,
+  type SharedSegment,
+} from "@transitopia/transit-core/schedule/shared-segment.ts";
+import type { LonLat } from "@transitopia/transit-core/geo.ts";
+import {
   DAY_HOURS,
   dayTypes,
   hourlyFrequency,
@@ -51,6 +64,7 @@ import {
   SERVICE_DAY_ROLLOVER_H,
   displayServiceDate,
   hubsOf,
+  placeOfStop,
   mergeCorrections,
 } from "./plans.ts";
 import {
@@ -67,11 +81,15 @@ import {
   applyStopsVisibility,
   removeSources,
   setFerryPair,
-  setFocusRoute,
+  setFocus,
   setSelectedPlace,
 } from "./layers/static.ts";
 import { VehicleLayer } from "./layers/vehicles.ts";
-import { BusFrequencyLayer, nowWindowStart } from "./layers/bus-frequency.ts";
+import {
+  BusFrequencyLayer,
+  nowWindowStart,
+  type Focus,
+} from "./layers/bus-frequency.ts";
 import {
   DEBUG_SOURCE,
   TRACKS_SOURCE,
@@ -82,12 +100,19 @@ import {
   loadTracks,
   PICKABLE_TRACK_LAYERS,
   setDebugPlatforms,
+  setRailFocus,
 } from "./layers/tracks.ts";
 import {
   brandedRoutes,
   PLAN_TILE_LAYERS,
 } from "@transitopia/transit-core/plan/tiles.ts";
-import { readUrl, writeUrl, type Place, type UrlState } from "./url.ts";
+import {
+  readUrl,
+  sharedEnds,
+  writeUrl,
+  type Place,
+  type UrlState,
+} from "./url.ts";
 import type { BusHub } from "@transitopia/transit-core/plan/exchanges.ts";
 import {
   resolveSelect,
@@ -109,6 +134,8 @@ import {
   type PlaceGroup,
   type PlaceSnapshot,
   type RouteSnapshot,
+  type SegmentContext,
+  type SharedSnapshot,
 } from "./places.ts";
 import { loadPref, savePref } from "./prefs.ts";
 import type { RegionConfig } from "./config.ts";
@@ -163,7 +190,14 @@ export interface SelectedVehicle {
 
 export type { Place };
 export type { Departure };
-export type { PickChoice, PickMenu, PlaceGroup, PlaceSnapshot, RouteSnapshot };
+export type {
+  PickChoice,
+  PickMenu,
+  PlaceGroup,
+  PlaceSnapshot,
+  RouteSnapshot,
+  SharedSnapshot,
+};
 
 /** A card to open: a vehicle's, or a place's (station, exchange, stop or route line). */
 export type CardTarget = { vehicle: string } | { place: Place };
@@ -174,6 +208,26 @@ export interface RouteDay {
   label: string;
   hours: (Frequency | undefined)[];
 }
+
+/** A combined route in a prepared plan (`segmentInfo`). */
+interface SegmentInfo extends SegmentContext {
+  segment: SharedSegment | undefined;
+  /** Its stops (plan indices) and their ids, for the map's focus. */
+  stops: Set<number>;
+  stopIds: string[];
+  /** The corridors it runs along, once its patterns' paths are in. */
+  corridors:
+    | { detailed: ReadonlySet<number>; overview: ReadonlySet<number> }
+    | undefined;
+  /** SkyTrain's line pieces (their feature ids in the plan's tiles) it runs along, once they're in. */
+  rail: ReadonlySet<number> | undefined;
+  /** The hubs (`hubsOf`) its places were worked out with. */
+  hubs: BusHub[];
+  /** Its `sharedDays`, by the date they're from. */
+  days: Record<string, RouteDay[]>;
+}
+
+const NO_IDS: ReadonlySet<number> = new Set();
 
 export { DAY_HOURS };
 export type { Frequency };
@@ -218,8 +272,8 @@ export interface TransitSnapshot {
   /** The camera keeps the selected vehicle in view. */
   following: boolean;
   selected: SelectedVehicle | undefined;
-  /** The selected station, stop or route line (exclusive with a selected vehicle). */
-  place: PlaceSnapshot | RouteSnapshot | undefined;
+  /** The selected station, stop, route line or combined route (exclusive with a selected vehicle). */
+  place: PlaceSnapshot | RouteSnapshot | SharedSnapshot | undefined;
   /** The title of the card `back()` returns to, when this one was opened from another card. */
   back: string | undefined;
   /** A tap near several things: what it might have meant, to choose from (`choose`). */
@@ -327,6 +381,11 @@ export class TransitEngine {
   private revealAt: number | undefined;
   /** Per feed and route: its day types and hourly frequencies (they don't change with the time). */
   private routeDayCache = new WeakMap<PreparedPlan, Map<string, RouteDay[]>>();
+  /** Per feed and combined route (`Place` id): what its card and the map's focus need (`segmentInfo`). */
+  private segmentCache = new WeakMap<PreparedPlan, Map<string, SegmentInfo>>();
+  /** SkyTrain pieces last marked as on a combined route (`syncRailFocus`), and for what. */
+  private railFocused: ReadonlySet<number> = NO_IDS;
+  private railFocusFor: ReadonlySet<number> | undefined;
   /** Per feed and route: its weekday figure, where the plan hasn't it (dayWait). */
   private dayWaitCache = new WeakMap<
     PreparedPlan,
@@ -486,12 +545,12 @@ export class TransitEngine {
       this.ferryPair = undefined;
       this.syncStatic(true);
     };
-    const onStyleData = () => {
-      // A new style (theme switch) replaces our sources and layers; wait for it to load. Sources
-      // removed from the loaded style (a previous engine disposed, e.g. for another region) aren't
-      // a new style, and no style.load would follow.
-      if (!map.getSource(LINES_SOURCE) && !map.isStyleLoaded())
-        this.styleReady = false;
+    // A new style (theme switch) replaces our sources and layers: wait for it to load. Only a new
+    // style starting to load says so: 'styledata' also follows every layer change (the overview's,
+    // a previous engine's removal), and while any tiles load the style doesn't count as loaded, so
+    // a new engine still waiting for its plan would wait for a style.load that never comes.
+    const onStyleLoading = () => {
+      this.styleReady = false;
     };
     const onClick = (e: {
       point: { x: number; y: number };
@@ -556,7 +615,7 @@ export class TransitEngine {
     const onIdle = () => onSourceData({});
     map.on("idle", onIdle);
     map.on("style.load", onStyleLoad);
-    map.on("styledata", onStyleData);
+    map.on("styledataloading", onStyleLoading);
     map.on("click", onClick);
     map.on("mousemove", onMouseMove);
     const onMove = () => {
@@ -574,7 +633,7 @@ export class TransitEngine {
       map.off("sourcedata", onSourceData);
       map.off("idle", onIdle);
       map.off("style.load", onStyleLoad);
-      map.off("styledata", onStyleData);
+      map.off("styledataloading", onStyleLoading);
       map.off("click", onClick);
       map.off("mousemove", onMouseMove);
       map.getCanvas().style.cursor = "";
@@ -724,6 +783,9 @@ export class TransitEngine {
       : undefined;
     if (here) this.trail.push({ target: here, label: from });
     this.show(target);
+    // A combined route can start well before the stop it was opened from.
+    if ("place" in target && target.place.kind === "shared")
+      this.locateSelected();
   }
 
   /** Back to the card the showing one was opened from. */
@@ -974,17 +1036,145 @@ export class TransitEngine {
       : undefined;
   }
 
+  /**
+   * What the map focuses on (packages/transit-map/README.md#route-focus): the route whose card is
+   * open, or the combined route's stretch.
+   */
+  private focus(): Focus | undefined {
+    const route = this.focusRoute();
+    if (route !== undefined) return { route };
+    const info = this.segmentInfo();
+    return info?.segment && this.place ?
+        {
+          key: this.place.id,
+          routes: new Set(info.segment.routes),
+          sources: info.sources,
+          corridors: info.corridors,
+          stops: info.stops,
+        }
+      : undefined;
+  }
+
+  /**
+   * Keep the open combined route's SkyTrain pieces marked (`setRailFocus`): those of the last ones
+   * marked it no longer has unmarked, and after the lines' source was re-created (`railFocusFor`
+   * cleared), every one marked again, since MapLibre keeps state by feature id across new data.
+   */
+  private syncRailFocus(): void {
+    const want = this.segmentInfo()?.rail ?? NO_IDS;
+    if (want === this.railFocusFor) return;
+    const was = this.railFocused;
+    setRailFocus(
+      this.map,
+      [...was].filter((id) => !want.has(id)),
+      false,
+    );
+    setRailFocus(this.map, want, true);
+    this.railFocused = want;
+    this.railFocusFor = want;
+  }
+
   private syncPlaceHighlight(): void {
-    this.vehicles.focusRoute = this.focusRoute();
+    const route = this.focusRoute();
+    const info = route === undefined ? this.segmentInfo() : undefined;
+    this.vehicles.focus =
+      route !== undefined ? (v) => v.routeKey === route
+      : info?.segment ? info.onSegment
+      : undefined;
     if (!this.styleReady || this.disposed) return;
     setSelectedPlace(this.map, this.placePoint());
-    setFocusRoute(this.map, this.focusRoute());
+    setFocus(
+      this.map,
+      route !== undefined ? { route }
+      : info?.segment ? { stops: info.stopIds }
+      : undefined,
+    );
+  }
+
+  /**
+   * The open combined route in the shown feed (packages/transit-core/DESIGN.md#combined-routes):
+   * its segment (undefined when no route runs it in this feed) and what the card and the map's
+   * focus need of it, worked out once per prepared plan (its departures' offsets come from the
+   * trips loaded) and, for its corridors, once the plan's corridor refs are in.
+   */
+  private segmentInfo(): SegmentInfo | undefined {
+    const pp = this.shownFeed;
+    const place = this.place;
+    if (!pp || place?.kind !== "shared") return undefined;
+    let byId = this.segmentCache.get(pp);
+    if (!byId) this.segmentCache.set(pp, (byId = new Map()));
+    // Its places are the hubs' (stations' bays, exchanges), which change when the places file arrives.
+    const hubs = hubsOf(pp.plan);
+    let info = byId.get(place.id);
+    if (!info || info.hubs !== hubs) {
+      const { from, to } = sharedEnds(place);
+      const segment = sharedSegment(pp.plan, from, to, placeOfStop(pp.plan));
+      const cumOf = (shape: string) => pp.shapeCum.get(shape);
+      const ranges = segment ? segmentRanges(pp.plan, segment) : new Map();
+      const stops =
+        segment ? segmentStops(pp.plan, segment) : new Set<number>();
+      const plan = pp.plan;
+      info = {
+        segment,
+        routes: segment?.routes ?? [],
+        sources:
+          segment ?
+            segmentStarts(
+              segment,
+              patternStarts(plan),
+              startOffsets(segment, plan.trips),
+            )
+          : [],
+        stops,
+        stopIds: [...stops].map((i) => plan.stops[i]!.id),
+        corridors: undefined,
+        rail: undefined,
+        hubs,
+        days: {},
+        onSegment: (v) => {
+          const pattern = pp.tripIndex.get(v.tripId)?.pattern.id;
+          return (
+            pattern !== undefined
+            && onSegment(plan, ranges, pattern, [v.lon, v.lat], cumOf)
+          );
+        },
+      };
+      byId.set(place.id, info);
+    }
+    // What it's drawn over, once its patterns' paths are in: corridors, and SkyTrain's line pieces.
+    const seg = info.segment;
+    if (seg && !info.corridors && pp.plan.corridorInfo) {
+      const paths = this.store.patternPathsFor(pp, seg.routes);
+      if (paths !== undefined)
+        info.corridors = {
+          detailed: segmentSteps(pp.plan, seg, (p) => paths?.get(p)?.detailed),
+          overview: segmentSteps(pp.plan, seg, (p) => paths?.get(p)?.overview),
+        };
+    }
+    if (seg && !info.rail) {
+      const rail =
+        seg.routes.some((r) => pp.routes.get(r)?.mode === "skytrain") ?
+          this.store.railPathsFor(pp)
+        : null;
+      if (rail !== undefined)
+        info.rail = segmentSteps(pp.plan, seg, (p) => rail?.get(p));
+    }
+    return info;
   }
 
   /** Centre the map on the selected vehicle (or station or stop), in the part of the map the host's chrome leaves clear. */
   locateSelected(): void {
     if (this.place?.kind === "route") {
       this.fitRoute(this.place.id);
+      return;
+    }
+    if (this.place?.kind === "shared") {
+      const pp = this.shownFeed;
+      const segment = this.segmentInfo()?.segment;
+      if (pp && segment)
+        this.fitLines(
+          segmentLines(pp.plan, segment, (s) => pp.shapeCum.get(s)),
+        );
       return;
     }
     const v =
@@ -1022,15 +1212,23 @@ export class TransitEngine {
   private fitRoute(key: string): void {
     const plan = this.shownFeed?.plan;
     if (!plan) return;
+    this.fitLines(
+      plan.patterns
+        .filter((p) => p.route === key)
+        .map((p) => (plan.shapes[p.shape] ?? []) as LonLat[]),
+    );
+  }
+
+  /** Fit lines into the area the host's chrome leaves clear. */
+  private fitLines(lines: readonly LonLat[][]): void {
     let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
-    for (const p of plan.patterns)
-      if (p.route === key)
-        for (const [lon, lat] of plan.shapes[p.shape] ?? []) {
-          w = Math.min(w, lon);
-          e = Math.max(e, lon);
-          s = Math.min(s, lat);
-          n = Math.max(n, lat);
-        }
+    for (const line of lines)
+      for (const [lon, lat] of line) {
+        w = Math.min(w, lon);
+        e = Math.max(e, lon);
+        s = Math.min(s, lat);
+        n = Math.max(n, lat);
+      }
     if (!Number.isFinite(w)) return;
     const pad = this.viewPadding;
     const margin = 40;
@@ -1072,6 +1270,22 @@ export class TransitEngine {
       byRoute.set(cacheKey, days);
     }
     return days;
+  }
+
+  /**
+   * The open combined route's hourly frequency (its buses leaving its start) for each kind of day in
+   * the shown feed, the shown date's kind first, as `routeDays`.
+   */
+  sharedDays(): RouteDay[] {
+    const pp = this.shownFeed;
+    const info = this.segmentInfo();
+    if (!pp || !info?.segment) return [];
+    const from = displayServiceDate(this.clock.now());
+    return (info.days[from] ??= dayTypes(pp, from).map((d) => ({
+      date: d.date,
+      label: this.describeDate(d.date),
+      hours: segmentHourly(pp.servicesOn, info.sources, d.date),
+    })));
   }
 
   /**
@@ -1561,7 +1775,9 @@ export class TransitEngine {
     };
   }
 
-  private placeSnapshot(t: number): PlaceSnapshot | RouteSnapshot | undefined {
+  private placeSnapshot(
+    t: number,
+  ): PlaceSnapshot | RouteSnapshot | SharedSnapshot | undefined {
     const pp = this.shownFeed;
     if (!this.place || !pp) return undefined;
     return placeSnapshot(this.place, {
@@ -1573,6 +1789,7 @@ export class TransitEngine {
         && !(this.liveOnly && v.provenance === "estimated"),
       corrections: (d) => this.lastCorrections?.get(d),
       datasetsOf: (routes) => this.datasetsOf(routes),
+      segment: () => this.segmentInfo(),
     });
   }
 
@@ -1629,6 +1846,7 @@ export class TransitEngine {
     else if (!this.frequencyLayer || this.frequencyLayer.plan !== pp.plan)
       this.frequencyLayer = new BusFrequencyLayer(pp.plan);
     this.frequencyLayer?.invalidate(map);
+    this.railFocusFor = undefined;
     this.syncPlaceHighlight();
     this.ferryPair = undefined;
     // SkyTrain's track, in the tiles of a region with track-level rail (they replace its GTFS shapes).
@@ -1726,9 +1944,10 @@ export class TransitEngine {
         (t - serviceDayStart(date)) / 1000,
         this.busFrequency,
         this.hidden,
-        this.focusRoute(),
+        this.focus(),
       );
     }
+    if (this.styleReady) this.syncRailFocus();
     if (this.syncVehicleColors()) this.inputsChanged = true;
     if (this.following && this.styleReady) this.keepCentred();
     else if (this.clearPaddingPending && !map.isMoving())
@@ -1766,6 +1985,7 @@ export class TransitEngine {
     const keep = new Set<string>();
     if (this.selectedRoute) keep.add(this.selectedRoute);
     if (this.place?.kind === "route") keep.add(this.place.id);
+    for (const r of this.segmentInfo()?.routes ?? []) keep.add(r);
     const visible =
       !this.hidden.size || (this.selectedId && !this.selectedRoute) ?
         undefined

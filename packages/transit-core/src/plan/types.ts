@@ -126,13 +126,29 @@ export interface CorridorSet {
 }
 
 /**
- * Per corridor, the patterns along it (`CorridorRef`): for drawing a stretch of a pattern over the
- * corridors it runs along. Published beside the metadata (`PlanFiles.corridorRefs`), which doesn't
- * need them.
+ * A stretch of a pattern drawn by one feature of the plan's tiles (a corridor, or a piece of
+ * SkyTrain's line): its id, and from and to where along the pattern's shape it runs (m).
  */
-export interface PlanCorridorRefs {
-  detailed: CorridorRef[][];
-  overview: CorridorRef[][];
+export type PathStep = [id: number, from: number, to: number];
+
+/**
+ * A pattern's path over the lines drawn for it, in order (packages/transit-core/DESIGN.md#published-plans):
+ * the detailed and the overview corridors it runs along, each time it does. For drawing a stretch of
+ * a pattern (a combined route) over them.
+ */
+export interface PatternPath {
+  detailed: PathStep[];
+  overview: PathStep[];
+}
+
+/**
+ * Pattern paths are published in files by their route's group: the first character of its key
+ * ("99" and "9" together; "R1" to "R6"; "N10" with the other night buses), so a combined route,
+ * whose routes are usually numbered alike, needs a file or two.
+ */
+export function pathGroup(routeKey: string): string {
+  const c = routeKey.charAt(0).toLowerCase();
+  return /^[0-9a-z]$/.test(c) ? c : "_";
 }
 
 /** The detailed corridors (drawn from CORRIDOR_DETAIL_ZOOM) and the overview's (divided roads merged). */
@@ -293,6 +309,11 @@ export interface ServicePlan {
   overviewCorridors?: PlanCorridor[];
   /** The corridors' metadata, in the browser's plan (from its `files.corridorInfo`). */
   corridorInfo?: PlanCorridorInfo | undefined;
+  /**
+   * Only while building the plan: each bus pattern's path over the corridors (`PatternPath`), by
+   * pattern index. Published in files of their own (`PlanFiles.paths`).
+   */
+  paths?: Map<number, PatternPath> | undefined;
   /** The corridors' and stops' frequency combos, in a published plan with corridors. */
   frequency?: PlanFrequencyTable | undefined;
   /**
@@ -309,8 +330,13 @@ export interface PlanFiles {
   overviewCorridors?: string | undefined;
   /** The corridors' metadata without their geometry (`PlanCorridorInfo`): what the browser loads. */
   corridorInfo?: string | undefined;
-  /** The patterns along each corridor (`PlanCorridorRefs`). */
-  corridorRefs?: string | undefined;
+  /** Bus patterns' paths over the corridors (`PatternPath`), a file per route group (`pathGroup`). */
+  paths?: Record<string, string> | undefined;
+  /**
+   * SkyTrain patterns' paths over its line pieces in the plan's tiles (`PathStep`s), where the region
+   * has track. Set by build-plan-tiles, with the tiles they're numbered by.
+   */
+  railPaths?: string | undefined;
   /**
    * The plan's tiles (packages/transit-core/DESIGN.md#plan-tiles): every line the map draws for it, named by
    * a hash of their input, so plans whose lines didn't change share them. Set by build-plan-tiles.

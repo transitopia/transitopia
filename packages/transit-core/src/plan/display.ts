@@ -37,7 +37,8 @@ export function firstBoarding(pattern: PlanPattern): number {
 /**
  * A stop as a rider would name it: its station ("Waterfront"), its exchange ("Langford Exchange",
  * from TransLink's "… @ Bay 7" and BC Transit's "… Exch Bay D" alike), or for a street stop its
- * cross street ("Westbound W Broadway @ Alma St" → "Alma St"; names without "@" stay whole).
+ * cross street (TransLink's "Westbound W Broadway @ Alma St" → "Alma St", BC Transit's "Douglas St
+ * at Bay St" → "Bay St"; other names stay whole).
  */
 export function placeName(
   plan: Pick<ServicePlan, "stops" | "stations">,

@@ -36,8 +36,17 @@ const MERGE_M = 40;
 /** Stops within this distance of a station aren't shown (m). */
 const STATION_M = 200;
 
-/** Marker label for a GTFS stop name, or undefined for a station bay or a layover. */
+/**
+ * Marker label for a GTFS stop name, or undefined for a station bay or a layover: a street stop's
+ * cross street (TransLink's "Eastbound W Broadway @ Alma St", BC Transit's "Douglas St at Bay St"),
+ * an exchange's name, or the name whole ("800 Blk Esquimalt Rd").
+ */
 export function busStopLabel(name: string): string | undefined {
+  if (!name.includes("@")) {
+    const at = name.indexOf(" at ");
+    const cross = at < 0 ? "" : name.slice(at + 4).trim();
+    return cross || name.replace(/\s+/g, " ").trim();
+  }
   const [before = "", after = ""] = name
     .split("@")
     .map((s) => s.replace(/\s+/g, " ").trim());

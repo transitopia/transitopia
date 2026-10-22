@@ -5,6 +5,7 @@ import {
   type OsmElement,
 } from "../src/plan/road-match.ts";
 import { buildCorridors, mergeCarriageways } from "../src/plan/corridors.ts";
+import { corridorPaths } from "../src/plan/paths.ts";
 import type { LonLat } from "../src/geo.ts";
 
 // A small street grid near 49.25°N: A (one-way eastbound) along nodes 1–5, 182 m apart; B (two-way)
@@ -168,7 +169,7 @@ describe("buildCorridors", () => {
       [lon(2), LAT_B],
       [lon(3), LAT_B],
     ];
-    const corridors = buildCorridors(g, [
+    const { corridors, paths } = buildCorridors(g, [
       { pattern: 0, pieces: matchShape(g, along).pieces },
       { pattern: 1, pieces: matchShape(g, turning).pieces },
     ]);
@@ -192,6 +193,65 @@ describe("buildCorridors", () => {
     expect(own.refs[0]![1]).toBe(1);
     expect(own.refs[0]![2]).toBeGreaterThan(350);
     expect(own.refs[0]![2]).toBeLessThan(380);
+    // Its path: along the shared corridor, then its own from the corner on.
+    const path = paths.get(1)!;
+    expect(path.map((st) => st.corridor)).toEqual([shared[0], own]);
+    expect(path[0]!.from).toBe(0);
+    expect(path[1]!.from).toBeCloseTo(path[0]!.to, 6);
+  });
+
+  it("lists each time a pattern runs along a corridor in its path", () => {
+    // Out along B (two-way) and back: one corridor, along it twice, the second time the other way.
+    const outAndBack: LonLat[] = [
+      [lon(0), LAT_B],
+      [lon(4), LAT_B],
+      [lon(0), LAT_B],
+    ];
+    const { corridors, paths } = buildCorridors(g, [
+      { pattern: 0, pieces: matchShape(g, outAndBack).pieces },
+    ]);
+    expect(corridors).toHaveLength(1);
+    const [out, back, ...rest] = paths.get(0)!;
+    expect(rest).toHaveLength(0);
+    expect(out!.from).toBe(0);
+    expect(out!.to).toBeGreaterThan(700);
+    expect(out!.to).toBeLessThan(760);
+    expect(back!.from).toBeCloseTo(out!.to, 6);
+    expect(back!.to - back!.from).toBeCloseTo(out!.to, 0);
+    // Along the corridor one way, then the other.
+    expect(out!.uTo - out!.uFrom).toBeCloseTo(-(back!.uTo - back!.uFrom), 6);
+  });
+
+  it("keeps where a pattern runs over part of a corridor again, but publishes no step too short to count", () => {
+    // Along B from node 6 to 10, then back over 40% of its last stretch (10 to 9), as round a loop.
+    const edge = (u: number, v: number) =>
+      g.edgeFrom.findIndex(
+        (from, e) => g.nodeId[from] === u && g.nodeId[g.edgeTo[e]!] === v,
+      );
+    const pieces = [
+      [6, 7, 1],
+      [7, 8, 1],
+      [8, 9, 1],
+      [9, 10, 1],
+      [10, 9, 0.6],
+    ].map(([u, v, f1]) => ({ edge: edge(u!, v!), f0: 0, f1: f1! }));
+    const { corridors, paths } = buildCorridors(g, [{ pattern: 0, pieces }]);
+    expect(corridors).toHaveLength(1);
+    expect(corridors[0]!.refs).toHaveLength(1);
+    const [along, part] = paths.get(0)!;
+    expect(part!.from).toBeCloseTo(along!.to, 6);
+    // About 110 m of a 730 m corridor: kept as built, but too little of it to draw it for.
+    expect(part!.to - part!.from).toBeGreaterThan(100);
+    const short = { ...part!, to: part!.from + 60 };
+    const published = corridorPaths(
+      corridors,
+      new Map([[0, [along!, short]]]),
+      [],
+      new Map(),
+    );
+    expect(published.get(0)!.detailed).toEqual([
+      [0, along!.from, Math.round(along!.to)],
+    ]);
   });
 });
 
@@ -201,32 +261,46 @@ describe("mergeCarriageways", () => {
   const y = (m: number) => LAT_A + m / 111_200;
   const x = (m: number) =>
     -123.1 + m / (111_200 * Math.cos((LAT_A * Math.PI) / 180));
-  const corridors = mergeCarriageways([
-    {
-      coords: [
-        [x(0), y(10)],
-        [x(500), y(10)],
+  const east = {
+    coords: [
+      [x(0), y(10)],
+      [x(500), y(10)],
+    ] as LonLat[],
+    refs: [[0, 1, 0]] as [number, 1 | -1, number][],
+  };
+  const beyond = {
+    coords: [
+      [x(500), y(0)],
+      [x(800), y(0)],
+    ] as LonLat[],
+    refs: [
+      [0, 1, 500],
+      [1, -1, 0],
+    ] as [number, 1 | -1, number][],
+  };
+  const { corridors, paths } = mergeCarriageways(
+    [
+      east,
+      {
+        coords: [
+          [x(500), y(-10)],
+          [x(0), y(-10)],
+        ],
+        refs: [[1, 1, 300]],
+      },
+      beyond,
+    ],
+    // Pattern 0 along the eastbound carriageway, then the street beyond.
+    new Map([
+      [
+        0,
+        [
+          { corridor: east, from: 0, to: 500, uFrom: 0, uTo: 1 },
+          { corridor: beyond, from: 500, to: 800, uFrom: 0, uTo: 1 },
+        ],
       ],
-      refs: [[0, 1, 0]],
-    },
-    {
-      coords: [
-        [x(500), y(-10)],
-        [x(0), y(-10)],
-      ],
-      refs: [[1, 1, 300]],
-    },
-    {
-      coords: [
-        [x(500), y(0)],
-        [x(800), y(0)],
-      ],
-      refs: [
-        [0, 1, 500],
-        [1, -1, 0],
-      ],
-    },
-  ]);
+    ]),
+  );
 
   it("puts both directions on one line along the centreline", () => {
     const both = corridors.filter((c) => c.refs.length === 2);
@@ -247,10 +321,19 @@ describe("mergeCarriageways", () => {
     expect(dirs[1]![1]).toBeLessThan(10);
   });
 
+  it("carries patterns' paths onto the merged corridors", () => {
+    // Pattern 0 along the merged line the whole way: one step, from 0 to 800 m along it.
+    const path = paths.get(0)!;
+    expect(path).toHaveLength(1);
+    expect(corridors).toContain(path[0]!.corridor);
+    expect(path[0]!.from).toBeCloseTo(0, 6);
+    expect(path[0]!.to).toBeCloseTo(800, 6);
+  });
+
   it("doesn't chain a one-way loop into a two-way street with the same routes", () => {
     // A terminal loop (both patterns run the same way around) joined end to end to a two-way
     // street where they run opposite ways: same patterns, different directions (the 16 at Arbutus).
-    const merged = mergeCarriageways([
+    const { corridors: merged } = mergeCarriageways([
       {
         coords: [
           [x(0), y(0)],
@@ -288,7 +371,7 @@ describe("mergeCarriageways", () => {
       [x(400), y(10 * sign)],
       [x(700), y(10 * sign)],
     ];
-    const merged = mergeCarriageways([
+    const { corridors: merged } = mergeCarriageways([
       { coords: spread(1), refs: [[0, 1, 0]] },
       { coords: spread(-1).reverse(), refs: [[1, 1, 0]] },
     ]);
@@ -299,7 +382,7 @@ describe("mergeCarriageways", () => {
   });
 
   it("leaves other corridors as they are", () => {
-    const lone = mergeCarriageways([
+    const { corridors: lone } = mergeCarriageways([
       {
         coords: [
           [x(0), y(10)],

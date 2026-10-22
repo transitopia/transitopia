@@ -43,7 +43,8 @@ export async function writePlan(
 ): Promise<number> {
   const dir = dirname(path);
   const { core, files } = publishPlan(plan);
-  await rm(join(dir, "trips"), { recursive: true, force: true });
+  for (const sub of ["trips", "paths"])
+    await rm(join(dir, sub), { recursive: true, force: true });
   await mkdir(dir, { recursive: true });
   let bytes = 0;
   for (const [file, value] of files) {

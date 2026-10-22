@@ -89,6 +89,17 @@ const icons = {
     <path d="M8 2v8M4.667 5.333l3.333-3.333 3.333 3.333M3.333 8.667v4a1.333 1.333 0 0 0 1.333 1.333h6.667a1.333 1.333 0 0 0 1.333-1.333v-4" />,
   ),
   filter: line(<path d="M2 3.333h12l-4.667 5.333v4l-2.667-1.333v-2.667z" />),
+  /** A combined route: a thick shared stem that branches into thin routes, left to right. */
+  segment: line(
+    <>
+      <path d="M1.667 8H7.333" />
+      <path
+        d="M7 8C10 8 10.667 3.667 14.333 3.667M7 8C10 8 10.667 12.333 14.333 12.333"
+        strokeWidth={1.5}
+      />
+    </>,
+    3,
+  ),
   /** Card tiles. */
   // A station on its line: an open ring over a thick route line, which stops inside the ring's stroke.
   station: line(

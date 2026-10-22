@@ -9,7 +9,11 @@
 // ids, node kinds and mapped GTFS platforms, from the track network itself.
 
 import type { FeatureCollection } from "geojson";
-import type { GeoJSONSource, Map as MlMap } from "maplibre-gl";
+import type {
+  GeoJSONSource,
+  LineLayerSpecification,
+  Map as MlMap,
+} from "maplibre-gl";
 import type { ExpressionSpecification } from "@maplibre/maplibre-gl-style-spec";
 import type { InfraCollection } from "@transitopia/transit-core/infra/types.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
@@ -37,9 +41,12 @@ const TRACK_LAYERS = [
   "tracks-minor",
   "rail-centre",
   "rail-shared",
+  "rail-centre-focus",
+  "rail-shared-focus",
   "rail-ribbon",
   "tracks-works",
   "tracks-hairline",
+  "tracks-focus",
 ];
 /** SkyTrain layers a tap on the map can pick a line from. */
 export const PICKABLE_TRACK_LAYERS = [
@@ -89,6 +96,20 @@ export async function loadPlatforms(
   } catch {
     return undefined;
   }
+}
+
+/** Mark SkyTrain line pieces (feature ids in the plan's tiles) as on a combined route's stretch, or not. */
+export function setRailFocus(
+  map: MlMap,
+  ids: Iterable<number>,
+  focus: boolean,
+): void {
+  if (!map.getSource(LINES_SOURCE)) return;
+  for (const id of ids)
+    map.setFeatureState(
+      { source: LINES_SOURCE, sourceLayer: PLAN_TILE_LAYERS.railLines, id },
+      { focus },
+    );
 }
 
 /** SkyTrain's layers, drawn from the plan's tiles (none there in a region without track-level rail). */
@@ -160,6 +181,26 @@ export function addTrackLayers(
       ...STROKE.flatMap(([z, w]) => [z, w * scale + extra]),
     ] as ExpressionSpecification;
   const low = { maxzoom: RIBBON_ZOOM };
+  // A combined route's stretch (packages/transit-map/README.md#route-focus): its line pieces have
+  // the feature state `focus` (setRailFocus), and copies of the layers drawing them, on top, show
+  // them in their own colour; elsewhere these are zero wide. The same filters and layout as the
+  // layers beneath, so MapLibre builds one set of buffers for both.
+  const focused: ExpressionSpecification = [
+    "boolean",
+    ["feature-state", "focus"],
+    false,
+  ];
+  /** Zoom stops' widths, zero off the focus with `only`. */
+  const stops = (
+    values: [number, ExpressionSpecification | number][],
+    only?: boolean,
+  ) =>
+    [
+      "interpolate",
+      ["linear"],
+      ["zoom"],
+      ...values.flatMap(([z, w]) => [z, only ? ["case", focused, w, 0] : w]),
+    ] as ExpressionSpecification;
   // Off the focused route (its card is open), lines are faded (static.ts → setFocusRoute): strokes
   // by colour, since their pieces overlap; the ribbon, one polygon per line, by opacity.
   const lineColor = focusColor(plan.routes, theme, "line", ownColor);
@@ -224,49 +265,76 @@ export function addTrackLayers(
     },
     before,
   );
+  const centreStroke: Omit<LineLayerSpecification, "id" | "paint"> = {
+    type: "line",
+    ...lines,
+    ...low,
+    filter: ["all", centre, ["!", shared]],
+    layout: { "line-cap": "round", "line-join": "round" },
+  };
   map.addLayer(
     {
       id: "rail-centre",
-      type: "line",
-      ...lines,
-      ...low,
-      filter: ["all", centre, ["!", shared]],
-      layout: { "line-cap": "round", "line-join": "round" },
-      paint: {
-        "line-color": lineColor,
-        "line-width": stroke(1),
-      },
+      ...centreStroke,
+      paint: { "line-color": lineColor, "line-width": stroke(1) },
     },
     before,
   );
   // Shared track: one stroke per line along the stretch's spine, side by side, the first line on
   // the left of west to east (stripe 0 of `stripes`).
   const stripes = ["get", "stripes"] as ExpressionSpecification;
+  const sharedStroke: Omit<LineLayerSpecification, "id" | "paint"> = {
+    type: "line",
+    ...lines,
+    ...low,
+    filter: ["all", centre, shared],
+    layout: { "line-join": "round" },
+  };
+  const stripeWidth = (only?: boolean) =>
+    stops(
+      STROKE.map(([z, w]) => [z, ["/", w, stripes] as ExpressionSpecification]),
+      only,
+    );
+  const stripeOffset: ExpressionSpecification = [
+    "interpolate",
+    ["linear"],
+    ["zoom"],
+    ...STROKE.flatMap(([z, w]) => [
+      z,
+      ["*", w, ["-", ["/", ["+", ["get", "stripe"], 0.5], stripes], 0.5]],
+    ]),
+  ] as ExpressionSpecification;
   map.addLayer(
     {
       id: "rail-shared",
-      type: "line",
-      ...lines,
-      ...low,
-      filter: ["all", centre, shared],
-      layout: { "line-join": "round" },
+      ...sharedStroke,
       paint: {
         "line-color": lineColor,
-        "line-width": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          ...STROKE.flatMap(([z, w]) => [z, ["/", w, stripes]]),
-        ] as ExpressionSpecification,
-        "line-offset": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          ...STROKE.flatMap(([z, w]) => [
-            z,
-            ["*", w, ["-", ["/", ["+", ["get", "stripe"], 0.5], stripes], 0.5]],
-          ]),
-        ] as ExpressionSpecification,
+        "line-width": stripeWidth(),
+        "line-offset": stripeOffset,
+      },
+    },
+    before,
+  );
+  map.addLayer(
+    {
+      id: "rail-centre-focus",
+      ...centreStroke,
+      paint: {
+        "line-color": ownColor,
+        "line-width": stops(STROKE, true),
+      },
+    },
+    before,
+  );
+  map.addLayer(
+    {
+      id: "rail-shared-focus",
+      ...sharedStroke,
+      paint: {
+        "line-color": ownColor,
+        "line-width": stripeWidth(true),
+        "line-offset": stripeOffset,
       },
     },
     before,
@@ -341,6 +409,29 @@ export function addTrackLayers(
           17,
           dimmed(0.6),
         ],
+      },
+    },
+    before,
+  );
+  // Close in, the stretch's tracks in their line's colour over its faded ribbon.
+  map.addLayer(
+    {
+      id: "tracks-focus",
+      type: "line",
+      ...lines,
+      minzoom: RIBBON_ZOOM,
+      filter: track(true),
+      layout: { "line-cap": "butt", "line-join": "round" },
+      paint: {
+        "line-color": ownColor,
+        "line-width": stops(
+          [
+            [15.5, 3],
+            [17, 5],
+            [19, 8],
+          ],
+          true,
+        ),
       },
     },
     before,
