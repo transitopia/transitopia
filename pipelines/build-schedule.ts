@@ -118,9 +118,10 @@ const STOP_OFFSET_WARN_M = 150;
  * their geometry, and their metadata in a part of its own (corridor-info.json) for plan tiles. 17:
  * corridors list every time a pattern runs along them (a route out and back round a loop), not
  * only the first, and patterns' paths over them are published per route group (paths/<g>.json) in
- * place of corridor-refs.json.
+ * place of corridor-refs.json. 18: shared stretches compare a bus exchange's bays as one place (two
+ * routes into different bays of it share the stretch to it), in the frequency table.
  */
-const PLAN_FORMAT = 17;
+const PLAN_FORMAT = 18;
 
 /** Regions showing the feed with SeaBus berths and lanes (infrastructure/seabus.json): build-schedule applies them. */
 async function ferryRegions(feed: string): Promise<string[]> {

@@ -304,12 +304,16 @@ const SharedBracket: React.FC<{
  * One kind of departure (trains, sailings or buses), a row per group in platform and route order. A
  * shared stretch brackets its rows where it can: all of them in this list, next to each other, from
  * one platform or bay (or a street stop), and none in another stretch's bracket. Any other is a
- * combined row on top.
+ * combined row on top. A nested stretch (`within` a wider one) is only ever a bracket inside the
+ * wider one's (the 240 and 241 to Chesterfield Ave inside "Any of these, to Denman St"), its rows
+ * moved up to the first of them; it isn't shown where the wider one isn't bracketed.
  */
 const DepartureList: React.FC<{
   title: string;
   groups: PlaceGroup[];
   shared: Shared[];
+  /** The wider stretch a stretch carries on from, if any (`within`). */
+  parentOf: (s: Shared) => Shared | undefined;
   empty: string;
   snap: TransitSnapshot;
   itemsFor: (g: PlaceGroup) => MenuItem[];
@@ -319,6 +323,7 @@ const DepartureList: React.FC<{
   title,
   groups,
   shared,
+  parentOf,
   empty,
   snap,
   itemsFor,
@@ -326,22 +331,29 @@ const DepartureList: React.FC<{
   colors,
 }) => {
   const index = new Map(groups.map((g, i) => [groupKey(g), i]));
-  const fits = shared.filter((s) => {
-    const at = s.groups.map((k) => index.get(k));
-    if (s.platforms.length > 1 || at.length < 2 || at.includes(undefined))
-      return false;
-    const sorted = (at as number[]).toSorted((a, b) => a - b);
-    return sorted.every((i, n) => i === sorted[0]! + n);
-  });
-  // Brackets can't nest or overlap: a row claimed by two stretches leaves both on top.
-  const claims = new Map<string, number>();
-  for (const s of fits)
-    for (const k of s.groups) claims.set(k, (claims.get(k) ?? 0) + 1);
-  const owner = new Map<string, Shared>();
-  for (const s of fits)
-    if (s.groups.every((k) => claims.get(k) === 1))
-      for (const k of s.groups) owner.set(k, s);
   const shown = new Set(index.keys());
+  const inList = (s: Shared) =>
+    s.groups.length > 1 && s.groups.every((k) => shown.has(k));
+  // Of `of`, those no other one shares a row with.
+  const apart = (of: Shared[]) =>
+    of.filter(
+      (s) =>
+        !of.some((o) => o !== s && o.groups.some((k) => s.groups.includes(k))),
+    );
+  const top = shared.filter((s) => !parentOf(s));
+  const outers = apart(
+    top.filter((s) => {
+      if (s.platforms.length > 1 || !inList(s)) return false;
+      const at = s.groups.map((k) => index.get(k)!).toSorted((a, b) => a - b);
+      return at.every((i, n) => i === at[0]! + n);
+    }),
+  );
+  const bracketed = new Set([
+    ...outers,
+    ...outers.flatMap((outer) =>
+      apart(shared.filter((s) => parentOf(s) === outer && inList(s))),
+    ),
+  ]);
   const row = (g: PlaceGroup) => (
     <GroupRow
       key={groupKey(g)}
@@ -352,27 +364,34 @@ const DepartureList: React.FC<{
       colors={colors}
     />
   );
-  const done = new Set<Shared>();
-  const blocks: React.ReactNode[] = [];
-  for (const g of groups) {
-    const s = owner.get(groupKey(g));
-    if (!s) blocks.push(row(g));
-    else if (!done.has(s)) {
-      done.add(s);
-      const members = groups.filter((x) => owner.get(groupKey(x)) === s);
-      blocks.push(
-        <SharedBracket
-          key={sharedKey(s)}
-          shared={s}
-          count={members.length}
-          items={sharedItems(s)}>
-          {members.map(row)}
-        </SharedBracket>,
-      );
+  // `rows` in order, each bracket directly inside `outer` (or at the top) where its first row is, holding all of its own.
+  const blocks = (
+    rows: PlaceGroup[],
+    outer: Shared | undefined,
+  ): React.ReactNode[] => {
+    const owner = new Map<string, Shared>();
+    for (const s of bracketed)
+      if (parentOf(s) === outer) for (const k of s.groups) owner.set(k, s);
+    const order = new Map<PlaceGroup | Shared, PlaceGroup[]>();
+    for (const g of rows) {
+      const at = owner.get(groupKey(g)) ?? g;
+      order.set(at, [...(order.get(at) ?? []), g]);
     }
-  }
-  const onTop = shared.filter(
-    (s) => !done.has(s) && s.groups.some((k) => shown.has(k)),
+    return [...order].map(([at, members]) =>
+      "route" in at ?
+        row(at)
+      : <SharedBracket
+          key={sharedKey(at)}
+          shared={at}
+          count={members.length}
+          items={sharedItems(at)}>
+          {blocks(members, at)}
+        </SharedBracket>,
+    );
+  };
+  const rows = blocks(groups, undefined);
+  const onTop = top.filter(
+    (s) => !bracketed.has(s) && s.groups.some((k) => shown.has(k)),
   );
   return (
     <CardSection title={title}>
@@ -385,7 +404,7 @@ const DepartureList: React.FC<{
         />
       ))}
       {groups.length ?
-        blocks
+        rows
       : <p className="py-2 text-sm text-(--card-muted)">{empty}</p>}
     </CardSection>
   );
@@ -599,6 +618,9 @@ const PlaceCardBody: React.FC<{
           )}
           groups={x.groups}
           shared={x.shared}
+          parentOf={(s) =>
+            s.within === undefined ? undefined : place.shared[s.within]
+          }
           itemsFor={itemsFor}
           sharedItems={sharedItems}
           colors={colors}

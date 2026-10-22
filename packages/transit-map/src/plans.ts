@@ -70,7 +70,7 @@ import {
 } from "@transitopia/transit-core/plan/published.ts";
 import { activeServices } from "@transitopia/transit-core/gtfs/calendar.ts";
 import {
-  stationsOnly,
+  stationsAndHubs,
   type PlaceOf,
 } from "@transitopia/transit-core/schedule/shared-segment.ts";
 import {
@@ -896,11 +896,7 @@ export function placeOfStop(plan: ServicePlan): PlaceOf {
   const hubs = hubsOf(plan);
   let f = placeOfCache.get(hubs);
   if (!f) {
-    const base = stationsOnly(plan);
-    const hubOf = new Map<string, string>();
-    for (const h of hubs)
-      for (const b of h.bays) hubOf.set(b, h.station ?? `exchange:${h.id}`);
-    placeOfCache.set(hubs, (f = (id) => hubOf.get(id) ?? base(id)));
+    placeOfCache.set(hubs, (f = stationsAndHubs(plan, hubs)));
   }
   return f;
 }
