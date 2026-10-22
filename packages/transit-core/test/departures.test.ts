@@ -314,10 +314,15 @@ describe("sharedRuns", () => {
 });
 
 describe("groupDepartures order", () => {
-  const dep = (routeKey: string, t: number, platform?: string) => ({
-    tripId: `${routeKey}${t}`,
+  const dep = (
+    routeKey: string,
+    t: number,
+    platform?: string,
+    headsign = routeKey,
+  ) => ({
+    tripId: `${routeKey}${headsign}${t}`,
     routeKey,
-    headsign: routeKey,
+    headsign,
     stopId: "S",
     platform,
     pattern: 0,
@@ -329,27 +334,32 @@ describe("groupDepartures order", () => {
     cancelled: false,
   });
   const order = (deps: ReturnType<typeof dep>[]) =>
-    groupDepartures(deps).map((g) => g.routeKey);
+    groupDepartures(deps).map((g) => `${g.routeKey}${g.headsign}`);
 
-  it("orders by platform or bay number, then by soonest", () => {
+  it("orders by platform or bay number, then route, then soonest", () => {
     // Already soonest first, as departuresAt returns them.
     expect(
       order([
         dep("P3", 1, "3"),
         dep("P10", 2, "10"),
-        dep("P1late", 4, "1"),
-        dep("P1", 3, "1"),
-        dep("P2", 5, "2"),
+        dep("B", 3, "1"),
+        dep("A", 4, "1", "late"),
+        dep("A", 5, "1", "early"),
+        dep("P2", 6, "2"),
       ]),
-    ).toEqual(["P1late", "P1", "P2", "P3", "P10"]);
+    ).toEqual(["Alate", "Aearly", "BB", "P2P2", "P3P3", "P10P10"]);
   });
 
-  it("puts groups without a platform last, by soonest", () => {
-    expect(order([dep("A", 1), dep("B", 2, "5"), dep("C", 3)])).toEqual([
-      "B",
-      "A",
-      "C",
-    ]);
+  it("puts groups without a platform last, by route number", () => {
+    expect(
+      order([
+        dep("R5", 1),
+        dep("240", 2),
+        dep("B", 3, "5"),
+        dep("19", 4),
+        dep("N24", 5),
+      ]),
+    ).toEqual(["BB", "1919", "240240", "N24N24", "R5R5"]);
   });
 });
 

@@ -174,8 +174,8 @@ const GroupRow: React.FC<{
 
 /**
  * A station, bus exchange or bus stop (apps/web/README.md#station-and-stop-cards): what leaves after
- * the map's time, one row per route and destination ordered by platform or bay, then the soonest, with how often each runs
- * in the next hour, and a combined row for routes that share a stretch from here. A station lists its
+ * the map's time, one row per route and destination ordered by platform or bay, then route number, then the soonest,
+ * with how often each runs in the next hour, and routes that share a stretch from here bracketed or combined. A station lists its
  * trains, then its sailings, then the buses from its bays.
  */
 export const PlaceCard: React.FC<{
@@ -254,12 +254,19 @@ const SharedRow: React.FC<{
   </SharedMenu>
 );
 
+/** Trains and sailings first, as the plan lists them; then buses by route number (19, 240, N24, R5). */
+const byRouteNumber = (a: PlanRoute, b: PlanRoute) =>
+  Number(a.mode === "bus") - Number(b.mode === "bus")
+  || (a.mode === "bus" ?
+    a.key.localeCompare(b.key, undefined, { numeric: true })
+  : 0);
+
 const groupKey = (g: PlaceGroup) => `${g.route.key}|${g.headsign}`;
 const sharedKey = (s: Shared) => s.routes.map((r) => r.key).join() + s.to;
 
 /**
- * The rows of a shared stretch whose trips all leave from one platform or bay, tied by a rail on
- * the left, with what they add up to under them ("Either one, to Columbia · every ~6m · Good").
+ * The rows of a shared stretch whose trips all leave from one platform, bay or street stop, tied by
+ * a rail on the left, with what they add up to under them ("Either one, to Columbia · every ~6m · Good").
  */
 const SharedBracket: React.FC<{
   shared: Shared;
@@ -294,9 +301,10 @@ const SharedBracket: React.FC<{
 );
 
 /**
- * One kind of departure (trains, sailings or buses), a row per group in platform order. A shared
- * stretch whose trips all leave from one platform or bay brackets its rows there (kept together, in
- * the place of its soonest); any other (several platforms, or a street stop) is a combined row on top.
+ * One kind of departure (trains, sailings or buses), a row per group in platform and route order. A
+ * shared stretch brackets its rows where it can: all of them in this list, next to each other, from
+ * one platform or bay (or a street stop), and none in another stretch's bracket. Any other is a
+ * combined row on top.
  */
 const DepartureList: React.FC<{
   title: string;
@@ -317,10 +325,23 @@ const DepartureList: React.FC<{
   sharedItems,
   colors,
 }) => {
+  const index = new Map(groups.map((g, i) => [groupKey(g), i]));
+  const fits = shared.filter((s) => {
+    const at = s.groups.map((k) => index.get(k));
+    if (s.platforms.length > 1 || at.length < 2 || at.includes(undefined))
+      return false;
+    const sorted = (at as number[]).toSorted((a, b) => a - b);
+    return sorted.every((i, n) => i === sorted[0]! + n);
+  });
+  // Brackets can't nest or overlap: a row claimed by two stretches leaves both on top.
+  const claims = new Map<string, number>();
+  for (const s of fits)
+    for (const k of s.groups) claims.set(k, (claims.get(k) ?? 0) + 1);
   const owner = new Map<string, Shared>();
-  for (const s of shared)
-    if (s.platforms.length === 1) for (const k of s.groups) owner.set(k, s);
-  const shown = new Set(groups.map(groupKey));
+  for (const s of fits)
+    if (s.groups.every((k) => claims.get(k) === 1))
+      for (const k of s.groups) owner.set(k, s);
+  const shown = new Set(index.keys());
   const row = (g: PlaceGroup) => (
     <GroupRow
       key={groupKey(g)}
@@ -335,10 +356,10 @@ const DepartureList: React.FC<{
   const blocks: React.ReactNode[] = [];
   for (const g of groups) {
     const s = owner.get(groupKey(g));
-    const members = s ? groups.filter((x) => owner.get(groupKey(x)) === s) : [];
-    if (!s || members.length < 2) blocks.push(row(g));
+    if (!s) blocks.push(row(g));
     else if (!done.has(s)) {
       done.add(s);
+      const members = groups.filter((x) => owner.get(groupKey(x)) === s);
       blocks.push(
         <SharedBracket
           key={sharedKey(s)}
@@ -350,7 +371,6 @@ const DepartureList: React.FC<{
       );
     }
   }
-  // A stretch is bracketed only when its rows are all in this list; otherwise it stays on top.
   const onTop = shared.filter(
     (s) => !done.has(s) && s.groups.some((k) => shown.has(k)),
   );
@@ -532,7 +552,7 @@ const PlaceCardBody: React.FC<{
           { tone: "live", text: "Live where buses report GPS" }
         : { tone: "estimated", text: "Times estimated from the schedule" }
       }
-      chips={place.routes.map((r) => ({
+      chips={place.routes.toSorted(byRouteNumber).map((r) => ({
         label: isBus(r) ? r.key : r.label,
         color: colors(r),
         onSelect: go({ kind: "route", id: r.key }),

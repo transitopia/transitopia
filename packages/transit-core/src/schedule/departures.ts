@@ -128,8 +128,8 @@ export interface DepartureGroup {
 
 /**
  * One group per route + destination. Groups with a platform or bay are ordered by its number
- * (Platform 1 before 2, Bay 1 before 5), then by soonest departure; groups without one (a street
- * stop) come after, by soonest departure.
+ * (Platform 1 before 2, Bay 1 before 5), groups without one (a street stop) after; then by route
+ * number (the 19 before the 240, then N24 and R5), then by soonest departure.
  */
 export function groupDepartures(deps: readonly Departure[]): DepartureGroup[] {
   const groups = new Map<string, DepartureGroup>();
@@ -149,9 +149,11 @@ export function groupDepartures(deps: readonly Departure[]): DepartureGroup[] {
     if (d.platform && !g.platforms.includes(d.platform))
       g.platforms.push(d.platform);
   }
-  // deps are sorted, so insertion order is by soonest departure; the stable sort keeps it within a platform.
-  return [...groups.values()].sort((a, b) =>
-    comparePlatforms(lowestPlatform(a), lowestPlatform(b)),
+  // deps are sorted, so insertion order is by soonest departure; the stable sort keeps it within a route.
+  return [...groups.values()].sort(
+    (a, b) =>
+      comparePlatforms(lowestPlatform(a), lowestPlatform(b))
+      || byNumber.compare(a.routeKey, b.routeKey),
   );
 }
 
