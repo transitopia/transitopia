@@ -303,13 +303,16 @@ const SharedBracket: React.FC<{
 /**
  * One kind of departure (trains, sailings or buses), a row per group in platform and route order. A
  * shared stretch brackets its rows where it can: all of them in this list, next to each other, from
- * one platform or bay (or a street stop), and none in another stretch's bracket. Any other is a
- * combined row on top.
+ * one platform or bay (or a street stop), and none in another stretch's bracket but the one it's
+ * within, whose bracket then holds its own (the 240 and 241 to Chesterfield Ave inside "Any of
+ * these, to Denman St"). Any other is a combined row on top.
  */
 const DepartureList: React.FC<{
   title: string;
   groups: PlaceGroup[];
   shared: Shared[];
+  /** The wider stretch a stretch carries on from, if any (`within`). */
+  parentOf: (s: Shared) => Shared | undefined;
   empty: string;
   snap: TransitSnapshot;
   itemsFor: (g: PlaceGroup) => MenuItem[];
@@ -319,6 +322,7 @@ const DepartureList: React.FC<{
   title,
   groups,
   shared,
+  parentOf,
   empty,
   snap,
   itemsFor,
@@ -333,14 +337,22 @@ const DepartureList: React.FC<{
     const sorted = (at as number[]).toSorted((a, b) => a - b);
     return sorted.every((i, n) => i === sorted[0]! + n);
   });
-  // Brackets can't nest or overlap: a row claimed by two stretches leaves both on top.
-  const claims = new Map<string, number>();
-  for (const s of fits)
-    for (const k of s.groups) claims.set(k, (claims.get(k) ?? 0) + 1);
-  const owner = new Map<string, Shared>();
-  for (const s of fits)
-    if (s.groups.every((k) => claims.get(k) === 1))
-      for (const k of s.groups) owner.set(k, s);
+  // Brackets nest but can't overlap: a row claimed by two stretches, neither within the other, leaves both on top.
+  const nested = (a: Shared, b: Shared) =>
+    parentOf(a) === b || parentOf(b) === a;
+  const bracketed = fits.filter(
+    (s) =>
+      !fits.some(
+        (o) =>
+          o !== s
+          && !nested(s, o)
+          && o.groups.some((k) => s.groups.includes(k)),
+      ),
+  );
+  const outerOf = (s: Shared) => {
+    const p = parentOf(s);
+    return p && bracketed.includes(p) ? p : undefined;
+  };
   const shown = new Set(index.keys());
   const row = (g: PlaceGroup) => (
     <GroupRow
@@ -353,24 +365,35 @@ const DepartureList: React.FC<{
     />
   );
   const done = new Set<Shared>();
-  const blocks: React.ReactNode[] = [];
-  for (const g of groups) {
-    const s = owner.get(groupKey(g));
-    if (!s) blocks.push(row(g));
-    else if (!done.has(s)) {
-      done.add(s);
-      const members = groups.filter((x) => owner.get(groupKey(x)) === s);
-      blocks.push(
-        <SharedBracket
-          key={sharedKey(s)}
-          shared={s}
-          count={members.length}
-          items={sharedItems(s)}>
-          {members.map(row)}
-        </SharedBracket>,
-      );
+  // `rows` in order, the brackets directly inside `outer` (or at the top) holding theirs.
+  const blocks = (
+    rows: PlaceGroup[],
+    outer: Shared | undefined,
+  ): React.ReactNode[] => {
+    const owner = new Map<string, Shared>();
+    for (const s of bracketed)
+      if (outerOf(s) === outer) for (const k of s.groups) owner.set(k, s);
+    const out: React.ReactNode[] = [];
+    for (const g of rows) {
+      const s = owner.get(groupKey(g));
+      if (!s) out.push(row(g));
+      else if (!done.has(s)) {
+        done.add(s);
+        const members = rows.filter((x) => owner.get(groupKey(x)) === s);
+        out.push(
+          <SharedBracket
+            key={sharedKey(s)}
+            shared={s}
+            count={members.length}
+            items={sharedItems(s)}>
+            {blocks(members, s)}
+          </SharedBracket>,
+        );
+      }
     }
-  }
+    return out;
+  };
+  const rows = blocks(groups, undefined);
   const onTop = shared.filter(
     (s) => !done.has(s) && s.groups.some((k) => shown.has(k)),
   );
@@ -385,7 +408,7 @@ const DepartureList: React.FC<{
         />
       ))}
       {groups.length ?
-        blocks
+        rows
       : <p className="py-2 text-sm text-(--card-muted)">{empty}</p>}
     </CardSection>
   );
@@ -599,6 +622,9 @@ const PlaceCardBody: React.FC<{
           )}
           groups={x.groups}
           shared={x.shared}
+          parentOf={(s) =>
+            s.within === undefined ? undefined : place.shared[s.within]
+          }
           itemsFor={itemsFor}
           sharedItems={sharedItems}
           colors={colors}

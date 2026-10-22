@@ -311,6 +311,48 @@ describe("sharedRuns", () => {
       ]),
     ).toEqual([{ members: [0, 1, 2], stops: 2 }]);
   });
+
+  describe("nested, given routes", () => {
+    // Four routes to d, where two go on to f and two to h.
+    const four = [
+      onward("b", "c", "d", "e", "f"),
+      onward("b", "c", "d", "g", "h"),
+      onward("b", "c", "d", "e", "f", "y"),
+      onward("b", "c", "d", "g", "h", "z"),
+    ];
+
+    it("lists the routes that carry on together past the split, within its run", () => {
+      expect(sharedRuns(four, ["1", "2", "3", "4"])).toEqual([
+        { members: [0, 1, 2, 3], stops: 3 },
+        { members: [0, 2], stops: 5, within: 0 },
+        { members: [1, 3], stops: 5, within: 0 },
+      ]);
+    });
+
+    it("leaves them out without routes, for the corridors", () => {
+      expect(sharedRuns(four)).toEqual([{ members: [0, 1, 2, 3], stops: 3 }]);
+    });
+
+    it("leaves out one route's own variants", () => {
+      expect(sharedRuns(four, ["1", "2", "1", "2"])).toEqual([
+        { members: [0, 1, 2, 3], stops: 3 },
+      ]);
+    });
+
+    it("counts a nested run's length from the split", () => {
+      // On together for one stop (300 m) past d: not a choice of its own.
+      expect(
+        sharedRuns(
+          [
+            onward("b", "c", "d", "e"),
+            onward("b", "c", "d", "e", "x"),
+            onward("b", "c", "d", "g"),
+          ],
+          ["1", "2", "3"],
+        ),
+      ).toEqual([{ members: [0, 1, 2], stops: 3 }]);
+    });
+  });
 });
 
 describe("groupDepartures order", () => {

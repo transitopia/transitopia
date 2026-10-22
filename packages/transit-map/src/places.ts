@@ -123,6 +123,8 @@ export interface PlaceSnapshot extends Place {
     frequency: Frequency | undefined;
     /** The combined route it's part of, from where its routes come together (buses only, for now). */
     segment: Place | undefined;
+    /** For a stretch that carries on past a wider one's split, that one (an index into `shared`). */
+    within: number | undefined;
   }[];
 }
 
@@ -377,6 +379,7 @@ export function placeSnapshot(
         to: placeName(plan, s.toStopId),
         frequency: departureFrequency(s.departures, t),
         segment: sharedSegmentOf(plan, s),
+        within: s.within,
       };
     }),
   };

@@ -197,6 +197,8 @@ export interface SharedStretch {
   /** The last stop every group in it serves next, in order. */
   toStopId: string;
   departures: Departure[];
+  /** For a stretch that carries on past a wider one's split, that one (an index into the result). */
+  within?: number | undefined;
 }
 
 /**
@@ -232,6 +234,15 @@ export function onwardStops(
   });
 }
 
+export interface SharedRun {
+  /** Indices into `onward`. */
+  members: number[];
+  /** How many stops they share. */
+  stops: number;
+  /** For a nested run, the run it carries on from (an index into the result). */
+  within?: number | undefined;
+}
+
 /**
  * Of the services leaving one stop (each given by its onward stops), those that run the same way
  * from it: the same next stops, in order, for at least MIN_SHARED_STOPS stops or MIN_SHARED_M.
@@ -241,29 +252,62 @@ export function onwardStops(
  * members (indices into `onward`) and how many stops they share. The one definition of a shared
  * stretch, for the stop cards (`sharedStretches`) and the map's bus corridors
  * (plan/corridor-frequency.ts), so the map never combines what a card doesn't.
+ *
+ * Given each service's route (`routes`), it also finds nested runs, one level down: members of a
+ * run that carry on together past its split, by the same rule counted from the split, with at
+ * least two routes among them (one route's own short-turns aren't a choice). They come after the
+ * run they're `within`. The cards list them; the corridors don't need them, since a wider run is
+ * at least as frequent along the same streets and the rest is the split stop's own run.
  */
 export function sharedRuns(
   onward: readonly (readonly OnwardStop[])[],
-): { members: number[]; stops: number }[] {
-  const out: { members: number[]; stops: number }[] = [];
-  // Members known to share their first `from` stops.
-  const visit = (members: number[], from: number) => {
-    const byNext = new Map<string, number[]>();
+  routes?: readonly string[],
+): SharedRun[] {
+  const out: SharedRun[] = [];
+  // How far members known to share their first `from` stops run together, or undefined when that's too short to count from `split`.
+  const along = (group: number[], from: number, split: number) => {
+    let n = from + 1;
+    for (;;) {
+      const k = onward[group[0]!]![n]?.key;
+      if (!k || !group.every((m) => onward[m]![n]?.key === k)) break;
+      n++;
+    }
+    const m = (i: number) => onward[group[0]!]![i]?.m ?? 0;
+    const long =
+      n - split >= MIN_SHARED_STOPS || m(n - 1) - m(split - 1) >= MIN_SHARED_M;
+    return { n, long };
+  };
+  const byNext = (members: number[], from: number) => {
+    const out = new Map<string, number[]>();
     for (const i of members) {
       const k = onward[i]![from]?.key;
-      if (k !== undefined) byNext.set(k, [...(byNext.get(k) ?? []), i]);
+      if (k !== undefined) out.set(k, [...(out.get(k) ?? []), i]);
     }
-    for (const group of byNext.values()) {
-      if (group.length < 2) continue;
-      let n = from + 1;
-      for (;;) {
-        const k = onward[group[0]!]![n]?.key;
-        if (!k || !group.every((m) => onward[m]![n]?.key === k)) break;
-        n++;
+    return [...out.values()].filter((g) => g.length > 1);
+  };
+  // Members of run `within` that carry on together from its split at `split`, known to share up to `from`.
+  const nested = (
+    members: number[],
+    from: number,
+    split: number,
+    within: number,
+  ) => {
+    for (const group of byNext(members, from)) {
+      const { n, long } = along(group, from, split);
+      if (!long) nested(group, n, split, within);
+      else if (new Set(group.map((m) => routes![m])).size > 1)
+        out.push({ members: group, stops: n, within });
+    }
+  };
+  const visit = (members: number[], from: number) => {
+    for (const group of byNext(members, from)) {
+      const { n, long } = along(group, from, 0);
+      if (!long) {
+        visit(group, n);
+        continue;
       }
-      if (n >= MIN_SHARED_STOPS || onward[group[0]!]![n - 1]!.m >= MIN_SHARED_M)
-        out.push({ members: group, stops: n });
-      else visit(group, n);
+      out.push({ members: group, stops: n });
+      if (routes) nested(group, n, n, out.length - 1);
     }
   };
   visit(
@@ -275,7 +319,8 @@ export function sharedRuns(
 
 /**
  * Groups that run the same way from here (`sharedRuns`: e.g. both Expo Line branches to Columbia,
- * or the R5 and 14 along Hastings to Renfrew). Each stretch runs to where they split.
+ * or the R5 and 14 along Hastings to Renfrew). Each stretch runs to where they split; those of its
+ * routes that carry on together from there are stretches `within` it (the 240 and 241 on past Denman St).
  */
 export function sharedStretches(
   plan: ServicePlan,
@@ -285,12 +330,17 @@ export function sharedStretches(
   const onward = groups.map((g) =>
     onwardStops(plan, g.departures[0]!.pattern, g.departures[0]!.index),
   );
-  return sharedRuns(onward).map(({ members, stops }) => {
+  const runs = sharedRuns(
+    onward,
+    groups.map((g) => g.routeKey),
+  );
+  return runs.map(({ members, stops, within }) => {
     const gs = members.map((m) => groups[m]!);
     return {
       groups: gs,
       toStopId: plan.stops[onward[members[0]!]![stops - 1]!.stop]!.id,
       departures: gs.flatMap((g) => g.departures).sort((a, b) => a.t - b.t),
+      within,
     };
   });
 }
