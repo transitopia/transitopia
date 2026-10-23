@@ -28,7 +28,7 @@ import {
   busStopTicks,
 } from "@transitopia/transit-core/plan/bus-stops.ts";
 import { BACKGROUND, type Theme } from "@transitopia/map-style/basemap.ts";
-import { FREQUENCY_BANDS } from "@transitopia/shared/frequency.ts";
+import { FREQUENCY_BANDS, NO_SERVICE } from "@transitopia/shared/frequency.ts";
 import { hubsOf } from "../plans.ts";
 import { hexToRgb } from "./vehicle-geometry.ts";
 
@@ -182,6 +182,12 @@ const corridorFocused: ExpressionSpecification = [
   ["!=", focusKey, ""],
   ["!", corridorDim],
 ];
+/** A corridor whose routes don't run in the window shown (BusFrequencyLayer). */
+const corridorIdle: ExpressionSpecification = [
+  "boolean",
+  ["feature-state", "idle"],
+  false,
+];
 const corridorCasingOpacity: ExpressionSpecification = [
   "case",
   corridorDim,
@@ -247,7 +253,7 @@ const BRAND_WIDTHS: [number, number][] = [
 /** A value per frequency tier (feature state), or `none` without service. */
 function byTier<T extends string | number>(
   values: T[],
-  none: T,
+  none: T | ExpressionSpecification,
 ): ExpressionSpecification {
   return [
     "match",
@@ -478,6 +484,7 @@ export function addStaticLayers(
   const halo = dark ? "#111418" : "#ffffff";
   const mutedText = dark ? "#c3c8ce" : "#3d434a";
   const tierColors = TIER_COLORS[dark ? "dark" : "light"];
+  const noServiceColor = NO_SERVICE.color[dark ? "dark" : "light"];
   const brands = brandedRoutes(plan);
   /** The colour of the route with its own colour in feature state `brand`. */
   const brandColorOf = (color: (r: PlanRoute) => string) =>
@@ -589,6 +596,35 @@ export function addStaticLayers(
         "line-opacity": ["case", corridorFocused, 1, byTier(TIER_OPACITY, 1)],
       },
     };
+    // Corridors whose routes don't run in the window (feature state `idle`): dotted grey, beneath
+    // the tiers, so a route the site mentions is never missing from the map.
+    map.addLayer({
+      id: `${prefix}-idle`,
+      type: "line",
+      source,
+      "source-layer": sourceLayer,
+      ...zooms,
+      paint: {
+        "line-color": [
+          "case",
+          corridorDim,
+          fadeColor(noServiceColor, theme),
+          noServiceColor,
+        ],
+        "line-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          ...TIER_WIDTHS.flatMap(([z, w]) => [
+            z,
+            ["case", corridorIdle, w[3]!, 0],
+          ]),
+        ] as ExpressionSpecification,
+        // As thin as Bad and a little translucent, so it never outshines a route that runs.
+        "line-opacity": 0.8,
+        "line-dasharray": [2, 2],
+      },
+    });
     map.addLayer({ id: prefix, ...line });
     // The focused corridors again, on top: another route's corridor along the same street (the
     // other direction) can come later in the tile and cover them, and lines can't be ordered by
@@ -812,7 +848,12 @@ export function addStaticLayers(
         ["get", "color"],
         [">=", BRAND, 0],
         brandColor,
-        byTier(tierColors, "rgba(0,0,0,0)"),
+        byTier(tierColors, [
+          "case",
+          corridorIdle,
+          noServiceColor,
+          "rgba(0,0,0,0)",
+        ]),
       ] as ExpressionSpecification,
       "icon-opacity": focusOpacity(0.9, stopOnFocus),
     },

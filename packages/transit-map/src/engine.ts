@@ -981,6 +981,8 @@ export class TransitEngine {
       // Regular routes, drawn as the corridors they share (packages/transit-map/README.md#bus-corridors).
       "corridors",
       "corridors-overview",
+      "corridors-idle",
+      "corridors-overview-idle",
       "routes-shape",
       "routes-shape-inactive",
       "routes-skytrain",
@@ -997,7 +999,7 @@ export class TransitEngine {
       ],
       { layers },
     )) {
-      if (f.layer.id === "corridors" || f.layer.id === "corridors-overview") {
+      if (/^corridors(-overview)?(-idle)?$/.test(f.layer.id)) {
         for (const key of this.frequencyLayer?.routesOn(
           f.sourceLayer ?? PLAN_TILE_LAYERS.corridors,
           Number(f.id),

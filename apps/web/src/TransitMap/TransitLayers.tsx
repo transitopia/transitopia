@@ -15,7 +15,11 @@ import {
 } from "../components/LayersPanel.tsx";
 import { SegmentedChoice } from "../components/SegmentedChoice.tsx";
 import { ProvenanceSwatch } from "./Swatches.tsx";
-import { FREQUENCY_BANDS, bandWait } from "@transitopia/shared/frequency.ts";
+import {
+  FREQUENCY_BANDS,
+  NO_SERVICE,
+  bandWait,
+} from "@transitopia/shared/frequency.ts";
 import { DAY_WINDOW } from "@transitopia/transit-core/schedule/frequency.ts";
 import { clockMinutes } from "./format.ts";
 
@@ -163,6 +167,19 @@ export const TransitLayers: React.FC<{
               </dd>
             </React.Fragment>
           ))}
+          <dt>
+            <span
+              aria-hidden="true"
+              className="block w-7 border-t-[1.5px] border-dashed opacity-80"
+              style={{ borderColor: "var(--no-service)" }}
+            />
+          </dt>
+          <dd>
+            <strong className="font-bold text-gray-900 dark:text-gray-100">
+              {NO_SERVICE.name}
+            </strong>{" "}
+            · No buses then
+          </dd>
         </dl>
       </>
     : null}

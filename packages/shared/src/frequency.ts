@@ -43,6 +43,15 @@ export const FREQUENCY_BANDS: readonly FrequencyBand[] = [
 ];
 
 /**
+ * Where routes run but none in the window shown: a dotted grey line on the map, so a route the
+ * site mentions is never missing from it.
+ */
+export const NO_SERVICE = {
+  name: "No service",
+  color: { light: "#9aa1a9", dark: "#5f666e" },
+} as const;
+
+/**
  * The band (index into FREQUENCY_BANDS) for a worst wait of `minutes`, rounded to whole minutes as
  * the site shows it: re-timed SkyTrain waits are rarely whole minutes, and "up to 6 min" should
  * never be OK when 6 is Good.

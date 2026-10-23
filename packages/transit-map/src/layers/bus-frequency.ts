@@ -4,6 +4,7 @@
 // (for "now") the five-minute bucket of the time change. While a route is focused (its card is open),
 // the corridors it runs on show its own frequency and colour, and the rest are dimmed (`dim`); a
 // combined route likewise, on the corridors of its stretch (packages/transit-map/README.md#route-focus).
+// Corridors whose routes don't run in the window are `idle`: drawn dotted grey, not left out.
 
 import type { Map as MlMap } from "maplibre-gl";
 import type {
@@ -172,6 +173,19 @@ export class BusFrequencyLayer {
       : undefined;
     // Frequency tiers count every route: where a route with its own colour is drawn in it, it
     // covers the tier line; where it isn't (limited service), its buses count like any other.
+    // Without service in the window, a corridor carrying a route that isn't hidden is `idle`
+    // (drawn dotted grey), so a route mentioned in the UI is never missing from the map.
+    const shownOn = new Map<number, boolean>();
+    const carriesShown = (c: number) => {
+      let shown = shownOn.get(c);
+      if (shown === undefined) {
+        shown = this.combos.combos[c]!.units.some(
+          (u) => !hidden.has(this.combos.routeDirs[u.routeDir]!.route),
+        );
+        shownOn.set(c, shown);
+      }
+      return shown;
+    };
     for (const t of this.targets) {
       const onFocus = Array.from(t.combo, (c, i) => {
         if (!focus) return true;
@@ -197,6 +211,7 @@ export class BusFrequencyLayer {
           { ...target(t), id },
           {
             tier: Number.isFinite(wait) ? bandIndex(wait) : -1,
+            idle: !Number.isFinite(wait) && carriesShown(t.combo[i]!),
             dim: !onFocus[i],
           },
         );
@@ -213,7 +228,8 @@ export class BusFrequencyLayer {
 
   /**
    * The routes running along a corridor (a feature of the tile layer `sourceLayer`) at the time and
-   * in the window last applied, busiest first: what a tap on it selects.
+   * in the window last applied, busiest first: what a tap on it selects. Where none runs then (an
+   * idle corridor), every route along it.
    */
   routesOn(sourceLayer: string, id: number): string[] {
     const t = this.targets.find((x) => x.sourceLayer === sourceLayer);
@@ -223,10 +239,12 @@ export class BusFrequencyLayer {
     const best = new Map<string, number>();
     this.combos.combos[c]!.units.forEach((u, k) => {
       const route = this.combos.routeDirs[u.routeDir]!.route;
-      if (rates[k]! > 0)
-        best.set(route, Math.max(best.get(route) ?? 0, rates[k]!));
+      best.set(route, Math.max(best.get(route) ?? 0, rates[k]!));
     });
-    return [...best].sort((a, b) => b[1] - a[1]).map(([r]) => r);
+    const running = [...best].filter(([, n]) => n > 0);
+    return (running.length ? running : [...best])
+      .sort((a, b) => b[1] - a[1])
+      .map(([r]) => r);
   }
 
   /**

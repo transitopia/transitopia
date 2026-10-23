@@ -1,9 +1,10 @@
 // Service frequency as the site shows it (apps/web/README.md#service-frequency). The bands and their
 // colours are @transitopia/shared/frequency.ts, shared with the map; the colours reach CSS as the
-// --band-* properties, set here per theme.
+// --band-* properties (and --no-service), set here per theme.
 
 import {
   FREQUENCY_BANDS,
+  NO_SERVICE,
   bandIndex,
   bandRange,
 } from "@transitopia/shared/frequency.ts";
@@ -26,7 +27,7 @@ if (typeof document !== "undefined") {
       (theme) =>
         `${theme === "light" ? ":root" : ':root[data-theme="dark"]'}{${FREQUENCY_BANDS.map(
           (b) => `--band-${b.id}:${b.color[theme]};`,
-        ).join("")}}`,
+        ).join("")}--no-service:${NO_SERVICE.color[theme]};}`,
     )
     .join("\n");
   document.head.append(style);
