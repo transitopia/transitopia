@@ -86,7 +86,16 @@ const kinematics: z.ZodType<KinematicsConfig> = z
   .strictObject({
     modes: z.record(z.string(), kinematicsMode),
     routes: z.record(z.string(), kinematicsOverride),
-    sizing: z.strictObject({ minPixelLength: pos, minPixelWidth: pos }),
+    sizing: z.strictObject({
+      minPixelLength: pos,
+      minPixelWidth: pos,
+      minScaleByZoom: z
+        .array(z.tuple([nonNeg, pos]))
+        .min(1)
+        .refine((s) => s.every((x, i) => i === 0 || x[0] > s[i - 1]![0]), {
+          message: "zooms must be ascending",
+        }),
+    }),
   })
   .refine((c) => c.modes["bus"] !== undefined, {
     message: "modes needs bus (the fallback for any other mode)",

@@ -28,7 +28,7 @@ const kin: KinematicsConfig = {
     },
   },
   routes: {},
-  sizing: { minPixelLength: 14, minPixelWidth: 6 },
+  sizing: { minPixelLength: 14, minPixelWidth: 6, minScaleByZoom: [[0, 1]] },
 };
 
 // A 2 km straight line with stops at 0, 1000, 2000 m; one train out and back in the same block.

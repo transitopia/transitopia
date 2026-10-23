@@ -15,7 +15,12 @@ export interface Kinematics {
 export interface KinematicsConfig {
   modes: Record<string, Kinematics>;
   routes: Record<string, Partial<Kinematics>>;
-  sizing: { minPixelLength: number; minPixelWidth: number };
+  sizing: {
+    minPixelLength: number;
+    minPixelWidth: number;
+    /** [zoom, factor] stops, ascending: the minimum sizes are scaled by the factor, linear between stops. */
+    minScaleByZoom: [number, number][];
+  };
 }
 
 export function kinematicsFor(

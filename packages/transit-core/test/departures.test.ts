@@ -37,7 +37,7 @@ const kin: KinematicsConfig = {
     },
   },
   routes: {},
-  sizing: { minPixelLength: 14, minPixelWidth: 6 },
+  sizing: { minPixelLength: 14, minPixelWidth: 6, minScaleByZoom: [[0, 1]] },
 };
 
 // Two bus routes along one street: both serve S0 → S1 → S2 → S3, then A goes to S4a and B to S4b.

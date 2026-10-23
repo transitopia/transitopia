@@ -7,8 +7,9 @@
     "bus": { "accel": 1.0, "decel": 1.0, "maxSpeed": 60, "minCruiseFraction": 0.0, "dwell": 0, "length": 12, "width": 2.6, "profile": "linear" }
   },
   "sizing": {
-    "$comment": "Vehicles are drawn to true scale when zoomed in, but never smaller than this many pixels long, so they stay visible at city zoom.",
+    "$comment": "Vehicles are drawn to true scale when zoomed in, but never smaller than this many pixels long, so they stay visible at city zoom. 'minScaleByZoom': [zoom, factor] stops scaling those minimums, linear between stops and held past the ends, so zoomed out to the whole region the markers shrink rather than pile up (guess, tuned by eye on a phone).",
     "minPixelLength": 14,
-    "minPixelWidth": 8
+    "minPixelWidth": 8,
+    "minScaleByZoom": [[10, 0.6], [14, 1]]
   }
 }

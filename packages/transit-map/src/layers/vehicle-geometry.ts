@@ -186,3 +186,13 @@ export function pointInConvex(
   }
   return true;
 }
+
+/** The factor on the minimum drawn sizes at a zoom: linear between stops, held past the ends. */
+export function minScaleAt(stops: [number, number][], zoom: number): number {
+  const i = stops.findIndex(([z]) => z > zoom);
+  if (i === 0) return stops[0]![1];
+  if (i === -1) return stops[stops.length - 1]![1];
+  const [z0, f0] = stops[i - 1]!;
+  const [z1, f1] = stops[i]!;
+  return f0 + ((f1 - f0) * (zoom - z0)) / (z1 - z0);
+}

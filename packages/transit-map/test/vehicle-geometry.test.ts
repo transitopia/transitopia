@@ -6,6 +6,7 @@ import {
   inset,
   mercX,
   mercY,
+  minScaleAt,
   pointInConvex,
   ribbon,
   vehicleOutline,
@@ -133,5 +134,18 @@ describe("mercator", () => {
 
   it("parses route colours", () => {
     expect(hexToRgb("#0060A9")).toEqual([0, 96, 169]);
+  });
+});
+
+describe("minScaleAt", () => {
+  const stops: [number, number][] = [
+    [10, 0.5],
+    [14, 1],
+  ];
+  it("interpolates between stops and holds past the ends", () => {
+    expect(minScaleAt(stops, 8)).toBe(0.5);
+    expect(minScaleAt(stops, 12)).toBeCloseTo(0.75);
+    expect(minScaleAt(stops, 14)).toBe(1);
+    expect(minScaleAt(stops, 18)).toBe(1);
   });
 });

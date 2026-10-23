@@ -99,7 +99,7 @@ describe("applyService extend", () => {
       },
     },
     routes: {},
-    sizing: { minPixelLength: 14, minPixelWidth: 6 },
+    sizing: { minPixelLength: 14, minPixelWidth: 6, minScaleByZoom: [[0, 1]] },
   };
   const plan: ServicePlan = {
     schema: 1,

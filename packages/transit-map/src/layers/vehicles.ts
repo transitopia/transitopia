@@ -15,6 +15,7 @@ import {
   hexToRgb,
   inset,
   mercX,
+  minScaleAt,
   mercY,
   pointInConvex,
   ribbon,
@@ -85,8 +86,9 @@ export class VehicleLayer {
       (EARTH_CIRCUMFERENCE * Math.cos((center.lat * Math.PI) / 180))
       / (512 * 2 ** zoom);
     this.mercPerPx = 1 / (512 * 2 ** zoom);
-    const minL = this.sizing.minPixelLength * mPerPx;
-    const minW = this.sizing.minPixelWidth * mPerPx;
+    const k = minScaleAt(this.sizing.minScaleByZoom, zoom);
+    const minL = this.sizing.minPixelLength * k * mPerPx;
+    const minW = this.sizing.minPixelWidth * k * mPerPx;
     const ox = mercX(center.lng);
     const oy = mercY(center.lat);
 

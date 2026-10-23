@@ -48,7 +48,7 @@ const kin: KinematicsConfig = {
     },
   },
   routes: {},
-  sizing: { minPixelLength: 14, minPixelWidth: 6 },
+  sizing: { minPixelLength: 14, minPixelWidth: 6, minScaleByZoom: [[0, 1]] },
 };
 
 // A 2.2 km crossing due north; one vessel (block b1) shuttling every 15 min with 12-minute crossings

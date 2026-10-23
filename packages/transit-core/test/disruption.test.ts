@@ -121,7 +121,7 @@ const kin: KinematicsConfig = {
     },
   },
   routes: {},
-  sizing: { minPixelLength: 14, minPixelWidth: 6 },
+  sizing: { minPixelLength: 14, minPixelWidth: 6, minScaleByZoom: [[0, 1]] },
 };
 const ops: OperationsConfig = {
   fleets: { groups: [["canada"]] },

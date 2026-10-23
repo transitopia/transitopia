@@ -20,7 +20,7 @@ const kin: KinematicsConfig = {
     },
   },
   routes: {},
-  sizing: { minPixelLength: 14, minPixelWidth: 6 },
+  sizing: { minPixelLength: 14, minPixelWidth: 6, minScaleByZoom: [[0, 1]] },
 };
 
 // A ferry shuttling L → W (14:02 → 14:14) and back W → L (14:16 → 14:28), one vessel (block).

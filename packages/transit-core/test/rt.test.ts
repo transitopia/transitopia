@@ -47,7 +47,7 @@ const kin: KinematicsConfig = {
     },
   },
   routes: {},
-  sizing: { minPixelLength: 14, minPixelWidth: 6 },
+  sizing: { minPixelLength: 14, minPixelWidth: 6, minScaleByZoom: [[0, 1]] },
 };
 
 // An L-shaped bus route: 1 km east, then 1 km north. Straight-line interpolation between fixes on
