@@ -7,7 +7,7 @@ import type { VehicleState } from "@transitopia/transit-core/schedule/engine.ts"
 import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
 import { creditsFor, legendsFor } from "@transitopia/shared/datasets.ts";
 
-import { clockMinutes, timeState } from "./format.ts";
+import { clockMinutes, timeState, toHeadsign } from "./format.ts";
 import { RouteBadge, routeColorsFor } from "./RouteBadge.tsx";
 import {
   CardRow,
@@ -44,10 +44,6 @@ export function cleanStopName(name: string | undefined): string {
   return (name ?? "")
     .replace(/\s+Station\s+@\s+/i, " · ")
     .replace(/\s+Station$/i, "");
-}
-
-function headsign(v: VehicleState): string {
-  return v.headsign.replace(/^.*?\bTo\s+/i, "To ");
 }
 
 /**
@@ -152,7 +148,8 @@ export const VehicleCard: React.FC<{
 
   const mode = MODE[route.mode];
   const colors = routeColorsFor(engine)(route);
-  const title = route.mode === "bus" ? busTitle(v, route) : headsign(v);
+  const title =
+    route.mode === "bus" ? busTitle(v, route) : toHeadsign(v.headsign);
   const actions: CardAction[] = [
     snap.following ?
       {

@@ -9,19 +9,24 @@ import {
   type TransitSnapshot,
 } from "@transitopia/transit-map/engine.ts";
 import { localDate, toWallTime } from "@transitopia/transit-core/time.ts";
+import { DAY_WINDOW } from "@transitopia/transit-core/schedule/frequency.ts";
 import { creditsFor, legendsFor } from "@transitopia/shared/datasets.ts";
+
+import { spacingTier } from "@transitopia/shared/stop-spacing.ts";
 
 import { Icon } from "../components/Icon.tsx";
 import {
+  CardRow,
   CardSection,
   InfoCard,
   shareLink,
   type CardAction,
   type CardChip,
 } from "../components/InfoCard.tsx";
-import { timeState } from "./format.ts";
+import { clockMinutes, timeState, toHeadsign } from "./format.ts";
 import { bandKey, bandOf } from "./frequency.ts";
 import { routeColorsFor } from "./RouteBadge.tsx";
+import { spacingIcon, spacingText } from "./stopSpacing.ts";
 
 const hh = (h: number) => String(h % 24).padStart(2, "0");
 
@@ -92,7 +97,10 @@ const RouteCardBody: React.FC<{
         : "Commuter rail"
       }
       title={route.label}
-      chips={vehicleChips(snap, place, nouns, "running")}
+      chips={[
+        ...vehicleChips(snap, place, nouns, "running"),
+        ...spacingChip(place),
+      ]}
       // While the card is open, the map dims every other route (packages/transit-map/README.md#route-focus).
       actions={cardActions(engine, `${route.label} · Transitopia`)}
       {...cardFrame(engine, snap)}
@@ -104,7 +112,60 @@ const RouteCardBody: React.FC<{
       }>
       <NextHour next={place.nextHour} />
       <DayStrip snap={snap} days={engine.routeDays(route.key)} />
+      <Stops snap={snap} place={place} />
     </InfoCard>
+  );
+};
+
+/**
+ * A bus route's stop spacing category (packages/shared/src/stop-spacing.ts), named only: the figure
+ * is in its Stops section.
+ */
+function spacingChip({ route }: RouteSnapshot): CardChip[] {
+  if (route.mode !== "bus" || !route.stops) return [];
+  const tier = spacingTier(route.stops.spacing);
+  return [
+    { label: tier.name, lead: <Icon icon={spacingIcon(tier)} size={16} /> },
+  ];
+}
+
+/**
+ * How far apart its stops are (average spacing, its busiest pattern's stops) and how fast its trips
+ * are timetabled: in the hour from the map's time, and the range over regular weekdays.
+ */
+const Stops: React.FC<{ snap: TransitSnapshot; place: RouteSnapshot }> = ({
+  snap,
+  place: { route, speed },
+}) => {
+  const { stops, weekdaySpeed } = route;
+  if (!stops && !weekdaySpeed) return null;
+  return (
+    <CardSection title="Stops">
+      {stops ?
+        <>
+          <CardRow label="Average spacing" value={spacingText(stops.spacing)} />
+          <CardRow
+            label="Stops"
+            note={stops.headsign ? toHeadsign(stops.headsign) : undefined}
+            value={`${stops.count} over ${(stops.length / 1000).toFixed(1)} km`}
+          />
+        </>
+      : null}
+      <CardRow
+        label="Scheduled speed"
+        note={
+          weekdaySpeed ?
+            `${weekdaySpeed[0] === weekdaySpeed[1] ? weekdaySpeed[0] : `${weekdaySpeed[0]}–${weekdaySpeed[1]}`} km/h on weekdays, ${hh(DAY_WINDOW.fromH)}:00–${hh(DAY_WINDOW.toH)}:00`
+          : undefined
+        }
+        value={
+          speed !== undefined ?
+            `${Math.round(speed)} km/h at ${clockMinutes(snap.t)}`
+          : `No trips at ${clockMinutes(snap.t)}`
+        }
+        muted={speed === undefined}
+      />
+    </CardSection>
   );
 };
 

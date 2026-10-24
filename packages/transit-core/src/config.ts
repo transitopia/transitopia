@@ -17,7 +17,7 @@ import type { PredictionConfig } from "./rt/profile.ts";
 import type { CarryConfig } from "./rt/carry.ts";
 import type { AisMatchConfig } from "./ais/match.ts";
 import type { GlideConfig } from "./ais/glide.ts";
-import type { RouteCategory, RouteKind, RouteMode } from "./plan/types.ts";
+import type { RouteKind, RouteMode } from "./plan/types.ts";
 
 /** The value without its "$" comment keys, at any depth. */
 export function stripComments(v: unknown): unknown {
@@ -194,11 +194,6 @@ const routeModes = [
   "rail",
   "bus",
 ] as const satisfies RouteMode[];
-const routeCategories = [
-  "rapid",
-  "frequent",
-  "regular",
-] as const satisfies RouteCategory[];
 
 /** GTFS routes are selected by name, never by route_id (which changes between feeds). */
 const routeMatch = z
@@ -222,7 +217,8 @@ const route = z.strictObject({
   label: z.string().min(1).exactOptional(),
   kind: z.enum(routeKinds).exactOptional(),
   mode: z.enum(routeModes).exactOptional(),
-  category: z.enum(routeCategories).exactOptional(),
+  /** Drawn in its own colour (`PlanRoute.brand`): by default rail and ferries, not buses. */
+  brand: z.boolean().exactOptional(),
   color: z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, "expected #rrggbb")

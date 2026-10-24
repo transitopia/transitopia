@@ -3,12 +3,7 @@
 // (matched by name, never route_id) and excluding others.
 
 import type { Config, RouteConfig, RouteMatch } from "../config.ts";
-import type {
-  PlanRoute,
-  RouteCategory,
-  RouteKind,
-  RouteMode,
-} from "./types.ts";
+import type { PlanRoute, RouteKind, RouteMode } from "./types.ts";
 
 /** The routes.txt fields this reads. */
 export interface GtfsRouteRow {
@@ -23,12 +18,11 @@ export interface GtfsRouteRow {
 interface Model {
   kind: RouteKind;
   mode: RouteMode;
-  category: RouteCategory;
 }
 
-const BUS: Model = { kind: "bus", mode: "bus", category: "regular" };
-const RAIL: Model = { kind: "shape", mode: "rail", category: "rapid" };
-const FERRY: Model = { kind: "shape", mode: "ferry", category: "rapid" };
+const BUS: Model = { kind: "bus", mode: "bus" };
+const RAIL: Model = { kind: "shape", mode: "rail" };
+const FERRY: Model = { kind: "shape", mode: "ferry" };
 
 /**
  * How a route is modelled without an entry in routes.json, from its GTFS route_type (basic and
@@ -89,7 +83,11 @@ function hexColor(v: string | undefined, fallback: string): string {
 
 /** Without a GTFS colour (TransLink's buses have none): drawn by frequency anyway. */
 const NO_COLOR = "#666666";
-const CATEGORY_ORDER: RouteCategory[] = ["rapid", "frequent", "regular"];
+/** Rail and ferries first, then buses in their own colour, then the other buses. */
+const groupOf = (r: PlanRoute) =>
+  r.mode !== "bus" ? 0
+  : r.brand ? 1
+  : 2;
 const byNumber = new Intl.Collator(undefined, { numeric: true });
 
 export interface RouteSelection {
@@ -101,8 +99,8 @@ export interface RouteSelection {
 }
 
 /**
- * The plan's routes from a feed's routes.txt and its routes.json. Sorted by category (rapid,
- * frequent, regular), then as listed in routes.json, then by key, numbers in order. Throws when an
+ * The plan's routes from a feed's routes.txt and its routes.json. Sorted by group (rail and
+ * ferries, buses in their own colour, other buses), then as listed in routes.json, then by key, numbers in order. Throws when an
  * entry matches more than one route, or two routes would share a key.
  */
 export function selectRoutes(
@@ -144,12 +142,13 @@ export function selectRoutes(
       throw new Error(
         `Two routes have the key ${key} (GTFS route ${row.route_id}): give one a key in routes.json`,
       );
+    const mode = over?.mode ?? model!.mode;
     routes.push({
       key,
       label: over?.label ?? defaultLabel(row, key),
       kind: over?.kind ?? model!.kind,
-      mode: over?.mode ?? model!.mode,
-      category: over?.category ?? model?.category ?? "rapid",
+      mode,
+      brand: over?.brand ?? mode !== "bus",
       color: over?.color ?? hexColor(row.route_color, NO_COLOR),
       textColor: hexColor(row.route_text_color, "#ffffff"),
       gtfsRouteId: row.route_id!,
@@ -162,7 +161,7 @@ export function selectRoutes(
   };
   routes.sort(
     (a, b) =>
-      CATEGORY_ORDER.indexOf(a.category!) - CATEGORY_ORDER.indexOf(b.category!)
+      groupOf(a) - groupOf(b)
       || listed(a.key) - listed(b.key)
       || byNumber.compare(a.key, b.key),
   );

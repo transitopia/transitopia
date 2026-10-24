@@ -90,6 +90,7 @@ function fixture(): ServicePlan {
         label: "Expo",
         kind: "skytrain",
         mode: "skytrain",
+        brand: true,
         color: "#0033a0",
         textColor: "#fff",
         gtfsRouteId: "1",
@@ -99,7 +100,7 @@ function fixture(): ServicePlan {
         label: "9 Broadway",
         kind: "bus",
         mode: "bus",
-        category: "regular",
+        brand: false,
         color: "#666",
         textColor: "#fff",
         gtfsRouteId: "9",
@@ -206,12 +207,14 @@ describe("published plans", () => {
     const { plan: back } = await roundTrip(plan);
     const { corridors, ...rest } = back;
     const { corridors: _c, ...want } = plan;
-    // Routes gain their weekday figures.
+    // Routes gain their weekday figures, stops and speeds.
     expect(rest).toEqual({
       ...want,
       routes: want.routes.map((r) => ({
         ...r,
         weekdayWait: expect.any(Number),
+        stops: expect.any(Object),
+        weekdaySpeed: expect.any(Array),
       })),
       frequency: expect.any(Object),
     });

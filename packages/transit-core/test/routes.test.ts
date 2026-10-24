@@ -36,12 +36,12 @@ const cfg = (json: unknown) => parseConfig("routes", json);
 describe("selectRoutes", () => {
   it("draws every route by default, modelled from its route_type", () => {
     const { routes, skipped } = selectRoutes(ROWS, cfg({ routes: [] }), "ds");
-    expect(routes.map((r) => [r.key, r.label, r.kind, r.category])).toEqual([
-      ["expo-line", "Expo Line", "shape", "rapid"],
-      ["seabus", "SeaBus", "shape", "rapid"],
-      ["25", "25 King Edward", "bus", "regular"],
-      ["99", "99 Broadway B-Line", "bus", "regular"],
-      ["N17", "N17 UBC/Downtown Night Bus", "bus", "regular"],
+    expect(routes.map((r) => [r.key, r.label, r.kind, r.brand])).toEqual([
+      ["expo-line", "Expo Line", "shape", true],
+      ["seabus", "SeaBus", "shape", true],
+      ["25", "25 King Edward", "bus", false],
+      ["99", "99 Broadway B-Line", "bus", false],
+      ["N17", "N17 UBC/Downtown Night Bus", "bus", false],
     ]);
     expect(routes.find((r) => r.key === "25")).toMatchObject({
       color: "#666666",
@@ -68,7 +68,7 @@ describe("selectRoutes", () => {
             key: "99",
             label: "99 B-Line",
             match: { route_short_name: "099" },
-            category: "frequent",
+            brand: true,
             color: "#f76707",
           },
           {
@@ -93,7 +93,7 @@ describe("selectRoutes", () => {
     expect(routes[0]).toMatchObject({ kind: "skytrain", mode: "skytrain" });
     expect(routes.find((r) => r.key === "99")).toMatchObject({
       label: "99 B-Line",
-      category: "frequent",
+      brand: true,
       color: "#f76707",
     });
     expect(routes.some((r) => "dataset" in r)).toBe(false);

@@ -107,6 +107,7 @@ const plan = (route: string) => ({
       label: "99",
       kind: "bus" as const,
       mode: "bus" as const,
+      brand: false,
       color: "#000",
       textColor: "#fff",
       gtfsRouteId: route,

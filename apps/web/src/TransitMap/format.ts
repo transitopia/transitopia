@@ -45,6 +45,11 @@ export function shortDate(d: string): string {
   });
 }
 
+/** "To King George" from GTFS headsigns like "Expo Line To King George". */
+export function toHeadsign(h: string): string {
+  return h.replace(/^.*?\bTo\s+/i, "To ");
+}
+
 /** Wall-clock time in the region's timezone, "HH:MM". */
 export function clockMinutes(t: number): string {
   return clockTime(t).slice(0, 5);

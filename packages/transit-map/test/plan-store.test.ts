@@ -154,6 +154,7 @@ describe("PlanStore loading plans by parts", () => {
         label: "95 Blink",
         kind: "bus",
         mode: "bus",
+        brand: false,
         color: "#0a0",
         textColor: "#fff",
         gtfsRouteId: "95",

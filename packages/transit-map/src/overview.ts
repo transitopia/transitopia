@@ -9,12 +9,35 @@ import type {
   ExpressionSpecification,
   LayerSpecification,
 } from "@maplibre/maplibre-gl-style-spec";
+import type { Map as MlMap } from "maplibre-gl";
 import type { Theme } from "@transitopia/map-style/basemap.ts";
 import { FREQUENCY_BANDS } from "@transitopia/shared/frequency.ts";
 import {
   ENGINE_MIN_ZOOM,
   OVERVIEW_LAYERS,
 } from "@transitopia/shared/transit-overview.ts";
+import { loadPref } from "./prefs.ts";
+
+/**
+ * Map global state: whether routes with their own colour are drawn in it (unset: they are), or every
+ * route is coloured by frequency. The viewer's choice (the engine's `setBrandColors`), which the
+ * engine's own layers follow too.
+ */
+export const BRAND_COLORS = "brandColors";
+const brandOn = [
+  "boolean",
+  ["coalesce", ["global-state", BRAND_COLORS], true],
+  true,
+] as ExpressionSpecification;
+const brandOff = ["!", brandOn] as ExpressionSpecification;
+
+/** Set BRAND_COLORS: to `on`, or by default the viewer's choice as the engine saved it. */
+export function applyBrandColors(
+  map: Pick<MlMap, "setGlobalStateProperty">,
+  on: boolean = loadPref("brandColors", true),
+): void {
+  map.setGlobalStateProperty(BRAND_COLORS, on);
+}
 
 /** The lines' widths (px) per frequency tier at a few zooms, reaching the engine's at its start zoom. */
 const TIER_WIDTHS: [number, number[]][] = [
@@ -99,11 +122,12 @@ export function overviewLayers(
       },
     },
     {
+      // Buses without corridors, and with brand colours off, every route.
       ...common,
-      id: "overview-buses",
+      id: "overview-routes-tier",
       type: "line",
       "source-layer": OVERVIEW_LAYERS.routes,
-      filter: ["all", kind("bus"), ["has", "tier"]],
+      filter: ["all", ["has", "tier"], ["any", ["!", hasColor], brandOff]],
       paint: {
         "line-color": byTier(tierColors),
         "line-width": tierWidth,
@@ -115,7 +139,7 @@ export function overviewLayers(
       id: "overview-corridors-brand",
       type: "line",
       "source-layer": OVERVIEW_LAYERS.corridors,
-      filter: hasColor,
+      filter: ["all", hasColor, brandOn],
       paint: {
         "line-color": ["get", "color"],
         "line-width": widths(BRAND_WIDTHS),
@@ -126,7 +150,7 @@ export function overviewLayers(
       id: "overview-routes",
       type: "line",
       "source-layer": OVERVIEW_LAYERS.routes,
-      filter: ["all", hasColor, ["!", kind("skytrain")]],
+      filter: ["all", hasColor, ["!", kind("skytrain")], brandOn],
       paint: {
         "line-color": ["get", "color"],
         "line-width": widths(BRAND_WIDTHS),
@@ -137,7 +161,7 @@ export function overviewLayers(
       id: "overview-skytrain",
       type: "line",
       "source-layer": OVERVIEW_LAYERS.routes,
-      filter: kind("skytrain"),
+      filter: ["all", kind("skytrain"), brandOn],
       paint: {
         "line-color": ["get", "color"],
         "line-width": widths(SKYTRAIN_WIDTHS),

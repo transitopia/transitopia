@@ -131,6 +131,7 @@ const plan: ServicePlan = {
       label: "Expo",
       kind: "skytrain",
       mode: "skytrain",
+      brand: true,
       color: "#0033a0",
       textColor: "#fff",
       gtfsRouteId: "1",

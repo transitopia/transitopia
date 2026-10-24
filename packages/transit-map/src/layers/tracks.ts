@@ -29,6 +29,7 @@ import {
   focusColor,
   LINES_SOURCE,
   onFocus,
+  routeLineColor,
   VEHICLES_BEFORE_LAYER,
 } from "./static.ts";
 
@@ -136,12 +137,11 @@ export function addTrackLayers(
     source: LINES_SOURCE,
     "source-layer": PLAN_TILE_LAYERS.railTracks,
   } as const;
-  /** A line's colour, grey where none runs (yards, track off every line). */
-  const ownColor = [
-    "coalesce",
-    ["get", "color"],
-    yard,
-  ] as ExpressionSpecification;
+  /**
+   * A line's colour (its frequency colour while routes are coloured by frequency), grey where none
+   * runs (yards, track off every line).
+   */
+  const ownColor = routeLineColor("line", ["coalesce", ["get", "color"], yard]);
 
   baseFilters.clear();
   const kind = (...k: string[]) =>
@@ -203,7 +203,11 @@ export function addTrackLayers(
     ] as ExpressionSpecification;
   // Off the focused route (its card is open), lines are faded (static.ts → setFocusRoute): strokes
   // by colour, since their pieces overlap; the ribbon, one polygon per line, by opacity.
-  const lineColor = focusColor(plan.routes, theme, "line", ownColor);
+  const lineColor = focusColor(plan.routes, theme, "line", [
+    "coalesce",
+    ["get", "color"],
+    yard,
+  ]);
   const dimmed = (x: number) =>
     ["case", onFocus("line"), x, x * DIM_OPACITY] as ExpressionSpecification;
 
@@ -554,7 +558,10 @@ export function setDebugPlatforms(
 }
 
 /** Hide tracks of hidden lines (yards stay visible). */
-export function applyTrackFilter(map: MlMap, hidden: Set<string>): void {
+export function applyTrackFilter(
+  map: MlMap,
+  hidden: ReadonlySet<string>,
+): void {
   const lineVisible: ExpressionSpecification = [
     "!",
     ["in", ["get", "line"], ["literal", [...hidden]]],

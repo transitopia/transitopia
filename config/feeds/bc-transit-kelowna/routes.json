@@ -1,5 +1,5 @@
 {
-  "$comment": "How BC Transit's routes here are drawn where the GTFS alone doesn't say; every route in the feed is drawn by default, and the format is in config/feeds/translink/routes.json. No 'color': BC Transit's GTFS gives every route its own. The 97 Okanagan is Kelowna's RapidBus (frequent).",
+  "$comment": "How BC Transit's routes here are drawn where the GTFS alone doesn't say; every route in the feed is drawn by default, and the format is in config/feeds/translink/routes.json. No 'color': BC Transit's GTFS gives every route its own. The 97 Okanagan is Kelowna's RapidBus, drawn in its own colour.",
   "routes": [
     {
       "key": "97",
@@ -7,7 +7,7 @@
       "match": {
         "route_short_name": "97"
       },
-      "category": "frequent"
+      "brand": true
     }
   ]
 }

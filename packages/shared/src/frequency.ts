@@ -11,6 +11,8 @@ export interface FrequencyBand {
    * and including this (the last band has none).
    */
   maxMinutes?: number;
+  /** A frequent route's band: its weekday figure in it puts it on the layers panel's Frequent Bus switch (issue #211). */
+  frequent: boolean;
   /**
    * Colours per theme: blue, then a dusty red for Poor (muted so it doesn't outshine OK), fading to
    * a muted rose for Bad, never green or amber (those mean other things on the site).
@@ -21,25 +23,33 @@ export interface FrequencyBand {
 export const FREQUENCY_BANDS: readonly FrequencyBand[] = [
   {
     id: "good",
+    frequent: true,
     name: "Good",
     maxMinutes: 6,
     color: { light: "#1d5aa6", dark: "#5470e6" },
   },
   {
     id: "ok",
+    frequent: true,
     name: "OK",
     maxMinutes: 12,
     color: { light: "#3f97e8", dark: "#2a9fd0" },
   },
   {
     id: "poor",
+    frequent: false,
     name: "Poor",
     maxMinutes: 20,
     color: { light: "#bc6b77", dark: "#c07282" },
   },
   // Bad is the quietest band, not the loudest: a muted rose, so "a bus runs here" doesn't outshine
   // the streets that have good service (the map also draws it faded and thin).
-  { id: "bad", name: "Bad", color: { light: "#c9a3ab", dark: "#7a5a62" } },
+  {
+    id: "bad",
+    frequent: false,
+    name: "Bad",
+    color: { light: "#c9a3ab", dark: "#7a5a62" },
+  },
 ];
 
 /**
@@ -62,6 +72,11 @@ export function bandIndex(minutes: number): number {
     (b) => b.maxMinutes !== undefined && shown <= b.maxMinutes,
   );
   return i >= 0 ? i : FREQUENCY_BANDS.length - 1;
+}
+
+/** Whether a worst wait of `minutes` is in a frequent band (`FrequencyBand.frequent`). */
+export function isFrequent(minutes: number): boolean {
+  return FREQUENCY_BANDS[bandIndex(minutes)]!.frequent;
 }
 
 /** A band's range, short: "≤6m", …, ">20m". */

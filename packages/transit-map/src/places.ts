@@ -35,6 +35,7 @@ import {
   type Frequency,
   type Starts,
 } from "@transitopia/transit-core/schedule/frequency.ts";
+import { routeSpeed } from "@transitopia/transit-core/schedule/stops.ts";
 import {
   segmentFrequency,
   sharedStart,
@@ -69,6 +70,8 @@ export interface RouteSnapshot {
   route: PlanRoute;
   /** How often its trips start in the hour from the shown time (timetable), better direction. */
   nextHour: Frequency | undefined;
+  /** Its scheduled speed (km/h) in the hour from the shown time (`routeSpeed`); undefined without trips then. */
+  speed: number | undefined;
   /** Its vehicles drawn now, and how many of them have real positions. */
   vehicles: number;
   live: number;
@@ -243,6 +246,7 @@ export function placeSnapshot(
       id: p.id,
       route,
       nextHour: routeFrequency(pp, p.id, date, sec, 3600),
+      speed: routeSpeed(pp, p.id, date, sec, 3600),
       vehicles: mine.length,
       live: mine.filter((v) => v.provenance !== "estimated").length,
       datasets: ctx.datasetsOf([

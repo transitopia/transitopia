@@ -5,6 +5,7 @@ import {
 } from "@transitopia/transit-map/engine.ts";
 import { readUrl } from "@transitopia/transit-map/url.ts";
 import {
+  applyBrandColors,
   overviewLayers,
   overviewMaxZoom,
 } from "@transitopia/transit-map/overview.ts";
@@ -184,6 +185,8 @@ function useOverview(
         type: "vector",
         url: transitOverviewTiles,
       });
+    // Brand colours or frequency only, as the viewer chose (an engine sets it too, when it changes).
+    applyBrandColors(map);
     const layers = overviewLayers(OVERVIEW_SOURCE, theme, maxzoomRef.current);
     for (const layer of layers)
       if (!map.getLayer(layer.id)) map.addLayer(layer);
