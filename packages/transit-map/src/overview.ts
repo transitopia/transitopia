@@ -16,7 +16,7 @@ import {
   ENGINE_MIN_ZOOM,
   OVERVIEW_LAYERS,
 } from "@transitopia/shared/transit-overview.ts";
-import { loadPref } from "./prefs.ts";
+import { loadPref, savePref } from "./prefs.ts";
 
 /**
  * Map global state: whether routes with their own colour are drawn in it (unset: they are), or every
@@ -37,6 +37,15 @@ export function applyBrandColors(
   on: boolean = loadPref("brandColors", true),
 ): void {
   map.setGlobalStateProperty(BRAND_COLORS, on);
+}
+
+/** Set BRAND_COLORS to `on` and save it as the viewer's choice, without an engine (zoomed out). */
+export function saveBrandColors(
+  map: Pick<MlMap, "setGlobalStateProperty">,
+  on: boolean,
+): void {
+  savePref("brandColors", on);
+  applyBrandColors(map, on);
 }
 
 /** The lines' widths (px) per frequency tier at a few zooms, reaching the engine's at its start zoom. */

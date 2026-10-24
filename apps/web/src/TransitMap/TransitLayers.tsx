@@ -3,6 +3,9 @@ import type {
   TransitEngine,
   TransitSnapshot,
 } from "@transitopia/transit-map/engine.ts";
+import type { Map as MlMap } from "maplibre-gl";
+import { saveBrandColors } from "@transitopia/transit-map/overview.ts";
+import { loadPref } from "@transitopia/transit-map/prefs.ts";
 import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
 import type { RouteGroup } from "@transitopia/transit-core/plan/route-groups.ts";
 
@@ -73,7 +76,18 @@ function windowText(snap: TransitSnapshot): string {
 const GroupSwatch: React.FC<{
   routes: PlanRoute[];
   colors: (r: PlanRoute) => RouteColors;
-}> = ({ routes, colors }) => {
+  /** Rail and ferries: drawn thicker. */
+  rapid: boolean;
+}> = ({ routes, colors, rapid }) => {
+  // A group without routes here (its row is greyed out): one grey line.
+  if (!routes.length)
+    return (
+      <span className="flex w-7 flex-col justify-center">
+        <span
+          className={`rounded-full bg-gray-400 dark:bg-gray-500 ${rapid ? "h-[5px]" : "h-1"}`}
+        />
+      </span>
+    );
   // One sample per mode, so SkyTrain, ferries and buses each show up: its first route (routes in
   // their own colour come first).
   const samples = routes
@@ -89,6 +103,62 @@ const GroupSwatch: React.FC<{
         />
       ))}
     </span>
+  );
+};
+
+const BrandColorsRow: React.FC<{
+  on: boolean;
+  onChange: (on: boolean) => void;
+}> = ({ on, onChange }) => (
+  <SwitchRow
+    title="Brand colours"
+    description={
+      on ?
+        "Rail and some bus routes in their own colours"
+      : "Every route coloured by frequency"
+    }
+    on={on}
+    onChange={onChange}
+  />
+);
+
+/**
+ * The transit layers panel while no engine is shown (zoomed out, or outside every region): the
+ * overview follows brand colours, so that switch stays; the rest waits for a region's engine. The
+ * kept engine, if any, takes the choice so it agrees when shown again; without one it's saved for
+ * the next.
+ */
+export const OverviewLayers: React.FC<{
+  map: MlMap;
+  engine: TransitEngine | undefined;
+  /** Whether a region is in view (only zoomed out too far for its engine). */
+  inView: boolean;
+}> = ({ map, engine, inView }) => {
+  const [saved, setSaved] = React.useState(() => loadPref("brandColors", true));
+  const engineBrand = React.useSyncExternalStore(
+    React.useCallback(
+      (fn: () => void) => engine?.subscribe(fn) ?? (() => {}),
+      [engine],
+    ),
+    () => engine?.getSnapshot().brandColors,
+  );
+  return (
+    <LayersPanel label="Transit layers">
+      <p className="px-4 pb-2 text-[13px] text-gray-600 dark:text-gray-400">
+        {inView ?
+          "Zoom in to choose which routes, stops and vehicles to show."
+        : "Move to an area with transit to choose which routes, stops and vehicles to show."
+        }
+      </p>
+      <BrandColorsRow
+        on={engineBrand ?? saved}
+        onChange={(on) => {
+          if (engine) engine.setBrandColors(on);
+          else saveBrandColors(map, on);
+          setSaved(on);
+        }}
+      />
+    </LayersPanel>
   );
 };
 
@@ -109,19 +179,26 @@ export const TransitLayers: React.FC<{
         </p>
       : null}
       {GROUPS.map((g) => {
-        // Groups without routes (no rail in Victoria) stay out of the panel.
+        // Groups without routes (no rail in Victoria) are greyed out.
         const routes = snap.routes.filter((r) =>
           snap.groups.get(r.key)?.includes(g.id),
         );
-        if (!routes.length) return null;
         return (
           <SwitchRow
             key={g.id}
             title={g.title}
             description={g.description}
-            swatch={<GroupSwatch routes={routes} colors={colors} />}
+            swatch={
+              <GroupSwatch
+                routes={routes}
+                colors={colors}
+                rapid={g.id === "rapid"}
+              />
+            }
             on={!snap.hiddenGroups.has(g.id)}
             onChange={(on) => engine.setGroupShown(g.id, on)}
+            disabled={!routes.length}
+            disabledReason="No routes like this in this region"
           />
         );
       })}
@@ -130,13 +207,7 @@ export const TransitLayers: React.FC<{
         on={snap.showStops}
         onChange={(on) => engine.setStopsShown(on)}
       />
-      <SwitchRow
-        title="Brand colours"
-        description={
-          snap.brandColors ?
-            "Rail and some bus routes in their own colours"
-          : "Every route coloured by frequency"
-        }
+      <BrandColorsRow
         on={snap.brandColors}
         onChange={(on) => engine.setBrandColors(on)}
       />

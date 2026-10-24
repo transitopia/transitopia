@@ -18,7 +18,7 @@ import { MapOverlayWindow } from "../Map/MapOverlayWindow.tsx";
 import { useTheme } from "../Theme/Theme.tsx";
 import { useDatasets } from "../Attribution/Attribution.tsx";
 import { TimeBar } from "./TimeBar.tsx";
-import { TransitLayers } from "./TransitLayers.tsx";
+import { OverviewLayers, TransitLayers } from "./TransitLayers.tsx";
 import { VehicleCard } from "./VehicleCard.tsx";
 import { PlaceCard } from "./PlaceCard.tsx";
 import { PickMenu } from "./PickMenu.tsx";
@@ -349,6 +349,9 @@ export default function TransitMap() {
             if (map) showBounds(map, lngLatBounds(bounds), { maxZoom: 16 });
           }}
         />
+      : null}
+      {map && !shown ?
+        <OverviewLayers map={map} engine={engine} inView={inView} />
       : null}
     </>
   );
