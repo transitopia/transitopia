@@ -11,10 +11,9 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, rm } from "node:fs/promises";
-import { gunzipSync } from "node:zlib";
+import { mkdir, rm } from "node:fs/promises";
 import { cadence } from "@transitopia/transit-core/rt/budget.ts";
-import { extendCoverage } from "@transitopia/transit-core/rt/types.ts";
+import { Recorder } from "@transitopia/server/rt/recorder.ts";
 import { join } from "node:path";
 import {
   DISPATCH_HISTORY_DIR,
@@ -23,7 +22,6 @@ import {
   feedPaths,
   log,
   readFeeds,
-  writeJson,
 } from "@transitopia/data/paths.ts";
 
 const allFeeds = await readFeeds();
@@ -92,38 +90,20 @@ for (const d of dates) {
   );
 }
 // The recorder's coverage index (what a local server reports at /rt/coverage), from the hours now here.
-for (const [dir, gapMs] of [
+for (const recorder of [
   ...feeds.map((f) => {
     const c = cadence(f.realtime!);
-    return [
+    return new Recorder(
       feedPaths(f.id).rtHistory,
       (t: number) => c.coverageGapMs(t),
-    ] as const;
+      { emptyIsGap: true },
+    );
   }),
   ...aisFeeds.map(
-    (f) =>
-      [feedPaths(f.id).aisHistory, () => f.ais!.coverageGapS * 1000] as const,
+    (f) => new Recorder(feedPaths(f.id).aisHistory, f.ais!.coverageGapS * 1000),
   ),
-]) {
-  const intervals: [number, number][] = [];
-  if (existsSync(dir))
-    for (const day of (await readdir(dir))
-      .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
-      .sort())
-      for (const f of (await readdir(join(dir, day))).sort()) {
-        const m = /^\d{2}\.ndjson(\.gz)?$/.exec(f);
-        if (!m) continue;
-        const buf = await readFile(join(dir, day, f));
-        for (const line of (m[1] ? gunzipSync(buf) : buf)
-          .toString("utf8")
-          .split("\n")) {
-          const t = /^\{"t":(\d+)/.exec(line)?.[1];
-          if (t) extendCoverage(intervals, Number(t), gapMs(Number(t)));
-        }
-      }
-  if (intervals.length)
-    await writeJson(join(dir, "coverage.json"), { intervals });
-}
+])
+  if (existsSync(recorder.dir)) await recorder.rebuildCoverage();
 
 if (args.includes("--db")) {
   const tmp = join(VAR_DIR, "snapshot");

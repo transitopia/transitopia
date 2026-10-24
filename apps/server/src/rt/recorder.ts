@@ -1,11 +1,15 @@
 // Appends each snapshot to hourly NDJSON files and maintains a coverage index (apps/server/README.md#real-time-service):
 //   <dir>/YYYY-MM-DD/HH.ndjson      (current hour, appended)
 //   <dir>/YYYY-MM-DD/HH.ndjson.gz   (closed hours, compressed)
-//   <dir>/coverage.json             ({ intervals: [[startMs, endMs], ...] })
+//   <dir>/coverage.json             ({ intervals: [[startMs, endMs], ...] }; rebuilt from the hour files when missing)
 // <dir> is a feed's var/rt-history/<feed>/, or var/ais-history/.
+// A GTFS-RT feed that answers with no vehicles is an outage, not a report that no buses run, so its
+// empty snapshots are recorded but don't extend coverage (emptyIsGap): playback falls back to
+// schedule estimates there (seen 01:50–08:26 on 2026-10-23, when TransLink's positions feed was empty).
 // Dates and hours are local (America/Vancouver) time of the fetch.
 
 import { createReadStream, createWriteStream } from "node:fs";
+import { createInterface } from "node:readline";
 import {
   appendFile,
   mkdir,
@@ -18,7 +22,7 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
-import { createGzip, gunzipSync } from "node:zlib";
+import { createGunzip, createGzip, gunzipSync } from "node:zlib";
 import {
   decodeSnapshot,
   encodeSnapshot,
@@ -44,10 +48,17 @@ export class Recorder {
   readonly dir: string;
   /** Coverage continues across gaps up to this (ms), fixed or depending on the time. */
   private gapMs: number | ((t: number) => number);
+  /** Snapshots without vehicles don't extend coverage (GTFS-RT; an AIS batch may be empty while connected). */
+  private emptyIsGap: boolean;
 
-  constructor(dir: string, gapMs: number | ((t: number) => number)) {
+  constructor(
+    dir: string,
+    gapMs: number | ((t: number) => number),
+    opts: { emptyIsGap?: boolean } = {},
+  ) {
     this.dir = dir;
     this.gapMs = gapMs;
+    this.emptyIsGap = opts.emptyIsGap ?? false;
   }
 
   private get coveragePath(): string {
@@ -63,7 +74,8 @@ export class Recorder {
       };
       this.intervals = raw.intervals ?? [];
     } catch {
-      this.intervals = [];
+      // Missing (deleted to rebuild it, e.g. after the coverage rule changes) or unreadable.
+      await this.rebuildCoverage();
     }
     this.loaded = true;
     await this.compressClosedHours();
@@ -95,14 +107,60 @@ export class Recorder {
       if (previous) await this.compress(previous);
     }
     await appendFile(file, `${encodeSnapshot(s)}\n`);
+    if (this.covers(s.vehicles.length)) {
+      this.extend(s.fetchedAt);
+      await this.saveCoverage();
+    }
+  }
+
+  private covers(vehicles: number): boolean {
+    return vehicles > 0 || !this.emptyIsGap;
+  }
+
+  private extend(t: number): void {
     extendCoverage(
       this.intervals,
-      s.fetchedAt,
-      typeof this.gapMs === "number" ? this.gapMs : this.gapMs(s.fetchedAt),
+      t,
+      typeof this.gapMs === "number" ? this.gapMs : this.gapMs(t),
     );
+  }
+
+  private async saveCoverage(): Promise<void> {
     const tmp = `${this.coveragePath}.tmp`;
     await writeFile(tmp, JSON.stringify({ intervals: this.intervals }));
     await rename(tmp, this.coveragePath);
+  }
+
+  /** Coverage from every recorded hour file (when coverage.json is missing, or after pulling hours). */
+  async rebuildCoverage(): Promise<void> {
+    this.intervals = [];
+    let days: string[] = [];
+    try {
+      days = (await readdir(this.dir))
+        .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+        .sort();
+    } catch {
+      return;
+    }
+    for (const day of days)
+      for (const f of (await readdir(join(this.dir, day))).sort()) {
+        const m = /^\d{2}\.ndjson(\.gz)?$/.exec(f);
+        if (!m) continue;
+        const input = createReadStream(join(this.dir, day, f));
+        const lines = createInterface({
+          input: m[1] ? input.pipe(createGunzip()) : input,
+          crlfDelay: Infinity,
+        });
+        // Without parsing each line: quotes inside strings are escaped, so `"v":[]` can only be an
+        // empty vehicle list (encodeSnapshot).
+        for await (const line of lines) {
+          const t = /^\{"t":(\d+)/.exec(line)?.[1];
+          if (t && this.covers(line.includes('"v":[]') ? 0 : 1))
+            this.extend(Number(t));
+        }
+      }
+    await mkdir(this.dir, { recursive: true });
+    await this.saveCoverage();
   }
 
   private async compress(file: string): Promise<void> {

@@ -167,12 +167,14 @@ export async function dailyStats(
         .execute();
   });
 
-  // Recorder coverage over the day, from the polls table.
+  // Recorder coverage over the day, from the polls table: polls without vehicles don't count
+  // (apps/server/src/rt/recorder.ts, emptyIsGap).
   const polls = await db
     .selectFrom("rt_polls")
     .select("fetched_at")
     .where("feed_id", "=", feed.id)
     .where("source", "=", "gtfs-rt")
+    .where("vehicles", ">", 0)
     .where("fetched_at", ">=", from)
     .where("fetched_at", "<", to)
     .orderBy("fetched_at")

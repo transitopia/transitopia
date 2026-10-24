@@ -463,7 +463,10 @@ export class RtClient {
   // --- live ---
 
   private liveSpan(): [number, number] | undefined {
-    const last = this.live.at(-1);
+    // A feed answering without vehicles is an outage, not "no buses": it ends the live span like a
+    // feed that stopped answering, so buses fall back to schedule estimates
+    // (apps/server/src/rt/recorder.ts, emptyIsGap).
+    const last = this.live.findLast((s) => s.vehicles.length > 0);
     if (
       !last
       || Date.now() - last.fetchedAt > this.cadence.staleAfterMs(last.fetchedAt)

@@ -141,8 +141,10 @@ export class FeedPoller {
       rt: opts.feed.realtime,
       apiKey: opts.apiKey,
     };
-    this.recorder = new Recorder(opts.historyDir, (t) =>
-      this.cadence.coverageGapMs(t),
+    this.recorder = new Recorder(
+      opts.historyDir,
+      (t) => this.cadence.coverageGapMs(t),
+      { emptyIsGap: true },
     );
     this.changes = new ServiceChanges(
       join(opts.historyDir, "changes"),
