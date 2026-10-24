@@ -74,10 +74,11 @@ const GroupSwatch: React.FC<{
   routes: PlanRoute[];
   colors: (r: PlanRoute) => RouteColors;
 }> = ({ routes, colors }) => {
-  // One sample per mode, so SkyTrain, ferries and buses each show up.
-  const samples = [
-    ...new Map(routes.map((r) => [r.mode, r] as const)).values(),
-  ].slice(0, 3);
+  // One sample per mode, so SkyTrain, ferries and buses each show up: its first route (routes in
+  // their own colour come first).
+  const samples = routes
+    .filter((r, i) => routes.findIndex((x) => x.mode === r.mode) === i)
+    .slice(0, 3);
   return (
     <span className="flex w-7 flex-col justify-center gap-[3px]">
       {samples.map((r) => (

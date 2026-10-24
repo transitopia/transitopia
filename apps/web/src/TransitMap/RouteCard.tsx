@@ -146,7 +146,15 @@ const Stops: React.FC<{ snap: TransitSnapshot; place: RouteSnapshot }> = ({
           <CardRow label="Average spacing" value={spacingText(stops.spacing)} />
           <CardRow
             label="Stops"
-            note={stops.headsign ? toHeadsign(stops.headsign) : undefined}
+            // "To Brentwood Station"; a headsign without "To" without its route number ("29th Ave Station").
+            note={
+              stops.headsign ?
+                toHeadsign(stops.headsign).replace(
+                  new RegExp(`^${route.key}\\s+`),
+                  "",
+                )
+              : undefined
+            }
             value={`${stops.count} over ${(stops.length / 1000).toFixed(1)} km`}
           />
         </>
