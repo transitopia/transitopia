@@ -41,17 +41,17 @@ const GROUPS: {
   {
     id: "rapid",
     title: "Rapid Transit",
-    description: "SkyTrain, SeaBus, West Coast Express",
+    description: "With dedicated infrastructure",
   },
   {
     id: "frequent",
     title: "Frequent Bus",
-    description: `Wait up to ${FREQUENT_MAX} min, most weekday hours`,
+    description: `Wait up to ${FREQUENT_MAX} min, weekdays`,
   },
   {
     id: "fast",
     title: "Fast Bus",
-    description: `Limited stops or Express: ${spacingText(FAST_MIN)} or more between stops`,
+    description: `${spacingText(FAST_MIN)} or more between stops`,
   },
   { id: "regular", title: "Regular Bus", description: "Every other route" },
 ];
@@ -114,7 +114,7 @@ const BrandColorsRow: React.FC<{
     title="Brand colours"
     description={
       on ?
-        "Rail and some bus routes in their own colours"
+        "Key routes use their official brand colour"
       : "Every route coloured by frequency"
     }
     on={on}
@@ -235,7 +235,7 @@ export const TransitLayers: React.FC<{
       {snap.corridors ?
         <>
           <SegmentedChoice
-            label="Bus frequency"
+            label="Route frequency"
             value={snap.busFrequency}
             options={[
               { value: "now", label: "Now" },
