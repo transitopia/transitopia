@@ -27,8 +27,8 @@ export interface CardAction {
 
 export interface CardChip {
   label: string;
-  /** A mark before the label (a stop spacing glyph). */
-  lead?: React.ReactNode;
+  /** An icon before the label (a stop spacing tier's). */
+  icon?: IconId | undefined;
   tone?: ChipTone | undefined;
   /** A route chip: the route's own colours. */
   color?: { bg: string; fg: string } | undefined;
@@ -252,11 +252,15 @@ export const InfoCard: React.FC<{
                     title={c.action}
                     className={`${className} hover:shadow-[inset_0_0_0_100px_rgb(0_0_0/0.12)]`}
                     style={style}>
-                    {c.lead}
+                    {c.icon ?
+                      <Icon icon={c.icon} size={16} />
+                    : null}
                     {c.label}
                   </button>
                 : <span key={c.label} className={className} style={style}>
-                    {c.lead}
+                    {c.icon ?
+                      <Icon icon={c.icon} size={16} />
+                    : null}
                     {c.label}
                   </span>;
             })}

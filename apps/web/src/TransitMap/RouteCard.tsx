@@ -124,9 +124,7 @@ const RouteCardBody: React.FC<{
 function spacingChip({ route }: RouteSnapshot): CardChip[] {
   if (route.mode !== "bus" || !route.stops) return [];
   const tier = spacingTier(route.stops.spacing);
-  return [
-    { label: tier.name, lead: <Icon icon={spacingIcon(tier)} size={16} /> },
-  ];
+  return [{ label: tier.name, icon: spacingIcon(tier) }];
 }
 
 /**
