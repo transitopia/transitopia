@@ -6,6 +6,13 @@ import type { VehicleState } from "@transitopia/transit-core/schedule/engine.ts"
 
 export const EARTH_CIRCUMFERENCE = 40_075_016.686;
 
+/** Ground metres per CSS pixel at a latitude and (MapLibre, 512 px tiles) zoom. */
+export function metresPerPixel(lat: number, zoom: number): number {
+  return (
+    (EARTH_CIRCUMFERENCE * Math.cos((lat * Math.PI) / 180)) / (512 * 2 ** zoom)
+  );
+}
+
 export function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.replace("#", ""), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];

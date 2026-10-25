@@ -15,6 +15,7 @@ import {
   hexToRgb,
   inset,
   mercX,
+  metresPerPixel,
   minScaleAt,
   mercY,
   pointInConvex,
@@ -82,9 +83,7 @@ export class VehicleLayer {
   update(vehicles: VehicleState[], dark: boolean): void {
     const zoom = this.map.getZoom();
     const center = this.map.getCenter();
-    const mPerPx =
-      (EARTH_CIRCUMFERENCE * Math.cos((center.lat * Math.PI) / 180))
-      / (512 * 2 ** zoom);
+    const mPerPx = metresPerPixel(center.lat, zoom);
     this.mercPerPx = 1 / (512 * 2 ** zoom);
     const k = minScaleAt(this.sizing.minScaleByZoom, zoom);
     const minL = this.sizing.minPixelLength * k * mPerPx;

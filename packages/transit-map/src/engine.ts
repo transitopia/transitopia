@@ -94,6 +94,7 @@ import {
 } from "./layers/static.ts";
 import { applyBrandColors } from "./overview.ts";
 import { VehicleLayer } from "./layers/vehicles.ts";
+import { metresPerPixel } from "./layers/vehicle-geometry.ts";
 import {
   BusFrequencyLayer,
   nowWindowStart,
@@ -350,6 +351,12 @@ const SNAPSHOT_INTERVAL_MS = 200;
  * some inputs age with wall-clock time and announce no change (live data going stale).
  */
 const IDLE_RECOMPUTE_MS = 1000;
+/**
+ * While playing, vehicles are recomputed (and the map repainted) for a new time only once the
+ * fastest could have moved this far on screen (px): zoomed out, a train moves about a pixel a
+ * second, and recomputing every vehicle every frame kept the main thread busy for nothing.
+ */
+const MAX_STEP_PX = 0.5;
 /** Sources the engine adds to the host's map (removed on dispose). */
 const SOURCES = [
   LINES_SOURCE,
@@ -461,6 +468,8 @@ export class TransitEngine {
   private inputsChanged = true;
   /** The clock time, zoom and performance.now() vehicles were last computed at. */
   private computedFor = { t: NaN, zoom: NaN, at: -Infinity };
+  /** The fastest any vehicle is set to move (m/s, from the kinematics config), for MAX_STEP_PX. */
+  private maxSpeedMps: number;
   private lastCoverageUpdate = 0;
   private coverage: [number, number][] = [];
   private lastUrlWrite = 0;
@@ -524,6 +533,12 @@ export class TransitEngine {
       loadPref<string>("busFrequency", "now") === "day" ? "day" : "now";
 
     this.vehicles = new VehicleLayer(map, opts.config.kinematics.sizing);
+    const { modes, routes } = opts.config.kinematics;
+    this.maxSpeedMps =
+      Math.max(
+        ...Object.values(modes).map((k) => k.maxSpeed),
+        ...Object.values(routes).map((k) => k.maxSpeed ?? 0),
+      ) / 3.6;
     this.vehicles.selectedId = this.selectedId;
     const regionBase =
       opts.apiBase ? `${opts.apiBase}regions/${opts.region}/` : undefined;
@@ -2021,13 +2036,17 @@ export class TransitEngine {
       this.live.update(t);
     }
     // Vehicles (and the map repaint their upload triggers) only when something they depend on
-    // changed: the time, the zoom (minimum drawn sizes), or an input (data, selection, filters).
-    // Paused, that's almost never; IDLE_RECOMPUTE_MS covers what ages with wall-clock time.
+    // changed: the time (once vehicles could have moved MAX_STEP_PX), the zoom (minimum drawn
+    // sizes), or an input (data, selection, filters). Paused, that's almost never;
+    // IDLE_RECOMPUTE_MS covers what ages with wall-clock time.
     const zoom = map.getZoom();
     const at = performance.now();
+    const stepMs =
+      (1000 * MAX_STEP_PX * metresPerPixel(map.getCenter().lat, zoom))
+      / (this.maxSpeedMps * Math.abs(clock.rate || 1));
     if (
       this.inputsChanged
-      || t !== this.computedFor.t
+      || (t !== this.computedFor.t && at - this.computedFor.at >= stepMs)
       || zoom !== this.computedFor.zoom
       || at - this.computedFor.at > IDLE_RECOMPUTE_MS
     ) {

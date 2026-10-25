@@ -382,7 +382,16 @@ export type SkippedStops = (
 
 /** Walks buses forward along their trips with profile (or fallback) timings. */
 export class Predictor {
-  private courses = new Map<string, Course>();
+  /**
+   * Courses by the trip's running times (its timetable's offsets from its start, which trips of a
+   * pattern with the same running times share: decodeTrips), then by pattern, band and stops
+   * skipped. A course depends only on those (times along it are relative), so a day's thousands of
+   * trips share a few thousand courses, and none outlive the plan's trips.
+   */
+  private courses = new WeakMap<
+    readonly number[],
+    WeakMap<readonly number[], Map<string, Course>>
+  >();
 
   private pp: PreparedPlan;
   private cfg: PredictionConfig;
@@ -401,19 +410,24 @@ export class Predictor {
     this.skipped = skipped;
   }
 
-  /** The course for a trip at a local hour (cached per trip, band, and stops skipped that day). */
+  /** The course for a trip at a local hour (cached by running times, band, and stops skipped that day). */
   course(trip: PreparedTrip, atMs: number): Course {
     const band = bandOf(
       this.cfg.bandStartHours,
       localHour(atMs, this.pp.plan.timezone),
     );
     const skip = this.skipped?.(tripServiceDate(trip, atMs), trip.trip.id);
+    const { arr, dep = arr } = trip.trip;
+    let byDep = this.courses.get(arr);
+    if (!byDep) this.courses.set(arr, (byDep = new WeakMap()));
+    let byKey = byDep.get(dep);
+    if (!byKey) byDep.set(dep, (byKey = new Map()));
     const key =
       skip?.size ?
-        `${trip.trip.id}|${band}|${[...skip].sort().join(",")}`
-      : `${trip.trip.id}|${band}`;
-    let c = this.courses.get(key);
-    if (!c) this.courses.set(key, (c = this.buildCourse(trip, band, skip)));
+        `${trip.trip.pattern}|${band}|${[...skip].sort().join(",")}`
+      : `${trip.trip.pattern}|${band}`;
+    let c = byKey.get(key);
+    if (!c) byKey.set(key, (c = this.buildCourse(trip, band, skip)));
     return c;
   }
 
@@ -511,7 +525,7 @@ export class Predictor {
     return { along: Math.min(d, c.length), speed: 0 };
   }
 
-  /** Timetable anchors per trip course (courses are per trip and time-of-day band). */
+  /** Timetable anchors per course, in seconds from the trip's start (courses are shared by trips). */
   private anchors = new WeakMap<
     Course,
     { along: number; sec: number; factor: number }[]
@@ -526,11 +540,12 @@ export class Predictor {
     const c = this.course(trip, serviceDayStart(serviceDate) + sec * 1000);
     let spans = this.anchors.get(c);
     if (!spans) this.anchors.set(c, (spans = this.buildAnchors(trip, c)));
+    const rel = sec - trip.trip.start;
     let k = spans.length - 2;
-    while (k > 0 && spans[k]!.sec > sec) k--;
+    while (k > 0 && spans[k]!.sec > rel) k--;
     const a = spans[k]!;
     const b = spans[k + 1]!;
-    const w = this.walk(c, a.along, sec - a.sec, a.factor);
+    const w = this.walk(c, a.along, rel - a.sec, a.factor);
     return {
       along: Math.min(b.along, w.along),
       speed: w.along >= b.along ? 0 : w.speed,
@@ -601,13 +616,14 @@ export class Predictor {
     if (idx[idx.length - 1] !== n - 1) idx.push(n - 1);
     return idx.map((i, j) => {
       const next = idx[j + 1];
+      const start = trip.trip.start;
       if (next === undefined)
-        return { along: dist[i]!, sec: trip.arr[i]!, factor: 1 };
+        return { along: dist[i]!, sec: trip.arr[i]! - start, factor: 1 };
       const expected = this.timeBetween(c, dist[i]!, dist[next]!);
       const available = trip.arr[next]! - trip.dep[i]!;
       return {
         along: dist[i]!,
-        sec: trip.dep[i]!,
+        sec: trip.dep[i]! - start,
         factor: expected > 0 && available > 0 ? available / expected : 1,
       };
     });

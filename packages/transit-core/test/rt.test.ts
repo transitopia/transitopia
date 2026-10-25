@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { serviceDate } from "../src/time.ts";
+import { serviceDate, serviceDayStart } from "../src/time.ts";
 import {
   coverageContains,
   decodeSnapshot,
@@ -305,6 +305,27 @@ describe("prediction", () => {
     });
     expect(v?.status).toBe("dwell");
     expect(v?.stopName).toBe("Mid");
+
+    // A later trip with the same running times (sharing them, as decodeTrips does) shares the
+    // course, and is paced on its own timetable.
+    const later = {
+      ...withStop,
+      trips: [
+        withStop.trips[0]!,
+        { ...withStop.trips[0]!, id: "trip2", start: start + 600 },
+      ],
+    };
+    const pp3 = preparePlan(later, kin);
+    const p3 = new Predictor(pp3, cfg);
+    const t1 = pp3.tripIndex.get("trip1")!;
+    const t2 = pp3.tripIndex.get("trip2")!;
+    const ms = (s: number) =>
+      serviceDayStart(serviceDate("20260928")) + s * 1000;
+    expect(p3.course(t2, ms(start + 700))).toBe(p3.course(t1, ms(start + 100)));
+    for (const s of [100, 195, 210, 300])
+      expect(p3.pacer(t2, start + 600 + s, serviceDate("20260928"))).toEqual(
+        p3.pacer(t1, start + s, serviceDate("20260928")),
+      );
   });
 
   // Fix A at 200 m (t=0), fix B 30 s later; each known from its snapshot's fetch (3 s after).
