@@ -23,28 +23,28 @@ import { loadPref, savePref } from "./prefs.ts";
  * route is coloured by frequency. The viewer's choice (the engine's `setBrandColors`), which the
  * engine's own layers follow too.
  */
-export const BRAND_COLORS = "brandColors";
+export const SHOW_BRAND_COLORS = "showBrandColors";
 const brandOn = [
   "boolean",
-  ["coalesce", ["global-state", BRAND_COLORS], true],
+  ["coalesce", ["global-state", SHOW_BRAND_COLORS], true],
   true,
 ] as ExpressionSpecification;
 const brandOff = ["!", brandOn] as ExpressionSpecification;
 
-/** Set BRAND_COLORS: to `on`, or by default the viewer's choice as the engine saved it. */
+/** Set SHOW_BRAND_COLORS: to `on`, or by default the viewer's choice as the engine saved it. */
 export function applyBrandColors(
   map: Pick<MlMap, "setGlobalStateProperty">,
-  on: boolean = loadPref("brandColors", true),
+  on: boolean = loadPref("showBrandColors", true),
 ): void {
-  map.setGlobalStateProperty(BRAND_COLORS, on);
+  map.setGlobalStateProperty(SHOW_BRAND_COLORS, on);
 }
 
-/** Set BRAND_COLORS to `on` and save it as the viewer's choice, without an engine (zoomed out). */
+/** Set SHOW_BRAND_COLORS to `on` and save it as the viewer's choice, without an engine (zoomed out). */
 export function saveBrandColors(
   map: Pick<MlMap, "setGlobalStateProperty">,
   on: boolean,
 ): void {
-  savePref("brandColors", on);
+  savePref("showBrandColors", on);
   applyBrandColors(map, on);
 }
 

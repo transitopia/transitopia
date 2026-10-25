@@ -269,7 +269,7 @@ export interface TransitSnapshot {
   /** Routes not drawn: those whose every group is hidden. */
   hidden: ReadonlySet<string>;
   /** Routes with their own colour are drawn in it; otherwise every route is coloured by frequency. */
-  brandColors: boolean;
+  showBrandColors: boolean;
   /** Station and bus stop markers and labels are drawn. */
   showStops: boolean;
   /** Only vehicles with real positions are drawn (estimates hidden). */
@@ -386,7 +386,7 @@ export class TransitEngine {
   private hiddenGroups: Set<RouteGroup>;
   /** The shown feed's routes whose every group is hidden (`hiddenGroups`). */
   private hidden: ReadonlySet<string> = new Set();
-  private brandColors: boolean;
+  private showBrandColors: boolean;
   private showStops: boolean;
   private liveOnly: boolean;
   private busFrequency: FrequencyWindow;
@@ -516,7 +516,7 @@ export class TransitEngine {
         ROUTE_GROUPS.includes(g as RouteGroup),
       ),
     );
-    this.brandColors = loadPref("brandColors", true);
+    this.showBrandColors = loadPref("showBrandColors", true);
     this.showStops = loadPref("showStops", true);
     this.liveOnly = loadPref("liveOnly", false);
     // "night" was a window once; it reads as "now".
@@ -747,8 +747,8 @@ export class TransitEngine {
    * every route by frequency, as the bus corridors are.
    */
   setBrandColors(on: boolean): void {
-    this.brandColors = on;
-    savePref("brandColors", on);
+    this.showBrandColors = on;
+    savePref("showBrandColors", on);
     if (this.styleReady) applyBrandColors(this.map, on);
     this.routeColorsFor = undefined;
     this.invalidate();
@@ -1802,7 +1802,7 @@ export class TransitEngine {
       groups: this.shownFeed ? this.groupsOf(this.shownFeed) : new Map(),
       hiddenGroups: this.hiddenGroups,
       hidden: this.hidden,
-      brandColors: this.brandColors,
+      showBrandColors: this.showBrandColors,
       showStops: this.showStops,
       liveOnly: this.liveOnly,
       corridors: Boolean(this.shownFeed?.plan.corridorInfo),
@@ -1915,7 +1915,7 @@ export class TransitEngine {
     if (same && !force) return;
     if (!same) this.syncHidden();
     // A new style (a theme switch) has no global state: set it again.
-    applyBrandColors(map, this.brandColors);
+    applyBrandColors(map, this.showBrandColors);
     this.routeColorsFor = undefined;
     // Start loading its places file, whose grouping replaces the plan's (syncHubs).
     store.placesFor(pp);
@@ -1956,7 +1956,7 @@ export class TransitEngine {
   }
 
   /**
-   * Routes in their colour on the map: their own (`PlanRoute.brand`, while `brandColors` is on), or
+   * Routes in their colour on the map: their own (`PlanRoute.brand`, while `showBrandColors` is on), or
    * the frequency band of the map's window ("now" or "day"), as their corridors show it, in the
    * current theme (packages/transit-map/README.md#bus-corridors): vehicles, and with brand colours
    * off, lines too (`setRouteColors`). Re-set when the feed, the theme, the choice, the window or the
@@ -1972,13 +1972,13 @@ export class TransitEngine {
       this.busFrequency === "now" ?
         nowWindowStart((t - serviceDayStart(date)) / 1000)
       : 0;
-    const key = `${freq?.version ?? -1}|${this.theme}|${this.brandColors}|${this.busFrequency}|${date}|${step}`;
+    const key = `${freq?.version ?? -1}|${this.theme}|${this.showBrandColors}|${this.busFrequency}|${date}|${step}`;
     if (this.routeColorsFor?.pp === pp && this.routeColorsFor.key === key)
       return false;
     this.routeColorsFor = { pp, key };
     const colors: Record<string, string> = {};
     for (const r of pp.plan.routes) {
-      if (r.brand && this.brandColors) continue;
+      if (r.brand && this.showBrandColors) continue;
       // Corridors' rates first: a bus out when none start in the window (its last trip) has
       // Infinity there, the last band.
       const wait =
@@ -1998,8 +1998,8 @@ export class TransitEngine {
     if (this.styleReady)
       setRouteColors(
         this.map,
-        this.brandColors ? undefined : colors,
-        this.brandColors ? undefined : (
+        this.showBrandColors ? undefined : colors,
+        this.showBrandColors ? undefined : (
           Object.fromEntries(
             Object.entries(colors).map(([k, c]) => [
               k,

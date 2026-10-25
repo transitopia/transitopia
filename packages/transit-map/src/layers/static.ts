@@ -30,7 +30,7 @@ import {
 import { BACKGROUND, type Theme } from "@transitopia/map-style/basemap.ts";
 import { FREQUENCY_BANDS, NO_SERVICE } from "@transitopia/shared/frequency.ts";
 import { hubsOf } from "../plans.ts";
-import { BRAND_COLORS } from "../overview.ts";
+import { SHOW_BRAND_COLORS } from "../overview.ts";
 import { hexToRgb } from "./vehicle-geometry.ts";
 
 /** The plan's tiles: every line drawn (PLAN_TILE_LAYERS). */
@@ -167,11 +167,11 @@ export function setRouteColors(
 
 /**
  * Whether bus routes with their own colour are drawn in it along corridors (overview.ts →
- * BRAND_COLORS: the viewer's choice), or corridors and stop ticks show only frequency tiers.
+ * SHOW_BRAND_COLORS: the viewer's choice), or corridors and stop ticks show only frequency tiers.
  */
 const brandShown: ExpressionSpecification = [
   "boolean",
-  ["coalesce", ["global-state", BRAND_COLORS], true],
+  ["coalesce", ["global-state", SHOW_BRAND_COLORS], true],
   true,
 ];
 

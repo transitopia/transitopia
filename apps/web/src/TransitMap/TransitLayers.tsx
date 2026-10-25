@@ -134,13 +134,15 @@ export const OverviewLayers: React.FC<{
   /** Whether a region is in view (only zoomed out too far for its engine). */
   inView: boolean;
 }> = ({ map, engine, inView }) => {
-  const [saved, setSaved] = React.useState(() => loadPref("brandColors", true));
+  const [saved, setSaved] = React.useState(() =>
+    loadPref("showBrandColors", true),
+  );
   const engineBrand = React.useSyncExternalStore(
     React.useCallback(
       (fn: () => void) => engine?.subscribe(fn) ?? (() => {}),
       [engine],
     ),
-    () => engine?.getSnapshot().brandColors,
+    () => engine?.getSnapshot().showBrandColors,
   );
   return (
     <LayersPanel label="Transit layers">
@@ -208,7 +210,7 @@ export const TransitLayers: React.FC<{
         onChange={(on) => engine.setStopsShown(on)}
       />
       <BrandColorsRow
-        on={snap.brandColors}
+        on={snap.showBrandColors}
         onChange={(on) => engine.setBrandColors(on)}
       />
       <PanelDivider />

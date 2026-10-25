@@ -21,10 +21,10 @@ export interface RouteColors {
 export function routeColorsFor(
   engine: TransitEngine,
 ): (r: PlanRoute) => RouteColors {
-  const brandColors = engine.getSnapshot().brandColors;
+  const showBrandColors = engine.getSnapshot().showBrandColors;
   return (r) => {
     const own = { bg: r.color, fg: r.textColor };
-    if (r.brand && brandColors) return own;
+    if (r.brand && showBrandColors) return own;
     const wait = engine.dayWait(r.key);
     return wait === undefined ? own : { bg: bandOf(wait).color, fg: "#ffffff" };
   };
