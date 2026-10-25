@@ -24,7 +24,7 @@ npm workspaces ([docs/DESIGN.md → Repository layout](docs/DESIGN.md#repository
 
 ## Scope
 
-- **Transit routes**: Metro Vancouver: Expo, Millennium, and Canada Lines (track-level); SeaBus and West Coast Express (shape-level); every bus route (the 99 B-Line and R1–R6 RapidBus as frequent). Greater Victoria and Central Okanagan: every bus route (the 95 Blink and 97 Okanagan RapidBus as frequent). Every route in a feed is drawn by default (`packages/transit-core/DESIGN.md#routes`); a feed's `routes.json` lists only overrides (track-level SkyTrain, labels, colours, categories, vehicle settings) and exclusions (TransLink's HandyDART).
+- **Transit routes**: Metro Vancouver: Expo, Millennium, and Canada Lines (track-level); SeaBus and West Coast Express (shape-level); every bus route (the 99 B-Line and R1–R6 RapidBus in their own colours). Greater Victoria and Central Okanagan: every bus route (the 95 Blink and 97 Okanagan RapidBus in their own colours). Every route in a feed is drawn by default (`packages/transit-core/DESIGN.md#routes`); a feed's `routes.json` lists only overrides (track-level SkyTrain, labels, colours, brand colours, vehicle settings) and exclusions (TransLink's HandyDART).
 - **Transit stack**: TypeScript, Vite, and MapLibre GL JS v6 with a PMTiles vector basemap (Protomaps, `packages/map-style`). Vehicles are drawn by our own WebGL2 custom layer (`packages/transit-map/src/layers/gl-polygons.ts`) using only MapLibre's public API. Don't reintroduce deck.gl: its MapLibre integration depends on private internals that v6 removed. The engine stays framework-free; React is for the site's chrome. MIT licensed.
 - Desktop-first, but the map and time controls must work on phones. Keep chrome minimal.
 

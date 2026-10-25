@@ -22,7 +22,7 @@ import {
 } from "../components/InfoCard.tsx";
 import { Menu, type MenuItem } from "../components/Menu.tsx";
 import type { IconId } from "../components/Icon.tsx";
-import { clockMinutes, timeState } from "./format.ts";
+import { clockMinutes, timeState, toHeadsign } from "./format.ts";
 import {
   badge,
   RouteBadge,
@@ -39,9 +39,6 @@ function splitDirection(name: string): [string | undefined, string] {
 }
 
 const stationName = (name: string) => name.replace(/\s+Station$/i, "");
-
-/** "To King George" from GTFS headsigns like "Expo Line To King George". */
-const headsign = (h: string) => h.replace(/^.*?\bTo\s+/i, "To ");
 
 /** Live green only while live; otherwise recorded (from real-time data) or estimated (timetable). */
 function markOf(d: Departure, live: boolean): Mark {
@@ -136,7 +133,7 @@ const GroupRow: React.FC<{
       <RouteBadge route={group.route} colors={colors(group.route)} />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="text-[14.5px] leading-snug">
-          {headsign(group.headsign)}
+          {toHeadsign(group.headsign)}
         </span>
         {note ?
           <span className="text-[12.5px] leading-snug text-(--card-muted)">
@@ -163,7 +160,7 @@ const GroupRow: React.FC<{
   );
   return (
     <Menu
-      label={`${group.route.label} ${headsign(group.headsign).toLowerCase()}`}
+      label={`${group.route.label} ${toHeadsign(group.headsign).toLowerCase()}`}
       iconTrigger={false}
       trigger={content}
       items={items}
@@ -484,7 +481,7 @@ const PlaceCardBody: React.FC<{
         id: "vehicle",
         label: `View ${VEHICLE[kind].noun}`,
         icon: VEHICLE[kind].icon,
-        note: `${headsign(g.headsign)} · ${timeText(next, snap.t, snap.live, true)}`,
+        note: `${toHeadsign(g.headsign)} · ${timeText(next, snap.t, snap.live, true)}`,
         onSelect: () => engine.open({ vehicle }, title),
       });
     }

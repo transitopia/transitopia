@@ -53,11 +53,17 @@ import {
   dayTypes,
   hourlyFrequency,
   regularWeekdays,
+  routeFrequency,
   routeStarts,
   routeWeekdayWait,
   type Frequency,
   type FrequencyWindow,
 } from "@transitopia/transit-core/schedule/frequency.ts";
+import {
+  ROUTE_GROUPS,
+  routeGroups,
+  type RouteGroup,
+} from "@transitopia/transit-core/plan/route-groups.ts";
 import { Clock } from "./clock.ts";
 import {
   PlanStore,
@@ -79,11 +85,14 @@ import {
   addStaticLayers,
   applyRouteFilter,
   applyStopsVisibility,
+  fadeColor,
   removeSources,
   setFerryPair,
   setFocus,
+  setRouteColors,
   setSelectedPlace,
 } from "./layers/static.ts";
+import { applyBrandColors } from "./overview.ts";
 import { VehicleLayer } from "./layers/vehicles.ts";
 import {
   BusFrequencyLayer,
@@ -253,7 +262,14 @@ export interface TransitSnapshot {
   /** Service dates shown with a preview dispatch (unconfirmed corrections; ?preview=). */
   preview: string[];
   routes: PlanRoute[];
+  /** Each route's groups (the layers panel's switches, `routeGroups`), by route key. */
+  groups: ReadonlyMap<string, readonly RouteGroup[]>;
+  /** Groups switched off: their routes are hidden unless another of their groups is on. */
+  hiddenGroups: ReadonlySet<RouteGroup>;
+  /** Routes not drawn: those whose every group is hidden. */
   hidden: ReadonlySet<string>;
+  /** Routes with their own colour are drawn in it; otherwise every route is coloured by frequency. */
+  showBrandColors: boolean;
   /** Station and bus stop markers and labels are drawn. */
   showStops: boolean;
   /** Only vehicles with real positions are drawn (estimates hidden). */
@@ -367,7 +383,10 @@ export class TransitEngine {
   private readonly debug: boolean;
   private readonly defaultDataset: string | undefined;
   private theme: Theme;
-  private hidden: Set<string>;
+  private hiddenGroups: Set<RouteGroup>;
+  /** The shown feed's routes whose every group is hidden (`hiddenGroups`). */
+  private hidden: ReadonlySet<string> = new Set();
+  private showBrandColors: boolean;
   private showStops: boolean;
   private liveOnly: boolean;
   private busFrequency: FrequencyWindow;
@@ -391,8 +410,13 @@ export class TransitEngine {
     PreparedPlan,
     Map<string, number | undefined>
   >();
-  /** What the vehicle colours were last set for (syncVehicleColors). */
-  private vehicleColorsFor: { pp: PreparedPlan; key: string } | undefined;
+  /** Per feed: each route's groups (`routeGroups`). */
+  private groupsCache = new WeakMap<
+    PreparedPlan["plan"],
+    ReadonlyMap<string, readonly RouteGroup[]>
+  >();
+  /** What route colours were last set for (syncRouteColors). */
+  private routeColorsFor: { pp: PreparedPlan; key: string } | undefined;
   /** The real-time corrections last applied, per service date (for departure times). */
   private lastCorrections: Map<ServiceDate, ScheduleCorrections> | undefined;
   private following = false;
@@ -487,7 +511,12 @@ export class TransitEngine {
     // A vehicle is selected at once; a place once its plan (and places file) is in.
     this.selectedId = url.select && vehicleOfKey(url.select, this.feed);
     if (this.selectedId === undefined) this.pendingSelect = url.select;
-    this.hidden = new Set(loadPref<string[]>("hiddenRoutes", []));
+    this.hiddenGroups = new Set(
+      loadPref<string[]>("hiddenGroups", []).filter((g): g is RouteGroup =>
+        ROUTE_GROUPS.includes(g as RouteGroup),
+      ),
+    );
+    this.showBrandColors = loadPref("showBrandColors", true);
     this.showStops = loadPref("showStops", true);
     this.liveOnly = loadPref("liveOnly", false);
     // "night" was a window once; it reads as "now".
@@ -703,18 +732,62 @@ export class TransitEngine {
     this.clock.seek(serviceDayStart(d) + sec * 1000);
   }
 
-  setRoutesHidden(keys: readonly string[], hidden: boolean): void {
-    this.hidden = new Set(this.hidden); // a new identity for the snapshot
-    for (const key of keys) {
-      if (hidden) this.hidden.add(key);
-      else this.hidden.delete(key);
+  /** Show or hide a group's routes (a route in another group that's shown stays drawn). */
+  setGroupShown(group: RouteGroup, shown: boolean): void {
+    this.hiddenGroups = new Set(this.hiddenGroups); // a new identity for the snapshot
+    if (shown) this.hiddenGroups.delete(group);
+    else this.hiddenGroups.add(group);
+    savePref("hiddenGroups", [...this.hiddenGroups]);
+    this.syncHidden();
+    this.publish();
+  }
+
+  /**
+   * Draw routes with their own colour (rail, ferries, the 99 B-Line, RapidBus) in it, or colour
+   * every route by frequency, as the bus corridors are.
+   */
+  setBrandColors(on: boolean): void {
+    this.showBrandColors = on;
+    savePref("showBrandColors", on);
+    if (this.styleReady) applyBrandColors(this.map, on);
+    this.routeColorsFor = undefined;
+    this.invalidate();
+    this.publish();
+  }
+
+  /** The shown feed's routes by group (`routeGroups`, with weekday figures from `dayWait`). */
+  private groupsOf(
+    pp: PreparedPlan,
+  ): ReadonlyMap<string, readonly RouteGroup[]> {
+    let groups = this.groupsCache.get(pp.plan);
+    if (!groups) {
+      groups = new Map(
+        pp.plan.routes.map((r) => [r.key, routeGroups(r, this.dayWait(r.key))]),
+      );
+      this.groupsCache.set(pp.plan, groups);
     }
-    savePref("hiddenRoutes", [...this.hidden]);
+    return groups;
+  }
+
+  /** Work out the hidden routes again (the groups or the shown feed changed), and filter the map's lines. */
+  private syncHidden(): void {
+    const pp = this.shownFeed;
+    const groups = pp ? this.groupsOf(pp) : new Map<string, RouteGroup[]>();
+    const hidden = new Set(
+      [...groups]
+        .filter(([, gs]) => gs.every((g) => this.hiddenGroups.has(g)))
+        .map(([key]) => key),
+    );
+    if (
+      hidden.size === this.hidden.size
+      && [...hidden].every((k) => this.hidden.has(k))
+    )
+      return;
+    this.hidden = hidden;
     if (this.styleReady) {
       applyRouteFilter(this.map, this.hidden);
       applyTrackFilter(this.map, this.hidden);
     }
-    this.publish();
   }
 
   setStopsShown(shown: boolean): void {
@@ -1726,7 +1799,10 @@ export class TransitEngine {
       preview: this.store.previewDates,
       // Stable identities, so React skips re-rendering the legend.
       routes: prev && sameRoutes(prev.routes, routes) ? prev.routes : routes,
+      groups: this.shownFeed ? this.groupsOf(this.shownFeed) : new Map(),
+      hiddenGroups: this.hiddenGroups,
       hidden: this.hidden,
+      showBrandColors: this.showBrandColors,
       showStops: this.showStops,
       liveOnly: this.liveOnly,
       corridors: Boolean(this.shownFeed?.plan.corridorInfo),
@@ -1837,6 +1913,10 @@ export class TransitEngine {
     const same = pp.plan === this.shownFeed?.plan;
     this.shownFeed = pp;
     if (same && !force) return;
+    if (!same) this.syncHidden();
+    // A new style (a theme switch) has no global state: set it again.
+    applyBrandColors(map, this.showBrandColors);
+    this.routeColorsFor = undefined;
     // Start loading its places file, whose grouping replaces the plan's (syncHubs).
     store.placesFor(pp);
     this.shownHubs = hubsOf(pp.plan);
@@ -1871,36 +1951,63 @@ export class TransitEngine {
     }
     this.vehicles.attach();
     this.vehicles.setRouteColors(pp.plan.routes);
-    this.vehicleColorsFor = undefined;
+    this.routeColorsFor = undefined;
     this.invalidate();
   }
 
   /**
-   * Vehicles in their route's colour on the map: its own, except a regular bus route, which has none
-   * and takes the frequency band its corridors show (the map's window, "now" or "day"), in the
-   * current theme (packages/transit-map/README.md#bus-corridors). Re-set when the feed, the theme or
-   * the frequency layer's rates change; returns whether they did.
+   * Routes in their colour on the map: their own (`PlanRoute.brand`, while `showBrandColors` is on), or
+   * the frequency band of the map's window ("now" or "day"), as their corridors show it, in the
+   * current theme (packages/transit-map/README.md#bus-corridors): vehicles, and with brand colours
+   * off, lines too (`setRouteColors`). Re-set when the feed, the theme, the choice, the window or the
+   * frequency layer's rates change; returns whether they did.
    */
-  private syncVehicleColors(): boolean {
+  private syncRouteColors(): boolean {
     const pp = this.shownFeed;
     if (!pp) return false;
     const freq = this.frequencyLayer;
-    const key = `${freq?.version ?? -1}|${this.theme}`;
-    if (this.vehicleColorsFor?.pp === pp && this.vehicleColorsFor.key === key)
+    const t = this.clock.now();
+    const date = displayServiceDate(t);
+    const step =
+      this.busFrequency === "now" ?
+        nowWindowStart((t - serviceDayStart(date)) / 1000)
+      : 0;
+    const key = `${freq?.version ?? -1}|${this.theme}|${this.showBrandColors}|${this.busFrequency}|${date}|${step}`;
+    if (this.routeColorsFor?.pp === pp && this.routeColorsFor.key === key)
       return false;
-    this.vehicleColorsFor = { pp, key };
+    this.routeColorsFor = { pp, key };
+    const colors: Record<string, string> = {};
+    for (const r of pp.plan.routes) {
+      if (r.brand && this.showBrandColors) continue;
+      // Corridors' rates first: a bus out when none start in the window (its last trip) has
+      // Infinity there, the last band.
+      const wait =
+        freq?.routeWait(r.key)
+        ?? (this.busFrequency === "day" ?
+          this.dayWait(r.key)
+        : routeFrequency(pp, r.key, date, step, 3600)?.wait);
+      if (wait !== undefined)
+        colors[r.key] = FREQUENCY_BANDS[bandIndex(wait)]!.color[this.theme];
+    }
     this.vehicles.setRouteColors(
-      pp.plan.routes.map((r) => {
-        if (r.mode !== "bus" || r.category !== "regular") return r;
-        const wait = freq?.routeWait(r.key);
-        if (wait === undefined) return r;
-        // A bus out when none start in the window (its last trip) has Infinity: the last band.
-        return {
-          key: r.key,
-          color: FREQUENCY_BANDS[bandIndex(wait)]!.color[this.theme],
-        };
-      }),
+      pp.plan.routes.map((r) => ({
+        key: r.key,
+        color: colors[r.key] ?? r.color,
+      })),
     );
+    if (this.styleReady)
+      setRouteColors(
+        this.map,
+        this.showBrandColors ? undefined : colors,
+        this.showBrandColors ? undefined : (
+          Object.fromEntries(
+            Object.entries(colors).map(([k, c]) => [
+              k,
+              fadeColor(c, this.theme),
+            ]),
+          )
+        ),
+      );
     return true;
   }
 
@@ -1950,7 +2057,7 @@ export class TransitEngine {
       );
     }
     if (this.styleReady) this.syncRailFocus();
-    if (this.syncVehicleColors()) this.inputsChanged = true;
+    if (this.syncRouteColors()) this.inputsChanged = true;
     if (this.following && this.styleReady) this.keepCentred();
     else if (this.clearPaddingPending && !map.isMoving())
       this.clearMapPadding();

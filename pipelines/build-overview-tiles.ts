@@ -2,7 +2,8 @@
 // from its plan for today, at the zooms below a region's engine, with static colours. Bus corridors
 // (divided roads merged) and buses without corridors are coloured by how often buses pass on
 // regular weekdays, as the map's "Day" (CorridorFrequency, corridorStyle); routes with their own
-// colour (SkyTrain, the 99, RapidBus, Blink, SeaBus, WCE) are drawn in it.
+// colour (SkyTrain, the 99, RapidBus, Blink, SeaBus, WCE) are drawn in it, and have their tier too
+// for viewers who colour every route by frequency.
 // Input:  var/public/data/feeds/<feed>/manifest.json and the plan it names for today
 // Output: var/public/tiles/<OVERVIEW_TILES_NAME>.pmtiles (published to the maps bucket by the server)
 //
@@ -89,14 +90,14 @@ export function overviewFeatures(plan: ServicePlan): TileFeature[] {
     // A ferry's berth pairs not in use by default aren't worth drawing zoomed out.
     const pair = f.properties["berthPair"];
     if (pair !== undefined && pair !== plan.ferry?.default) continue;
-    const regular = route.kind === "bus" && route.category === "regular";
-    const t = regular ? tier(route.weekdayWait) : 0;
-    if (t < 0 || f.properties["empty"]) continue;
+    const t = tier(route.weekdayWait);
+    if ((t < 0 && !route.brand) || f.properties["empty"]) continue;
     out.push({
       type: "Feature",
       properties: {
         kind: route.kind,
-        ...(regular ? { tier: t } : { color: route.color }),
+        ...(t < 0 ? {} : { tier: t }),
+        ...(route.brand ? { color: route.color } : {}),
       },
       geometry: f.geometry,
       tippecanoe: { layer: OVERVIEW_LAYERS.routes },

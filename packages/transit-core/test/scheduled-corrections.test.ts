@@ -39,6 +39,7 @@ const plan: ServicePlan = {
       label: "SeaBus",
       kind: "shape",
       mode: "ferry",
+      brand: true,
       color: "#000",
       textColor: "#fff",
       gtfsRouteId: "998",

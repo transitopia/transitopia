@@ -14,15 +14,17 @@ export interface RouteColors {
 }
 
 /**
- * The colours cards show a route in (apps/web/README.md#service-frequency): its own, except a regular
- * bus route, which takes the band of its weekday figure, as the map's "Day" bus frequency colours it.
+ * The colours cards show a route in (apps/web/README.md#service-frequency): its own (`PlanRoute.brand`,
+ * while the viewer has brand colours on), else the band of its weekday figure, as the map's "Day"
+ * bus frequency colours it.
  */
 export function routeColorsFor(
   engine: TransitEngine,
 ): (r: PlanRoute) => RouteColors {
+  const showBrandColors = engine.getSnapshot().showBrandColors;
   return (r) => {
     const own = { bg: r.color, fg: r.textColor };
-    if (r.mode !== "bus" || r.category !== "regular") return own;
+    if (r.brand && showBrandColors) return own;
     const wait = engine.dayWait(r.key);
     return wait === undefined ? own : { bg: bandOf(wait).color, fg: "#ffffff" };
   };

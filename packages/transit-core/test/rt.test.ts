@@ -68,6 +68,7 @@ const plan: ServicePlan = {
       label: "99",
       kind: "bus",
       mode: "bus",
+      brand: false,
       color: "#f76707",
       textColor: "#fff",
       gtfsRouteId: "6641",

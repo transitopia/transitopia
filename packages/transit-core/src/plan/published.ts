@@ -7,6 +7,7 @@
 
 import type { LonLat } from "../geo.ts";
 import { routeWeekdayWaits } from "../schedule/frequency.ts";
+import { routeStops, routeWeekdaySpeeds } from "../schedule/stops.ts";
 import {
   CorridorFrequency,
   shortCorridorNeighbours,
@@ -297,10 +298,19 @@ export function publishPlan(plan: ServicePlan): PlanPublication {
     };
   }
   const weekWaits = routeWeekdayWaits(plan);
-  const withWeek = (r: PlanRoute): PlanRoute => {
-    const { weekdayWait: _w, ...route } = r;
+  const routeStopsOf = routeStops(plan);
+  const speeds = routeWeekdaySpeeds(plan);
+  const withFigures = (r: PlanRoute): PlanRoute => {
+    const { weekdayWait: _w, stops: _s, weekdaySpeed: _v, ...route } = r;
     const w = weekWaits.get(r.key);
-    return w === undefined ? route : { ...route, weekdayWait: w };
+    const s = routeStopsOf.get(r.key);
+    const v = speeds.get(r.key);
+    return {
+      ...route,
+      ...(w === undefined ? {} : { weekdayWait: w }),
+      ...(s === undefined ? {} : { stops: s }),
+      ...(v === undefined ? {} : { weekdaySpeed: v }),
+    };
   };
 
   // Trips by service: those the day after needs in a file of their own (LATE_MARGIN_S).
@@ -341,7 +351,7 @@ export function publishPlan(plan: ServicePlan): PlanPublication {
   const core: PublishedPlan = {
     schema: 2,
     ...rest,
-    routes: rest.routes.map(withWeek),
+    routes: rest.routes.map(withFigures),
     stops: encodeStops(stops),
     patterns: patterns.map((p, i) => {
       const { starts: _s, ...pattern } = p;

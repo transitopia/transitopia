@@ -65,13 +65,11 @@ export function drawsCorridors(plan: ServicePlan): boolean {
 }
 
 /**
- * Bus routes with their own colour (the 99 and RapidBus: category "frequent"), drawn along their
+ * Bus routes with their own colour (the 99 and RapidBus: `PlanRoute.brand`), drawn along their
  * corridors in it; a corridor's `brand` is an index into this list.
  */
 export function brandedRoutes(plan: ServicePlan): PlanRoute[] {
-  return plan.routes.filter(
-    (r) => r.kind === "bus" && r.category !== "regular",
-  );
+  return plan.routes.filter((r) => r.kind === "bus" && r.brand);
 }
 
 /** The corridors drawn zoomed out (plans without overview corridors draw the detailed ones). */

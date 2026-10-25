@@ -176,6 +176,7 @@ const plan = {
       label: "Canada",
       kind: "skytrain",
       mode: "skytrain",
+      brand: true,
       color: "#009ac7",
       textColor: "#fff",
       gtfsRouteId: "1",

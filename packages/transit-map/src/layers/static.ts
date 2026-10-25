@@ -30,6 +30,7 @@ import {
 import { BACKGROUND, type Theme } from "@transitopia/map-style/basemap.ts";
 import { FREQUENCY_BANDS, NO_SERVICE } from "@transitopia/shared/frequency.ts";
 import { hubsOf } from "../plans.ts";
+import { SHOW_BRAND_COLORS } from "../overview.ts";
 import { hexToRgb } from "./vehicle-geometry.ts";
 
 /** The plan's tiles: every line drawn (PLAN_TILE_LAYERS). */
@@ -124,6 +125,56 @@ const stopOnFocus: ExpressionSpecification = [
     ["coalesce", ["global-state", FOCUS_STOPS], ""],
   ],
 ];
+/**
+ * Map global states while every route is coloured by frequency (the viewer turned brand colours
+ * off, `setRouteColors`): per route key, the colour its lines are drawn in, and the colour off the
+ * focused route; null while routes are drawn in their own colours.
+ */
+const ROUTE_COLORS = "routeColors";
+const ROUTE_FADED = "routeFaded";
+/** The colour ROUTE_COLORS or ROUTE_FADED (`state`) gives the feature's route (`prop`), else `own`. */
+const colorOverride = (
+  state: string,
+  prop: string,
+  own: ExpressionSpecification,
+): ExpressionSpecification => [
+  "coalesce",
+  [
+    "get",
+    ["to-string", ["get", prop]],
+    ["object", ["global-state", state], ["literal", {}]],
+  ],
+  own,
+];
+/** A line's colour: its route's own (`color`), or its frequency colour while routes are coloured by frequency. */
+export const routeLineColor = (
+  prop = "route",
+  own: ExpressionSpecification = ["get", "color"],
+): ExpressionSpecification => colorOverride(ROUTE_COLORS, prop, own);
+
+/**
+ * Colour every route by frequency (`colors`: per route key, its colour; `faded`, off the focused
+ * route), or with none, in their own colours.
+ */
+export function setRouteColors(
+  map: MlMap,
+  colors: Record<string, string> | undefined,
+  faded: Record<string, string> | undefined,
+): void {
+  map.setGlobalStateProperty(ROUTE_COLORS, colors ?? null);
+  map.setGlobalStateProperty(ROUTE_FADED, faded ?? null);
+}
+
+/**
+ * Whether bus routes with their own colour are drawn in it along corridors (overview.ts →
+ * SHOW_BRAND_COLORS: the viewer's choice), or corridors and stop ticks show only frequency tiers.
+ */
+const brandShown: ExpressionSpecification = [
+  "boolean",
+  ["coalesce", ["global-state", SHOW_BRAND_COLORS], true],
+  true,
+];
+
 /** An opacity, dimmed off the focused route (for symbols, which don't overlap themselves). */
 export const focusOpacity = (
   base: number,
@@ -148,25 +199,28 @@ export function fadeColor(hex: string, theme: Theme): string {
   return `#${mix.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 }
 
-/** A route's own colour (`color`, or `own`), faded off the focused route; `prop` names the route. */
+/**
+ * A route's colour (`routeLineColor`: its own, `color` or `own`, unless routes are coloured by
+ * frequency), faded off the focused route; `prop` names the route.
+ */
 export function focusColor(
   routes: readonly { key: string; color: string }[],
   theme: Theme,
   prop = "route",
   own: ExpressionSpecification = ["get", "color"],
 ): ExpressionSpecification {
-  const color = own;
+  const color = routeLineColor(prop, own);
   if (!routes.length) return color;
   return [
     "case",
     onFocus(prop),
     color,
-    [
+    colorOverride(ROUTE_FADED, prop, [
       "match",
       ["get", prop],
       ...routes.flatMap((r) => [r.key, fadeColor(r.color, theme)]),
       color,
-    ],
+    ] as unknown as ExpressionSpecification),
   ] as unknown as ExpressionSpecification;
 }
 
@@ -438,7 +492,7 @@ export function addStaticLayers(
   plan: ServicePlan,
   tiles: string,
   theme: Theme,
-  hiddenRoutes: Set<string>,
+  hiddenRoutes: ReadonlySet<string>,
 ): boolean {
   const stations: GeoJSONSourceSpecification = {
     type: "geojson",
@@ -669,7 +723,7 @@ export function addStaticLayers(
         ["zoom"],
         ...BRAND_WIDTHS.flatMap(([z, w]) => [
           z,
-          ["case", [">=", BRAND, 0], w + extra, 0],
+          ["case", ["all", brandShown, [">=", BRAND, 0]], w + extra, 0],
         ]),
       ] as ExpressionSpecification;
     map.addLayer({
@@ -846,7 +900,7 @@ export function addStaticLayers(
         "case",
         ["!", ["has", "branded"]],
         ["get", "color"],
-        [">=", BRAND, 0],
+        ["all", brandShown, [">=", BRAND, 0]],
         brandColor,
         byTier(tierColors, [
           "case",
@@ -1020,7 +1074,10 @@ export function removeSources(map: MlMap, sources: readonly string[]): void {
   for (const s of sources) if (map.getSource(s)) map.removeSource(s);
 }
 
-export function applyRouteFilter(map: MlMap, hidden: Set<string>): void {
+export function applyRouteFilter(
+  map: MlMap,
+  hidden: ReadonlySet<string>,
+): void {
   const visible: ExpressionSpecification = [
     "!",
     ["in", ["get", "route"], ["literal", [...hidden]]],

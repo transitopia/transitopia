@@ -100,6 +100,27 @@ const icons = {
     </>,
     3,
   ),
+  /**
+   * Stop spacing tiers (apps/web/README.md#stop-spacing): a line with stop ticks at the tier's
+   * density, two arrowheads between them for Express.
+   */
+  "stops-every-block": line(
+    <path d="M1.5 8h13M1.5 4.5v7M4.75 4.5v7M8 4.5v7M11.25 4.5v7M14.5 4.5v7" />,
+    1.5,
+  ),
+  "stops-local": line(<path d="M1.5 8h13M1.5 4.5v7M8 4.5v7M14.5 4.5v7" />, 1.5),
+  "stops-limited": line(<path d="M1.5 8h13M1.5 4.5v7M14.5 4.5v7" />, 1.5),
+  "stops-express": line(
+    <>
+      <path d="M1.5 8h13M1.5 4.5v7M14.5 4.5v7" />
+      <path
+        d="M4.5 8l3-2.25v4.5zM8.5 8l3-2.25v4.5z"
+        fill="currentColor"
+        stroke="none"
+      />
+    </>,
+    1.5,
+  ),
   /** Card tiles. */
   // A station on its line: an open ring over a thick route line, which stops inside the ring's stroke.
   station: line(

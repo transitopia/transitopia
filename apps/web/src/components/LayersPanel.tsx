@@ -111,20 +111,35 @@ const SwitchKnob: React.FC<{ on: boolean }> = ({ on }) => (
   </span>
 );
 
-/** A layer that can be shown or hidden: swatch, name, optional description, switch. */
+/**
+ * A layer that can be shown or hidden: swatch, name, optional description, switch. Disabled (greyed
+ * out, drawn off) when there's nothing of it here, with `disabledReason` as its tooltip.
+ */
 export const SwitchRow: React.FC<{
   on: boolean;
   onChange: (on: boolean) => void;
   title: string;
   description?: string | undefined;
   swatch?: React.ReactNode;
-}> = ({ on, onChange, title, description, swatch }) => (
+  disabled?: boolean | undefined;
+  disabledReason?: string | undefined;
+}> = ({
+  on,
+  onChange,
+  title,
+  description,
+  swatch,
+  disabled,
+  disabledReason,
+}) => (
   <button
     type="button"
     role="switch"
-    aria-checked={on}
+    aria-checked={on && !disabled}
+    disabled={disabled}
+    title={disabled ? disabledReason : undefined}
     onClick={() => onChange(!on)}
-    className={`flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800 ${description ? "min-h-14" : "min-h-12"}`}>
+    className={`flex w-full items-center gap-3 px-4 py-2 text-left ${disabled ? "cursor-default opacity-45" : "hover:bg-gray-50 dark:hover:bg-gray-800"} ${description ? "min-h-14" : "min-h-12"}`}>
     {swatch !== undefined ?
       <span aria-hidden="true" className="flex w-7 flex-none justify-center">
         {swatch}
@@ -138,7 +153,7 @@ export const SwitchRow: React.FC<{
         </span>
       : null}
     </span>
-    <SwitchKnob on={on} />
+    <SwitchKnob on={on && !disabled} />
   </button>
 );
 

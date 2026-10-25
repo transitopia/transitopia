@@ -26,6 +26,7 @@ const plan: SelectContext["plan"] = {
       label: "99",
       kind: "bus",
       mode: "bus",
+      brand: false,
       color: "#000",
       textColor: "#fff",
       gtfsRouteId: "6612",

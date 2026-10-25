@@ -5,6 +5,7 @@ import {
 } from "@transitopia/transit-map/engine.ts";
 import { readUrl } from "@transitopia/transit-map/url.ts";
 import {
+  applyBrandColors,
   overviewLayers,
   overviewMaxZoom,
 } from "@transitopia/transit-map/overview.ts";
@@ -17,7 +18,7 @@ import { MapOverlayWindow } from "../Map/MapOverlayWindow.tsx";
 import { useTheme } from "../Theme/Theme.tsx";
 import { useDatasets } from "../Attribution/Attribution.tsx";
 import { TimeBar } from "./TimeBar.tsx";
-import { TransitLayers } from "./TransitLayers.tsx";
+import { OverviewLayers, TransitLayers } from "./TransitLayers.tsx";
 import { VehicleCard } from "./VehicleCard.tsx";
 import { PlaceCard } from "./PlaceCard.tsx";
 import { PickMenu } from "./PickMenu.tsx";
@@ -184,6 +185,8 @@ function useOverview(
         type: "vector",
         url: transitOverviewTiles,
       });
+    // Brand colours or frequency only, as the viewer chose (an engine sets it too, when it changes).
+    applyBrandColors(map);
     const layers = overviewLayers(OVERVIEW_SOURCE, theme, maxzoomRef.current);
     for (const layer of layers)
       if (!map.getLayer(layer.id)) map.addLayer(layer);
@@ -346,6 +349,9 @@ export default function TransitMap() {
             if (map) showBounds(map, lngLatBounds(bounds), { maxZoom: 16 });
           }}
         />
+      : null}
+      {map && !shown ?
+        <OverviewLayers map={map} engine={engine} inView={inView} />
       : null}
     </>
   );

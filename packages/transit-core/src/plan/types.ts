@@ -4,19 +4,22 @@
 import type { ServiceDate } from "../time.ts";
 import type { ServiceCalendar } from "../gtfs/calendar.ts";
 import type { LonLat } from "../geo.ts";
+import type { RouteStops } from "../schedule/stops.ts";
 
 export type RouteKind = "skytrain" | "shape" | "bus";
 export type RouteMode = "skytrain" | "ferry" | "rail" | "bus";
-/** The route's layer in the site's layers panel (plan/routes.ts: by GTFS route_type, or routes.json → category). */
-export type RouteCategory = "rapid" | "frequent" | "regular";
 
 export interface PlanRoute {
   key: string;
   label: string;
   kind: RouteKind;
   mode: RouteMode;
-  /** Missing in plans built before categories existed: treat as "rapid". */
-  category?: RouteCategory | undefined;
+  /**
+   * Drawn in its own colour (its operator's brand) rather than by frequency, unless the viewer has
+   * every route coloured by frequency: rail and ferries, and buses routes.json says (the 99 B-Line,
+   * RapidBus, Blink). Other buses have no colour of their own (plan/routes.ts).
+   */
+  brand: boolean;
   color: string;
   textColor: string;
   gtfsRouteId: string;
@@ -31,6 +34,13 @@ export interface PlanRoute {
    * published; absent when it doesn't run in those hours.
    */
   weekdayWait?: number | undefined;
+  /** Its stops: average spacing and its busiest pattern (schedule/stops.ts → `routeStops`). Set when the plan is published. */
+  stops?: RouteStops | undefined;
+  /**
+   * Its scheduled speed on regular weekdays, the slowest and fastest hour from 06:00 to 21:00
+   * (km/h, schedule/stops.ts → `weekdaySpeedRange`). Set when the plan is published.
+   */
+  weekdaySpeed?: [number, number] | undefined;
 }
 
 export interface PlanStop {
