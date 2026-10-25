@@ -188,6 +188,11 @@ export class RtTimeline {
   /** Every fix time, sorted (for caching per-instant results). */
   private fixTimes: number[] = [];
   private delaysMemo: { upTo: number; delays: TripDelay[] } | undefined;
+  /**
+   * Per fix, its bus's delay against the paced schedule: it depends on the fix alone, and working it
+   * out (Predictor.delayAt) for every bus at every frame was most of the map's CPU time.
+   */
+  private fixDelays = new WeakMap<Obs, number>();
 
   private pp: PreparedPlan | undefined;
   private kin: KinematicsConfig;
@@ -948,15 +953,21 @@ export class RtTimeline {
         : undefined;
       const pr = this.opts.prediction;
       if (pr) {
-        const { date, sec } = this.serviceTime(trip, basis.v.ts);
-        delay = Math.round(
-          pr.predictor.delayAt(
-            trip,
-            this.alongOf(onRoute.tr, onRoute.i),
-            sec,
-            date,
-          ),
-        );
+        const o = onRoute.tr.obs[onRoute.i]!;
+        let d = this.fixDelays.get(o);
+        if (d === undefined) {
+          const { date, sec } = this.serviceTime(trip, o.v.ts);
+          d = Math.round(
+            pr.predictor.delayAt(
+              trip,
+              this.alongOf(onRoute.tr, onRoute.i),
+              sec,
+              date,
+            ),
+          );
+          this.fixDelays.set(o, d);
+        }
+        delay = d;
       }
     }
     const changes = this.opts.changes;
