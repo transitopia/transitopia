@@ -154,7 +154,7 @@ Jobs run one at a time, so the server container stays under ~1.5 GB, and the who
 GPS data rather than synthetic positions. Node sizes its heap from the container's limit (about half
 of `mem_limit`, so ~1.5 GB for each process), not from the host's RAM.
 
-Disk, per day of every route:
+Disk, per day of every route, from the synthetic TransLink weekday:
 
 | What | Per day | Kept | Total |
 |---|---|---|---|
@@ -163,13 +163,39 @@ Disk, per day of every route:
 | Observed stop times in Postgres (665,000 rows) | 215 MB | indefinitely | **~78 GB a year** |
 | Route statistics, trip changes, alerts, dispatch versions | < 5 MB | indefinitely | small |
 
-Observed stop times dominate: kept in Postgres they grow by ~78 GB a year, which the VM's 100 GB
-disk holds for about a year. Older months need to move to monthly files in object storage, with only
-recent months in Postgres ([docs/DESIGN.md → Retention and statistics](../docs/DESIGN.md#retention-and-statistics));
-that export isn't built yet and must be before the disk fills.
+Observed stop times dominate: measured in production with all three feeds, they grow by ~73 GB a
+year (below), which the VM's disk (100 GB, 96 GB usable) holds until about mid-2027. Older months need to move to
+monthly files in object storage, with only recent months in Postgres
+([docs/DESIGN.md → Retention and statistics](../docs/DESIGN.md#retention-and-statistics)); that
+export isn't built yet and must be before the disk fills.
 
-Checked against production's first 11 days (2026-10-01 to 10-12), using the job runs at
-`/admin/api/status`, the drawn routes' recordings and the timetable:
+Measured in production on 2026-10-25 (`/admin/api/status`: `storage` for the size per table, `daily`
+for the rows per service date and feed), with TransLink recorded since 10-01 and both BC Transit
+feeds since 10-15:
+
+| What | Size | Rows | Per row |
+|---|---|---|---|
+| Observed stop times | 4.06 GB | 14.3 M | ~285 B |
+| Raw positions (not yet at 60 days) | 3.81 GB | 17.6 M | ~216 B |
+| Whole database | 8.1 GB | | |
+
+Observed stop times per service date in the first full week of every feed (10-17 to 10-23):
+
+| Day | TransLink | Victoria | Kelowna | Total |
+|---|---|---|---|---|
+| Weekday | ~640,000 | ~108,000 | ~31,000 | ~780,000 |
+| Saturday | ~493,000 | ~82,000 | ~19,000 | ~594,000 |
+| Sunday | ~445,000 | ~71,000 | ~14,000 | ~531,000 |
+
+That's ~700,000 rows a day on average, **~200 MB a day or ~73 GB a year**: the rows are smaller than
+the synthetic day's, and BC Transit adds about as much again. Raw positions level off at ~10 GB when
+the first 60 days are up (end of November 2026). The disk is 96 GB, with 25 GB used on 2026-10-25
+(`df -h /`), so ~17 GB besides the database (system, images, `var/`, WAL): ~31 GB once raw positions
+level off, then +0.2 GB a day. That's past a safe ~85 % (Postgres needs headroom, and the nightly dump
+is staged on the same disk) around early July 2027, and full around mid-September 2027.
+
+Checked earlier against production's first 11 days (2026-10-01 to 10-12, TransLink only), using the
+job runs at `/admin/api/status`, the drawn routes' recordings and the timetable:
 
 - **Polls**: 738 on a weekday, as assumed; ~620 on a weekend day.
 - **Positions**: more buses report than the timetable has in service (1.15–1.21× on the drawn
@@ -180,17 +206,15 @@ Checked against production's first 11 days (2026-10-01 to 10-12), using the job 
   0.9 and 0.4–0.5 MB), ~0.45 GB per copy over 60 days.
 - **Observed stop times**: 493,442 rows on Saturday 10-10 and 445,015 on Sunday 10-11, 90–91 % of
   the scheduled bus stop events (98 % of scheduled trips had fixes). That makes ~645,000 on a
-  weekday and ~595,000 a day on average: **~70 GB a year** rather than 78, so the 100 GB disk lasts a
-  little over a year.
-- **Not checked yet**: bytes per row in Postgres, which these totals take from the synthetic day.
-  `/admin/api/status` → `storage` now reports the database's size per table, and `daily` the rows
-  per service date.
+  weekday and ~595,000 a day on average for TransLink alone.
 
 #### Backups
 
 `pg_dump` nightly at 11:30 UTC to `<ARCHIVE_REMOTE>/backups/db/`, keeping 30 days, from the backup
 container (`infra/backup/`, a different provider from the VM). Each dump grows with the observed stop
-times, so revisit how many to keep once they're large; continuous WAL archiving (WAL-G) can replace
+times (850 MB on 2026-10-25, about a tenth of the database), so revisit how many to keep once they're
+large. The dumps are written to the VM's disk before they're uploaded, and removed afterwards whether
+or not the backup succeeded. Continuous WAL archiving (WAL-G) can replace
 nightly dumps later. The backups protect the long-lived data (statistics, observed stop times,
 curated corrections); git and GitHub cover the rest. Test a restore every quarter
 ([Operations](#operations)).
