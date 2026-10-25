@@ -1,8 +1,9 @@
 // Download each feed's latest GTFS static zip (config/feeds/<feed>/feed.json → static.url), or a dated
 // snapshot where the provider keeps them, and archive it by feed_version under
 // var/raw/gtfs/<feed>/<version dir>/google_transit.zip. Idempotent: an already-archived version is
-// left alone, and so is a download whose files are the same as the newest archived version's (BC
-// Transit publishes the same timetable under a new feed_version every day). See
+// left alone, and so is a download with the same timetable as the newest archived version's: the
+// same files, or the same minus the dates that have passed (BC Transit re-exports every day, under
+// a new feed_version). See
 // packages/transit-core/DESIGN.md#timetables.
 //
 //   tsx pipelines/fetch-gtfs.ts                              # every region's feeds, latest
@@ -16,7 +17,11 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { readCsvAll, zipSignature } from "@transitopia/data/gtfs-zip.ts";
-import { archivedFeeds } from "@transitopia/data/gtfs-day.ts";
+import { archivedFeeds, type FeedZip } from "@transitopia/data/gtfs-day.ts";
+import {
+  rolloffDifference,
+  zipSource,
+} from "@transitopia/data/gtfs-rolloff.ts";
 import {
   exists,
   feedPaths,
@@ -72,15 +77,11 @@ export async function fetchGtfs(
       log(`${feed.id}: feed ${version} already archived`);
       return { ...found, path: dest, isNew: false };
     }
-    // The same files as the newest archived version (only feed_info.txt differs): keep that one.
     const newest = (await archivedFeeds(feed.id))[0];
-    if (
-      newest
-      && newest.end >= found.end
-      && (await zipSignature(newest.path)) === (await zipSignature(tmp))
-    ) {
+    const same = newest && (await sameTimetable(newest, found, tmp));
+    if (newest && same?.same) {
       log(
-        `${feed.id}: feed ${version} has the same timetable as ${newest.version}; not archived`,
+        `${feed.id}: feed ${version} has ${same.how} ${newest.version}; not archived`,
       );
       return {
         feed: feed.id,
@@ -91,6 +92,10 @@ export async function fetchGtfs(
         isNew: false,
       };
     }
+    if (newest && same)
+      log(
+        `${feed.id}: feed ${version} differs from ${newest.version}: ${same.how}`,
+      );
     await mkdir(join(raw, versionDir(version)), { recursive: true });
     await rename(tmp, dest);
     log(
@@ -100,6 +105,29 @@ export async function fetchGtfs(
   } finally {
     await rm(tmp, { force: true });
   }
+}
+
+/**
+ * Whether a download has the same timetable as the newest archived version, for every date the
+ * download covers: the same files (only feed_info.txt differs), or only past dates rolled off. If
+ * not, `how` says what differs.
+ */
+async function sameTimetable(
+  newest: FeedZip,
+  found: { start: string; end: string },
+  path: string,
+): Promise<{ same: boolean; how: string }> {
+  if (newest.end < found.end)
+    return { same: false, how: `it runs to ${found.end}, not ${newest.end}` };
+  if ((await zipSignature(newest.path)) === (await zipSignature(path)))
+    return { same: true, how: "the same timetable as" };
+  const diff = await rolloffDifference(
+    await zipSource(newest.path),
+    await zipSource(path),
+  );
+  return diff === undefined ?
+      { same: true, how: "only past dates dropped from" }
+    : { same: false, how: diff };
 }
 
 async function main() {

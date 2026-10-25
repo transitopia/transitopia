@@ -2,8 +2,8 @@
 
 Each has a **current assumption** that ships as a value in the defaults (`config/defaults/`), BC Transit's `config/operators/bc-transit/operator.json` or the feed's `feed.json`, whose comment cites the question by number ("OPEN-QUESTIONS #N"). Numbers are stable.
 
-1. **How often does BC Transit's static feed really change?** Its `feed_version` changes with every daily export, and so do its files: from 2026-10-14 to 10-15, calendar_dates.txt, trips.txt and stop_times.txt differed, dropping the dates (and services) that had passed. So every export is archived and built as a new version; whether the timetable itself changes between them, and whether to keep fewer versions, is still open.
-   - *Assumption:* a download whose files are the same as the newest archived version's isn't archived or built again (`fetch-gtfs`). If calendar dates roll daily, every export differs and is archived (about 16 MB a day for Victoria).
+1. **How often does BC Transit's static timetable really change?** Answered in part: the daily exports only drop the dates that have passed (see [README → Static timetable](README.md#static-timetable)), and aren't archived. Still open: how often a real timetable change comes, and whether storing each as a delta from the previous version is worth it (none were seen in the daily exports of 2026-10-14 to 10-25).
+   - *Assumption:* a download that isn't the newest archived version minus past dates is a new timetable, archived and built (`fetch-gtfs`, `rolloffDifference` in `packages/data/src/gtfs-rolloff.ts`; about 16 MB a version).
 2. **What request rate is acceptable to BC Transit?** The terms state no limit and the feeds need no key.
    - *Assumption:* positions every 30 s while buses run, trip updates every 2 minutes, alerts every 5 (less overnight), about 3,500 requests a day under a cap of 4,000; cadence thresholds (`staleGraceS`, `coverageSlackS`, `interpolateSlackS`, `extrapolateSlackS`) are guesses for 30 s fixes (`config/feeds/bc-transit-victoria/feed.json`).
 3. **Do Metro Vancouver's prediction settings suit BC Transit's buses?** (`config/defaults/rt.json` → `prediction`, `carry`, `detourNearM`.)

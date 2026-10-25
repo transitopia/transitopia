@@ -84,25 +84,35 @@ export async function listEntries(zipPath: string): Promise<string[]> {
   });
 }
 
-/**
- * What a feed holds, from the zip's directory alone (each file's CRC-32 and size), leaving out
- * feed_info.txt: two downloads with the same signature have the same timetable, whatever their
- * feed_version says (BC Transit's changes daily).
- */
-export async function zipSignature(zipPath: string): Promise<string> {
+/** Each file in the zip and its signature (CRC-32 and size), from the zip's directory alone. */
+export async function zipEntrySignatures(
+  zipPath: string,
+): Promise<Map<string, string>> {
   const zip = await openZip(zipPath);
   return new Promise((resolve, reject) => {
-    const parts: string[] = [];
+    const out = new Map<string, string>();
     zip.on("entry", (e: yauzl.Entry) => {
-      if (e.fileName !== "feed_info.txt")
-        parts.push(`${e.fileName}:${e.crc32}:${e.uncompressedSize}`);
+      out.set(e.fileName, `${e.crc32}:${e.uncompressedSize}`);
       zip.readEntry();
     });
     zip.on("end", () => {
       zip.close();
-      resolve(parts.sort().join("\n"));
+      resolve(out);
     });
     zip.on("error", reject);
     zip.readEntry();
   });
+}
+
+/**
+ * What a feed holds, from the zip's directory alone, leaving out feed_info.txt: two downloads with
+ * the same signature have the same timetable, whatever their feed_version says (BC Transit's
+ * changes daily).
+ */
+export async function zipSignature(zipPath: string): Promise<string> {
+  return [...(await zipEntrySignatures(zipPath))]
+    .filter(([name]) => name !== "feed_info.txt")
+    .map(([name, sig]) => `${name}:${sig}`)
+    .sort()
+    .join("\n");
 }
