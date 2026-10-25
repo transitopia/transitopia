@@ -142,6 +142,8 @@ const server = z.strictObject({
   dispatchWindowDays: count,
   /** The default for every feed; feed.json → realtime.tripUpdatesHealth overrides it. */
   tripUpdatesHealth,
+  /** /healthz fails when the disk holding var/ is fuller than this share. */
+  diskMaxUsed: share,
 });
 
 const observed: z.ZodType<ObservedConfig> = z.strictObject({

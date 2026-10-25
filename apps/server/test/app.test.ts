@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Disruption } from "@transitopia/transit-core/disruption/types.ts";
-import { createApp, disruptionProblems, type AppDeps } from "../src/app.ts";
+import {
+  createApp,
+  diskCheck,
+  disruptionProblems,
+  type AppDeps,
+} from "../src/app.ts";
 
 const disruption = (active: Disruption["active"]): Disruption =>
   ({
@@ -78,5 +83,30 @@ describe("the real-time API", () => {
       "/regions/r/live/transit",
       "/rt/status",
     ]);
+  });
+});
+
+describe("diskCheck", () => {
+  // The VM on 2026-10-25 (df -h: 96G size, 25G used, 72G available, 26 %), in 4 KiB blocks.
+  const vm = {
+    bsize: 4096,
+    blocks: 25_165_824,
+    bfree: 18_612_224,
+    bavail: 18_612_224,
+  };
+
+  it("reports use as df does", () => {
+    expect(diskCheck(vm, 0.85)).toEqual({
+      ok: true,
+      detail: "26 % used, 71.0 GiB free of 96.0 GiB (limit 85 %)",
+    });
+  });
+
+  it("counts blocks reserved for root as unavailable, and fails past the limit", () => {
+    // 80 % of the blocks used, and 5 % more reserved: 84 % of what's usable.
+    const blocks = 1_000_000;
+    const c = { bsize: 4096, blocks, bfree: 200_000, bavail: 150_000 };
+    expect(diskCheck(c, 0.85).ok).toBe(true);
+    expect(diskCheck(c, 0.8).ok).toBe(false);
   });
 });

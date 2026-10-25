@@ -235,7 +235,9 @@ publishing them ([DATA-LICENSES.md](../DATA-LICENSES.md)).
 
 `/healthz` returns 503 when positions polls or AIS go stale, trip updates stop arriving or match
 almost none of the buses for a while (each polled feed's checks, `<feed>/positions` and `<feed>/tripUpdates`; `config/server/server.json` → `tripUpdatesHealth`, overridden per feed in `feed.json` → `realtime.tripUpdatesHealth`), the database is unreachable, or a
-daily job (statistics, data build, backup) failed or hasn't succeeded for 36 hours. An uptime
+daily job (statistics, data build, backup) failed or hasn't succeeded for 36 hours, or the disk is
+more than 85 % used (`disk`: the server's `var/` volume, on the VM's one disk with the database;
+`config/server/server.json` → `diskMaxUsed`; see [Sizing](#sizing)). An uptime
 monitor watches it ([api-server-setup.md, step 13](api-server-setup.md#13-uptime-monitor)). The
 response body says which check failed; `/admin` shows the same, plus recent jobs. A deploy doesn't
 trip it: after a restart, trip updates count as fresh until 3 poll intervals after polling starts.
