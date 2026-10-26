@@ -350,15 +350,75 @@ export class ProfileBuilder {
   }
 }
 
-/** A trip's travel plan along its shape: pace per bin and dwell per stop. */
-interface Course {
+/**
+ * What a pattern's trips share in a band (with the same stops skipped): the profile's pace per bin
+ * and dwell per stop.
+ */
+interface CourseBase {
   binM: number;
   length: number;
-  /** s/m per bin. */
+  /** s/m per bin; NaN where the profile has no pace (the trip's timetable gives it: Course.hop). */
   pace: Float64Array;
   /** Stops in order: along (m) and expected dwell (s). */
   stops: { along: number; dwell: number }[];
+  /** The pattern's stops' distances along it (m). */
+  dist: readonly number[];
 }
+
+/** A trip's travel plan along its shape: its pattern's base, and its own timetable pace per hop. */
+interface Course extends CourseBase {
+  /** s/m between each stop and the next, from the timetable, for bins the profile has no pace for. */
+  hop: Float64Array;
+}
+
+/** Pace (s/m) in bin b of a course: the profile's, else the timetable's for the hop it's in. */
+function paceAt(c: Course, b: number): number {
+  const p = c.pace[b]!;
+  if (!Number.isNaN(p)) return p;
+  const along = (b + 0.5) * c.binM;
+  let lo = 0;
+  let hi = c.dist.length - 2;
+  // The last hop starting at or before `along`.
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (c.dist[mid]! <= along) lo = mid;
+    else hi = mid - 1;
+  }
+  return c.hop[lo]!;
+}
+
+/** A Map keeping only the `max` most recently used entries. */
+class RecentMap<K, V> {
+  private map = new Map<K, V>();
+  private readonly max: number;
+
+  constructor(max: number) {
+    this.max = max;
+  }
+
+  get(key: K): V | undefined {
+    const v = this.map.get(key);
+    if (v !== undefined) {
+      this.map.delete(key);
+      this.map.set(key, v);
+    }
+    return v;
+  }
+
+  set(key: K, v: V): void {
+    this.map.set(key, v);
+    if (this.map.size > this.max)
+      this.map.delete(this.map.keys().next().value!);
+  }
+}
+
+/**
+ * Course bases and courses kept: enough for every pattern and trip running at once (TransLink's
+ * peak: about 1,300 buses), in two bands near a band's start. They were kept for good once: about 3
+ * KB per trip and band, 35 MB of heap by a weekday evening (2026-10-25).
+ */
+const MAX_COURSE_BASES = 2048;
+const MAX_COURSES = 4096;
 
 export interface WalkResult {
   along: number;
@@ -382,16 +442,10 @@ export type SkippedStops = (
 
 /** Walks buses forward along their trips with profile (or fallback) timings. */
 export class Predictor {
-  /**
-   * Courses by the trip's running times (its timetable's offsets from its start, which trips of a
-   * pattern with the same running times share: decodeTrips), then by pattern, band and stops
-   * skipped. A course depends only on those (times along it are relative), so a day's thousands of
-   * trips share a few thousand courses, and none outlive the plan's trips.
-   */
-  private courses = new WeakMap<
-    readonly number[],
-    WeakMap<readonly number[], Map<string, Course>>
-  >();
+  /** Course bases by pattern, band and stops skipped. */
+  private bases = new RecentMap<string, CourseBase>(MAX_COURSE_BASES);
+  /** Courses by trip, then as their bases. */
+  private courses = new RecentMap<string, Course>(MAX_COURSES);
 
   private pp: PreparedPlan;
   private cfg: PredictionConfig;
@@ -410,32 +464,33 @@ export class Predictor {
     this.skipped = skipped;
   }
 
-  /** The course for a trip at a local hour (cached by running times, band, and stops skipped that day). */
+  /** The course for a trip at a local hour (cached per trip, band, and stops skipped that day). */
   course(trip: PreparedTrip, atMs: number): Course {
     const band = bandOf(
       this.cfg.bandStartHours,
       localHour(atMs, this.pp.plan.timezone),
     );
     const skip = this.skipped?.(tripServiceDate(trip, atMs), trip.trip.id);
-    const { arr, dep = arr } = trip.trip;
-    let byDep = this.courses.get(arr);
-    if (!byDep) this.courses.set(arr, (byDep = new WeakMap()));
-    let byKey = byDep.get(dep);
-    if (!byKey) byDep.set(dep, (byKey = new Map()));
-    const key =
+    const baseKey =
       skip?.size ?
         `${trip.trip.pattern}|${band}|${[...skip].sort().join(",")}`
       : `${trip.trip.pattern}|${band}`;
-    let c = byKey.get(key);
-    if (!c) byKey.set(key, (c = this.buildCourse(trip, band, skip)));
+    const key = `${trip.trip.id}|${baseKey}`;
+    let c = this.courses.get(key);
+    if (!c) {
+      let base = this.bases.get(baseKey);
+      if (!base)
+        this.bases.set(baseKey, (base = this.buildBase(trip, band, skip)));
+      this.courses.set(key, (c = { ...base, hop: this.hopPace(trip) }));
+    }
     return c;
   }
 
-  private buildCourse(
+  private buildBase(
     trip: PreparedTrip,
     band: number,
     skip?: ReadonlySet<string>,
-  ): Course {
+  ): CourseBase {
     const { cfg, pp } = this;
     const cum = pp.shapeCum.get(trip.pattern.shape);
     const length =
@@ -448,17 +503,9 @@ export class Predictor {
     const bp = sp?.bands[band] ?? null;
     const dist = trip.pattern.dist;
     const ids = trip.pattern.stops.map((si) => pp.plan.stops[si]!.id);
-    // Timetable fallback: running time between stops, less a default dwell, spread by distance.
-    const ttPace = (along: number): number => {
-      let i = 0;
-      while (i < dist.length - 2 && dist[i + 1]! <= along) i++;
-      const dd = dist[i + 1]! - dist[i]!;
-      const dt = trip.arr[i + 1]! - trip.dep[i]! - cfg.defaultDwellS;
-      return dd > 0 && dt > 0 ? dt / dd : 1 / cfg.defaultSpeedMps;
-    };
     const pace = new Float64Array(bins);
     for (let b = 0; b < bins; b++)
-      pace[b] = bp?.pace[b] ?? sp?.all.pace[b] ?? ttPace((b + 0.5) * binM);
+      pace[b] = bp?.pace[b] ?? sp?.all.pace[b] ?? NaN;
     const stops = ids.map((id, i) => ({
       along: dist[i]!,
       dwell:
@@ -466,7 +513,22 @@ export class Predictor {
           0
         : (bp?.dwell[id] ?? sp?.all.dwell[id] ?? cfg.defaultDwellS),
     }));
-    return { binM, length, pace, stops };
+    return { binM, length, pace, stops, dist };
+  }
+
+  /** Timetable fallback per hop: running time between stops, less a default dwell, spread by distance. */
+  private hopPace(trip: PreparedTrip): Float64Array {
+    const { cfg } = this;
+    const dist = trip.pattern.dist;
+    const hop = new Float64Array(Math.max(1, dist.length - 1)).fill(
+      1 / cfg.defaultSpeedMps,
+    );
+    for (let i = 0; i < dist.length - 1; i++) {
+      const dd = dist[i + 1]! - dist[i]!;
+      const dt = trip.arr[i + 1]! - trip.dep[i]! - cfg.defaultDwellS;
+      hop[i] = dd > 0 && dt > 0 ? dt / dd : 1 / cfg.defaultSpeedMps;
+    }
+    return hop;
   }
 
   /** Profile time (s) to go from along a0 to a1, including dwells at stops in (a0, a1]. */
@@ -476,7 +538,7 @@ export class Predictor {
     while (d < a1 - 1e-6) {
       const b = Math.min(c.pace.length - 1, Math.floor(d / c.binM));
       const end = Math.min(a1, (b + 1) * c.binM);
-      t += (end - d) * c.pace[b]!;
+      t += (end - d) * paceAt(c, b);
       d = end;
     }
     for (const s of c.stops)
@@ -516,7 +578,7 @@ export class Predictor {
         (b + 1) * c.binM,
         next ? next.along : Infinity,
       );
-      const pace = c.pace[b]! * factor;
+      const pace = paceAt(c, b) * factor;
       const need = (end - d) * pace;
       if (need >= left) return { along: d + left / pace, speed: 1 / pace };
       left -= need;
@@ -525,7 +587,7 @@ export class Predictor {
     return { along: Math.min(d, c.length), speed: 0 };
   }
 
-  /** Timetable anchors per course, in seconds from the trip's start (courses are shared by trips). */
+  /** Timetable anchors per trip course. */
   private anchors = new WeakMap<
     Course,
     { along: number; sec: number; factor: number }[]
@@ -540,12 +602,11 @@ export class Predictor {
     const c = this.course(trip, serviceDayStart(serviceDate) + sec * 1000);
     let spans = this.anchors.get(c);
     if (!spans) this.anchors.set(c, (spans = this.buildAnchors(trip, c)));
-    const rel = sec - trip.trip.start;
     let k = spans.length - 2;
-    while (k > 0 && spans[k]!.sec > rel) k--;
+    while (k > 0 && spans[k]!.sec > sec) k--;
     const a = spans[k]!;
     const b = spans[k + 1]!;
-    const w = this.walk(c, a.along, rel - a.sec, a.factor);
+    const w = this.walk(c, a.along, sec - a.sec, a.factor);
     return {
       along: Math.min(b.along, w.along),
       speed: w.along >= b.along ? 0 : w.speed,
@@ -616,14 +677,13 @@ export class Predictor {
     if (idx[idx.length - 1] !== n - 1) idx.push(n - 1);
     return idx.map((i, j) => {
       const next = idx[j + 1];
-      const start = trip.trip.start;
       if (next === undefined)
-        return { along: dist[i]!, sec: trip.arr[i]! - start, factor: 1 };
+        return { along: dist[i]!, sec: trip.arr[i]!, factor: 1 };
       const expected = this.timeBetween(c, dist[i]!, dist[next]!);
       const available = trip.arr[next]! - trip.dep[i]!;
       return {
         along: dist[i]!,
-        sec: trip.dep[i]! - start,
+        sec: trip.dep[i]!,
         factor: expected > 0 && available > 0 ? available / expected : 1,
       };
     });

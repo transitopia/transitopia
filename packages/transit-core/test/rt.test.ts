@@ -306,8 +306,8 @@ describe("prediction", () => {
     expect(v?.status).toBe("dwell");
     expect(v?.stopName).toBe("Mid");
 
-    // A later trip with the same running times (sharing them, as decodeTrips does) shares the
-    // course, and is paced on its own timetable.
+    // A later trip of the pattern shares the profile's part of the course (its base), and is paced
+    // on its own timetable.
     const later = {
       ...withStop,
       trips: [
@@ -321,7 +321,9 @@ describe("prediction", () => {
     const t2 = pp3.tripIndex.get("trip2")!;
     const ms = (s: number) =>
       serviceDayStart(serviceDate("20260928")) + s * 1000;
-    expect(p3.course(t2, ms(start + 700))).toBe(p3.course(t1, ms(start + 100)));
+    expect(p3.course(t2, ms(start + 700)).pace).toBe(
+      p3.course(t1, ms(start + 100)).pace,
+    );
     for (const s of [100, 195, 210, 300])
       expect(p3.pacer(t2, start + 600 + s, serviceDate("20260928"))).toEqual(
         p3.pacer(t1, start + s, serviceDate("20260928")),
