@@ -165,7 +165,6 @@ export async function recordFeeds(
   zips.sort((a, b) => a.fetchedAt.getTime() - b.fetchedAt.getTime());
   for (const f of zips) {
     if (known.has(f.version)) continue;
-    // TransLink's zips were archived at gtfs/metro-vancouver/<version>/ before feeds had ids.
     const key = `gtfs/${feedId}/${f.version}/google_transit.zip`;
     if (archiveRemote)
       await run("rclone", [
