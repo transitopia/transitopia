@@ -14,5 +14,7 @@
     "minBuses": 10,
     "$lowForS": "...once it has stayed low this long (single polls dip; real outages last hours).",
     "lowForS": 1200
-  }
+  },
+  "$diskMaxUsed": "When /healthz fails for the disk that holds var/ being fuller than this share. In production that's the VM's one disk, which also holds the database and the nightly dump while it's staged, and Postgres needs headroom (deployment/README.md#sizing): 25 of 96 GB were used on 2026-10-25, growing ~0.2 GB a day until older observed stop times move out (#129).",
+  "diskMaxUsed": 0.85
 }

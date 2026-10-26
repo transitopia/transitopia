@@ -28,7 +28,7 @@ GET /rt/alerts                      current TransLink alerts for our rail lines,
 GET /rt/dispatch                    live dispatch: current patch version per service date
 GET /rt/dispatch/<date>/<v>.json    a patch version (immutable)
 GET /features/<key>[?date=YYYYMMDD]  a feature by ID or ref (below)
-GET /healthz                        data freshness: 503 when polls (or trip updates' delays), AIS, the database or a daily job are stale
+GET /healthz                        data freshness: 503 when polls (or trip updates' delays), AIS, the database or a daily job are stale, or the disk is nearly full
 GET /auth/github/login, /auth/github/callback, /auth/me; POST /auth/logout     admin sign-in
 /admin/api/*                        the review queue behind /admin (admins only)
 ```
@@ -82,7 +82,7 @@ A patch only fits the build it was dispatched against (`baseBuiltAt`), which is 
 | `places` | registry state | With `BUILD_DATA=1`: whenever the registry changes (an admin's `features` command, a reconciliation), rewrite the places files whose content changed and publish them with their index |
 | `archive` | local hour | Copy closed recordings to `ARCHIVE_REMOTE` |
 
-Backups run in their own container (`infra/backup/`) and record themselves in `job_runs`. `/healthz` fails when a daily job (statistics, data build, backup) failed in the last 3 days or hasn't succeeded for 36 hours.
+Backups run in their own container (`infra/backup/`) and record themselves in `job_runs`. `/healthz` fails when a daily job (statistics, data build, backup) failed in the last 3 days or hasn't succeeded for 36 hours. Its `disk` check fails when the disk holding `var/` is fuller than `config/server/server.json` → `diskMaxUsed` (85 %; in production the VM's one disk, which also holds the database).
 
 ## Feature reconciliation
 

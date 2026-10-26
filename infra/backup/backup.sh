@@ -21,28 +21,35 @@ on conflict (job, key) do update set status = excluded.status, finished_at = now
 SQL
 }
 
-# Every step is checked explicitly: `set -e` doesn't apply inside a function called from `if` or
-# `&&`, so without these a failed upload still reported "done".
+# Dumps into the directory $1, then uploads them. Every step is checked explicitly: `set -e` doesn't
+# apply inside a function called from `if` or `&&`, so without these a failed upload still reported
+# "done".
 backup() {
+  dir=$1
   day=$(date -u +%Y-%m-%d)
-  tmp=$(mktemp -d) || return 1
   echo "[backup] $day: dumping"
-  pg_dump -Fc -d "$DATABASE_URL" -f "$tmp/full.dump" || return 1
-  rclone copyto "$tmp/full.dump" "$BACKUP_REMOTE/db/transitopia-$day.dump" --s3-no-check-bucket || return 1
+  pg_dump -Fc -d "$DATABASE_URL" -f "$dir/full.dump" || return 1
+  rclone copyto "$dir/full.dump" "$BACKUP_REMOTE/db/transitopia-$day.dump" --s3-no-check-bucket || return 1
   rclone delete "$BACKUP_REMOTE/db" --min-age "${KEEP}d" || return 1
-  pg_dump -Fc -d "$DATABASE_URL" -f "$tmp/snapshot.dump" \
+  pg_dump -Fc -d "$DATABASE_URL" -f "$dir/snapshot.dump" \
     --exclude-table-data=users --exclude-table-data=sessions \
     --exclude-table-data='rt_positions*' --exclude-table-data='ais_fixes*' \
     --exclude-table-data=upstream_requests --exclude-table-data=service_leader || return 1
-  rclone copyto "$tmp/snapshot.dump" "$BACKUP_REMOTE/snapshots/db-latest.dump" --s3-no-check-bucket || return 1
-  rm -rf "$tmp"
+  rclone copyto "$dir/snapshot.dump" "$BACKUP_REMOTE/snapshots/db-latest.dump" --s3-no-check-bucket || return 1
   size=$(rclone size "$BACKUP_REMOTE/db" --json) || return 1
   echo "[backup] $day: done ($(echo "$size" | tr -d '\n'))"
 }
 
+# The dumps are written to this container's disk, the VM's, and are as large as a tenth of the
+# database: remove them whether or not the backup succeeded, or failed runs pile up there.
 run() {
   day=$(date -u +%Y-%m-%d)
-  if backup; then
+  ok=
+  if dir=$(mktemp -d); then
+    backup "$dir" && ok=1
+    rm -rf "$dir"
+  fi
+  if [ -n "$ok" ]; then
     record done "$day"
   else
     echo "[backup] $day: FAILED"

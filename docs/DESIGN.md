@@ -117,7 +117,7 @@ Raw real-time data is deleted after 60 days (`config/server/recording.json`). An
 - **Statistics are versioned.** Each row records the version of the code that produced it, so a changed definition can be recomputed from the atom.
 - **Every route is recorded,** not just the ones drawn. Each response already covers every TransLink vehicle, so this costs no extra requests, only storage. Vehicles on routes not drawn when they were recorded (excluded ones, or routes before every route was drawn) get an untracked route key (`gtfs:<route_id>`); every reader keeps only tracked ones (`trackedOnly`), giving a vehicle on a route drawn since then that route's key, so older recordings count it too.
 
-Kept in Postgres, observed stop times grow by about 78 GB a year ([deployment/README.md → Sizing](../deployment/README.md#sizing)), so older months need to move to monthly files in object storage within about a year of recording.
+Kept in Postgres, observed stop times grow by about 73 GB a year across the three feeds ([deployment/README.md → Sizing](../deployment/README.md#sizing)), so older months need to move to monthly files in object storage before mid-2027.
 
 ## Upstream request budget
 

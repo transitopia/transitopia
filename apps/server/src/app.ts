@@ -6,6 +6,7 @@
 //   /admin/api/*       the review queue behind /admin: disruptions and observations with previews,
 //                      jobs and status. Admins only; CORS for ALLOWED_ORIGINS.
 
+import { statfs } from "node:fs/promises";
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { isServiceDate } from "@transitopia/transit-core/time.ts";
@@ -56,6 +57,7 @@ import type { Auth, SessionUser } from "./auth.ts";
 import { originAllowed, type ServerEnv } from "./env.ts";
 import type { CorrectionsRepo } from "./corrections.ts";
 import type { Jobs } from "./jobs/scheduler.ts";
+import { serverConfig } from "./config.ts";
 
 export interface AppDeps {
   service: RtService;
@@ -64,6 +66,8 @@ export interface AppDeps {
   db?: Db | undefined;
   repo?: CorrectionsRepo | undefined;
   jobs?: Jobs | undefined;
+  /** A directory on the disk /healthz watches (var/); none, no disk check. */
+  diskPath?: string | undefined;
 }
 
 type Env = { Variables: { user: SessionUser } };
@@ -443,8 +447,13 @@ export function disruptionProblems(
   return p;
 }
 
-/** Data freshness (deployment/README.md#monitoring): the poller, AIS, the database and the jobs. */
-export async function health({ service, db, jobs }: AppDeps): Promise<Health> {
+/** Data freshness (deployment/README.md#monitoring): the poller, AIS, the database, the jobs and the disk. */
+export async function health({
+  service,
+  db,
+  jobs,
+  diskPath,
+}: AppDeps): Promise<Health> {
   const checks: Health["checks"] = {};
   if (db) {
     try {
@@ -508,7 +517,28 @@ export async function health({ service, db, jobs }: AppDeps): Promise<Health> {
     };
   }
   if (jobs) Object.assign(checks, await jobs.health());
+  if (diskPath) {
+    try {
+      checks.disk = diskCheck(await statfs(diskPath), serverConfig.diskMaxUsed);
+    } catch (e) {
+      checks.disk = { ok: false, detail: (e as Error).message };
+    }
+  }
   return { ok: Object.values(checks).every((c) => c.ok), checks };
+}
+
+/** A filesystem's use as `df` reports it: used / (used + available to unprivileged users). */
+export function diskCheck(
+  s: { blocks: number; bfree: number; bavail: number; bsize: number },
+  maxUsed: number,
+): Health["checks"][string] {
+  const used = s.blocks - s.bfree;
+  const share = used / (used + s.bavail);
+  const gib = (blocks: number) => ((blocks * s.bsize) / 2 ** 30).toFixed(1);
+  return {
+    ok: share <= maxUsed,
+    detail: `${Math.round(share * 100)} % used, ${gib(s.bavail)} GiB free of ${gib(s.blocks)} GiB (limit ${Math.round(maxUsed * 100)} %)`,
+  };
 }
 
 async function rtStatusOf(service: RtService): Promise<RtStatus> {
