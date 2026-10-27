@@ -27,6 +27,7 @@ import {
   casingOpacity,
   DIM_OPACITY,
   focusColor,
+  FOCUS_LAYERS_START,
   LINES_SOURCE,
   onFocus,
   routeLineColor,
@@ -124,10 +125,11 @@ export function addTrackLayers(
   const yard = dark ? "#5b636d" : "#a9b0b8";
   const casing = dark ? "#15181c" : "#ffffff";
   // Above bus stop ticks, so zoomed out the line hides stops under or over the guideway; they show
-  // through once it fades close in. Below exchanges, stations and labels.
+  // through once it fades close in. Below the focused bus route (its card is open), exchanges,
+  // stations and labels.
   const before =
-    map.getLayer(VEHICLES_BEFORE_LAYER) && map.getLayer("exchanges") ?
-      "exchanges"
+    map.getLayer(VEHICLES_BEFORE_LAYER) && map.getLayer(FOCUS_LAYERS_START) ?
+      FOCUS_LAYERS_START
     : undefined;
   const lines = {
     source: LINES_SOURCE,

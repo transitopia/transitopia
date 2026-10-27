@@ -936,6 +936,7 @@ export class TransitEngine {
       "exchanges",
       "exchanges-label",
       "bus-stops",
+      "bus-stops-focus",
       VEHICLES_BEFORE_LAYER,
     ].filter((id) => map.getLayer(id));
     if (!layers.length) return undefined;
@@ -993,6 +994,7 @@ export class TransitEngine {
       "exchanges",
       "exchanges-label",
       "bus-stops",
+      "bus-stops-focus",
       VEHICLES_BEFORE_LAYER,
     ].filter((id) => map.getLayer(id));
     const hits =

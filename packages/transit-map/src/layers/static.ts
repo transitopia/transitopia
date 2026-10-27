@@ -8,6 +8,7 @@ import type {
   GeoJSONSource,
   LineLayerSpecification,
   Map as MlMap,
+  SymbolLayerSpecification,
 } from "maplibre-gl";
 import type {
   ExpressionSpecification,
@@ -53,6 +54,8 @@ const ANCHORS = [
 ];
 /** Vehicles are inserted beneath this layer, so stop and station labels stay readable above them. */
 export const VEHICLES_BEFORE_LAYER = "bus-stops-label";
+/** The first of the focused route's layers, drawn over SkyTrain's (addTrackLayers goes beneath it). */
+export const FOCUS_LAYERS_START = "corridors-overview-focus-casing";
 export const SELECTED_PLACE_SOURCE = "transit-selected-place";
 /** The ring around a selected place (px); also how far a tap looks for what it might mean. */
 export const SELECTED_PLACE_RADIUS_PX = 20;
@@ -230,10 +233,12 @@ const corridorDim: ExpressionSpecification = [
   ["feature-state", "dim"],
   false,
 ];
+/** Whether a route or combined route is focused (its card is open). */
+const focusSet: ExpressionSpecification = ["!=", focusKey, ""];
 /** A corridor carrying the focused route (its card is open). */
 const corridorFocused: ExpressionSpecification = [
   "all",
-  ["!=", focusKey, ""],
+  focusSet,
   ["!", corridorDim],
 ];
 /** A corridor whose routes don't run in the window shown (BusFrequencyLayer). */
@@ -580,38 +585,38 @@ export function addStaticLayers(
     source,
     "source-layer": PLAN_TILE_LAYERS.routes,
   } as const;
-  for (const [prefix, sourceLayer, zooms] of [
+  /** A corridor set's layers: the base ones now, the focused copies over SkyTrain (addFocusLayers). */
+  const corridorSets = (
     [
-      "corridors-overview",
-      PLAN_TILE_LAYERS.overviewCorridors,
-      { maxzoom: CORRIDOR_DETAIL_ZOOM },
-    ],
-    [
-      "corridors",
-      PLAN_TILE_LAYERS.corridors,
-      { minzoom: CORRIDOR_DETAIL_ZOOM },
-    ],
-  ] as const) {
+      [
+        "corridors-overview",
+        PLAN_TILE_LAYERS.overviewCorridors,
+        { maxzoom: CORRIDOR_DETAIL_ZOOM },
+      ],
+      [
+        "corridors",
+        PLAN_TILE_LAYERS.corridors,
+        { minzoom: CORRIDOR_DETAIL_ZOOM },
+      ],
+    ] as const
+  ).map(([prefix, sourceLayer, zooms]) => {
     const casingLayer = (
       id: string,
-      opacity: ExpressionSpecification,
-      only?: ExpressionSpecification,
-    ) =>
-      map.addLayer({
-        id,
-        type: "line",
-        source,
-        "source-layer": sourceLayer,
-        minzoom: Math.max(12, "minzoom" in zooms ? zooms.minzoom : 0),
-        ...("maxzoom" in zooms ? { maxzoom: zooms.maxzoom } : {}),
-        layout: { "line-join": "round", "line-cap": "round" },
-        paint: {
-          "line-color": casing,
-          "line-width": tierWidth(2, [0, 1], only),
-          "line-opacity": opacity,
-        },
-      });
-    casingLayer(`${prefix}-casing`, corridorCasingOpacity);
+      width: ExpressionSpecification,
+    ): LineLayerSpecification => ({
+      id,
+      type: "line",
+      source,
+      "source-layer": sourceLayer,
+      minzoom: Math.max(12, "minzoom" in zooms ? zooms.minzoom : 0),
+      ...("maxzoom" in zooms ? { maxzoom: zooms.maxzoom } : {}),
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: {
+        "line-color": casing,
+        "line-width": width,
+        "line-opacity": corridorCasingOpacity,
+      },
+    });
     const line: Omit<LineLayerSpecification, "id"> = {
       type: "line",
       source,
@@ -650,6 +655,42 @@ export function addStaticLayers(
         "line-opacity": ["case", corridorFocused, 1, byTier(TIER_OPACITY, 1)],
       },
     };
+    // Routes with their own colour, over the corridors they run along: the busiest one running at
+    // the time shown (feature state `brand`, an index into brandedRoutes), thicker and cased.
+    const brandWidth = (
+      extra: number,
+      only?: ExpressionSpecification,
+    ): ExpressionSpecification =>
+      [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        ...BRAND_WIDTHS.flatMap(([z, w]) => [
+          z,
+          [
+            "case",
+            ["all", brandShown, [">=", BRAND, 0], ...(only ? [only] : [])],
+            w + extra,
+            0,
+          ],
+        ]),
+      ] as ExpressionSpecification;
+    const brandLayer = (
+      id: string,
+      only?: ExpressionSpecification,
+    ): LineLayerSpecification => ({
+      id,
+      type: "line",
+      source,
+      "source-layer": sourceLayer,
+      ...zooms,
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: {
+        "line-color": ["case", corridorDim, fadedBrandColor, brandColor],
+        "line-width": brandWidth(0, only),
+      },
+    });
+    map.addLayer(casingLayer(`${prefix}-casing`, tierWidth(2, [0, 1])));
     // Corridors whose routes don't run in the window (feature state `idle`): dotted grey, beneath
     // the tiers, so a route the site mentions is never missing from the map.
     map.addLayer({
@@ -680,79 +721,51 @@ export function addStaticLayers(
       },
     });
     map.addLayer({ id: prefix, ...line });
-    // The focused corridors again, on top: another route's corridor along the same street (the
-    // other direction) can come later in the tile and cover them, and lines can't be ordered by
-    // feature state. The same type, source, zooms, layout and (no) filter as the layers beneath,
-    // so MapLibre builds one set of buffers for both, and no filter or layout reads the focus (a
-    // change to global state those read reloads the source's tiles): elsewhere they're zero wide.
-    casingLayer(
-      `${prefix}-focus-casing`,
-      corridorCasingOpacity,
-      corridorFocused,
-    );
-    map.addLayer({
-      id: `${prefix}-focus`,
-      ...line,
-      paint: {
-        ...line.paint,
-        "line-width": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          ...TIER_WIDTHS.flatMap(([z, w]) => [
-            z,
-            [
-              "case",
-              corridorFocused,
-              byTier(
-                w.map((x) => Math.max(x, w[2]!)),
+    map.addLayer(casingLayer(`${prefix}-brand-casing`, brandWidth(2)));
+    map.addLayer(brandLayer(`${prefix}-brand`));
+    // The focused corridors again, on top of everything but stations, exchanges and labels
+    // (packages/transit-map/README.md#route-focus): another route's corridor along the same street
+    // (the other direction) can come later in the tile and cover them, SkyTrain's lines are drawn
+    // over the corridors, and lines can't be ordered by feature state. The same type, source, zooms,
+    // layout and (no) filter as the layers beneath, so MapLibre builds one set of buffers for both,
+    // and no filter or layout reads the focus (a change to global state those read reloads the
+    // source's tiles): elsewhere they're zero wide.
+    return [
+      casingLayer(
+        `${prefix}-focus-casing`,
+        tierWidth(2, [0, 1], corridorFocused),
+      ),
+      {
+        id: `${prefix}-focus`,
+        ...line,
+        paint: {
+          ...line.paint,
+          "line-width": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            ...TIER_WIDTHS.flatMap(([z, w]) => [
+              z,
+              [
+                "case",
+                corridorFocused,
+                byTier(
+                  w.map((x) => Math.max(x, w[2]!)),
+                  0,
+                ),
                 0,
-              ),
-              0,
-            ],
-          ]),
-        ] as ExpressionSpecification,
+              ],
+            ]),
+          ] as ExpressionSpecification,
+        },
       },
-    });
-    // Routes with their own colour, over the corridors they run along: the busiest one running at
-    // the time shown (feature state `brand`, an index into brandedRoutes), thicker and cased.
-    const brandWidth = (extra: number): ExpressionSpecification =>
-      [
-        "interpolate",
-        ["linear"],
-        ["zoom"],
-        ...BRAND_WIDTHS.flatMap(([z, w]) => [
-          z,
-          ["case", ["all", brandShown, [">=", BRAND, 0]], w + extra, 0],
-        ]),
-      ] as ExpressionSpecification;
-    map.addLayer({
-      id: `${prefix}-brand-casing`,
-      type: "line",
-      source,
-      "source-layer": sourceLayer,
-      minzoom: Math.max(12, "minzoom" in zooms ? zooms.minzoom : 0),
-      ...("maxzoom" in zooms ? { maxzoom: zooms.maxzoom } : {}),
-      layout: { "line-join": "round", "line-cap": "round" },
-      paint: {
-        "line-color": casing,
-        "line-width": brandWidth(2),
-        "line-opacity": corridorCasingOpacity,
-      },
-    });
-    map.addLayer({
-      id: `${prefix}-brand`,
-      type: "line",
-      source,
-      "source-layer": sourceLayer,
-      ...zooms,
-      layout: { "line-join": "round", "line-cap": "round" },
-      paint: {
-        "line-color": ["case", corridorDim, fadedBrandColor, brandColor],
-        "line-width": brandWidth(0),
-      },
-    });
-  }
+      casingLayer(
+        `${prefix}-brand-focus-casing`,
+        brandWidth(2, corridorFocused),
+      ),
+      brandLayer(`${prefix}-brand-focus`, corridorFocused),
+    ] satisfies LineLayerSpecification[];
+  });
   // Bus routes drawn on their own (99 B-Line, RapidBus; every route without corridors).
   map.addLayer({
     id: "routes-bus",
@@ -867,7 +880,7 @@ export function addStaticLayers(
   });
   // Express bus stops: a tick in the route colour toward the stop's side of the street (opposite
   // stops make a "+"), labelled only close in.
-  map.addLayer({
+  const ticks: SymbolLayerSpecification = {
     id: "bus-stops",
     type: "symbol",
     source: BUS_TICKS_SOURCE,
@@ -909,7 +922,25 @@ export function addStaticLayers(
           "rgba(0,0,0,0)",
         ]),
       ] as ExpressionSpecification,
-      "icon-opacity": focusOpacity(0.9, stopOnFocus),
+      // The focused route's ticks are drawn by bus-stops-focus, over its corridors.
+      "icon-opacity": [
+        "case",
+        ["all", focusSet, stopOnFocus],
+        0,
+        focusOpacity(0.9, stopOnFocus),
+      ],
+    },
+  };
+  map.addLayer(ticks);
+  // SkyTrain's layers go here (tracks.ts → addTrackLayers: before FOCUS_LAYERS_START), then the
+  // focused route over them, its stop ticks included.
+  for (const layer of corridorSets.flat()) map.addLayer(layer);
+  map.addLayer({
+    ...ticks,
+    id: "bus-stops-focus",
+    paint: {
+      ...ticks.paint,
+      "icon-opacity": ["case", ["all", focusSet, stopOnFocus], 0.9, 0],
     },
   });
   // Bus exchanges: drawn like stations, in the stop labels' grey, once bus stops show.
@@ -1117,6 +1148,7 @@ export function applyRouteFilter(
     "exchanges",
     "exchanges-label",
     "bus-stops",
+    "bus-stops-focus",
   ])
     if (map.getLayer(id)) map.setFilter(id, stopVisible);
 }
@@ -1129,6 +1161,7 @@ export function applyStopsVisibility(map: MlMap, shown: boolean): void {
     "exchanges",
     "exchanges-label",
     "bus-stops",
+    "bus-stops-focus",
     VEHICLES_BEFORE_LAYER,
   ])
     if (map.getLayer(id))
