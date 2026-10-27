@@ -12,7 +12,7 @@ import type { MapCyclingElement } from "../Map/MapData.ts";
 /** Bike cards use the cycling mode's green (OpenStreetMap features have no route colour). */
 export const BIKE_TILE = { bg: "#5cc88d", fg: "#0b3d23" };
 
-/** What kind of facility this is, from the tiles' attributes (map-layers Cycling.java). */
+/** What kind of facility this is, from the tiles' attributes (packages/cycling-core/src/classify.ts). */
 function kind(f: MapCyclingElement): string {
   if (f.class === "track")
     return f.shared_with_pedestrians ? "Shared path" : (

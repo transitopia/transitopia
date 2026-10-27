@@ -11,7 +11,7 @@ VITE_TRANSIT_DATA=https://data.transitopia.org/ VITE_TRANSIT_API=https://api.tra
 npm run build -w @transitopia/web
 ```
 
-Locally the site reads the pipelines' output from `var/public/`, served at `/dev-data/` by `vite.config.ts`, and the cycling layer from `apps/web/public/` (see the repo [README](../../README.md#how-to-run-transitopia-locally)). Production locations are in `.env.production`; every data URL goes through `src/config.ts`.
+Locally the site reads the pipelines' output from `var/public/`, served at `/dev-data/` by `vite.config.ts`, and the cycling layer from `var/public/tiles/` too (see the repo [README](../../README.md#how-to-run-transitopia-locally)). Production locations are in `.env.production`; every data URL goes through `src/config.ts`.
 
 ## Layout
 
@@ -48,7 +48,7 @@ The header holds the logo and the mode switch (`ModeSwitch.tsx`): a segmented co
 
 ## Cycling mode
 
-The cycling and micromobility layer for British Columbia, built by our Planetiler profile ([map-layers](../../map-layers/README.md)) and served as `transitopia-cycling-british-columbia.pmtiles`. Clicking a feature shows its details, loaded on demand from the OSM API.
+The cycling and micromobility layer for British Columbia, built from OpenStreetMap by `npm run data:cycling` ([packages/cycling-core](../../packages/cycling-core/README.md)) and served as `transitopia-cycling-british-columbia.pmtiles`. Clicking a feature shows its details, loaded on demand from the OSM API.
 
 ## Time and not-live
 

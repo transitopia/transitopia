@@ -4,6 +4,7 @@
 // Design license: CC-BY 4.0 https://creativecommons.org/licenses/by/4.0/
 
 import type { ExpressionSpecification, LayerSpecification } from "maplibre-gl";
+import { CYCLING_LAYER } from "@transitopia/cycling-core/tiles.ts";
 import type { Theme } from "@transitopia/map-style/basemap.ts";
 import { FONTS } from "@transitopia/map-style/basemap.ts";
 import {
@@ -26,7 +27,7 @@ export const otherLayerIds = ["bike_parking_point"];
 
 /**
  * What the cycling layers panel shows (CyclingLayers.tsx). The categories follow the tiles' comfort
- * levels (map-layers/src/main/java/org/transitopia/layers/Cycling.java): protected = separated
+ * levels (packages/cycling-core/src/classify.ts): protected = separated
  * tracks and paths (comfort 4, or 3 when shared with pedestrians), local = traffic-calmed shared
  * streets (comfort 3 on the road), painted = lanes on the roadway, including shared lanes on busy
  * streets (comfort 1–2). "All ages & abilities only" hides comfort 1–2 whatever `painted` says.
@@ -181,7 +182,7 @@ export function cyclingLayers(
       id: "cycling_path_construction",
       type: "line",
       source: mapSource,
-      "source-layer": "transitopia_cycling",
+      "source-layer": CYCLING_LAYER,
       layout: {
         "line-cap": "butt",
         "line-join": "bevel",
@@ -197,7 +198,7 @@ export function cyclingLayers(
       id: "cycling_path_4",
       type: "line",
       source: mapSource,
-      "source-layer": "transitopia_cycling",
+      "source-layer": CYCLING_LAYER,
       layout: defaultLineLayout,
       paint: {
         "line-color": colorWithHoverAndSelectionStates(c.path),
@@ -208,7 +209,7 @@ export function cyclingLayers(
       id: "cycling_path_3",
       type: "line",
       source: mapSource,
-      "source-layer": "transitopia_cycling",
+      "source-layer": CYCLING_LAYER,
       layout: defaultLineLayout,
       paint: {
         "line-color": colorWithHoverAndSelectionStates(c.path),
@@ -220,7 +221,7 @@ export function cyclingLayers(
       id: "cycling_path_3_inner",
       type: "line",
       source: mapSource,
-      "source-layer": "transitopia_cycling",
+      "source-layer": CYCLING_LAYER,
       minzoom: 13,
       layout: defaultLineLayout,
       paint: {
@@ -233,7 +234,7 @@ export function cyclingLayers(
       id: "cycling_path_2",
       type: "line",
       source: mapSource,
-      "source-layer": "transitopia_cycling",
+      "source-layer": CYCLING_LAYER,
       layout: defaultLineLayout,
       paint: {
         "line-color": colorWithHoverAndSelectionStates(c.path),
@@ -252,7 +253,7 @@ export function cyclingLayers(
       id: "cycling_path_1",
       type: "line",
       source: mapSource,
-      "source-layer": "transitopia_cycling",
+      "source-layer": CYCLING_LAYER,
       minzoom: 8,
       layout: defaultLineLayout,
       paint: {
@@ -265,7 +266,7 @@ export function cyclingLayers(
       id: "cycling_path_oneway_arrows_white",
       type: "symbol",
       source: mapSource,
-      "source-layer": "transitopia_cycling",
+      "source-layer": CYCLING_LAYER,
       minzoom: 8,
       paint: {
         "icon-opacity": interpolateZoom({ z1: 0, z14: 0, z15: 0.9 }),
@@ -284,7 +285,7 @@ export function cyclingLayers(
       id: "cycling_path_oneway_arrows_green",
       type: "symbol",
       source: mapSource,
-      "source-layer": "transitopia_cycling",
+      "source-layer": CYCLING_LAYER,
       minzoom: 8,
       paint: {
         "icon-opacity": interpolateZoom({ z1: 0, z14: 0, z15: 0.9 }),
@@ -305,7 +306,7 @@ export function cyclingLayers(
       id: "cycling_path_name",
       type: "symbol",
       source: mapSource,
-      "source-layer": "transitopia_cycling",
+      "source-layer": CYCLING_LAYER,
       layout: {
         "symbol-placement": "line",
         "symbol-spacing": 350,
@@ -331,7 +332,7 @@ export function cyclingLayers(
       id: "bike_parking_point",
       type: "circle",
       source: mapSource,
-      "source-layer": "transitopia_cycling",
+      "source-layer": CYCLING_LAYER,
       layout: {
         visibility: "visible",
         "circle-sort-key": 1,
