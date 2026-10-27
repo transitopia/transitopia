@@ -40,7 +40,7 @@ https://docs.protomaps.com/deploy/cloudflare. A file `<name>.pmtiles` in the buc
 | File | Built by |
 |---|---|
 | `protomaps-bc.pmtiles` (the basemap) | `.github/workflows/build_basemap.yml`, weekly (`npm run tiles -- --region bc`) |
-| `transitopia-cycling-british-columbia.pmtiles` | `.github/workflows/build_cycling.yml`, daily (`map-layers/`) |
+| `transitopia-cycling-british-columbia.pmtiles` | `.github/workflows/build_cycling.yml`, daily (`npm run data:cycling`, [packages/cycling-core](../packages/cycling-core/README.md)) |
 | `transit-overview-v<N>.pmtiles` (every region's routes zoomed out) | The server's daily data build (`npm run build:overview-tiles`), uploaded to `MAPS_PUBLISH_REMOTE` ([packages/transit-core → Overview tiles](../packages/transit-core/DESIGN.md#overview-tiles)) |
 
 The worker's `ALLOWED_ORIGINS` variable lists the sites allowed to use the tiles (CORS), comma

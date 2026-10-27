@@ -21,7 +21,7 @@ Planned work is tracked in [GitHub issues](https://github.com/transitopia/transi
 
 Transitopia is one site with **transit** and **cycling** modes, backed by a long-running server in Canada and a PostgreSQL database for everything we collect and curate.
 
-- **Cycling**: the cycling and micromobility map of British Columbia, from our own Planetiler profile (`map-layers/`).
+- **Cycling**: the cycling and micromobility map of British Columbia, built from OpenStreetMap by our own pipeline ([packages/cycling-core](../packages/cycling-core/README.md)).
 - **Transit** (Metro Vancouver, with a few BC Transit routes in Greater Victoria and Kelowna to keep the design [multi-region](#regions-and-feeds)): Our goal is to show every transit mode in real-time on a single map. Currently we show express buses and SeaBus using accurate real-time data, and we do our best to model SkyTrain and West Coast Express based on their schedule. The web app features a time slider covering past, live and projected future service. Corrections, disruptions, scenarios and a signalling-aware dispatcher refine the schedule where possible.
 - **Walking** is planned for the future.
 
@@ -79,12 +79,12 @@ apps/server/               the server: real-time API, leader (pollers, recorder,
 packages/transit-core/     DOM-free engine: GTFS, track graph, run inference, dispatcher, playback, corrections, RT prediction
 packages/transit-map/      the engine on a host MapLibre map: clock, playback, WebGL layers; no UI framework
 packages/map-style/        the Protomaps basemap style (light and dark), zoom helpers
+packages/cycling-core/     DOM-free cycling map logic: OSM classification, chains, the cycling tiles' schema
 packages/data/             Node-side data access for pipelines and the server: where data lives (paths.ts), GTFS zips, disruption files, dispatch contexts
 packages/db/               PostgreSQL: SQL migrations, Kysely types, partitions, jobs
 packages/shared/           shared by web and server: the dataset registry
 pipelines/                 build-time pipelines and validators
-config/                    committed, curated inputs: defaults/, operators/, feeds/, regions/ (Regions and feeds, below)
-map-layers/                Planetiler (Java) profile for the cycling layer
+config/                    committed, curated inputs: defaults/, operators/, feeds/, regions/ (Regions and feeds, below), cycling/
 infra/                     production Compose stack, server image, Caddy, backups, firewall; the local database
 deployment/                setup and operations notes, the tile worker
 var/                       gitignored: downloads, recordings, build output (var/public is the transit data's web root)
@@ -284,6 +284,7 @@ Made while planning V2 (2026-09-29 to 2026-10-01). Change them deliberately, and
 | Regions and feeds | **Feeds are separate from regions** (2026-10-14), and **operators from feeds** (2026-10-15): a region lists the feeds it shows, and a feed (fetched, built, polled, recorded) can be in several; settings come in layers (defaults, operator, feed, then route or region) under `config/`; a region's are only about the place. Greater Victoria and Central Okanagan (a few BC Transit routes) keep the design multi-region and multi-agency before a second big city. The site shows one region at a time, the one in view ([above](#regions-and-feeds)), and zoomed out every region's routes from one overview tileset (2026-10-20, #198). |
 | Live data | **One poll per map**: `/regions/<id>/live/transit` for transit (later `/regions/<id>/live/cycling` for GBFS), shared by every visitor at the edge, with a section per source (agency or feed) and pointers to immutable per-date files for anything large or slow-changing ([apps/server → Live endpoint](../apps/server/README.md#live-endpoint), issue #177). Polling, not server-sent events or WebSockets: an open connection per visitor would reach the one VM and lose the edge cache. |
 | Feature IDs | **Prefixed random IDs** with a decorative name suffix in URLs, **refs** for source records, **no slugs** (2026-10-18, issue #193). The registry is in the database, GTFS refs hold over ranges of feed versions, containment is the registry's (the heuristics only propose it), and only production mints the IDs that are published. Plans hold no IDs: places files beside them do, so registry edits publish in minutes ([above](#feature-ids)). |
+| Cycling layer | **Built by our TypeScript pipeline** (2026-10-27): osmium filters Geofabrik's extract, `packages/cycling-core` classifies ways and joins them into chains, tippecanoe tiles them, as the transit lines are tiled. It replaced the Java Planetiler profile, so the classification is shared with the site and, later, the server, and a selected path is a whole chain ([packages/cycling-core](../packages/cycling-core/README.md)). |
 | Transit lines | **Vector tiles, built with the data** (2026-10-20, #198): every line a plan draws is in tiles of its own, named by their content, and the engine styles them (feature state, global state, filters) rather than drawing GeoJSON; one overview tileset shows every region zoomed out. No interim GeoJSON overview ([packages/transit-core → Plan tiles](../packages/transit-core/DESIGN.md#plan-tiles)). |
 | Environments | Production and local development. A staging environment can be added cheaply later: configuration in env files, hostnames and buckets as config, unattended migrations, a Compose project per environment. Staging would never poll TransLink. |
 

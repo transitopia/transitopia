@@ -23,13 +23,13 @@ This repository is a monorepo (npm workspaces) containing most of the parts you 
 * `packages/shared`: definitions shared by the website and server, such as the dataset registry behind the map's credits.
 * `pipelines`: build-time data pipelines and validators.
 * `config/regions/metro-vancouver`: curated data for Metro Vancouver (config, track infrastructure, scenarios, observations and disruptions).
-* `map-layers`: A Transitopia profile for [Planetiler](https://github.com/onthegomap/planetiler) that generates our unique map layers/overlays (currently just the cycling/micromobility map).
+* `packages/cycling-core`: the cycling/micromobility map's logic: classifying OpenStreetMap's cycling infrastructure and the cycling tiles' schema (built by `npm run data:cycling`).
 
 How it all fits together is in [docs/DESIGN.md](docs/DESIGN.md), with each part's design in its own folder. [CLAUDE.md](CLAUDE.md) lists every command. Planned work is in [GitHub issues](https://github.com/transitopia/transitopia/issues).
 
 ## How to run Transitopia locally
 
-You need Node.js 26+ (and optionally Java 21+ if you want to build the cycling maps yourself). Clone this repo, then run `npm install` at its root.
+You need Node.js 26+ (and [osmium-tool](https://osmcode.org/osmium-tool/) if you want to build the cycling map yourself). Clone this repo, then run `npm install` at its root.
 
 1. Build the basemap (a British Columbia extract of the [Protomaps](https://protomaps.com/) daily build, about 2 GB, plus its fonts and icons):
 
@@ -38,8 +38,8 @@ You need Node.js 26+ (and optionally Java 21+ if you want to build the cycling m
    ```
 
 2. For the cycling map, get the vector overlay tiles file: this contains the cycling paths, bike parking, etc. and is specific to Transitopia.
-   - Option 1: Download. Go to [this page](https://github.com/transitopia/transitopia/actions/workflows/build_cycling.yml?query=event%3Aschedule), select the latest run, then click on `compiled-maps` to download the .zip file with the vector overlays. Unzip it, then copy `transitopia-cycling-british-columbia.pmtiles` into this repo's `apps/web/public/` folder.
-   - Option 2: Build it yourself. Use the `map-layers` folder in this repository to generate the `transitopia-cycling-british-columbia.pmtiles` vector map data file using planetiler. See [the README](./map-layers/README.md) for instructions.
+   - Option 1: Download. Go to [this page](https://github.com/transitopia/transitopia/actions/workflows/build_cycling.yml?query=event%3Aschedule), select the latest run, then click on `compiled-maps` to download the .zip file with the vector overlays. Unzip it, then copy `transitopia-cycling-british-columbia.pmtiles` into this repo's `var/public/tiles/` folder.
+   - Option 2: Build it yourself with `npm run data:cycling` (needs osmium-tool and tippecanoe: `brew install osmium-tool tippecanoe`). It downloads OpenStreetMap's British Columbia extract (about 1.3 GB) and writes `var/public/tiles/transitopia-cycling-british-columbia.pmtiles`. See [packages/cycling-core](./packages/cycling-core/README.md).
 3. For the transit map, build the timetable and train data:
 
    ```sh
