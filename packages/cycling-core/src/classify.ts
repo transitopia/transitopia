@@ -50,16 +50,30 @@ function has(tags: Tags, key: string, ...values: string[]): boolean {
     : v !== undefined;
 }
 
+/** km/h in a mile per hour. */
+const KMH_PER_MPH = 1.609344;
+/** maxspeed=walk, in km/h. */
+const WALK_KMH = 6;
+
 /**
- * A tag as a whole number the way Planetiler's getLong read it: an integer, else the number it
- * starts with ("30 km/h" is 30), else 0 (so "CA:urban" or "none" read as 0).
+ * A `maxspeed` value in km/h (https://wiki.openstreetmap.org/wiki/Key:maxspeed): a number, in km/h
+ * unless it says mph; `walk` as walking pace; the fastest of several (`50;30`). Undefined for
+ * anything else, such as implied limits (`CA:urban`), `none` or `signals`: they aren't slow.
  */
-export function planetilerLong(v: string | undefined): number {
-  if (v === undefined) return 0;
-  if (/^[+-]?\d+$/.test(v)) return Number(v);
-  const m = /^-?[\d,]*\.?\d*/.exec(v)?.[0].replace(/,/g, "");
-  const n = m && /\d/.test(m) ? Number.parseFloat(m) : NaN;
-  return Number.isFinite(n) ? Math.trunc(n) : 0;
+export function maxspeedKmh(v: string | undefined): number | undefined {
+  if (v === undefined) return undefined;
+  let fastest: number | undefined;
+  for (const part of v.split(";")) {
+    const p = part.trim();
+    const m = /^(\d+(?:\.\d+)?)\s*(km\/h|kmh|kph|mph)?$/.exec(p);
+    const kmh =
+      p === "walk" ? WALK_KMH
+      : m ? Number(m[1]) * (m[2] === "mph" ? KMH_PER_MPH : 1)
+      : undefined;
+    if (kmh === undefined) return undefined;
+    fastest = Math.max(fastest ?? 0, kmh);
+  }
+  return fastest;
 }
 
 const PARKING_BESIDE = ["separate", "lane", "street_side"];
@@ -71,7 +85,7 @@ export function classifyWay(
 ): WayClass | undefined {
   const onewayYes = has(t, "oneway", "yes") ? 1 : 0;
   const calm = () =>
-    has(t, "maxspeed") && planetilerLong(t.maxspeed) <= config.calmMaxSpeedKmh;
+    (maxspeedKmh(t.maxspeed) ?? Infinity) <= config.calmMaxSpeedKmh;
   // A shared road's one-way: the road's, unless bicycles are exempt.
   const sharedOneway = has(t, "oneway:bicycle", "no") ? 0 : onewayYes;
 

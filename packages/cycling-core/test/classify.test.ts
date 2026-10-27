@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyWay, isBikeRoute, planetilerLong } from "../src/classify.ts";
+import { classifyWay, isBikeRoute, maxspeedKmh } from "../src/classify.ts";
 
 const config = { calmMaxSpeedKmh: 30 };
 const classify = (tags: Record<string, string>) => classifyWay(tags, config);
@@ -138,6 +138,13 @@ describe("classifyWay", () => {
     ).toMatchObject({ comfort: 3 });
     expect(
       classify({
+        highway: "primary",
+        cycleway: "shared",
+        maxspeed: "CA:urban",
+      }),
+    ).toMatchObject({ comfort: 1 });
+    expect(
+      classify({
         highway: "service",
         cycleway: "shared_lane",
         motor_vehicle: "private",
@@ -207,14 +214,18 @@ describe("classifyWay", () => {
   });
 });
 
-describe("planetilerLong", () => {
-  it("reads maxspeed as Planetiler's getLong did", () => {
-    expect(planetilerLong("30")).toBe(30);
-    expect(planetilerLong("30 km/h")).toBe(30);
-    expect(planetilerLong("20 mph")).toBe(20);
-    expect(planetilerLong("1,000")).toBe(1000);
-    expect(planetilerLong("CA:urban")).toBe(0);
-    expect(planetilerLong(undefined)).toBe(0);
+describe("maxspeedKmh", () => {
+  it("reads numbers, units, walking pace and the fastest of several", () => {
+    expect(maxspeedKmh("30")).toBe(30);
+    expect(maxspeedKmh("30 km/h")).toBe(30);
+    expect(maxspeedKmh("20 mph")).toBeCloseTo(32.19, 2);
+    expect(maxspeedKmh("walk")).toBe(6);
+    expect(maxspeedKmh("50;30")).toBe(50);
+  });
+
+  it("doesn't read implied limits or words as slow", () => {
+    for (const v of ["CA:urban", "none", "signals", "30;CA:urban", undefined])
+      expect(maxspeedKmh(v)).toBeUndefined();
   });
 });
 

@@ -40,7 +40,7 @@ The whole build takes under a minute on a laptop, most of it in osmium. It needs
 | `highway=residential` + `bicycle=yes\|designated`, calm | lane, `shared_with_vehicles` | 3 |
 | a one-way lane on one side of a two-way road (the other side `no`) | lane, `oneway` 1 (right) or -1 (left) | 2, or 1 with parked cars |
 
-"Calm" is `maxspeed` at or under `classify.calmMaxSpeedKmh`, read as Planetiler read numbers (`planetilerLong`): the number a value starts with, and 0 for one that doesn't start with a number (`CA:urban` counts as calm). Two quirks are kept from the original: `cycleway:both=shared_lane` matches without a `highway` tag, and parking mapped as separate ways (`parking:*=separate`) counts as parked cars beside the lane without looking at those ways.
+"Calm" is `maxspeed` at or under `classify.calmMaxSpeedKmh` (`maxspeedKmh`): a number in km/h or mph, `walk`, or the fastest of several. Implied limits such as `CA:urban`, and words such as `none`, aren't calm. (The Planetiler profile read any value that didn't start with a number as 0, so `CA:urban` counted as calm.) Two quirks are kept from the original: `cycleway:both=shared_lane` matches without a `highway` tag, and parking mapped as separate ways (`parking:*=separate`) counts as parked cars beside the lane without looking at those ways.
 
 A way is a line unless it's closed and `area=yes`, and is left out if any of its nodes has no location. Bike parking is a node, or the centre of a closed way (`area` other than `no`); bike parking mapped as a multipolygon relation isn't drawn (there are none in BC). A way's `routes` are the bike route relations (`type=route` + `route=bicycle`) it's a direct member of: a route that contains another route doesn't name its subroute's ways.
 
