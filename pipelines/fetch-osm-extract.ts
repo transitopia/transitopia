@@ -51,7 +51,8 @@ async function main() {
   const expected = (await md5Res.text()).trim().split(/\s+/)[0];
 
   await mkdir(dir, { recursive: true });
-  const tmp = join(dir, `download.${process.pid}.tmp`);
+  // osmium reads the format from the extension.
+  const tmp = join(dir, `download.${process.pid}.tmp.osm.pbf`);
   try {
     log(`${area.id}: downloading ${res.url}`);
     const hash = createHash("md5");
