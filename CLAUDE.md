@@ -121,7 +121,6 @@ npm run data:osm         # fetch OSM tracks + import → config/regions/<rail re
 npm run data:roads       # fetch OSM roads per feed → var/raw/osm-roads/<feed>/ (build-schedule then matches bus shapes and builds corridors)
 npm run data:cycling     # the published cycling OSM file (~20 MB, from data.transitopia.org) + the cycling tiles → var/public/tiles/transitopia-cycling-british-columbia.pmtiles (tippecanoe)
 npm run extract:cycling-osm # what data:cycling fetches, made locally: BC's Geofabrik extract (~1.3 GB) filtered by osmium → var/raw/osm-cycling/british-columbia/ (osmium-tool, ~2.5 GB RAM; GitHub Actions runs it daily)
-npx tsx pipelines/inspect-cycling-tiles.ts <a.pmtiles> [--compare <b.pmtiles>] # what cycling tiles hold per zoom; --compare: attribute parity at z14
 npm run build:infra      # publish tracks + per-feed platform mapping to var/public/data
 npm run build:plan-tiles # each plan's lines as vector tiles (tippecanoe ≥ 2.17: brew install tippecanoe), named in plan.json
 npm run build:overview-tiles # every region's routes zoomed out → var/public/tiles/transit-overview-v<N>.pmtiles

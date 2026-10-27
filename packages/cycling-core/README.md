@@ -28,11 +28,9 @@ The tiles take a few seconds to build from the OSM file, and need tippecanoe 2.1
 
 `OSM_FILTERS` runs in the workflow, before classification, so a rule that reads a new tag needs the filters to keep it (`test/filters.test.ts` checks a way for each rule); the published file has it from the workflow's next run (or run the workflow by hand, or `npm run extract:cycling-osm` locally).
 
-`npx tsx pipelines/inspect-cycling-tiles.ts <a.pmtiles> [--compare <b.pmtiles>]` shows what a tileset holds per zoom (tiles, bytes, features, km of line by attribute value) and, with `--compare`, matches the first's lines at the highest zoom to the second's and totals every attribute that differs, with an example place. Run it after changing the classification or the tiles, against tiles built from the same extract before the change.
-
 ## Classification
 
-`classifyWay` decides what a way is, from its tags, by the first of these rules that matches. Ported rule for rule from the Planetiler profile this replaced, so the map stayed the same (verified with `inspect-cycling-tiles` on the same extract: every attribute equal at z14).
+`classifyWay` decides what a way is, from its tags, by the first of these rules that matches. Ported rule for rule from the Planetiler profile this replaced, so the map stayed the same (verified on the same extract: every attribute equal at z14, with a tile inspector kept on the `cycling-tile-inspector` branch).
 
 | Rule | `class` | `comfort` |
 |---|---|---|
