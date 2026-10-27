@@ -15,7 +15,7 @@ The cycling map's logic, DOM-free and shared by the pipeline that builds the cyc
 `npm run data:cycling` (`pipelines/fetch-osm-extract.ts`, then `pipelines/build-cycling.ts`):
 
 1. **Download** Geofabrik's daily extract of British Columbia (`area.extract`, about 1.3 GB), checked against its `.md5`, into `var/raw/osm-extracts/<area>/YYYY-MM-DD.osm.pbf`, named by the date of its data (from its header). The newest two are kept; `--max-age-days 1` skips the download when the newest is recent.
-2. **Filter** with osmium: `osmium tags-filter` keeps the ways, nodes and relations with a tag in `OSM_FILTERS` (and what they reference), then `osmium add-locations-to-ways` writes them as OPL with each way's node locations, about 80 MB. The filter's peak memory is about 2.5 GB for BC.
+2. **Filter** with osmium: `osmium tags-filter` keeps the ways, nodes and relations with a tag in `OSM_FILTERS` (and what they reference), then `osmium add-locations-to-ways` writes them as OPL with each way's node locations, about 80 MB. The filter's peak memory is about 2.5 GB whatever the area (it tracks referenced objects in bitmaps over the whole range of OSM ids): 2.46 GB for BC, 2.48 GB for all of Canada, measured 2026-10-27. Classifying in Node then peaks at 0.6 GB for BC and 1.4 GB for Canada, and tippecanoe under 0.2 GB.
 3. **Classify** each way, keep bike parking, and note each way's bike route relations (`CyclingNetworkBuilder`).
 4. **Tile** with tippecanoe: `cyclingTileFeatures`, then `var/public/tiles/transitopia-cycling-<area>.pmtiles`, served locally at `/dev-data/tiles/`. Nothing is dropped to fit tile limits; features with the same attributes and no id are coalesced.
 
