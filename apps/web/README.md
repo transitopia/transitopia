@@ -11,7 +11,7 @@ VITE_TRANSIT_DATA=https://data.transitopia.org/ VITE_TRANSIT_API=https://api.tra
 npm run build -w @transitopia/web
 ```
 
-Locally the site reads the pipelines' output from `var/public/`, served at `/dev-data/` by `vite.config.ts`, and the cycling layer from `var/public/tiles/` too (see the repo [README](../../README.md#how-to-run-transitopia-locally)). Production locations are in `.env.production`; every data URL goes through `src/config.ts`.
+Locally the site reads the pipelines' output, the cycling layer's included, from `var/public/`, served at `/dev-data/` by `vite.config.ts` (see the repo [README](../../README.md#how-to-run-transitopia-locally)). Production locations are in `.env.production`; every data URL goes through `src/config.ts`.
 
 ## Layout
 
@@ -20,7 +20,7 @@ Locally the site reads the pipelines' output from `var/public/`, served at `/dev
 | `src/App.tsx` | Routes: `/transit`, `/cycling`, `/admin`; `/` opens `/transit`, and old `/walking` links go to `/cycling` |
 | `src/Map/` | The one MapLibre map every mode shares, its context, the basemap, and the position in the URL |
 | `src/TransitMap/` | `/transit`: mounts the transit engine and renders its controls |
-| `src/CyclingMap/`, `src/OSMData/` | `/cycling`: the cycling layer, and OSM feature details (e.g. bike parking) loaded from the OSM API |
+| `src/CyclingMap/` | `/cycling`: the cycling layer and its cards |
 | `src/Attribution/` | The attribution control |
 | `src/Admin/` | `/admin`, without the map |
 | `src/Theme/` | Light, dark, or the system's |
@@ -48,7 +48,7 @@ The header holds the logo and the mode switch (`ModeSwitch.tsx`): a segmented co
 
 ## Cycling mode
 
-The cycling and micromobility layer for British Columbia, built from OpenStreetMap by `npm run data:cycling` ([packages/cycling-core](../../packages/cycling-core/README.md)) and served as `transitopia-cycling-british-columbia.pmtiles`. Clicking a feature shows its details, loaded on demand from the OSM API.
+The cycling and micromobility layer for British Columbia, built from OpenStreetMap by `npm run data:cycling` (daily by the server, [packages/cycling-core](../../packages/cycling-core/README.md)) and published with the transit data: `src/CyclingMap/cycling-data.ts` reads the area's `index.json`, which names the current tiles, and only then adds them to the map. Clicking a feature shows its details, all from the tiles.
 
 ## Time and not-live
 
@@ -97,7 +97,7 @@ How far apart a route's stops are, in four categories (`packages/shared/src/stop
 Everything tapped on the map opens the same card (`src/components/InfoCard.tsx`): a header (icon tile in the route's or mode's colours, an eyebrow saying what kind of thing it is, title, subtitle, ⋯ menu, close), an optional status line, chips, sections of rows divided by 1 px rules, and a footer saying where the data comes from. Actions (centre, share, show only this route, and later follow) live only in the ⋯ menu, so the card body is information, except that a station's or stop's departure rows open the cards they name ([Cross-references](#cross-references)). Times and positions carry one set of marks: live is a green dot, recorded a grey dot, estimated a grey "~" before the time; green appears only when live. On desktop the card is a 360 px panel at the top right; on phones it's a bottom sheet. Its colours are the `--card-*` and `--mark-*` properties in `src/index.css`, per theme.
 
 - Vehicles: `src/TransitMap/VehicleCard.tsx`; stations and stops: `PlaceCard.tsx` ([above](#station-and-stop-cards)); routes: `RouteCard.tsx` ([above](#route-cards)).
-- Bike routes (`src/CyclingMap/BikeRouteCard.tsx`) from the cycling tiles' attributes, and bike parking (`BikeParkingCard.tsx`) loaded from the OSM API, with a link to view or edit it there. Bike cards ignore the map's time: OpenStreetMap has no history. The selected feature is highlighted on the map; bike parking stays a faint dot.
+- Bike routes (`src/CyclingMap/BikeRouteCard.tsx`) from the cycling tiles' attributes, and bike parking (`BikeParkingCard.tsx`: capacity, type, covered, indoors, operator) from the tiles too, with a link to view or edit it on OpenStreetMap. Bike cards ignore the map's time: OpenStreetMap has no history. The selected feature is highlighted on the map; bike parking stays a faint dot.
 
 ## Attribution
 

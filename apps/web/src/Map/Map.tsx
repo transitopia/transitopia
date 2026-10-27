@@ -8,7 +8,7 @@ import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&ur
 import type { StyleSpecification } from "maplibre-gl";
 import { basemapStyle, type Theme } from "@transitopia/map-style/basemap.ts";
 
-import { basemapAssets, basemapTiles, cyclingTiles } from "../config.ts";
+import { basemapAssets, basemapTiles } from "../config.ts";
 import { ThemeToggle, useTheme } from "../Theme/Theme.tsx";
 import {
   MapContext,
@@ -30,7 +30,7 @@ const DEFAULT_VIEW = {
 // A global to track loading of pmtiles
 let pmTilesInitialized = false;
 
-/** The site's style for a theme: the basemap plus the (always available) overlay sources. */
+/** The site's style for a theme: the basemap, with the site's sprites. */
 function siteStyle(theme: Theme): StyleSpecification {
   const style = basemapStyle({
     theme,
@@ -40,7 +40,6 @@ function siteStyle(theme: Theme): StyleSpecification {
       { id: "transitopia", url: `${location.origin}/transitopia-sprites` },
     ],
   });
-  style.sources["transitopia-cycling"] = { type: "vector", url: cyclingTiles };
   return style as StyleSpecification;
 }
 
