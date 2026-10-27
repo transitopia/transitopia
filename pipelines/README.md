@@ -25,7 +25,7 @@ After changing infrastructure, config or pipeline code, rebuild and run both val
 
 ## Building the cycling tiles
 
-`npm run data:cycling` runs `fetch-osm-extract.ts` (Geofabrik's British Columbia extract into `var/raw/osm-extracts/<area>/`, skipped when the newest is under a day old) and `build-cycling.ts` (`npm run build:cycling`: osmium, the classification in `packages/cycling-core`, then tippecanoe, into `var/public/tiles/transitopia-cycling-<area>.pmtiles`). `inspect-cycling-tiles.ts` shows what a cycling tileset holds and compares two. See [packages/cycling-core](../packages/cycling-core/README.md#building-the-tiles).
+`npm run data:cycling` runs `fetch-cycling-osm.ts` (the cycling OSM file GitHub Actions publishes daily, into `var/raw/osm-cycling/<area>/`) and `build-cycling.ts` (`npm run build:cycling`: the classification in `packages/cycling-core`, then tippecanoe, into `var/public/tiles/transitopia-cycling-<area>.pmtiles`). `extract-cycling-osm.ts` (`npm run extract:cycling-osm`) makes that OSM file from Geofabrik's extract with osmium, as the workflow does. `inspect-cycling-tiles.ts` shows what a cycling tileset holds and compares two. See [packages/cycling-core](../packages/cycling-core/README.md#building-the-tiles).
 
 ## Validators
 

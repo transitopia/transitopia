@@ -70,6 +70,7 @@ Uploads copy, never sync, so files a build no longer writes stay until deleted b
 `dataBuildAt` in `config/server/recording.json`) and uploads it to the R2 bucket
 `transitopia-data`, so its live dispatch patches fit the published plans.
 `.github/workflows/build_transit_data.yml` is a manual fallback only (see the comment at its top).
+`data/osm/<area>/` holds the cycling map's OSM file, which `.github/workflows/build_cycling.yml` publishes daily ([packages/cycling-core → Building the tiles](../packages/cycling-core/README.md#building-the-tiles)); the server's uploads never touch it.
 
 One-time setup (done):
 

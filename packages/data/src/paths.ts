@@ -91,11 +91,14 @@ export const PUBLISH_DATA_DIR = join(VAR_DIR, "publish", "data");
 export function cyclingPaths(area: string): {
   /** var/raw/osm-extracts/<area>/: Geofabrik extracts by OSM data date (YYYY-MM-DD.osm.pbf). */
   extracts: string;
+  /** var/raw/osm-cycling/<area>/: what osmium keeps for the cycling map (<date>.opl.gz, latest.json). */
+  osm: string;
   /** The tiles (packages/cycling-core/README.md#tiles), served locally at /dev-data/tiles/. */
   tiles: string;
 } {
   return {
     extracts: join(RAW_DIR, "osm-extracts", area),
+    osm: join(RAW_DIR, "osm-cycling", area),
     tiles: join(PUBLIC_DIR, "tiles", `transitopia-cycling-${area}.pmtiles`),
   };
 }

@@ -1,15 +1,19 @@
 name: Build Transitopia Cycling Layer
 
-# The cycling tiles for /cycling (packages/cycling-core/README.md): Geofabrik's British Columbia
-# extract, filtered with osmium, classified by packages/cycling-core and tiled with tippecanoe
-# (npm run data:cycling), published daily to the maps bucket (deployment/README.md → Map tiles).
+# The cycling map's OSM data and tiles (packages/cycling-core/README.md#building-the-tiles):
+# Geofabrik's British Columbia extract filtered with osmium (npm run extract:cycling-osm: the step
+# that needs osmium and about 2.5 GB of memory, kept here), then the tiles (npm run build:cycling).
+# Both are kept as artifacts; on the daily schedule the OSM file is published to the data bucket
+# (data.transitopia.org/data/osm/british-columbia/, for npm run data:cycling and, later, the server)
+# and the tiles to the maps bucket (deployment/README.md → Map tiles).
 
 on:
   pull_request:
     paths:
       - "packages/cycling-core/**"
       - "pipelines/build-cycling.ts"
-      - "pipelines/fetch-osm-extract.ts"
+      - "pipelines/extract-cycling-osm.ts"
+      - "packages/data/src/osm-extracts.ts"
       - "config/cycling/**"
       - ".github/workflows/build_cycling.yml"
   push:
@@ -18,6 +22,7 @@ on:
   schedule:
     # Every day at 09:45 UTC
     - cron: "45 9 * * *"
+  workflow_dispatch:
 jobs:
   Build-Cycling-Layer:
     runs-on: ubuntu-latest
@@ -37,8 +42,16 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends osmium-tool
           osmium --version
-      - name: Download the OSM extract and build the tiles
-        run: npm run data:cycling
+      - name: Download the OSM extract and keep what the cycling map needs
+        run: npm run extract:cycling-osm
+      - name: Build the tiles
+        run: npm run build:cycling
+      - name: Store the cycling OSM file
+        uses: actions/upload-artifact@v7
+        with:
+          name: cycling-osm
+          path: var/raw/osm-cycling/british-columbia/
+          retention-days: 14
       - name: Store resulting artifacts
         uses: actions/upload-artifact@v7
         with:
@@ -55,6 +68,13 @@ jobs:
       RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_ENDPOINT: ${{ secrets.RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_ENDPOINT }}
       RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_ACCESS_KEY_ID: ${{ secrets.RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_ACCESS_KEY_ID }}
       RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_SECRET_ACCESS_KEY: ${{ secrets.RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_SECRET_ACCESS_KEY }}
+      # The data bucket, as the transit data fallback workflow uses it (build_transit_data.yml).
+      RCLONE_CONFIG_TRANSITOPIA_DATA_R2_TYPE: s3
+      RCLONE_CONFIG_TRANSITOPIA_DATA_R2_PROVIDER: Cloudflare
+      RCLONE_CONFIG_TRANSITOPIA_DATA_R2_ENDPOINT: ${{ secrets.RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_ENDPOINT }}
+      RCLONE_CONFIG_TRANSITOPIA_DATA_R2_ACCESS_KEY_ID: ${{ secrets.RCLONE_CONFIG_TRANSITOPIA_DATA_R2_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_TRANSITOPIA_DATA_R2_SECRET_ACCESS_KEY: ${{ secrets.RCLONE_CONFIG_TRANSITOPIA_DATA_R2_SECRET_ACCESS_KEY }}
+      OSM_DEST: transitopia_data_r2:transitopia-data/data/osm/british-columbia
     steps:
       - name: Install rclone
         run: |
@@ -65,5 +85,18 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: compiled-maps
+      - name: Download the cycling OSM file
+        uses: actions/download-artifact@v8
+        with:
+          name: cycling-osm
+          path: cycling-osm
       - name: upload
         run: rclone copy transitopia-cycling-british-columbia.pmtiles transitopia_maps_r2:transitopia-maps --s3-no-check-bucket
+      # The file first (its name changes with its content, so it's cached for good), then the
+      # pointer clients poll (cached for 5 minutes, like the transit data's pointers); files over
+      # two weeks old are removed.
+      - name: Publish the cycling OSM file
+        run: |
+          rclone copy cycling-osm "$OSM_DEST" --include "*.opl.gz" --header-upload "Cache-Control: public, max-age=31536000, immutable" --s3-no-check-bucket
+          rclone copy cycling-osm "$OSM_DEST" --include latest.json --header-upload "Cache-Control: public, max-age=300" --s3-no-check-bucket
+          rclone delete "$OSM_DEST" --include "*.opl.gz" --min-age 14d

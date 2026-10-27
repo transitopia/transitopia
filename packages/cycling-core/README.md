@@ -12,14 +12,21 @@ The cycling map's logic, DOM-free and shared by the pipeline that builds the cyc
 
 ## Building the tiles
 
-`npm run data:cycling` (`pipelines/fetch-osm-extract.ts`, then `pipelines/build-cycling.ts`):
+In two parts, so that only the first needs osmium, the 1.3 GB extract and 2.5 GB of memory, and it runs in GitHub Actions:
 
-1. **Download** Geofabrik's daily extract of British Columbia (`area.extract`, about 1.3 GB), checked against its `.md5`, into `var/raw/osm-extracts/<area>/YYYY-MM-DD.osm.pbf`, named by the date of its data (from its header). The newest two are kept; `--max-age-days 1` skips the download when the newest is recent.
-2. **Filter** with osmium: `osmium tags-filter` keeps the ways, nodes and relations with a tag in `OSM_FILTERS` (and what they reference), then `osmium add-locations-to-ways` writes them as OPL with each way's node locations, about 80 MB. The filter's peak memory is about 2.5 GB whatever the area (it tracks referenced objects in bitmaps over the whole range of OSM ids): 2.46 GB for BC, 2.48 GB for all of Canada, measured 2026-10-27. Classifying in Node then peaks at 0.6 GB for BC and 1.4 GB for Canada, and tippecanoe under 0.2 GB.
-3. **Classify** each way, keep bike parking, and note each way's bike route relations (`CyclingNetworkBuilder`).
-4. **Tile** with tippecanoe: `cyclingTileFeatures`, then `var/public/tiles/transitopia-cycling-<area>.pmtiles`, served locally at `/dev-data/tiles/`. Nothing is dropped to fit tile limits; features with the same attributes and no id are coalesced.
+1. **The cycling OSM file** (`npm run extract:cycling-osm`, `pipelines/extract-cycling-osm.ts`; GitHub Actions runs it daily, `.github/workflows/build_cycling.yml`):
+   - **Download** Geofabrik's daily extract of British Columbia (`area.extract`, about 1.3 GB), checked against its `.md5`, into `var/raw/osm-extracts/<area>/YYYY-MM-DD.osm.pbf`, named by the date of its data (from its header); only the newest is kept. `--extract <file.osm.pbf>` uses one already on disk instead.
+   - **Filter** with osmium: `osmium tags-filter` keeps the ways, nodes and relations with a tag in `OSM_FILTERS` (and what they reference), then `osmium add-locations-to-ways` writes them as OPL with each way's node locations (about 80 MB), gzipped to `var/raw/osm-cycling/<area>/<date>-<sha256 prefix>.opl.gz` (about 20 MB for BC), with `latest.json` (`CyclingOsmPointer`: the file, the OSM data's timestamp, its size and sha256) beside it.
+   - The filter's peak memory is about 2.5 GB whatever the area (it tracks referenced objects in bitmaps over the whole range of OSM ids): 2.46 GB for BC, 2.48 GB for all of Canada, measured 2026-10-27.
+   - The workflow publishes the file and its pointer at `https://data.transitopia.org/data/osm/<area>/` (the file cached for good, since its name changes with its content; the pointer for 5 minutes; files over two weeks old removed), and keeps them as the run's `cycling-osm` artifact for two weeks.
+2. **The tiles** (`npm run data:cycling`: `pipelines/fetch-cycling-osm.ts`, then `pipelines/build-cycling.ts`, which is `npm run build:cycling`):
+   - **Fetch** the published file into `var/raw/osm-cycling/<area>/`, unless it's there already, checked against the pointer's sha256 (`CYCLING_OSM_FROM` names another data root).
+   - **Classify** each way, keep bike parking, and note each way's bike route relations (`CyclingNetworkBuilder`), reading the gzipped OPL as it streams: 0.6 GB of memory for BC, 1.4 GB for Canada.
+   - **Tile** with tippecanoe: `cyclingTileFeatures`, then `var/public/tiles/transitopia-cycling-<area>.pmtiles`, served locally at `/dev-data/tiles/`. Nothing is dropped to fit tile limits; features with the same attributes and no id are coalesced.
 
-The whole build takes under a minute on a laptop, most of it in osmium. It needs osmium-tool (`brew install osmium-tool`, `apt install osmium-tool`) and tippecanoe 2.17 or later; `OSMIUM` and `TIPPECANOE` name them when they aren't on the PATH. GitHub Actions builds and publishes it daily (`.github/workflows/build_cycling.yml`, [deployment → Map tiles](../../deployment/README.md#map-tiles-map-tilestransitopiaorg)).
+The tiles take a few seconds to build from the OSM file, and need tippecanoe 2.17 or later (`TIPPECANOE` names it when it isn't on the PATH); the OSM file takes about 30 s more, plus the download, and needs osmium-tool (`brew install osmium-tool`, `apt install osmium-tool`; `OSMIUM`). The workflow publishes the tiles daily too ([deployment → Map tiles](../../deployment/README.md#map-tiles-map-tilestransitopiaorg)).
+
+`OSM_FILTERS` runs in the workflow, before classification, so a rule that reads a new tag needs the filters to keep it (`test/filters.test.ts` checks a way for each rule); the published file has it from the workflow's next run (or run the workflow by hand, or `npm run extract:cycling-osm` locally).
 
 `npx tsx pipelines/inspect-cycling-tiles.ts <a.pmtiles> [--compare <b.pmtiles>]` shows what a tileset holds per zoom (tiles, bytes, features, km of line by attribute value) and, with `--compare`, matches the first's lines at the highest zoom to the second's and totals every attribute that differs, with an example place. Run it after changing the classification or the tiles, against tiles built from the same extract before the change.
 

@@ -29,7 +29,7 @@ How it all fits together is in [docs/DESIGN.md](docs/DESIGN.md), with each part'
 
 ## How to run Transitopia locally
 
-You need Node.js 26+ (and [osmium-tool](https://osmcode.org/osmium-tool/) if you want to build the cycling map yourself). Clone this repo, then run `npm install` at its root.
+You need Node.js 26+. Clone this repo, then run `npm install` at its root.
 
 1. Build the basemap (a British Columbia extract of the [Protomaps](https://protomaps.com/) daily build, about 2 GB, plus its fonts and icons):
 
@@ -39,7 +39,7 @@ You need Node.js 26+ (and [osmium-tool](https://osmcode.org/osmium-tool/) if you
 
 2. For the cycling map, get the vector overlay tiles file: this contains the cycling paths, bike parking, etc. and is specific to Transitopia.
    - Option 1: Download. Go to [this page](https://github.com/transitopia/transitopia/actions/workflows/build_cycling.yml?query=event%3Aschedule), select the latest run, then click on `compiled-maps` to download the .zip file with the vector overlays. Unzip it, then copy `transitopia-cycling-british-columbia.pmtiles` into this repo's `var/public/tiles/` folder.
-   - Option 2: Build it yourself with `npm run data:cycling` (needs osmium-tool and tippecanoe: `brew install osmium-tool tippecanoe`). It downloads OpenStreetMap's British Columbia extract (about 1.3 GB) and writes `var/public/tiles/transitopia-cycling-british-columbia.pmtiles`. See [packages/cycling-core](./packages/cycling-core/README.md).
+   - Option 2: Build it yourself with `npm run data:cycling` (needs tippecanoe: `brew install tippecanoe`). It downloads the cycling data we extract from OpenStreetMap each day (about 20 MB) and writes `var/public/tiles/transitopia-cycling-british-columbia.pmtiles`. See [packages/cycling-core](./packages/cycling-core/README.md).
 3. For the transit map, build the timetable and train data:
 
    ```sh

@@ -18,7 +18,7 @@ npm workspaces ([docs/DESIGN.md → Repository layout](docs/DESIGN.md#repository
 | `pipelines/` | Build-time pipelines and validators. |
 | `packages/data/` | Node-side data access shared by pipelines and the server: `src/paths.ts` is the one place that knows where data lives; GTFS zips, disruption files, the track graph, dispatch contexts. Not for the browser. |
 | `config/` | Committed, curated inputs, one package (`@transitopia/config`): `defaults/` (vehicles and real-time use everywhere), `server/` (the server's own: port, live dispatch, recording and statistics), `features/` (feature reconciliation), `cycling/` (`cycling.json`: the cycling map's OSM extract and classification), `operators/<id>/operator.json` (TransLink, BC Transit, with overrides), `feeds/<id>/` (`feed.json`: GTFS and GTFS-RT, request budget, AIS, its operator; `routes.json`: what's drawn), `regions/<id>/` (`region.json`, its settings files, and for Metro Vancouver `infrastructure/`, `scenarios/`, `observations/`, `disruptions/`; `README.md`, `OPEN-QUESTIONS.md`). Regions: `metro-vancouver`, `greater-victoria`, `central-okanagan`. |
-| `packages/cycling-core/` | DOM-free cycling map logic shared by the pipeline and the site: OSM classification, joining ways into chains, the cycling tiles' schema (`src/tiles.ts`). Built daily in CI (`npm run data:cycling`: osmium, then tippecanoe). |
+| `packages/cycling-core/` | DOM-free cycling map logic shared by the pipeline and the site: OSM classification, joining ways into chains, the cycling tiles' schema (`src/tiles.ts`). Built daily in CI: osmium filters the OSM extract (`npm run extract:cycling-osm`, published at data.transitopia.org/data/osm/), then tippecanoe (`npm run build:cycling`). |
 | `infra/` | Deployment: `compose.yml` (server, PostGIS, Caddy, backups), `server.Dockerfile`, `compose.dev.yml` (the local database). See `deployment/README.md`. |
 | `var/` | Gitignored downloads, recordings and build output. The web dev server serves `var/public/` at `/dev-data/`. |
 
@@ -119,7 +119,8 @@ npm run data             # fetch-gtfs, fetch-osm, import-osm, build-schedule, bu
 npm run tiles -- --region bc # the site's basemap, var/public/tiles/protomaps-bc.pmtiles (~2 GB) + fonts/sprites
 npm run data:osm         # fetch OSM tracks + import → config/regions/<rail region>/infrastructure/*.generated.geojson
 npm run data:roads       # fetch OSM roads per feed → var/raw/osm-roads/<feed>/ (build-schedule then matches bus shapes and builds corridors)
-npm run data:cycling     # BC's OSM extract (Geofabrik, ~1.3 GB) + the cycling tiles → var/public/tiles/transitopia-cycling-british-columbia.pmtiles (osmium-tool + tippecanoe: brew install osmium-tool tippecanoe)
+npm run data:cycling     # the published cycling OSM file (~20 MB, from data.transitopia.org) + the cycling tiles → var/public/tiles/transitopia-cycling-british-columbia.pmtiles (tippecanoe)
+npm run extract:cycling-osm # what data:cycling fetches, made locally: BC's Geofabrik extract (~1.3 GB) filtered by osmium → var/raw/osm-cycling/british-columbia/ (osmium-tool, ~2.5 GB RAM; GitHub Actions runs it daily)
 npx tsx pipelines/inspect-cycling-tiles.ts <a.pmtiles> [--compare <b.pmtiles>] # what cycling tiles hold per zoom; --compare: attribute parity at z14
 npm run build:infra      # publish tracks + per-feed platform mapping to var/public/data
 npm run build:plan-tiles # each plan's lines as vector tiles (tippecanoe ≥ 2.17: brew install tippecanoe), named in plan.json
