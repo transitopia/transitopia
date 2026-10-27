@@ -59,5 +59,5 @@ One layer, `transitopia_cycling`, zooms 6–14:
 | 12–14 | Bike parking | `osmFeatureId("node"\|"way", …)` | `amenity`, `name`, `osmNodeId` or `osmWayId` |
 
 - **Ids** are `id × 10 + 1, 2 or 3` for a node, way or relation, so a path's and a bike rack's never collide. Below z13 there's nothing to select, so there are no ids, and tippecanoe coalesces lines with the same properties in a tile.
-- **The widest views aren't crumbs**: below z13 a way is drawn only from the zoom at which it's at least a pixel long (`MIN_WAY_PX`), as the Planetiler profile drew them, and the ways seen at each zoom are joined into chains of their own.
+- **The widest views aren't crumbs, and paths don't break up**: below z13 the ways are joined into chains by what's drawn, and a chain shows from the zoom at which its group (the chains with the same properties connected to it) is at least a pixel long (`MIN_PX`). A long path made of short ways or broken by junctions shows whole, and only short, isolated pieces wait for closer zooms. (The Planetiler profile dropped each way under a pixel long, which left gaps in long paths made of short ways.)
 - The site's styles (`apps/web/src/CyclingMap/cycling-map-layers.ts`) filter on `comfort`, `class`, `construction` and `oneway`, and its cards (`BikeRouteCard`, `BikeParkingCard`) read the other properties.

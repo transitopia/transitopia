@@ -1,7 +1,12 @@
 // The cycling tiles (packages/cycling-core/README.md#tiles): what the pipeline writes and the site reads.
 
 import type { TileFeature } from "@transitopia/transit-core/plan/tiles.ts";
-import { joinChains, type ClassifiedWay, type LonLat } from "./chains.ts";
+import {
+  joinChains,
+  type Chain,
+  type ClassifiedWay,
+  type LonLat,
+} from "./chains.ts";
 import type { WayClass } from "./classify.ts";
 
 /** The tiles' one layer: paths, lanes and bike parking. */
@@ -18,11 +23,10 @@ export const PARKING_MIN_ZOOM = 12;
 /** Pixels of each neighbouring tile kept in a tile (of 256), so lines join cleanly at tile edges. */
 export const CYCLING_TILE_BUFFER = 4;
 /**
- * Below CYCLING_DETAIL_ZOOM a way is drawn only at zooms where it's at least this long (pixels of a
- * 256-pixel tile), so the widest views aren't crumbs: as the Planetiler profile drew them (its
- * default minimum size).
+ * Below CYCLING_DETAIL_ZOOM a chain shows from the zoom at which its group is at least this long
+ * (pixels of a 256-pixel tile), so the widest views aren't crumbs.
  */
-const MIN_WAY_PX = 1;
+const MIN_PX = 1;
 
 /** A path's or lane's attributes in the tiles. */
 export type CyclingWayProperties = WayClass & {
@@ -96,6 +100,35 @@ function pixelLength(coords: readonly LonLat[]): number {
   return px;
 }
 
+/**
+ * For each chain, the length (pixels at zoom 0) of the group it's in: the chains with the same
+ * properties connected to it end to end or at junctions.
+ */
+function groupLengths(
+  chains: readonly Chain<WayClass>[],
+  px: readonly number[],
+): number[] {
+  const parent = chains.map((_, i) => i);
+  const find = (i: number): number => {
+    while (parent[i] !== i) i = parent[i] = parent[parent[i]!]!;
+    return i;
+  };
+  // Chains meet at their ends (each chain ends where it meets another).
+  const at = new Map<string, number>();
+  chains.forEach((c, i) => {
+    const key = keyOf(c.attrs);
+    for (const [lon, lat] of [c.coords[0]!, c.coords.at(-1)!]) {
+      const k = `${key}@${lon},${lat}`;
+      const j = at.get(k);
+      if (j === undefined) at.set(k, i);
+      else parent[find(i)] = find(j);
+    }
+  });
+  const total = new Map<number, number>();
+  px.forEach((p, i) => total.set(find(i), (total.get(find(i)) ?? 0) + p));
+  return chains.map((_, i) => total.get(find(i))!);
+}
+
 /** Every feature of the cycling tiles, for tippecanoe. */
 export function* cyclingTileFeatures(
   ways: readonly ClassifiedWay<CyclingWayProperties>[],
@@ -110,20 +143,30 @@ export function* cyclingTileFeatures(
       geometry: { type: "LineString", coordinates: c.coords },
       tippecanoe: { layer: CYCLING_LAYER, minzoom: CYCLING_DETAIL_ZOOM },
     };
-  // Overview: at each zoom, the ways long enough to see, joined by what's drawn, without ids.
+  // Overview: chains joined by what's drawn, without ids, from the zoom at which they show.
   const drawn = ways.map((w) => {
     const attrs: Partial<CyclingWayProperties> = { ...w.attrs };
     for (const k of DETAIL_KEYS) delete attrs[k];
-    return { ...w, attrs: attrs as WayClass, px: pixelLength(w.coords) };
+    return { ...w, attrs: attrs as WayClass };
   });
-  for (let z = CYCLING_MIN_ZOOM; z < CYCLING_DETAIL_ZOOM; z++) {
-    const seen = drawn.filter((w) => w.px * 2 ** z >= MIN_WAY_PX);
-    for (const c of joinChains(seen, keyOf, isDirected))
+  const chains = joinChains(drawn, keyOf, isDirected);
+  const px = chains.map((c) => pixelLength(c.coords));
+  const groupPx = groupLengths(chains, px);
+  for (const [i, c] of chains.entries()) {
+    const z = Math.max(
+      CYCLING_MIN_ZOOM,
+      Math.ceil(Math.log2(MIN_PX / groupPx[i]!)),
+    );
+    if (z < CYCLING_DETAIL_ZOOM)
       yield {
         type: "Feature",
         properties: c.attrs,
         geometry: { type: "LineString", coordinates: c.coords },
-        tippecanoe: { layer: CYCLING_LAYER, minzoom: z, maxzoom: z },
+        tippecanoe: {
+          layer: CYCLING_LAYER,
+          minzoom: z,
+          maxzoom: CYCLING_DETAIL_ZOOM - 1,
+        },
       };
   }
   for (const p of parking)

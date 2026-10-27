@@ -1,3 +1,4 @@
+import type { LineString } from "geojson";
 import { describe, expect, it } from "vitest";
 import { CyclingNetworkBuilder } from "../src/network.ts";
 import { parseOpl } from "../src/osm.ts";
@@ -68,20 +69,40 @@ describe("cyclingTileFeatures", () => {
     });
   });
 
-  it("has the chain below it without ids or details, from the zoom it's a pixel long", () => {
+  it("has the chain below it without ids or details, from the zoom its group is a pixel long", () => {
     const overview = lines.filter(
       (f) => f.tippecanoe.minzoom! < CYCLING_DETAIL_ZOOM,
     );
-    // Each way is ~1.1 km: under a pixel at z6 (~1.6 km at 49°), so from z7.
-    expect(overview.map((f) => f.tippecanoe.minzoom)).toEqual([
-      7, 8, 9, 10, 11, 12,
+    // The two ways are one chain of ~2.2 km: over a pixel at z6 (~1.6 km at 49°).
+    expect(overview).toHaveLength(1);
+    expect(overview[0]!.tippecanoe).toMatchObject({
+      minzoom: 6,
+      maxzoom: CYCLING_DETAIL_ZOOM - 1,
+    });
+    expect(overview[0]!.id).toBeUndefined();
+    expect(overview[0]!.properties).not.toHaveProperty("name");
+    expect(overview[0]!.properties).not.toHaveProperty("routes");
+  });
+
+  it("shows a short chain as soon as the group it joins, and a lone one once it's a pixel long", () => {
+    // A long path, a 100 m spur of the same kind off its middle (a junction), and a lone 100 m path.
+    const n = network([
+      "w1 Thighway=cycleway Nn1x-123.10y49.25,n2x-123.10y49.26",
+      "w2 Thighway=cycleway Nn2x-123.10y49.26,n3x-123.10y49.27",
+      "w3 Thighway=cycleway Nn2x-123.10y49.26,n4x-123.10y49.2609",
+      "w4 Thighway=cycleway Nn5x-123.20y49.25,n6x-123.20y49.2509",
     ]);
-    for (const f of overview) {
-      expect(f.id).toBeUndefined();
-      expect(f.properties).not.toHaveProperty("name");
-      expect(f.properties).not.toHaveProperty("routes");
-      expect(f.tippecanoe.maxzoom).toBe(f.tippecanoe.minzoom);
-    }
+    const minzooms = new Map(
+      [...cyclingTileFeatures(n.ways, [])]
+        .filter((f) => f.id === undefined)
+        .map((f) => [
+          JSON.stringify((f.geometry as LineString).coordinates.at(-1)),
+          f.tippecanoe.minzoom,
+        ]),
+    );
+    expect(minzooms.get("[-123.1,49.2609]")).toBe(6); // the spur
+    // ~100 m is a pixel at z10 at 49° (~100 m).
+    expect(minzooms.get("[-123.2,49.2509]")).toBe(10); // the lone path
   });
 
   it("gives bike parking ids that can't collide with paths'", () => {
