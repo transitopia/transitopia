@@ -4,8 +4,11 @@
 // didn't change share them, and the overview tileset (pipelines/build-overview-tiles.ts).
 
 import { createHash } from "node:crypto";
+import { createWriteStream } from "node:fs";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import {
   encodeRailPaths,
   type PublishedPlan,
@@ -103,9 +106,12 @@ export async function writePlanTiles(
   return { path, built };
 }
 
-/** Tile newline-delimited GeoJSON features into a PMTiles file at `out` (written whole, then moved into place). */
+/**
+ * Tile newline-delimited GeoJSON features into a PMTiles file at `out` (written whole, then moved
+ * into place): the text, or its lines one by one when there are too many for one string.
+ */
 export async function tippecanoe(
-  input: string,
+  input: string | Iterable<string>,
   out: string,
   options: string[],
 ): Promise<void> {
@@ -114,7 +120,16 @@ export async function tippecanoe(
   const src = `${tmp}.geojsonl`;
   const pmtiles = `${tmp}.pmtiles`;
   try {
-    await writeFile(src, input);
+    if (typeof input === "string") await writeFile(src, input);
+    else
+      await pipeline(
+        Readable.from(
+          (function* () {
+            for (const line of input) yield `${line}\n`;
+          })(),
+        ),
+        createWriteStream(src),
+      );
     const cmd = process.env.TIPPECANOE || "tippecanoe";
     await run(cmd, [
       ...options,

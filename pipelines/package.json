@@ -10,8 +10,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@transitopia/data": "*",
     "@transitopia/config": "*",
+    "@transitopia/cycling-core": "*",
+    "@transitopia/data": "*",
     "@transitopia/server": "*",
     "@transitopia/transit-core": "*",
     "gtfs-realtime-bindings": "^2.2.0",

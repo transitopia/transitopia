@@ -44,7 +44,7 @@ const REGIONS: Record<string, Region> = {
     out: "vancouver.pmtiles",
     bbox: [-123.32, 49.08, -122.2, 49.42],
   },
-  /** The same boundary as the Geofabrik extract the cycling layer is built from (map-layers/). */
+  /** The same boundary as the Geofabrik extract the cycling layer is built from (config/cycling/cycling.json). */
   bc: {
     out: "protomaps-bc.pmtiles",
     poly: "https://download.geofabrik.de/north-america/canada/british-columbia.poly",

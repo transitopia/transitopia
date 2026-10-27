@@ -11,8 +11,9 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.5",
-    "@transitopia/map-style": "*",
     "@transitopia/config": "*",
+    "@transitopia/cycling-core": "*",
+    "@transitopia/map-style": "*",
     "@transitopia/shared": "*",
     "@transitopia/transit-core": "*",
     "@transitopia/transit-map": "*",

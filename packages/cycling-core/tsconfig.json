@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // DOM-free and Node-free: the site reads its tile schema too. Worker-safe globals only.
+    "lib": ["ES2023", "WebWorker"],
+    "types": ["geojson"]
+  },
+  "include": ["src"]
+}

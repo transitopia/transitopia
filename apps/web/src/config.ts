@@ -16,9 +16,10 @@ export const basemapTiles: string =
   env.VITE_BASEMAP_TILES
   ?? `pmtiles://${absolute("/dev-data/tiles/protomaps-bc.pmtiles")}`;
 
+/** The cycling tiles: a TileJSON URL, or pmtiles:// for a local build (npm run data:cycling). */
 export const cyclingTiles: string =
   env.VITE_CYCLING_MAP_TILES_CDN
-  ?? "pmtiles://transitopia-cycling-british-columbia.pmtiles";
+  ?? `pmtiles://${absolute("/dev-data/tiles/transitopia-cycling-british-columbia.pmtiles")}`;
 
 /** Basemap fonts and sprites (pipelines/tiles.ts), ending in "/". */
 export const basemapAssets: string = absolute(

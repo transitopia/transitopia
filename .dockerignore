@@ -5,7 +5,6 @@
 var
 .secrets
 **/*.pmtiles
-map-layers
 apps/web/*
 !apps/web/package.json
 **/dist

@@ -2,8 +2,6 @@
 var/
 dist/
 package-lock.json
-# Java (Planetiler profile)
-map-layers/
 # Vendored Protomaps tile worker
 deployment/worker.js
 # Curated config and region data: hand-laid-out JSON, generated GeoJSON, recorded GPX

@@ -13,6 +13,7 @@ import {
   useMapLayerEvent,
   useStyleGeneration,
 } from "../Map/MapUtils.ts";
+import { CYCLING_LAYER } from "@transitopia/cycling-core/tiles.ts";
 import { useTheme } from "../Theme/Theme.tsx";
 import { useDatasets } from "../Attribution/Attribution.tsx";
 import {
@@ -27,7 +28,7 @@ export const CyclingMap: React.FC = () => {
   const map = useMap();
   const { theme } = useTheme();
   const styleGeneration = useStyleGeneration();
-  // The cycling layer is derived from OpenStreetMap by our Planetiler profile (map-layers/).
+  // The cycling layer is derived from OpenStreetMap by pipelines/build-cycling.ts (packages/cycling-core).
   useDatasets(["osm", "transitopia"]);
   const [show, setShow] = useCyclingShow();
   const showRef = React.useRef(show);
@@ -79,7 +80,7 @@ export const CyclingMap: React.FC = () => {
           map.removeFeatureState(
             {
               source: mapSource,
-              sourceLayer: "transitopia_cycling",
+              sourceLayer: CYCLING_LAYER,
               id: hoveredFeatureIdRef.current,
             },
             "hover",
@@ -89,7 +90,7 @@ export const CyclingMap: React.FC = () => {
         map.setFeatureState(
           {
             source: mapSource,
-            sourceLayer: "transitopia_cycling",
+            sourceLayer: CYCLING_LAYER,
             id: feature.id,
           },
           { hover: true },
@@ -106,7 +107,7 @@ export const CyclingMap: React.FC = () => {
       map.removeFeatureState(
         {
           source: mapSource,
-          sourceLayer: "transitopia_cycling",
+          sourceLayer: CYCLING_LAYER,
           id: hoveredFeatureIdRef.current,
         },
         "hover",
@@ -124,7 +125,7 @@ export const CyclingMap: React.FC = () => {
         map.removeFeatureState(
           {
             source: mapSource,
-            sourceLayer: "transitopia_cycling",
+            sourceLayer: CYCLING_LAYER,
             id: hoveredFeatureIdRef.current,
           },
           "hover",
@@ -183,7 +184,7 @@ export const CyclingMap: React.FC = () => {
       map.setFeatureState(
         {
           source: mapSource,
-          sourceLayer: "transitopia_cycling",
+          sourceLayer: CYCLING_LAYER,
           id: selectedFeature.id,
         },
         { selected: true },
@@ -192,7 +193,7 @@ export const CyclingMap: React.FC = () => {
         map.removeFeatureState(
           {
             source: mapSource,
-            sourceLayer: "transitopia_cycling",
+            sourceLayer: CYCLING_LAYER,
             id: selectedFeature.id,
           },
           "selected",
@@ -221,12 +222,11 @@ export const CyclingMap: React.FC = () => {
       : selectedFeature?.type === "bicycle_parking" ?
         (() => {
           const way = selectedFeature.osmWayId;
-          const node = selectedFeature.osmNodeId;
-          const id = Number.parseInt(way ?? node ?? "", 10);
-          return Number.isFinite(id) ?
+          const id = way ?? selectedFeature.osmNodeId;
+          return id !== undefined ?
               <BikeParkingCard
                 key={id}
-                featureType={way ? "way" : "node"}
+                featureType={way === undefined ? "node" : "way"}
                 osmId={id}
                 onCentre={centre}
                 onClose={closeInfobox}
