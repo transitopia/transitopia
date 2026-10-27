@@ -10,10 +10,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@transitopia/shared": "*",
     "@transitopia/transit-core": "*",
     "csv-parse": "^7.0.3",
-    "yauzl": "^3.4.0",
-    "@transitopia/shared": "*"
+    "pmtiles": "^4.5.0",
+    "yauzl": "^3.4.0"
   },
   "devDependencies": {
     "@types/geojson": "^7946.0.16",

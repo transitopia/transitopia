@@ -1,0 +1,9 @@
+{
+  // The tests run in Node (vitest), so they also get Node's types; src is checked without them
+  // (../tsconfig.json).
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "geojson"]
+  },
+  "include": [".", "../src"]
+}

@@ -1,0 +1,19 @@
+{
+  "name": "@transitopia/cycling-core",
+  "private": true,
+  "description": "DOM-free cycling map logic shared by the pipeline and the site: OSM classification, joining ways into chains, and the cycling tiles' schema.",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test"
+  },
+  "dependencies": {
+    "@transitopia/transit-core": "*"
+  },
+  "devDependencies": {
+    "@transitopia/config": "*",
+    "@types/geojson": "^7946.0.16"
+  }
+}
