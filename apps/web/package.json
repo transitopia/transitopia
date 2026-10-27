@@ -10,13 +10,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.104.2",
+    "@tanstack/react-query": "^5.104.5",
     "@transitopia/map-style": "*",
     "@transitopia/config": "*",
     "@transitopia/shared": "*",
     "@transitopia/transit-core": "*",
     "@transitopia/transit-map": "*",
-    "maplibre-gl": "^6.14.0",
+    "maplibre-gl": "^6.15.0",
     "pmtiles": "^4.5.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
@@ -31,6 +31,6 @@
     "sirv": "^3.0.2",
     "tailwindcss": "^4",
     "typescript": "^7",
-    "vite": "^8.3.4"
+    "vite": "^8.3.5"
   }
 }
