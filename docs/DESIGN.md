@@ -47,8 +47,8 @@ Desktop-first, but the map and time controls must work on phones, with minimal c
 ```
                          ┌─────────────────── Cloudflare (DNS, CDN, WAF, R2) ──────────────────┐
  Browser ──────────────▶ │ www.transitopia.org        static SPA (Pages, from the prod branch) │
-                         │ map-tiles.transitopia.org  basemap and cycling tiles (worker on R2) │
-                         │ data.transitopia.org       transit data build output (R2)           │
+                         │ map-tiles.transitopia.org  basemap, transit overview (worker on R2) │
+                         │ data.transitopia.org       transit and cycling build output (R2)    │
                          │ api.transitopia.org ─┐     proxied; live poll edge-cached ≤ 10 s    │
                          └──────────────────────┼──────────────────────────────────────────────┘
                                                 ▼
@@ -105,6 +105,7 @@ var/                       gitignored: downloads, recordings, build output (var/
 | Request ledger (`upstream_requests`) | Database | |
 | Published transit data (plans, movements, patches) | `transitopia-data` on R2, behind data.transitopia.org | |
 | The cycling map's OSM file (what osmium keeps of the BC extract) | `transitopia-data` on R2 (`data/osm/`), published by GitHub Actions | two weeks |
+| The cycling map's tiles and bike routes | `transitopia-data` on R2 (`data/cycling/`), published by the server's data build | two weeks after the index stops naming them |
 
 Tables and migrations are described in [packages/db/README.md](../packages/db/README.md).
 

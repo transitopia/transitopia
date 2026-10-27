@@ -1,11 +1,11 @@
 name: Build Transitopia Cycling Layer
 
-# The cycling map's OSM data and tiles (packages/cycling-core/README.md#building-the-tiles):
-# Geofabrik's British Columbia extract filtered with osmium (npm run extract:cycling-osm: the step
-# that needs osmium and about 2.5 GB of memory, kept here), then the tiles (npm run build:cycling).
-# Both are kept as artifacts; on the daily schedule the OSM file is published to the data bucket
-# (data.transitopia.org/data/osm/british-columbia/, for npm run data:cycling and, later, the server)
-# and the tiles to the maps bucket (deployment/README.md → Map tiles).
+# The cycling map's OSM file (packages/cycling-core/README.md#building-the-tiles): Geofabrik's
+# British Columbia extract filtered with osmium (npm run extract:cycling-osm: the step that needs
+# osmium and about 2.5 GB of memory, so it runs here), kept as an artifact and, on the daily
+# schedule, published to the data bucket (data.transitopia.org/data/osm/british-columbia/), where
+# the server's daily data build and npm run data:cycling fetch it. The tiles are built from it too,
+# as a check: the server builds and publishes the ones the site reads.
 
 on:
   pull_request:
@@ -44,7 +44,7 @@ jobs:
           osmium --version
       - name: Download the OSM extract and keep what the cycling map needs
         run: npm run extract:cycling-osm
-      - name: Build the tiles
+      - name: Build the tiles (a check; the server publishes them)
         run: npm run build:cycling
       - name: Store the cycling OSM file
         uses: actions/upload-artifact@v7
@@ -52,22 +52,12 @@ jobs:
           name: cycling-osm
           path: var/raw/osm-cycling/british-columbia/
           retention-days: 14
-      - name: Store resulting artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: compiled-maps
-          path: var/public/tiles/transitopia-cycling-british-columbia.pmtiles
   Deploy:
     # Only deploy this once per day in any case.
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     needs: Build-Cycling-Layer
     env:
-      RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_TYPE: s3
-      RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_PROVIDER: Cloudflare
-      RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_ENDPOINT: ${{ secrets.RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_ENDPOINT }}
-      RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_ACCESS_KEY_ID: ${{ secrets.RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_ACCESS_KEY_ID }}
-      RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_SECRET_ACCESS_KEY: ${{ secrets.RCLONE_CONFIG_TRANSITOPIA_MAPS_R2_SECRET_ACCESS_KEY }}
       # The data bucket, as the transit data fallback workflow uses it (build_transit_data.yml).
       RCLONE_CONFIG_TRANSITOPIA_DATA_R2_TYPE: s3
       RCLONE_CONFIG_TRANSITOPIA_DATA_R2_PROVIDER: Cloudflare
@@ -81,17 +71,11 @@ jobs:
           curl -fsSL -o /tmp/rclone.zip https://downloads.rclone.org/v1.75.0/rclone-v1.75.0-linux-amd64.zip
           sudo unzip -j -o /tmp/rclone.zip '*/rclone' -d /usr/local/bin
           rclone --version
-      - name: Download compiled maps
-        uses: actions/download-artifact@v8
-        with:
-          name: compiled-maps
       - name: Download the cycling OSM file
         uses: actions/download-artifact@v8
         with:
           name: cycling-osm
           path: cycling-osm
-      - name: upload
-        run: rclone copy transitopia-cycling-british-columbia.pmtiles transitopia_maps_r2:transitopia-maps --s3-no-check-bucket
       # The file first (its name changes with its content, so it's cached for good), then the
       # pointer clients poll (cached for 5 minutes, like the transit data's pointers); files over
       # two weeks old are removed.

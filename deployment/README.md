@@ -7,12 +7,12 @@ How Transitopia is hosted, deployed and operated. The system's design is in [doc
 | Host | Serves | Where |
 |---|---|---|
 | `www.transitopia.org` | The site (`apps/web`) | Cloudflare Pages (`transitopia-web`), built from `prod` |
-| `map-tiles.transitopia.org` | Basemap and cycling tiles | A Cloudflare worker (`worker.js`) over the R2 bucket `transitopia-maps` |
-| `data.transitopia.org` | The published transit data | The R2 bucket `transitopia-data` |
+| `map-tiles.transitopia.org` | Basemap and transit overview tiles | A Cloudflare worker (`worker.js`) over the R2 bucket `transitopia-maps` |
+| `data.transitopia.org` | The published transit and cycling data | The R2 bucket `transitopia-data` |
 | `api.transitopia.org` | The server (`apps/server`) | A FullHost VM in Toronto, behind Cloudflare's proxy (only Cloudflare can connect) |
 
 - **FullHost** (Canadian, with data centres in Vancouver, Calgary, Toronto and Montreal): the VM is Ubuntu 26.04 LTS, 4 vCPU, 8 GB RAM, 100 GB SSD, $36/month, in Toronto. Vancouver only offered a 2 vCPU plan at $48; the ~60–70 ms from Vancouver doesn't matter behind Cloudflare's cache, and local times come from the region's time zone, never the host's. Docker Compose runs the server, PostgreSQL (PostGIS), Caddy and backups.
-- **Cloudflare**: DNS, the static site, the CDN and edge cache (including the live endpoint and the published data), WAF and rate limiting in front of `api.transitopia.org`, the tile worker, Web Analytics, and **R2**: `transitopia-maps` (tiles), `transitopia-data` (published transit data) and the private `transitopia-archive` (backups, raw recordings, GTFS feeds, developer snapshots). R2 has no Canadian location; nothing here is sensitive. Keeping all object storage at one provider means one toolchain (rclone), no egress fees for snapshot pulls, and backups at a different provider from the VM.
+- **Cloudflare**: DNS, the static site, the CDN and edge cache (including the live endpoint and the published data), WAF and rate limiting in front of `api.transitopia.org`, the tile worker, Web Analytics, and **R2**: `transitopia-maps` (tiles), `transitopia-data` (published transit and cycling data) and the private `transitopia-archive` (backups, raw recordings, GTFS feeds, developer snapshots). R2 has no Canadian location; nothing here is sensitive. Keeping all object storage at one provider means one toolchain (rclone), no egress fees for snapshot pulls, and backups at a different provider from the VM.
 - Bucket locations are settings (`DATA_PUBLISH_REMOTE`, `MAPS_PUBLISH_REMOTE`, `ARCHIVE_REMOTE`), and everything runs as portable Docker and S3, so either part can move.
 
 ### Environments
@@ -40,7 +40,6 @@ https://docs.protomaps.com/deploy/cloudflare. A file `<name>.pmtiles` in the buc
 | File | Built by |
 |---|---|
 | `protomaps-bc.pmtiles` (the basemap) | `.github/workflows/build_basemap.yml`, weekly (`npm run tiles -- --region bc`) |
-| `transitopia-cycling-british-columbia.pmtiles` | `.github/workflows/build_cycling.yml`, daily (`npm run data:cycling`, [packages/cycling-core](../packages/cycling-core/README.md)) |
 | `transit-overview-v<N>.pmtiles` (every region's routes zoomed out) | The server's daily data build (`npm run build:overview-tiles`), uploaded to `MAPS_PUBLISH_REMOTE` ([packages/transit-core → Overview tiles](../packages/transit-core/DESIGN.md#overview-tiles)) |
 
 The worker's `ALLOWED_ORIGINS` variable lists the sites allowed to use the tiles (CORS), comma
@@ -71,6 +70,7 @@ Uploads copy, never sync, so files a build no longer writes stay until deleted b
 `transitopia-data`, so its live dispatch patches fit the published plans.
 `.github/workflows/build_transit_data.yml` is a manual fallback only (see the comment at its top).
 `data/osm/<area>/` holds the cycling map's OSM file, which `.github/workflows/build_cycling.yml` publishes daily ([packages/cycling-core → Building the tiles](../packages/cycling-core/README.md#building-the-tiles)); the server's uploads never touch it.
+The server's build makes the cycling map's files from it and publishes them with the transit data, at `data/cycling/<area>/` ([packages/cycling-core → Published files](../packages/cycling-core/README.md#published-files)): the tiles and bike routes named by their content, and `index.json` naming the current ones. Since a day's tiles are about 5 MB, files the index no longer names are deleted once they're two weeks old (`pruneCycling` in `apps/server/src/jobs/data-build.ts`).
 
 One-time setup (done):
 
@@ -78,16 +78,17 @@ One-time setup (done):
 2. Add a CORS policy allowing `GET` and `HEAD` from `https://www.transitopia.org` (and
    `https://transitopia.org`, `https://*.transitopia-web.pages.dev`, `http://localhost:5173`), with
    the `Range` request header allowed and `ETag` exposed: the site reads each plan's tiles
-   (`data/feeds/<feed>/lines/<hash>.pmtiles`) by range requests through the pmtiles protocol.
-3. Cache: the manifests (`data/feeds/*/manifest.json`), the places indexes (`data/feeds/*/places.json`) and `data/features/latest.json` should be short-lived (e.g. 5 minutes); everything else can be cached
+   (`data/feeds/<feed>/lines/<hash>.pmtiles`) and the cycling tiles
+   (`data/cycling/<area>/tiles/<hash>.pmtiles`) by range requests through the pmtiles protocol.
+3. Cache: the manifests (`data/feeds/*/manifest.json`), the places indexes (`data/feeds/*/places.json`), `data/features/latest.json` and the `index.json` files (the cycling map's, movements', observations' and dispatch patches') should be short-lived (e.g. 5 minutes); everything else can be cached
    for longer. Each build rewrites files at the same paths, so the site asks for every other file with
    the build in its URL (`?v=<the manifest's generatedAt>`, `PlanStore.dataUrl` in
    `packages/transit-map/src/plans.ts`): after a build, browsers and the edge fetch the new file
    instead of serving the old one for a day, once the manifest's 5 minutes are up. A tab open across a build still holds the old manifest: when a plan it asks for can't be read, the site checks the manifest again and restarts the map on the new build. The Cache Rule
    must keep the query string in the cache key (Cloudflare's default). The upload stores
-   `Cache-Control` on each object when it uploads (5 minutes for the manifest, a day for the rest),
+   `Cache-Control` on each object when it uploads (5 minutes for the manifests and indexes, a day for the rest),
    and a Cache Rule for `data.transitopia.org` makes the edge follow it (Cloudflare doesn't cache
-   `.json` by default). Plan tiles are named by their content, so they're asked for without
+   `.json` by default). Plan tiles and the cycling files are named by their content, so they're asked for without
    the build in the URL; they're uploaded as they are (tippecanoe compresses each tile). Upload by
    hand with `npm run publish:data -- <remote>`, never a bare `rclone copy`: an overwrite drops the
    headers, and the files must go up compressed. The upload passes `--no-update-modtime`: when only
