@@ -187,6 +187,20 @@ const reconcile = z.strictObject({
   exchangeReplacedM: pos,
 });
 
+// --- config/cycling/cycling.json ---
+
+const cycling = z.strictObject({
+  area: z.strictObject({
+    id: z
+      .string()
+      .regex(/^[a-z0-9-]+$/, "expected lowercase letters, digits and -"),
+    extract: z.url({ protocol: /^https$/ }),
+  }),
+  classify: z.strictObject({
+    calmMaxSpeedKmh: pos,
+  }),
+});
+
 // --- config/feeds/<feed>/routes.json ---
 
 const routeKinds = ["skytrain", "shape", "bus"] as const satisfies RouteKind[];
@@ -631,6 +645,7 @@ export function realtimeUrl(
 
 /** Each config file's schema, by its name without ".json". */
 export const CONFIG_SCHEMAS = {
+  cycling,
   dispatch,
   kinematics,
   operations,

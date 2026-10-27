@@ -23,6 +23,10 @@ Build-time data pipelines, validators and tools, run from the repo root (`npm ru
 
 After changing infrastructure, config or pipeline code, rebuild and run both validators.
 
+## Building the cycling tiles
+
+`npm run data:cycling` runs `fetch-osm-extract.ts` (Geofabrik's British Columbia extract into `var/raw/osm-extracts/<area>/`, skipped when the newest is under a day old) and `build-cycling.ts` (`npm run build:cycling`: osmium, the classification in `packages/cycling-core`, then tippecanoe, into `var/public/tiles/transitopia-cycling-<area>.pmtiles`). `inspect-cycling-tiles.ts` shows what a cycling tileset holds and compares two. See [packages/cycling-core](../packages/cycling-core/README.md#building-the-tiles).
+
 ## Validators
 
 - `npm run validate:infra` (`validate-infra.ts`): the track graph against GTFS and the diagram checklist. Exits non-zero on failure.

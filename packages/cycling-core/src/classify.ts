@@ -1,0 +1,267 @@
+// What kind of cycling facility an OSM way is, and how comfortable it is to ride
+// (packages/cycling-core/README.md#classification). Ported from the Planetiler profile this
+// replaced (map-layers/…/layers/Cycling.java), rule for rule and in the same order: the first rule
+// that matches decides.
+
+import type { Config } from "@transitopia/transit-core/config.ts";
+import type { Tags } from "./osm.ts";
+
+/** How comfortable a facility is for most people, from 4 (most) to 1 (least). */
+export const COMFORT = {
+  /** A fully separated bike track that's off-street or has a physical barrier separating it from traffic. */
+  most: 4,
+  /** E.g. a shared lane on a quiet neighbourhood street, or a path shared with pedestrians. */
+  high: 3,
+  /** E.g. a painted bike lane, not separated from traffic. */
+  low: 2,
+  /** E.g. a shared lane on a busy street, or a painted lane beside parked cars. */
+  least: 1,
+} as const;
+
+export type Comfort = (typeof COMFORT)[keyof typeof COMFORT];
+
+/** A path's or lane's attributes, as the tiles carry them (CyclingWayProperties in tiles.ts). */
+export type WayClass = {
+  /** "track": separate from the roadway (off-road); "lane": within it (on-road). */
+  class: "track" | "lane";
+  /** For tracks: "cycleway", "path", or "combined-<highway>" (a track beside a road, tagged on the road). */
+  subclass?: string;
+  comfort: Comfort;
+  /** 1: one-way along the way; -1: against it; 0: both ways. */
+  oneway: -1 | 0 | 1;
+  /** For lanes on one side of the road: which side ("both" when there's a lane on each). */
+  side?: "both" | "left" | "right";
+  shared_with_pedestrians: boolean;
+  shared_with_vehicles: boolean;
+  /** A painted lane beside parked cars. */
+  dooring_risk?: true;
+  construction?: true;
+  website?: string;
+  opening_date?: string;
+};
+
+export type ClassifyConfig = Config<"cycling">["classify"];
+
+/** Whether the way has the tag, with one of the values if any are given (Planetiler's hasTag). */
+function has(tags: Tags, key: string, ...values: string[]): boolean {
+  const v = tags[key];
+  return values.length ?
+      v !== undefined && values.includes(v)
+    : v !== undefined;
+}
+
+/**
+ * A tag as a whole number the way Planetiler's getLong read it: an integer, else the number it
+ * starts with ("30 km/h" is 30), else 0 (so "CA:urban" or "none" read as 0).
+ */
+export function planetilerLong(v: string | undefined): number {
+  if (v === undefined) return 0;
+  if (/^[+-]?\d+$/.test(v)) return Number(v);
+  const m = /^-?[\d,]*\.?\d*/.exec(v)?.[0].replace(/,/g, "");
+  const n = m && /\d/.test(m) ? Number.parseFloat(m) : NaN;
+  return Number.isFinite(n) ? Math.trunc(n) : 0;
+}
+
+const PARKING_BESIDE = ["separate", "lane", "street_side"];
+
+/** The way's cycling facility, or undefined if it isn't one. */
+export function classifyWay(
+  t: Tags,
+  config: ClassifyConfig,
+): WayClass | undefined {
+  const onewayYes = has(t, "oneway", "yes") ? 1 : 0;
+  const calm = () =>
+    has(t, "maxspeed") && planetilerLong(t.maxspeed) <= config.calmMaxSpeedKmh;
+  // A shared road's one-way: the road's, unless bicycles are exempt.
+  const sharedOneway = has(t, "oneway:bicycle", "no") ? 0 : onewayYes;
+
+  // OSM distinguishes cycle tracks, separate from the road (by curbs, parking, verges, trees…),
+  // from cycle lanes, on the road itself.
+  if (has(t, "highway", "cycleway")) {
+    const peds = has(t, "foot", "designated") && has(t, "segregated", "no");
+    return {
+      class: "track",
+      subclass: "cycleway",
+      comfort: peds ? COMFORT.high : COMFORT.most,
+      // 'reverse' one-way (-1) isn't supported for tracks.
+      oneway: onewayYes,
+      shared_with_pedestrians: peds,
+      shared_with_vehicles: false,
+    };
+  }
+  if (
+    has(t, "highway", "path", "pedestrian")
+    && has(t, "bicycle", "designated")
+  ) {
+    const peds =
+      (has(t, "foot", "designated") || has(t, "highway", "pedestrian"))
+      && !has(t, "segregated", "yes");
+    return {
+      class: "track",
+      subclass: "path",
+      comfort: peds ? COMFORT.high : COMFORT.most,
+      oneway: onewayYes,
+      shared_with_pedestrians: peds,
+      shared_with_vehicles: false,
+    };
+  }
+  if (has(t, "highway") && has(t, "cycleway", "track")) {
+    const peds = has(t, "foot", "designated") && !has(t, "segregated", "yes");
+    return {
+      class: "track",
+      subclass: `combined-${t.highway}`,
+      comfort: peds ? COMFORT.high : COMFORT.most,
+      oneway: onewayYes,
+      shared_with_pedestrians: peds,
+      shared_with_vehicles: false,
+    };
+  }
+  if (has(t, "highway", "construction") && has(t, "construction", "cycleway")) {
+    const peds = has(t, "foot", "designated") && !has(t, "segregated", "yes");
+    return {
+      class: "track",
+      subclass: "cycleway",
+      comfort: peds ? COMFORT.high : COMFORT.most,
+      oneway: onewayYes,
+      shared_with_pedestrians: peds,
+      shared_with_vehicles: false,
+      construction: true,
+      ...(t.website === undefined ? {} : { website: t.website }),
+      ...(t.opening_date === undefined ? {} : { opening_date: t.opening_date }),
+    };
+  }
+  // Not yet: "T2 (alternative)" on https://wiki.openstreetmap.org/wiki/Bicycle
+  // (cycleway:right=track + cycleway:right:oneway=no).
+  const lane = (
+    side: NonNullable<WayClass["side"]>,
+    oneway: WayClass["oneway"],
+    dooring: boolean,
+  ): WayClass => ({
+    class: "lane",
+    side,
+    comfort: dooring ? COMFORT.least : COMFORT.low,
+    oneway,
+    shared_with_pedestrians: false,
+    shared_with_vehicles: false,
+    ...(dooring ? { dooring_risk: true as const } : {}),
+  });
+  if (
+    has(t, "highway")
+    && !has(t, "oneway", "yes")
+    && (has(t, "cycleway", "lane")
+      || has(t, "cycleway:both", "lane")
+      || (has(t, "cycleway:left", "lane") && has(t, "cycleway:right", "lane")))
+  ) {
+    // A lane on both sides of a two-way road. Parked cars beside either one are a dooring risk:
+    // with one line for both directions, the whole road is downgraded. Parking mapped as separate
+    // ways ("separate") isn't looked at; in BC so far it's always been beside the lane.
+    const dooring =
+      has(t, "parking", "lane", "street_side")
+      || has(t, "parking:both", "lane", "street_side")
+      || has(t, "parking:both", "separate")
+      || has(t, "parking:right", ...PARKING_BESIDE)
+      || has(t, "parking:left", ...PARKING_BESIDE);
+    return lane("both", 0, dooring);
+  }
+  if (
+    has(t, "highway")
+    && !has(t, "oneway", "yes")
+    && ((has(t, "cycleway:right", "lane")
+      && has(t, "cycleway:right:oneway", "no"))
+      || (has(t, "cycleway:left", "lane")
+        && has(t, "cycleway:left:oneway", "no")))
+  ) {
+    // A two-way lane on one side of the road.
+    return lane(has(t, "cycleway:right", "lane") ? "right" : "left", 0, false);
+  }
+  if (
+    has(t, "highway")
+    && has(t, "oneway", "yes")
+    && (has(t, "cycleway", "lane")
+      || has(t, "cycleway:right", "lane")
+      || has(t, "cycleway:left", "lane"))
+  ) {
+    // A lane on a one-way road, one-way like the road unless there's a lane on each side.
+    const side = has(t, "cycleway:left", "lane") ? "left" : "right";
+    const both =
+      has(t, "cycleway:right", "lane") && has(t, "cycleway:left", "lane");
+    // A buffer between the lane and the parking isn't recognised yet (issue #39).
+    return lane(
+      side,
+      both ? 0 : 1,
+      has(t, `parking:${side}`, ...PARKING_BESIDE),
+    );
+  }
+  // As the Planetiler profile had it: `cycleway:both` matches without a highway tag.
+  if (
+    (has(t, "highway") && has(t, "cycleway", "shared_lane", "shared"))
+    || has(t, "cycleway:both", "shared_lane", "shared")
+  ) {
+    // A lane shared with motor vehicles.
+    return {
+      class: "lane",
+      comfort:
+        has(t, "motor_vehicle", "private") || calm() ?
+          COMFORT.high
+        : COMFORT.least,
+      oneway: sharedOneway,
+      shared_with_pedestrians: false,
+      shared_with_vehicles: true,
+    };
+  }
+  if (
+    has(t, "highway", "residential")
+    && has(t, "bicycle", "yes", "designated")
+    && calm()
+  ) {
+    // A slow street bicycles can use.
+    return {
+      class: "lane",
+      comfort: COMFORT.high,
+      oneway: sharedOneway,
+      shared_with_pedestrians: has(t, "foot", "yes"),
+      shared_with_vehicles: true,
+    };
+  }
+  if (
+    has(t, "highway")
+    && ((has(t, "cycleway:right", "lane") && has(t, "cycleway:left", "no"))
+      || (has(t, "cycleway:left", "lane") && has(t, "cycleway:right", "no")))
+  ) {
+    // A one-way lane on one side of a two-way road ("L2" on https://wiki.openstreetmap.org/wiki/Bicycle).
+    const side = has(t, "cycleway:left", "lane") ? "left" : "right";
+    return lane(
+      side,
+      side === "left" ? -1 : 1,
+      has(t, "parking:both", ...PARKING_BESIDE)
+        || has(t, `parking:${side}`, ...PARKING_BESIDE),
+    );
+  }
+  // Not yet: other kinds, e.g. https://www.openstreetmap.org/way/74096518 (mixed lane + shared_lane).
+  return undefined;
+}
+
+/**
+ * What to keep from an extract (`osmium tags-filter` expressions): every way classifyWay can accept
+ * has one of these tags, and so does bike parking and every bike route. osmium adds what they
+ * reference (nodes, and route members).
+ */
+export const OSM_FILTERS = [
+  "w/highway=cycleway",
+  "w/bicycle",
+  "w/cycleway",
+  "w/cycleway:both",
+  "w/cycleway:left",
+  "w/cycleway:right",
+  "w/construction=cycleway",
+  "nwr/amenity=bicycle_parking",
+  "r/route=bicycle",
+];
+
+/** Whether the element is bike parking (https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dbicycle_parking). */
+export const isBikeParking = (t: Tags): boolean =>
+  has(t, "amenity", "bicycle_parking");
+
+/** Whether a relation is a bike route whose ways the tiles name (`routes`). */
+export const isBikeRoute = (t: Tags): boolean =>
+  has(t, "type", "route") && has(t, "route", "bicycle");

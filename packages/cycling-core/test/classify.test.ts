@@ -1,0 +1,226 @@
+import { describe, expect, it } from "vitest";
+import { classifyWay, isBikeRoute, planetilerLong } from "../src/classify.ts";
+
+const config = { calmMaxSpeedKmh: 30 };
+const classify = (tags: Record<string, string>) => classifyWay(tags, config);
+
+describe("classifyWay", () => {
+  it("rates a cycleway the most comfortable, unless shared with pedestrians", () => {
+    expect(classify({ highway: "cycleway" })).toEqual({
+      class: "track",
+      subclass: "cycleway",
+      comfort: 4,
+      oneway: 0,
+      shared_with_pedestrians: false,
+      shared_with_vehicles: false,
+    });
+    expect(
+      classify({ highway: "cycleway", foot: "designated", segregated: "no" }),
+    ).toMatchObject({ comfort: 3, shared_with_pedestrians: true });
+    expect(classify({ highway: "cycleway", oneway: "yes" })).toMatchObject({
+      oneway: 1,
+    });
+  });
+
+  it("takes designated paths and pedestrian streets as tracks", () => {
+    expect(classify({ highway: "path", bicycle: "designated" })).toMatchObject({
+      class: "track",
+      subclass: "path",
+      comfort: 4,
+    });
+    expect(
+      classify({ highway: "pedestrian", bicycle: "designated" }),
+    ).toMatchObject({ comfort: 3, shared_with_pedestrians: true });
+    expect(
+      classify({
+        highway: "pedestrian",
+        bicycle: "designated",
+        segregated: "yes",
+      }),
+    ).toMatchObject({ comfort: 4, shared_with_pedestrians: false });
+    expect(classify({ highway: "path", bicycle: "yes" })).toBeUndefined();
+  });
+
+  it("names a track tagged on its road after the road", () => {
+    expect(classify({ highway: "secondary", cycleway: "track" })).toMatchObject(
+      { class: "track", subclass: "combined-secondary" },
+    );
+  });
+
+  it("keeps what a cycleway under construction says about its opening", () => {
+    expect(
+      classify({
+        highway: "construction",
+        construction: "cycleway",
+        opening_date: "2027",
+        website: "https://example.org",
+      }),
+    ).toEqual({
+      class: "track",
+      subclass: "cycleway",
+      comfort: 4,
+      oneway: 0,
+      shared_with_pedestrians: false,
+      shared_with_vehicles: false,
+      construction: true,
+      website: "https://example.org",
+      opening_date: "2027",
+    });
+  });
+
+  it("rates painted lanes on both sides low, and least beside parked cars", () => {
+    for (const tags of [
+      { cycleway: "lane" },
+      { "cycleway:both": "lane" },
+      { "cycleway:left": "lane", "cycleway:right": "lane" },
+    ])
+      expect(classify({ highway: "secondary", ...tags })).toEqual({
+        class: "lane",
+        side: "both",
+        comfort: 2,
+        oneway: 0,
+        shared_with_pedestrians: false,
+        shared_with_vehicles: false,
+      });
+    for (const parking of [
+      { parking: "street_side" },
+      { "parking:both": "lane" },
+      { "parking:both": "separate" },
+      { "parking:left": "separate" },
+    ])
+      expect(
+        classify({ highway: "secondary", cycleway: "lane", ...parking }),
+      ).toMatchObject({ comfort: 1, dooring_risk: true });
+  });
+
+  it("finds a two-way lane on one side of a two-way road", () => {
+    expect(
+      classify({
+        highway: "residential",
+        "cycleway:left": "lane",
+        "cycleway:left:oneway": "no",
+      }),
+    ).toMatchObject({ class: "lane", side: "left", oneway: 0, comfort: 2 });
+  });
+
+  it("makes a lane on a one-way road one-way, unless there's one each side", () => {
+    expect(
+      classify({ highway: "secondary", oneway: "yes", cycleway: "lane" }),
+    ).toMatchObject({ side: "right", oneway: 1, comfort: 2 });
+    expect(
+      classify({
+        highway: "secondary",
+        oneway: "yes",
+        "cycleway:left": "lane",
+        "cycleway:right": "lane",
+      }),
+    ).toMatchObject({ side: "left", oneway: 0 });
+    expect(
+      classify({
+        highway: "secondary",
+        oneway: "yes",
+        "cycleway:left": "lane",
+        "parking:left": "lane",
+      }),
+    ).toMatchObject({ comfort: 1, dooring_risk: true });
+  });
+
+  it("rates shared lanes by traffic", () => {
+    expect(classify({ highway: "primary", cycleway: "shared_lane" })).toEqual({
+      class: "lane",
+      comfort: 1,
+      oneway: 0,
+      shared_with_pedestrians: false,
+      shared_with_vehicles: true,
+    });
+    expect(
+      classify({ highway: "primary", cycleway: "shared", maxspeed: "30" }),
+    ).toMatchObject({ comfort: 3 });
+    expect(
+      classify({
+        highway: "service",
+        cycleway: "shared_lane",
+        motor_vehicle: "private",
+      }),
+    ).toMatchObject({ comfort: 3 });
+    expect(
+      classify({
+        highway: "primary",
+        cycleway: "shared_lane",
+        oneway: "yes",
+        "oneway:bicycle": "no",
+      }),
+    ).toMatchObject({ oneway: 0 });
+    // As the Planetiler profile had it: no highway tag needed with cycleway:both.
+    expect(classify({ "cycleway:both": "shared_lane" })).toMatchObject({
+      shared_with_vehicles: true,
+    });
+  });
+
+  it("takes slow residential streets open to bicycles as local bikeways", () => {
+    expect(
+      classify({
+        highway: "residential",
+        bicycle: "designated",
+        maxspeed: "30",
+        foot: "yes",
+        oneway: "yes",
+      }),
+    ).toEqual({
+      class: "lane",
+      comfort: 3,
+      oneway: 1,
+      shared_with_pedestrians: true,
+      shared_with_vehicles: true,
+    });
+    expect(
+      classify({ highway: "residential", bicycle: "yes", maxspeed: "50" }),
+    ).toBeUndefined();
+    expect(
+      classify({ highway: "residential", bicycle: "yes" }),
+    ).toBeUndefined();
+  });
+
+  it("finds a one-way lane on one side of a two-way road", () => {
+    expect(
+      classify({
+        highway: "tertiary",
+        "cycleway:left": "lane",
+        "cycleway:right": "no",
+      }),
+    ).toMatchObject({ side: "left", oneway: -1, comfort: 2 });
+    expect(
+      classify({
+        highway: "tertiary",
+        "cycleway:right": "lane",
+        "cycleway:left": "no",
+        "parking:right": "lane",
+      }),
+    ).toMatchObject({ side: "right", oneway: 1, dooring_risk: true });
+  });
+
+  it("ignores roads without a cycling facility", () => {
+    expect(classify({ highway: "residential" })).toBeUndefined();
+    expect(
+      classify({ highway: "secondary", "cycleway:right": "lane" }),
+    ).toBeUndefined();
+  });
+});
+
+describe("planetilerLong", () => {
+  it("reads maxspeed as Planetiler's getLong did", () => {
+    expect(planetilerLong("30")).toBe(30);
+    expect(planetilerLong("30 km/h")).toBe(30);
+    expect(planetilerLong("20 mph")).toBe(20);
+    expect(planetilerLong("1,000")).toBe(1000);
+    expect(planetilerLong("CA:urban")).toBe(0);
+    expect(planetilerLong(undefined)).toBe(0);
+  });
+});
+
+describe("isBikeRoute", () => {
+  it("takes route relations for bicycles", () => {
+    expect(isBikeRoute({ type: "route", route: "bicycle" })).toBe(true);
+    expect(isBikeRoute({ type: "route", route: "bus" })).toBe(false);
+  });
+});

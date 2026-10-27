@@ -36,6 +36,8 @@
     "data:gtfs": "tsx pipelines/fetch-gtfs.ts && tsx pipelines/build-schedule.ts && tsx pipelines/build-plan-tiles.ts && tsx pipelines/build-overview-tiles.ts",
     "data:osm": "tsx pipelines/fetch-osm.ts && tsx pipelines/import-osm.ts",
     "data:roads": "tsx pipelines/fetch-osm-roads.ts",
+    "data:cycling": "tsx pipelines/fetch-osm-extract.ts --max-age-days 1 && tsx pipelines/build-cycling.ts",
+    "build:cycling": "tsx pipelines/build-cycling.ts",
     "tiles": "tsx pipelines/tiles.ts",
     "build:infra": "tsx pipelines/build-infra.ts",
     "build:plan-tiles": "tsx pipelines/build-plan-tiles.ts",

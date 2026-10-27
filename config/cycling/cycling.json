@@ -1,0 +1,13 @@
+{
+  "$comment": "The cycling map (packages/cycling-core/README.md): where its OSM data comes from and how ways are classified.",
+  "area": {
+    "$id": "Names the tiles (transitopia-cycling-<id>.pmtiles) and the downloaded extracts (var/raw/osm-extracts/<id>/).",
+    "id": "british-columbia",
+    "$extract": "Geofabrik's daily extract of the province, the same area as the basemap.",
+    "extract": "https://download.geofabrik.de/north-america/canada/british-columbia-latest.osm.pbf"
+  },
+  "classify": {
+    "$calmMaxSpeedKmh": "A shared lane, or a residential street open to bicycles, at or under this maxspeed is comfortable (comfort 3) rather than the least (km/h). Guess: Vancouver's local street bikeways are signed 30 km/h.",
+    "calmMaxSpeedKmh": 30
+  }
+}

@@ -56,6 +56,12 @@ describe("config files", () => {
       ).not.toThrow();
     });
 
+  it("cycling/cycling.json matches its schema", () => {
+    expect(() =>
+      parseConfig("cycling", readJson(join(CONFIG, "cycling", "cycling.json"))),
+    ).not.toThrow();
+  });
+
   for (const { region, name } of settingsFiles)
     it(`regions/${region}/${name}.json matches its schema`, () => {
       const json = readJson(join(REGIONS, region, `${name}.json`));

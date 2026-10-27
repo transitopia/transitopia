@@ -165,9 +165,17 @@ function distToSegment(p: Pt, a: Pt, b: Pt): number {
 
 const sameProps = (a: Props, b: Props) => differing(a, b).length === 0;
 
+/** `routes` as a set: their order and repeats don't matter. */
+const normal = (k: string, v: Props[string] | undefined) =>
+  k === "routes" && typeof v === "string" ?
+    [...new Set(v.split(","))].sort().join(",")
+  : v;
+
 function differing(a: Props, b: Props): string[] {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
-  return [...keys].filter((k) => !IGNORED.has(k) && a[k] !== b[k]);
+  return [...keys].filter(
+    (k) => !IGNORED.has(k) && normal(k, a[k]) !== normal(k, b[k]),
+  );
 }
 
 interface Parity {

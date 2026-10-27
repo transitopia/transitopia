@@ -43,6 +43,8 @@ export const DEFAULTS_DIR = join(CONFIG_ROOT, "defaults");
 export const OPERATORS_DIR = join(CONFIG_ROOT, "operators");
 export const FEEDS_DIR = join(CONFIG_ROOT, "feeds");
 export const REGIONS_DIR = join(CONFIG_ROOT, "regions");
+/** config/cycling/cycling.json: the cycling map's area and classification (readCyclingConfig). */
+export const CYCLING_CONFIG_DIR = join(CONFIG_ROOT, "cycling");
 
 // Corrections: the committed files, or on the server an export of the confirmed ones from its
 // database (TRANSITOPIA_CORRECTIONS_DIR, with <region>/observations/ and <region>/disruptions/ inside).
@@ -84,6 +86,19 @@ export const PUBLIC_DIR = join(VAR_DIR, "public");
 export const PUBLIC_DATA_DIR = join(PUBLIC_DIR, "data");
 /** var/public/data as uploaded, its text files compressed (apps/server/src/jobs/publish.ts). */
 export const PUBLISH_DATA_DIR = join(VAR_DIR, "publish", "data");
+
+/** Where the cycling map's files for an area (config/cycling/cycling.json → area.id) are, on disk. */
+export function cyclingPaths(area: string): {
+  /** var/raw/osm-extracts/<area>/: Geofabrik extracts by OSM data date (YYYY-MM-DD.osm.pbf). */
+  extracts: string;
+  /** The tiles (packages/cycling-core/README.md#tiles), served locally at /dev-data/tiles/. */
+  tiles: string;
+} {
+  return {
+    extracts: join(RAW_DIR, "osm-extracts", area),
+    tiles: join(PUBLIC_DIR, "tiles", `transitopia-cycling-${area}.pmtiles`),
+  };
+}
 
 /** Where a feed's files are, on disk. */
 export function feedPaths(feed: string): {
@@ -190,12 +205,26 @@ export async function readFeedRoutes(feed: string): Promise<Config<"routes">> {
 export async function readConfig<
   N extends Exclude<
     ConfigName,
-    "kinematics" | "rt" | "routes" | "recording" | "server" | "reconcile"
+    | "kinematics"
+    | "rt"
+    | "routes"
+    | "recording"
+    | "server"
+    | "reconcile"
+    | "cycling"
   >,
 >(name: N, region: string): Promise<Config<N>> {
   return parseConfig(
     name,
     await readJson<unknown>(join(REGIONS_DIR, region, `${name}.json`)),
+  );
+}
+
+/** The cycling map's settings (config/cycling/cycling.json), checked. */
+export async function readCyclingConfig(): Promise<Config<"cycling">> {
+  return parseConfig(
+    "cycling",
+    await readJson<unknown>(join(CYCLING_CONFIG_DIR, "cycling.json")),
   );
 }
 
