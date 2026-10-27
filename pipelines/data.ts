@@ -1,5 +1,7 @@
 // Rebuild all data in order (pipelines/README.md): latest GTFS → OSM roads → service plans → track
-// network → platform mapping → plan and overview tiles → movements → validation. OSM tracks are committed
+// network → platform mapping → plan and overview tiles → movements → validation → the cycling map's
+// tiles and routes (from the cycling OSM file GitHub Actions publishes; packages/cycling-core/README.md#building-the-tiles:
+// neither step stops the build, and without a new file the last one is built again). OSM tracks are committed
 // (config/regions/metro-vancouver/infrastructure/), so they are only re-fetched with --osm. OSM roads
 // (for bus corridors) aren't: they're fetched for a feed without them, or once they're
 // ROADS_MAX_AGE_DAYS old (every feed with --osm). A failed roads fetch doesn't stop the build:
@@ -48,6 +50,8 @@ const steps: [string, string[], boolean?][] = [
   ["Dispatch dates with observations", ["pipelines/build-dispatch.ts"]],
   ["Learn bus travel-time profiles", ["pipelines/build-rt-profile.ts"]],
   ["Validate movements", ["pipelines/validate-plan.ts"]],
+  ["Fetch the cycling OSM file", ["pipelines/fetch-cycling-osm.ts"], true],
+  ["Make the cycling tiles", ["pipelines/build-cycling.ts"], true],
   ...(process.env.TRANSITOPIA_SKIP_PLACES ?
     []
   : ([

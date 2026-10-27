@@ -6,25 +6,27 @@ The cycling map's logic, DOM-free and shared by the pipeline that builds the cyc
 |---|---|
 | `src/osm.ts` | OSM elements, and `parseOpl` for osmium's OPL text |
 | `src/classify.ts` | `classifyWay`: a way's facility and comfort; `OSM_FILTERS`: what to keep from an extract |
-| `src/network.ts` | `CyclingNetworkBuilder`: OSM elements in, classified ways (with their bike routes) and bike parking out |
+| `src/network.ts` | `CyclingNetworkBuilder`: OSM elements in, classified ways (with their bike routes), bike parking and bike routes out |
 | `src/chains.ts` | `joinChains`: ways joined into chains |
 | `src/tiles.ts` | The tiles' layer, zooms, properties (`CyclingWayProperties`, `BikeParkingProperties`) and `cyclingTileFeatures` |
+| `src/published.ts` | Where the [published files](#published-files) are, the index (`CyclingIndex`) and the bike routes (`CyclingRoutes`) |
 
 ## Building the tiles
 
-In two parts, so that only the first needs osmium, the 1.3 GB extract and 2.5 GB of memory, and it runs in GitHub Actions:
+In two parts, so that only the first needs osmium, the 1.3 GB extract and 2.5 GB of memory, and it runs in GitHub Actions; the server's daily data build (`npm run data`, [apps/server → Jobs](../../apps/server/README.md#jobs)) does the second and publishes the result:
 
 1. **The cycling OSM file** (`npm run extract:cycling-osm`, `pipelines/extract-cycling-osm.ts`; GitHub Actions runs it daily, `.github/workflows/build_cycling.yml`):
    - **Download** Geofabrik's daily extract of British Columbia (`area.extract`, about 1.3 GB), checked against its `.md5`, into `var/raw/osm-extracts/<area>/YYYY-MM-DD.osm.pbf`, named by the date of its data (from its header); only the newest is kept. `--extract <file.osm.pbf>` uses one already on disk instead.
    - **Filter** with osmium: `osmium tags-filter` keeps the ways, nodes and relations with a tag in `OSM_FILTERS` (and what they reference), then `osmium add-locations-to-ways` writes them as OPL with each way's node locations (about 80 MB), gzipped to `var/raw/osm-cycling/<area>/<date>-<sha256 prefix>.opl.gz` (about 20 MB for BC), with `latest.json` (`CyclingOsmPointer`: the file, the OSM data's timestamp, its size and sha256) beside it.
    - The filter's peak memory is about 2.5 GB whatever the area (it tracks referenced objects in bitmaps over the whole range of OSM ids): 2.46 GB for BC, 2.48 GB for all of Canada, measured 2026-10-27.
    - The workflow publishes the file and its pointer at `https://data.transitopia.org/data/osm/<area>/` (the file cached for good, since its name changes with its content; the pointer for 5 minutes; files over two weeks old removed), and keeps them as the run's `cycling-osm` artifact for two weeks.
-2. **The tiles** (`npm run data:cycling`: `pipelines/fetch-cycling-osm.ts`, then `pipelines/build-cycling.ts`, which is `npm run build:cycling`):
+2. **The tiles and bike routes** (`npm run data:cycling`: `pipelines/fetch-cycling-osm.ts`, then `pipelines/build-cycling.ts`, which is `npm run build:cycling`; `npm run data` runs both, and the build goes on without them if they fail):
    - **Fetch** the published file into `var/raw/osm-cycling/<area>/`, unless it's there already, checked against the pointer's sha256 (`CYCLING_OSM_FROM` names another data root).
-   - **Classify** each way, keep bike parking, and note each way's bike route relations (`CyclingNetworkBuilder`), reading the gzipped OPL as it streams: 0.6 GB of memory for BC, 1.4 GB for Canada.
-   - **Tile** with tippecanoe: `cyclingTileFeatures`, then `var/public/tiles/transitopia-cycling-<area>.pmtiles`, served locally at `/dev-data/tiles/`. Nothing is dropped to fit tile limits; features with the same attributes and no id are coalesced.
+   - **Classify** each way, keep bike parking, and note each way's bike route relations and every bike route's ways (`CyclingNetworkBuilder`), reading the gzipped OPL as it streams: 0.6 GB of memory for BC, 1.4 GB for Canada.
+   - **Tile** with tippecanoe: `cyclingTileFeatures`. Nothing is dropped to fit tile limits; features with the same attributes and no id are coalesced.
+   - **Write** the [published files](#published-files) to `var/public/data/cycling/<area>/` (served locally at `/dev-data/data/cycling/<area>/`), removing those the new index doesn't name.
 
-The tiles take a few seconds to build from the OSM file, and need tippecanoe 2.17 or later (`TIPPECANOE` names it when it isn't on the PATH); the OSM file takes about 30 s more, plus the download, and needs osmium-tool (`brew install osmium-tool`, `apt install osmium-tool`; `OSMIUM`). The workflow publishes the tiles daily too ([deployment → Map tiles](../../deployment/README.md#map-tiles-map-tilestransitopiaorg)).
+The tiles take a few seconds to build from the OSM file, and need tippecanoe 2.17 or later (`TIPPECANOE` names it when it isn't on the PATH); the OSM file takes about 30 s more, plus the download, and needs osmium-tool (`brew install osmium-tool`, `apt install osmium-tool`; `OSMIUM`). The workflow builds the tiles too, as a check, but doesn't publish them.
 
 `OSM_FILTERS` runs in the workflow, before classification, so a rule that reads a new tag needs the filters to keep it (`test/filters.test.ts` checks a way for each rule); the published file has it from the workflow's next run (or run the workflow by hand, or `npm run extract:cycling-osm` locally).
 
@@ -61,8 +63,23 @@ One layer, `transitopia_cycling`, zooms 6–14:
 |---|---|---|---|
 | 13–14 | Paths and lanes: chains of ways with every property | `osmFeatureId("way", <the chain's lowest way id>)` | `CyclingWayProperties`: the classification, plus `name`, `surface`, `routes` (relation ids, ascending, comma-separated) |
 | 6–12 | Paths and lanes, joined by what's drawn | none | The classification only |
-| 12–14 | Bike parking | `osmFeatureId("node"\|"way", …)` | `amenity`, `name`, `osmNodeId` or `osmWayId` |
+| 12–14 | Bike parking | `osmFeatureId("node"\|"way", …)` | `BikeParkingProperties`: `amenity`, `name`, its details (`bicycle_parking`, `capacity`, `covered`, `indoor`, `operator`), `osmNodeId` or `osmWayId` |
 
 - **Ids** are `id × 10 + 1, 2 or 3` for a node, way or relation, so a path's and a bike rack's never collide. Below z13 there's nothing to select, so there are no ids, and tippecanoe coalesces lines with the same properties in a tile.
 - **The widest views aren't crumbs, and paths don't break up**: below z13 the ways are joined into chains by what's drawn, and a chain shows from the zoom at which its group (the chains with the same properties connected to it) is at least a pixel long (`MIN_PX`). A long path made of short ways or broken by junctions shows whole, and only short, isolated pieces wait for closer zooms. (The Planetiler profile dropped each way under a pixel long, which left gaps in long paths made of short ways.)
+- **Bike parking carries its details**, so the site's card needs nothing from the OSM API ([docs/DESIGN.md](../../docs/DESIGN.md), principle 3). They're small: 65 KB on BC's 5.3 MB of tiles (7,373 bike parking, measured 2026-10-27), so they're at every zoom bike parking shows. `capacity` is kept only where it's a plain number, and `covered` and `indoor` are true for any value but `no` (`partial`, `room`, …).
 - The site's styles (`apps/web/src/CyclingMap/cycling-map-layers.ts`) filter on `comfort`, `class`, `construction` and `oneway`, and its cards (`BikeRouteCard`, `BikeParkingCard`) read the other properties.
+
+## Published files
+
+The server's data build publishes them with the transit data at `https://data.transitopia.org/data/cycling/<area>/` ([deployment → Transit data](../../deployment/README.md#transit-data-datatransitopiaorg)), and the site reads them from there (`apps/web/src/CyclingMap/cycling-data.ts`):
+
+| File | What | Cached |
+|---|---|---|
+| `index.json` | `CyclingIndex`: the current tiles and bike routes (paths relative to it), the OSM file they're from and its timestamp, and when they were built | 5 minutes, and uploaded after the files it names |
+| `tiles/<hash>.pmtiles` | The [tiles](#tiles), read by range requests through the pmtiles protocol | a day |
+| `routes/<hash>.json` | `CyclingRoutes`: each bike route by relation id (the ids in a path's `routes`), with its `name`, `ref`, `network` (`lcn`, `rcn`, `ncn`, `icn`), `subroutes` (the bike routes it contains), `bbox` and `lengthM` | a day |
+
+- **Named by their content**, so a name always means the same file and a client holding an older index still finds what it names. The tiles' hash is of their input (the features as tippecanoe reads them, and `TILES_FORMAT` in `pipelines/build-cycling.ts`): tippecanoe's output differs from one run to the next, since its metadata names its temporary input file. Files the index no longer names are deleted from the bucket after two weeks.
+- **A route's `bbox` and `lengthM`** are of its ways and its subroutes', each way counted once (a route with a way per direction counts both), and only the ways in the area: the ways a route relation names come with it in the OSM file, whether or not they're cycling facilities. A route none of whose ways are in the area has no `bbox`. BC has 964 bike routes, 120 KB.
+- **Nothing here needs a feature ID** (issue #229, phase 5): routes are keyed by their OSM relation id.

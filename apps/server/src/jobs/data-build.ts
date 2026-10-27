@@ -3,13 +3,25 @@
 // the confirmed corrections exported from the database, then archives new GTFS feeds, reconciles
 // them into the feature registry (docs/DESIGN.md#feature-ids) and publishes
 // var/public/data for data.transitopia.org. Building here keeps the live dispatcher's base plans
-// identical to what browsers load: a dispatch patch only fits the build it was made from.
+// identical to what browsers load: a dispatch patch only fits the build it was made from. The
+// cycling map's files are built and published with it (packages/cycling-core/README.md#published-files).
 
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import { CORRECTIONS_EXPORT_DIR, ROOT } from "@transitopia/data/paths.ts";
+import {
+  CORRECTIONS_EXPORT_DIR,
+  ROOT,
+  cyclingPaths,
+  readCyclingConfig,
+  readJson,
+} from "@transitopia/data/paths.ts";
+import {
+  CYCLING_INDEX,
+  cyclingDataPath,
+  type CyclingIndex,
+} from "@transitopia/cycling-core/published.ts";
 import type { FeedInfo } from "@transitopia/transit-core/config.ts";
 import { archivedFeeds } from "@transitopia/data/gtfs-day.ts";
 import type { Db } from "@transitopia/db/connect.ts";
@@ -95,6 +107,9 @@ export async function buildData(opts: {
     await publishData(env.dataPublishRemote, { log });
     published = true;
     log(`published transit data to ${env.dataPublishRemote}`);
+    await pruneCycling(env.dataPublishRemote).catch((e: unknown) =>
+      log(`removing old cycling files failed: ${(e as Error).message}`),
+    );
   }
   // The overview replaces the day before's: the tile worker serves its tiles for a day.
   let overviewPublished = false;
@@ -115,6 +130,32 @@ export async function buildData(opts: {
     published,
     overviewPublished,
   };
+}
+
+/** Days a published cycling file stays after its index stops naming it, for clients holding an older index. */
+const CYCLING_KEEP_DAYS = 14;
+
+/**
+ * Remove the published cycling files the index no longer names, once they're CYCLING_KEEP_DAYS old
+ * (uploads copy, so they'd stay for good: a day's tiles are about 5 MB). The current ones are kept
+ * whatever their age, since a file built again with the same content isn't uploaded again.
+ */
+async function pruneCycling(remote: string): Promise<void> {
+  const { area } = await readCyclingConfig();
+  const index = await readJson<CyclingIndex>(
+    `${cyclingPaths(area.id).out}/${CYCLING_INDEX}`,
+  ).catch(() => undefined);
+  if (!index) return;
+  await run("rclone", [
+    "delete",
+    `${remote}/${cyclingDataPath(area.id)}`,
+    ...[CYCLING_INDEX, index.tiles, index.routes].flatMap((f) => [
+      "--exclude",
+      `/${f}`,
+    ]),
+    "--min-age",
+    `${CYCLING_KEEP_DAYS}d`,
+  ]);
 }
 
 /** Write every feed's places files (those that changed) and the day's public export from the registry. */

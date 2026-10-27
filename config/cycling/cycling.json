@@ -1,7 +1,7 @@
 {
   "$comment": "The cycling map (packages/cycling-core/README.md): where its OSM data comes from and how ways are classified.",
   "area": {
-    "$id": "Names the tiles (transitopia-cycling-<id>.pmtiles) and the downloaded extracts (var/raw/osm-extracts/<id>/).",
+    "$id": "Names the published files (data/cycling/<id>/, data/osm/<id>/) and the downloaded extracts (var/raw/osm-extracts/<id>/).",
     "id": "british-columbia",
     "$extract": "Geofabrik's daily extract of the province, the same area as the basemap.",
     "extract": "https://download.geofabrik.de/north-america/canada/british-columbia-latest.osm.pbf"

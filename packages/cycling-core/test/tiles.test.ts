@@ -50,6 +50,51 @@ describe("CyclingNetworkBuilder", () => {
       },
     ]);
   });
+
+  it("keeps bike parking's details", () => {
+    const n = network([
+      "n1 Tamenity=bicycle_parking,bicycle_parking=wall_loops,capacity=12,covered=partial,indoor=no,operator=City x0 y0",
+      "n2 Tamenity=bicycle_parking,capacity=~10 x0 y0",
+    ]);
+    expect(n.parking.map((p) => p.properties)).toEqual([
+      {
+        amenity: "bicycle_parking",
+        bicycle_parking: "wall_loops",
+        capacity: 12,
+        covered: true,
+        indoor: false,
+        operator: "City",
+        osmNodeId: 1,
+      },
+      { amenity: "bicycle_parking", osmNodeId: 2 },
+    ]);
+  });
+
+  it("summarises bike routes: their ways and their subroutes', each once", () => {
+    const n = network([
+      ...OPL,
+      "r31 Ttype=route,route=bicycle,name=Greenway,network=rcn,ref=GW Mr30@,w12@,w10@,r99@",
+      "r32 Ttype=route,route=bicycle Mw404@",
+    ]);
+    const r30 = n.routes.get(30)!;
+    const r31 = n.routes.get(31)!;
+    const r32 = n.routes.get(32)!;
+    // w10 and w11, about 1.1 km each; w12, about 0.7 km at 49°.
+    expect(r30.lengthM).toBeGreaterThan(2200);
+    expect(r30.lengthM).toBeLessThan(2250);
+    expect(r30.bbox).toEqual([-123.1, 49.25, -123.1, 49.27]);
+    expect(r31).toMatchObject({
+      name: "Greenway",
+      network: "rcn",
+      ref: "GW",
+      subroutes: [30],
+      bbox: [-123.11, 49.25, -123.1, 49.27],
+    });
+    expect(r31.lengthM - r30.lengthM).toBeGreaterThan(700);
+    expect(r31.lengthM - r30.lengthM).toBeLessThan(750);
+    expect(r32).toEqual({ lengthM: 0 });
+    expect([...n.routes.keys()]).toEqual([30, 31, 32]);
+  });
 });
 
 describe("cyclingTileFeatures", () => {

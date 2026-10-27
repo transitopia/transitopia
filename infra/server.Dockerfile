@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
   && curl -fsSL -o /tmp/rclone.zip "https://downloads.rclone.org/v${RCLONE_VERSION}/rclone-v${RCLONE_VERSION}-linux-${ARCH}.zip" \
   && unzip -j /tmp/rclone.zip '*/rclone' -d /usr/local/bin
 
-# tippecanoe, for the plan and overview tiles (packages/transit-core/DESIGN.md#plan-tiles): built from
+# tippecanoe, for the plan and overview tiles (packages/transit-core/DESIGN.md#plan-tiles) and the cycling tiles: built from
 # source, since Debian's package is too old to write PMTiles.
 FROM node:26-slim AS tippecanoe
 # Keep in step with .github/actions/setup-tippecanoe.
