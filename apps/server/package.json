@@ -15,6 +15,7 @@
     "@transitopia/data": "*",
     "@transitopia/db": "*",
     "@transitopia/config": "*",
+    "@transitopia/cycling-core": "*",
     "@transitopia/shared": "*",
     "@transitopia/transit-core": "*",
     "gtfs-realtime-bindings": "^2.2.0",

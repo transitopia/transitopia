@@ -22,6 +22,7 @@ import {
   type OperatorInfo,
   type RegionInfo,
 } from "@transitopia/transit-core/config.ts";
+import { cyclingDataPath } from "@transitopia/cycling-core/published.ts";
 import {
   feedDataPath,
   regionDataPath,
@@ -93,13 +94,13 @@ export function cyclingPaths(area: string): {
   extracts: string;
   /** var/raw/osm-cycling/<area>/: what osmium keeps for the cycling map (<date>.opl.gz, latest.json). */
   osm: string;
-  /** The tiles (packages/cycling-core/README.md#tiles), served locally at /dev-data/tiles/. */
-  tiles: string;
+  /** Published: index.json, tiles/<hash>.pmtiles, routes/<hash>.json (packages/cycling-core/README.md#published-files). */
+  out: string;
 } {
   return {
     extracts: join(RAW_DIR, "osm-extracts", area),
     osm: join(RAW_DIR, "osm-cycling", area),
-    tiles: join(PUBLIC_DIR, "tiles", `transitopia-cycling-${area}.pmtiles`),
+    out: join(PUBLIC_DIR, cyclingDataPath(area)),
   };
 }
 

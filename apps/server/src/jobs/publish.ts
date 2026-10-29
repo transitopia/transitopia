@@ -29,7 +29,9 @@ const isCompressed = (name: string) =>
   COMPRESSED_EXTENSIONS.some((ext) => name.endsWith(`.${ext}`));
 
 /** Files clients poll to find the current version of the rest: published last, with a short cache. */
-const POINTERS = ["manifest.json", "places.json", "latest.json"];
+const POINTERS = ["manifest.json", "places.json", "latest.json", "index.json"];
+/** Pointers to a build's files, which only a whole publish uploads (a partial one may not have their files). */
+const BUILD_POINTERS = ["manifest.json", "index.json"];
 
 /**
  * Compressions at once in the server. They run on libuv's thread pool (4 threads by default), which
@@ -149,7 +151,7 @@ export async function publishData(
   { include, log, concurrency }: PublishOptions = {},
 ): Promise<void> {
   const pointers =
-    include ? POINTERS.filter((p) => p !== "manifest.json") : POINTERS;
+    include ? POINTERS.filter((p) => !BUILD_POINTERS.includes(p)) : POINTERS;
   const staged = await stageCompressed(PUBLIC_DATA_DIR, PUBLISH_DATA_DIR, {
     include: include && [...include, ...pointers],
     concurrency,

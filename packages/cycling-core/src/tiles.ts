@@ -38,10 +38,19 @@ export type CyclingWayProperties = WayClass & {
   routes?: string;
 };
 
-/** Bike parking in the tiles: an OSM node, or the centre of an OSM way around an area. */
+/** Bike parking in the tiles: an OSM node, or the centre of an OSM way around an area, with its details. */
 export type BikeParkingProperties = {
   amenity: "bicycle_parking";
   name?: string;
+  /** OSM's `bicycle_parking`: the kind of parking (stands, wall_loops, lockers, …). */
+  bicycle_parking?: string;
+  /** Bikes it holds (only where OSM's `capacity` is a plain number). */
+  capacity?: number;
+  /** OSM's `covered`: anything but "no" (partial, …) is true. */
+  covered?: boolean;
+  /** OSM's `indoor`: anything but "no" (room, area, …) is true. */
+  indoor?: boolean;
+  operator?: string;
   osmNodeId?: number;
   osmWayId?: number;
 };

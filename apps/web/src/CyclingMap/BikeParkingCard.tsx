@@ -1,14 +1,12 @@
 import React from "react";
 
-import { useOsmFeature } from "../OSMData/osm-data-loader.ts";
-import { bikeParkingSchema } from "../OSMData/osm-cycling.ts";
-import { OsmFeatureType } from "../OSMData/osm-types.ts";
 import {
   CardRow,
   CardSection,
   InfoCard,
   type CardAction,
 } from "../components/InfoCard.tsx";
+import type { MapParkingElement } from "../Map/MapData.ts";
 import { BIKE_TILE } from "./BikeRouteCard.tsx";
 
 /** OSM's bicycle_parking values, in words ("wide_stands" → "Wide stands"). */
@@ -23,19 +21,14 @@ const yesNo = (v: boolean | undefined) =>
   : "No";
 
 /**
- * Bike parking (apps/web/README.md#feature-cards): details loaded on demand from the OSM API.
+ * Bike parking (apps/web/README.md#feature-cards), with its details from the cycling tiles.
  * Ignores the map's time: OSM has no history.
  */
 export const BikeParkingCard: React.FC<{
-  featureType: typeof OsmFeatureType.Node | typeof OsmFeatureType.Way;
-  osmId: number;
+  feature: MapParkingElement;
   onCentre: () => void;
   onClose: () => void;
-}> = ({ featureType, osmId, onCentre, onClose }) => {
-  const { data, error } = useOsmFeature(featureType, osmId, bikeParkingSchema);
-  React.useEffect(() => {
-    if (error) console.warn("OpenStreetMap loading error:", error);
-  }, [error]);
+}> = ({ feature: f, onCentre, onClose }) => {
   const actions: CardAction[] = [
     {
       id: "centre",
@@ -44,13 +37,15 @@ export const BikeParkingCard: React.FC<{
       onSelect: onCentre,
     },
   ];
-  const type = data?.bicycleParkingType && parkingType(data.bicycleParkingType);
+  const type = f.bicycle_parking && parkingType(f.bicycle_parking);
+  const osm =
+    f.osmWayId === undefined ? `node/${f.osmNodeId}` : `way/${f.osmWayId}`;
   return (
     <InfoCard
       tile={{ text: "P", ...BIKE_TILE }}
       eyebrow="Bike parking"
-      title={data?.name ?? "Bicycle parking"}
-      subtitle={data?.operator}
+      title={f.name ?? "Bicycle parking"}
+      subtitle={f.operator}
       chips={type ? [{ label: type }] : undefined}
       actions={actions}
       onClose={onClose}
@@ -58,7 +53,7 @@ export const BikeParkingCard: React.FC<{
         <>
           <p>From OpenStreetMap.</p>
           <a
-            href={`https://www.openstreetmap.org/${featureType}/${osmId}`}
+            href={`https://www.openstreetmap.org/${osm}`}
             target="_blank"
             rel="noreferrer"
             className="mt-1 inline-block font-bold text-(--card-link)">
@@ -67,28 +62,22 @@ export const BikeParkingCard: React.FC<{
         </>
       }>
       <CardSection title="Details">
-        {data ?
-          <>
-            <CardRow
-              label="Capacity"
-              value={data.capacity ? `${data.capacity} bikes` : "Unknown"}
-              muted={!data.capacity}
-            />
-            <CardRow label="Type" value={type ?? "Unknown"} muted={!type} />
-            <CardRow
-              label="Covered"
-              value={yesNo(data.covered)}
-              muted={data.covered === undefined}
-            />
-            <CardRow
-              label="Indoors"
-              value={yesNo(data.indoor)}
-              muted={data.indoor === undefined}
-            />
-          </>
-        : error ?
-          <CardRow label="Couldn't load the details from OpenStreetMap." />
-        : <CardRow label="Loading…" />}
+        <CardRow
+          label="Capacity"
+          value={f.capacity ? `${f.capacity} bikes` : "Unknown"}
+          muted={!f.capacity}
+        />
+        <CardRow label="Type" value={type ?? "Unknown"} muted={!type} />
+        <CardRow
+          label="Covered"
+          value={yesNo(f.covered)}
+          muted={f.covered === undefined}
+        />
+        <CardRow
+          label="Indoors"
+          value={yesNo(f.indoor)}
+          muted={f.indoor === undefined}
+        />
       </CardSection>
     </InfoCard>
   );

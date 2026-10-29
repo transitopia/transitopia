@@ -23,6 +23,7 @@ import {
 import { BikeParkingCard } from "./BikeParkingCard.tsx";
 import { BikeRouteCard } from "./BikeRouteCard.tsx";
 import { CyclingLayers, useCyclingShow } from "./CyclingLayers.tsx";
+import { useCyclingTiles } from "./cycling-data.ts";
 
 export const CyclingMap: React.FC = () => {
   const map = useMap();
@@ -33,10 +34,13 @@ export const CyclingMap: React.FC = () => {
   const [show, setShow] = useCyclingShow();
   const showRef = React.useRef(show);
   showRef.current = show;
+  const tiles = useCyclingTiles();
 
-  // Add the cycling layers to the map, again after a theme switch replaces the style:
+  // Add the tiles and the cycling layers to the map, again after a theme switch replaces the style:
   React.useEffect(() => {
-    if (!map) return;
+    if (!map || !tiles) return;
+    if (!map.getSource(mapSource))
+      map.addSource(mapSource, { type: "vector", url: tiles });
     const layers = cyclingLayers(theme, showRef.current);
     for (const layer of layers) {
       if (!map.getLayer(layer.id)) map.addLayer(layer);
@@ -54,7 +58,7 @@ export const CyclingMap: React.FC = () => {
         );
       }
     };
-  }, [map, theme, styleGeneration]);
+  }, [map, theme, styleGeneration, tiles]);
 
   // What the layers panel shows: filter the layers in place.
   React.useEffect(() => {
@@ -220,19 +224,11 @@ export const CyclingMap: React.FC = () => {
           onClose={closeInfobox}
         />
       : selectedFeature?.type === "bicycle_parking" ?
-        (() => {
-          const way = selectedFeature.osmWayId;
-          const id = way ?? selectedFeature.osmNodeId;
-          return id !== undefined ?
-              <BikeParkingCard
-                key={id}
-                featureType={way === undefined ? "node" : "way"}
-                osmId={id}
-                onCentre={centre}
-                onClose={closeInfobox}
-              />
-            : null;
-        })()
+        <BikeParkingCard
+          feature={selectedFeature}
+          onCentre={centre}
+          onClose={closeInfobox}
+        />
       : null}
     </>
   );
