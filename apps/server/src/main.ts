@@ -23,6 +23,7 @@ import { PgLeaderLock } from "./leader.ts";
 import { CorrectionsRepo } from "./corrections.ts";
 import { Auth } from "./auth.ts";
 import { createApp } from "./app.ts";
+import { cyclingFeatures } from "./features/cycling.ts";
 import { Jobs } from "./jobs/scheduler.ts";
 import { syncSources } from "./sources.ts";
 
@@ -127,6 +128,7 @@ const app = createApp({
   repo,
   jobs,
   diskPath: VAR_DIR,
+  cycling: cyclingFeatures(),
 });
 const server = serve({ fetch: app.fetch, port: env.port }, (info) => {
   log(

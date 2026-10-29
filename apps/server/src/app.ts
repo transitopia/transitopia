@@ -10,6 +10,7 @@ import { statfs } from "node:fs/promises";
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { isServiceDate } from "@transitopia/transit-core/time.ts";
+import { formatKey, parseKey } from "@transitopia/shared/features.ts";
 import {
   featureDetail,
   mergeFeatures,
@@ -58,6 +59,7 @@ import { originAllowed, type ServerEnv } from "./env.ts";
 import type { CorrectionsRepo } from "./corrections.ts";
 import type { Jobs } from "./jobs/scheduler.ts";
 import { serverConfig } from "./config.ts";
+import type { FindCyclingFeature } from "./features/cycling.ts";
 
 export interface AppDeps {
   service: RtService;
@@ -68,6 +70,8 @@ export interface AppDeps {
   jobs?: Jobs | undefined;
   /** A directory on the disk /healthz watches (var/); none, no disk check. */
   diskPath?: string | undefined;
+  /** The cycling map's OSM features, for OSM refs the registry has no feature for (features/cycling.ts). */
+  cycling?: FindCyclingFeature | undefined;
 }
 
 type Env = { Variables: { user: SessionUser } };
@@ -112,12 +116,22 @@ export function createApp(deps: AppDeps): Hono<Env> {
       "Access-Control-Allow-Origin": "*",
       "Cache-Control": "public, max-age=3600",
     };
-    if (!db) return c.json({ error: "No feature registry" }, 503, headers);
+    const key = c.req.param("key");
+    const k = parseKey(key);
+    const osm = k?.form === "ref" && k.scheme.startsWith("osm-");
+    if (!db && !osm)
+      return c.json({ error: "No feature registry" }, 503, headers);
     const date = c.req.query("date");
     if (date !== undefined && !isServiceDate(date))
       return c.json({ error: "date is YYYYMMDD" }, 400, headers);
-    const r = await resolveKey(db, c.req.param("key"), date);
-    if (r === "unminted") return c.json({ unminted: true }, 404, headers);
+    const r = db ? await resolveKey(db, key, date) : "unminted";
+    if (r === "unminted") {
+      // No ID yet: the cycling map's latest build may still know where it is.
+      const f = await deps.cycling?.(key);
+      return f ?
+          c.json({ unminted: true, ...f, refs: [formatKey(k!)] }, 200, headers)
+        : c.json({ unminted: true }, 404, headers);
+    }
     if (!r) return c.json({ error: "Unknown feature" }, 404, headers);
     return c.json(r, 200, headers);
   });

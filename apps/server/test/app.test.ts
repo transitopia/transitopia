@@ -110,3 +110,41 @@ describe("diskCheck", () => {
     expect(diskCheck(c, 0.8).ok).toBe(false);
   });
 });
+
+describe("the feature resolver", () => {
+  const app = createApp({
+    service: { handle: async () => ({ status: 404, headers: {}, body: "" }) },
+    auth: {},
+    env: { allowedOrigins: [] },
+    cycling: async (key: string) =>
+      key === "osm-way:10" ?
+        {
+          kind: "cycling-way",
+          name: "Seaside",
+          centroid: [-123.1, 49.26],
+          bbox: [-123.1, 49.25, -123.1, 49.27],
+        }
+      : undefined,
+  } as unknown as AppDeps);
+
+  it("answers an OSM ref from the cycling map without a registry", async () => {
+    const r = await app.request("/features/osm-way:10");
+    expect(r.status).toBe(200);
+    expect(r.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(await r.json()).toEqual({
+      unminted: true,
+      kind: "cycling-way",
+      name: "Seaside",
+      centroid: [-123.1, 49.26],
+      bbox: [-123.1, 49.25, -123.1, 49.27],
+      refs: ["osm-way:10"],
+    });
+    const unknown = await app.request("/features/osm-way:11");
+    expect(unknown.status).toBe(404);
+    expect(await unknown.json()).toEqual({ unminted: true });
+  });
+
+  it("needs the registry for everything else", async () => {
+    expect((await app.request("/features/sn-k3v9qd7m")).status).toBe(503);
+  });
+});
