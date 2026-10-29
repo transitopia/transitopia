@@ -7,10 +7,10 @@ import {
   osmRef,
 } from "../src/CyclingMap/cycling-select.ts";
 
-// Tile features as MapLibre gives them: a path (a chain of ways 12, 7 and 30) and bike parking.
+// Tile features as MapLibre gives them: a path (a chain whose first way by id is 7) and bike parking.
 const path = {
   id: osmFeatureId("way", 7),
-  properties: { class: "track", comfort: 4, osmWayIds: "12,7,30" },
+  properties: { class: "track", comfort: 4 },
 };
 const rack = {
   id: osmFeatureId("node", 100),
@@ -28,14 +28,9 @@ const roundTrip = (f: typeof path | typeof rack | typeof area) => {
 };
 
 describe("?select= on /cycling", () => {
-  it("round-trips a path by its first way by id, and finds it by any of its ways", () => {
+  it("round-trips a path by its first way by id (the resolver finds the others)", () => {
     expect(roundTrip(path)).toEqual({ key: "osm-way:7", found: true });
-    expect(elementMatches(osmRef("osm-way:30")!, path)).toBe(true);
-    expect(elementMatches(osmRef("osm-way:31")!, path)).toBe(false);
-    // Tiles built before paths carried their ways: the first way, by the feature id.
-    expect(
-      elementMatches(osmRef("osm-way:7")!, { ...path, properties: {} }),
-    ).toBe(true);
+    expect(elementMatches(osmRef("osm-way:30")!, path)).toBe(false);
   });
 
   it("round-trips bike parking, a node or an area", () => {

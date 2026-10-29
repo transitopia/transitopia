@@ -1,7 +1,8 @@
 // What's selected on /cycling, as a feature key in ?select= (apps/web/README.md#cycling-links): OSM
 // refs until cycling features have IDs (issue #229): `osm-relation:<id>` a bike route,
-// `osm-way:<id>` a path or lane (any of its chain's ways) or bike parking mapped as an area,
-// `osm-node:<id>` bike parking.
+// `osm-way:<id>` a path or lane (its chain's first way by id, as its tile id is; the feature
+// resolver finds a path by any of its ways) or bike parking mapped as an area, `osm-node:<id>` bike
+// parking.
 
 import {
   CYCLING_LAYER,
@@ -38,17 +39,19 @@ export function keyOfElement(f: CyclingElement): string {
   return `osm-way:${Math.floor(Number(f.id) / 10)}`;
 }
 
-/** Whether a tile feature is what an `osm-way` or `osm-node` ref names. */
+/**
+ * Whether a tile feature is what an `osm-way` or `osm-node` ref names: by its tile id, so a path only
+ * by its first way.
+ */
 export function elementMatches(
   ref: FeatureRef,
-  f: { id?: string | number | undefined; properties: Record<string, unknown> },
+  f: { id?: string | number | undefined },
 ): boolean {
-  const id = Number(ref.value);
-  if (ref.scheme === "osm-node") return f.id === osmFeatureId("node", id);
-  if (ref.scheme !== "osm-way") return false;
-  if (f.id === osmFeatureId("way", id)) return true;
-  const ways = f.properties.osmWayIds;
-  return typeof ways === "string" && ways.split(",").includes(ref.value);
+  const type =
+    ref.scheme === "osm-node" ? "node"
+    : ref.scheme === "osm-way" ? "way"
+    : undefined;
+  return !!type && f.id === osmFeatureId(type, Number(ref.value));
 }
 
 /** A tile feature as a selected element. */

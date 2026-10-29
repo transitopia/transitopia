@@ -36,8 +36,6 @@ export type CyclingWayProperties = WayClass & {
   surface?: string;
   /** The OSM bike route relations it's part of, ids in ascending order, comma-separated; from CYCLING_DETAIL_ZOOM. */
   routes?: string;
-  /** Its OSM ways, in order along it, comma-separated; on chains from CYCLING_DETAIL_ZOOM (`?select=osm-way:<id>`). */
-  osmWayIds?: string;
 };
 
 /** Bike parking in the tiles: an OSM node, or the centre of an OSM way around an area, with its details. */
@@ -147,9 +145,8 @@ export function detailChains(
   return joinChains(ways, keyOf, isDirected);
 }
 
-/** A chain's tile feature id: its first way by id. */
-export const chainFeatureId = (c: Chain<unknown>) =>
-  osmFeatureId("way", Math.min(...c.wayIds));
+/** A chain's first way by id: its tile feature id's (and `?select=osm-way:<id>`'s) way. */
+export const chainWayId = (c: Chain<unknown>) => Math.min(...c.wayIds);
 
 /** Every feature of the cycling tiles, for tippecanoe. `chains` are `ways`' detail chains. */
 export function* cyclingTileFeatures(
@@ -157,12 +154,12 @@ export function* cyclingTileFeatures(
   parking: readonly BikeParking[],
   chains: readonly Chain<CyclingWayProperties>[] = detailChains(ways),
 ): Generator<TileFeature> {
-  // Detail: whole chains with every attribute, their OSM ways, and an id.
+  // Detail: whole chains with every attribute, and an id.
   for (const c of chains)
     yield {
       type: "Feature",
-      id: chainFeatureId(c),
-      properties: { ...c.attrs, osmWayIds: c.wayIds.join(",") },
+      id: osmFeatureId("way", chainWayId(c)),
+      properties: c.attrs,
       geometry: { type: "LineString", coordinates: c.coords },
       tippecanoe: { layer: CYCLING_LAYER, minzoom: CYCLING_DETAIL_ZOOM },
     };

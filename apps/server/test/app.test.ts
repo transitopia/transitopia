@@ -119,6 +119,7 @@ describe("the feature resolver", () => {
     cycling: async (key: string) =>
       key === "osm-way:10" ?
         {
+          key: "osm-way:9",
           kind: "cycling-way",
           name: "Seaside",
           centroid: [-123.1, 49.26],
@@ -133,6 +134,7 @@ describe("the feature resolver", () => {
     expect(r.headers.get("Access-Control-Allow-Origin")).toBe("*");
     expect(await r.json()).toEqual({
       unminted: true,
+      key: "osm-way:9",
       kind: "cycling-way",
       name: "Seaside",
       centroid: [-123.1, 49.26],

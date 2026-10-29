@@ -3,7 +3,11 @@
 // `osm-relation:<id>`) → its kind, name and extent, from the latest build, so a link works without
 // the map's position and without calling OSM. Written beside the published files, not published.
 
-import type { BikeParking, CyclingWayProperties } from "./tiles.ts";
+import {
+  chainWayId,
+  type BikeParking,
+  type CyclingWayProperties,
+} from "./tiles.ts";
 import type { Chain, LonLat } from "./chains.ts";
 import type { CyclingRoutes } from "./published.ts";
 import { parseKey } from "@transitopia/shared/features.ts";
@@ -13,8 +17,11 @@ export type BBox = [number, number, number, number];
 
 /** lookup.json. */
 export interface CyclingLookup {
-  /** The paths and lanes the tiles carry from CYCLING_DETAIL_ZOOM, with their extent. */
-  chains: { bbox: BBox; name?: string }[];
+  /**
+   * The paths and lanes the tiles carry from CYCLING_DETAIL_ZOOM: their first way by id (their tile
+   * id's), extent and name.
+   */
+  chains: { way: number; bbox: BBox; name?: string }[];
   /** OSM way id → its chain (an index in `chains`). */
   ways: Record<string, number>;
   /** Bike parking by OSM ref (`osm-node:<id>`, `osm-way:<id>`). */
@@ -23,6 +30,11 @@ export interface CyclingLookup {
 
 /** A cycling feature an OSM ref names. */
 export interface CyclingFeature {
+  /**
+   * The key the site writes for it, and finds it by in the tiles: for a path, its chain's first way
+   * by id, whichever of its ways the ref named (packages/cycling-core/README.md#lookup).
+   */
+  key: string;
   kind: "cycling-route" | "cycling-way" | "bike-parking";
   name: string | null;
   centroid: LonLat;
@@ -53,6 +65,7 @@ export function cyclingLookup(
   });
   return {
     chains: chains.map((c) => ({
+      way: chainWayId(c),
       bbox: bboxOf(c.coords),
       ...(c.attrs.name ? { name: c.attrs.name } : {}),
     })),
@@ -90,6 +103,7 @@ export function findCyclingFeature(
       const r = routes[k.value];
       return r?.bbox ?
           {
+            key: `osm-relation:${k.value}`,
             kind: "cycling-route",
             name: r.name ?? r.ref ?? null,
             centroid: centre(r.bbox),
@@ -102,6 +116,7 @@ export function findCyclingFeature(
       const p = lookup.parking[`${k.scheme}:${k.value}`];
       if (p)
         return {
+          key: `${k.scheme}:${k.value}`,
           kind: "bike-parking",
           name: p.name ?? null,
           centroid: p.lonLat,
@@ -111,6 +126,7 @@ export function findCyclingFeature(
       const chain = c === undefined ? undefined : lookup.chains[c];
       return chain ?
           {
+            key: `osm-way:${chain.way}`,
             kind: "cycling-way",
             name: chain.name ?? null,
             centroid: centre(chain.bbox),

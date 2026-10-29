@@ -62,14 +62,14 @@ One layer, `transitopia_cycling`, zooms 6–14:
 
 | Zooms | Features | Id | Properties |
 |---|---|---|---|
-| 13–14 | Paths and lanes: chains of ways with every property | `osmFeatureId("way", <the chain's lowest way id>)` | `CyclingWayProperties`: the classification, plus `name`, `surface`, `routes` (relation ids, ascending, comma-separated), `osmWayIds` (its OSM ways in order along it, comma-separated) |
+| 13–14 | Paths and lanes: chains of ways with every property | `osmFeatureId("way", <the chain's lowest way id>)` | `CyclingWayProperties`: the classification, plus `name`, `surface`, `routes` (relation ids, ascending, comma-separated) |
 | 6–12 | Paths and lanes, joined by what's drawn | none | The classification only |
 | 12–14 | Bike parking | `osmFeatureId("node"\|"way", …)` | `BikeParkingProperties`: `amenity`, `name`, its details (`bicycle_parking`, `capacity`, `covered`, `indoor`, `operator`), `osmNodeId` or `osmWayId` |
 
 - **Ids** are `id × 10 + 1, 2 or 3` for a node, way or relation, so a path's and a bike rack's never collide. Below z13 there's nothing to select, so there are no ids, and tippecanoe coalesces lines with the same properties in a tile.
 - **The widest views aren't crumbs, and paths don't break up**: below z13 the ways are joined into chains by what's drawn, and a chain shows from the zoom at which its group (the chains with the same properties connected to it) is at least a pixel long (`MIN_PX`). A long path made of short ways or broken by junctions shows whole, and only short, isolated pieces wait for closer zooms. (The Planetiler profile dropped each way under a pixel long, which left gaps in long paths made of short ways.)
 - **Bike parking carries its details**, so the site's card needs nothing from the OSM API ([docs/DESIGN.md](../../docs/DESIGN.md), principle 3). They're small: 65 KB on BC's 5.3 MB of tiles (7,373 bike parking, measured 2026-10-27), so they're at every zoom bike parking shows. `capacity` is kept only where it's a plain number, and `covered` and `indoor` are true for any value but `no` (`partial`, `room`, …).
-- **`osmWayIds`** let a link name a path by any of its ways (`?select=osm-way:<id>`, [apps/web → Cycling links](../../apps/web/README.md#cycling-links)). They add 0.8 MB to BC's tiles (5.4 → 6.2 MB, measured 2026-10-29), spread over the z13–14 tiles.
+- **A path's OSM ways aren't in the tiles**, only its first by id (in its id). A link naming another of its ways goes through the [lookup](#lookup), which gives the first. Carrying every way id would have added 0.8 MB to BC's tiles (5.4 → 6.2 MB, measured 2026-10-29) for links the site doesn't write.
 - The site's styles (`apps/web/src/CyclingMap/cycling-map-layers.ts`) filter on `comfort`, `class`, `construction` and `oneway`, and its cards (`BikeRouteCard`, `BikeParkingCard`) read the other properties.
 
 ## Published files
@@ -88,4 +88,4 @@ The server's data build publishes them with the transit data at `https://data.tr
 
 ## Lookup
 
-The feature resolver ([apps/server → Feature resolver](../../apps/server/README.md#feature-resolver)) answers OSM refs from the latest build, so a link to a path or bike parking works without the map's position and without calling OSM. `build-cycling` writes `var/cycling/<area>/lookup.json` (`CyclingLookup`, not published: 2.9 MB for BC): each detail chain's bbox and name, each OSM way's chain, and each bike parking's position and name by ref. `findCyclingFeature` reads it, and the bike routes file for `osm-relation:` refs.
+The feature resolver ([apps/server → Feature resolver](../../apps/server/README.md#feature-resolver)) answers OSM refs from the latest build, so a link to a path or bike parking works without the map's position and without calling OSM. `build-cycling` writes `var/cycling/<area>/lookup.json` (`CyclingLookup`, not published: 2.9 MB for BC): each detail chain's first way by id, bbox and name, each OSM way's chain, and each bike parking's position and name by ref. `findCyclingFeature` reads it, and the bike routes file for `osm-relation:` refs. Its answer's `key` is how the tiles know the feature: for a path, `osm-way:<its first way>`, whichever of its ways was asked for, so a link stays good when an edit regroups the ways into chains (the way it names must still be a cycling way).

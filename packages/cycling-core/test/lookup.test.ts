@@ -23,8 +23,9 @@ const routes: CyclingRoutes = {
 const find = (key: string) => findCyclingFeature(key, lookup, routes);
 
 describe("findCyclingFeature", () => {
-  it("finds a path's chain by any of its ways", () => {
+  it("finds a path's chain by any of its ways, keyed by its first", () => {
     const chain = {
+      key: "osm-way:10",
       kind: "cycling-way",
       name: "Seaside",
       centroid: [-123.105, 49.26],
@@ -36,12 +37,14 @@ describe("findCyclingFeature", () => {
 
   it("finds bike parking by node, or by the way around it", () => {
     expect(find("osm-node:100")).toEqual({
+      key: "osm-node:100",
       kind: "bike-parking",
       name: "Rack",
       centroid: [-123.1, 49.25],
       bbox: [-123.1, 49.25, -123.1, 49.25],
     });
     expect(find("osm-way:20")).toMatchObject({
+      key: "osm-way:20",
       kind: "bike-parking",
       name: null,
       centroid: [0.5, 0.5],
@@ -50,6 +53,7 @@ describe("findCyclingFeature", () => {
 
   it("finds bike routes in the routes file, if any of their ways are in the area", () => {
     expect(find("osm-relation:40")).toEqual({
+      key: "osm-relation:40",
       kind: "cycling-route",
       name: "Greenway",
       centroid: [-123.1, 49.25],

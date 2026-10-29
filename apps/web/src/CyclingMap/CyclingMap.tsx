@@ -90,16 +90,21 @@ const whenIdle = (map: MapType) =>
     else map.once("idle", () => resolve());
   });
 
-/** Where the feature resolver (apps/server/README.md#feature-resolver) says a key is, if it knows. */
-async function resolve(
-  key: string,
-): Promise<{ kind: FeatureKind; bbox: BBox | null } | undefined> {
+/**
+ * What the feature resolver (apps/server/README.md#feature-resolver) knows of a key: its kind,
+ * where it is, and for an OSM feature without an ID the key the tiles find it by (a path's first way).
+ */
+interface Resolved {
+  kind: FeatureKind;
+  bbox: BBox | null;
+  key?: string;
+}
+
+async function resolve(key: string): Promise<Resolved | undefined> {
   if (!transitApi) return undefined;
   try {
     const r = await fetch(`${transitApi}features/${encodeURIComponent(key)}`);
-    return r.ok ?
-        ((await r.json()) as { kind: FeatureKind; bbox: BBox | null })
-      : undefined;
+    return r.ok ? ((await r.json()) as Resolved) : undefined;
   } catch {
     return undefined;
   }
@@ -170,8 +175,9 @@ export const CyclingMap: React.FC = () => {
     setSelected(s);
   }, []);
 
-  // A path or bike parking from the URL: in the tiles where the map is, else where the resolver
-  // says it is.
+  // A path or bike parking from the URL: in the tiles where the map is, else as the resolver says.
+  // The tiles know a path only by its first way; the resolver knows it by any of them, and gives
+  // the first (the key written back).
   React.useEffect(() => {
     if (!map || !tiles || !pending) return;
     const ref = osmRef(pending);
@@ -179,10 +185,9 @@ export const CyclingMap: React.FC = () => {
     let cancelled = false;
     void (async () => {
       await whenIdle(map);
+      let key = pending;
+      let moved = false;
       let found = ref && findLoaded(map, ref);
-      // Found in the default view of a link without a map position: go to it.
-      if (found && !openedWithPosition)
-        map.jumpTo({ center: found.at, zoom: Math.max(map.getZoom(), 16) });
       if (!found && !cancelled) {
         const f = await resolve(pending);
         if (cancelled) return;
@@ -190,18 +195,28 @@ export const CyclingMap: React.FC = () => {
           navigate(modeUrl("transit", pending), { replace: true });
           return;
         }
-        if (ref && f?.bbox) {
-          showBounds(map, f.bbox, false);
-          await whenIdle(map);
-          found = findLoaded(map, ref);
+        const target = f?.key ? osmRef(f.key) : ref;
+        if (target) {
+          if (f?.key) key = f.key;
+          found = findLoaded(map, target);
+          if (!found && f?.bbox) {
+            showBounds(map, f.bbox, false);
+            moved = true;
+            await whenIdle(map);
+            found = findLoaded(map, target);
+          }
         }
       }
       if (cancelled) return;
-      if (found) select({ kind: "element", key: pending, ...found });
-      else {
+      if (!found) {
         setPending(undefined);
         setNotFound(pending);
+        return;
       }
+      // Found in the default view of a link without a map position: go to it.
+      if (!openedWithPosition && !moved)
+        map.jumpTo({ center: found.at, zoom: Math.max(map.getZoom(), 16) });
+      select({ kind: "element", key, ...found });
     })();
     return () => {
       cancelled = true;
