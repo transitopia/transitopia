@@ -36,6 +36,8 @@ export type CyclingWayProperties = WayClass & {
   surface?: string;
   /** The OSM bike route relations it's part of, ids in ascending order, comma-separated; from CYCLING_DETAIL_ZOOM. */
   routes?: string;
+  /** Its OSM ways, in order along it, comma-separated; on chains from CYCLING_DETAIL_ZOOM (`?select=osm-way:<id>`). */
+  osmWayIds?: string;
 };
 
 /** Bike parking in the tiles: an OSM node, or the centre of an OSM way around an area, with its details. */
@@ -138,17 +140,29 @@ function groupLengths(
   return chains.map((_, i) => total.get(find(i))!);
 }
 
-/** Every feature of the cycling tiles, for tippecanoe. */
+/** The chains the tiles carry from CYCLING_DETAIL_ZOOM: ways joined where every attribute is the same. */
+export function detailChains(
+  ways: readonly ClassifiedWay<CyclingWayProperties>[],
+): Chain<CyclingWayProperties>[] {
+  return joinChains(ways, keyOf, isDirected);
+}
+
+/** A chain's tile feature id: its first way by id. */
+export const chainFeatureId = (c: Chain<unknown>) =>
+  osmFeatureId("way", Math.min(...c.wayIds));
+
+/** Every feature of the cycling tiles, for tippecanoe. `chains` are `ways`' detail chains. */
 export function* cyclingTileFeatures(
   ways: readonly ClassifiedWay<CyclingWayProperties>[],
   parking: readonly BikeParking[],
+  chains: readonly Chain<CyclingWayProperties>[] = detailChains(ways),
 ): Generator<TileFeature> {
-  // Detail: whole chains with every attribute, and an id.
-  for (const c of joinChains(ways, keyOf, isDirected))
+  // Detail: whole chains with every attribute, their OSM ways, and an id.
+  for (const c of chains)
     yield {
       type: "Feature",
-      id: osmFeatureId("way", Math.min(...c.wayIds)),
-      properties: c.attrs,
+      id: chainFeatureId(c),
+      properties: { ...c.attrs, osmWayIds: c.wayIds.join(",") },
       geometry: { type: "LineString", coordinates: c.coords },
       tippecanoe: { layer: CYCLING_LAYER, minzoom: CYCLING_DETAIL_ZOOM },
     };
@@ -158,10 +172,10 @@ export function* cyclingTileFeatures(
     for (const k of DETAIL_KEYS) delete attrs[k];
     return { ...w, attrs: attrs as WayClass };
   });
-  const chains = joinChains(drawn, keyOf, isDirected);
-  const px = chains.map((c) => pixelLength(c.coords));
-  const groupPx = groupLengths(chains, px);
-  for (const [i, c] of chains.entries()) {
+  const overview = joinChains(drawn, keyOf, isDirected);
+  const px = overview.map((c) => pixelLength(c.coords));
+  const groupPx = groupLengths(overview, px);
+  for (const [i, c] of overview.entries()) {
     const z = Math.max(
       CYCLING_MIN_ZOOM,
       Math.ceil(Math.log2(MIN_PX / groupPx[i]!)),

@@ -102,16 +102,33 @@ describe("cyclingTileFeatures", () => {
   const features = [...cyclingTileFeatures(n.ways, n.parking)];
   const lines = features.filter((f) => f.geometry.type === "LineString");
 
-  it("has whole chains with every attribute and an id from the detail zoom", () => {
+  it("has whole chains with every attribute, their OSM ways and an id from the detail zoom", () => {
     const detail = lines.filter(
       (f) => f.tippecanoe.minzoom === CYCLING_DETAIL_ZOOM,
     );
     expect(detail).toHaveLength(1);
     expect(detail[0]).toMatchObject({
       id: osmFeatureId("way", 10),
-      properties: { name: "Seaside", surface: "asphalt", routes: "30" },
+      properties: {
+        name: "Seaside",
+        surface: "asphalt",
+        routes: "30",
+        osmWayIds: "10,11",
+      },
       tippecanoe: { layer: CYCLING_LAYER },
     });
+  });
+
+  it("keeps a chain's OSM ways in order along it, whichever way they were drawn", () => {
+    // w3 is drawn against the others, and the chain starts at w2's end: none is first by id.
+    const n = network([
+      "w5 Thighway=cycleway Nn2x0y0.001,n3x0y0.002",
+      "w2 Thighway=cycleway Nn1x0y0,n2x0y0.001",
+      "w3 Thighway=cycleway Nn4x0y0.003,n3x0y0.002",
+    ]);
+    const [chain] = [...cyclingTileFeatures(n.ways, [])];
+    expect(chain!.id).toBe(osmFeatureId("way", 2));
+    expect(chain!.properties).toMatchObject({ osmWayIds: "2,5,3" });
   });
 
   it("has the chain below it without ids or details, from the zoom its group is a pixel long", () => {
@@ -127,6 +144,7 @@ describe("cyclingTileFeatures", () => {
     expect(overview[0]!.id).toBeUndefined();
     expect(overview[0]!.properties).not.toHaveProperty("name");
     expect(overview[0]!.properties).not.toHaveProperty("routes");
+    expect(overview[0]!.properties).not.toHaveProperty("osmWayIds");
   });
 
   it("shows a short chain as soon as the group it joins, and a lone one once it's a pixel long", () => {
