@@ -1,5 +1,35 @@
-import type React from "react";
+import React from "react";
 import { useLocation, useRoute } from "wouter";
+import {
+  modeOfKey,
+  parseKey,
+  type MapMode,
+} from "@transitopia/shared/features.ts";
+import { formatQuery } from "@transitopia/shared/url.ts";
+
+/**
+ * A mode's URL with a feature selected, at the same map position: where a key of the other mode
+ * goes (apps/web/README.md#modes-and-url-state).
+ */
+export function modeUrl(mode: MapMode, key: string): string {
+  return `/${mode}?${formatQuery(new URLSearchParams({ select: key }))}${location.hash}`;
+}
+
+/**
+ * On opening a mode with another mode's key in ?select= (a station on /cycling, bike parking's ID
+ * on /transit), go to that mode instead. OSM refs, which either mode's features may have, are left
+ * to the feature resolver.
+ */
+export function useOtherModeRedirect(mode: MapMode): void {
+  const [, navigate] = useLocation();
+  React.useEffect(() => {
+    const key = new URLSearchParams(location.search).get("select");
+    const k = key && parseKey(key);
+    const other = k && modeOfKey(k);
+    if (key && other && other !== mode)
+      navigate(modeUrl(other, key), { replace: true });
+  }, [mode, navigate]);
+}
 
 /**
  * Link to a mode (/transit, /cycling). The map position (#map=…) is shared by every mode, so it's

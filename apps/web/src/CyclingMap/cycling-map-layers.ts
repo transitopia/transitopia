@@ -135,9 +135,22 @@ export function cyclingFilters(
   };
 }
 
+/** The global state property naming the selected bike route's relation id (null for none). */
+export const SELECTED_ROUTE = "cyclingSelectedRoute";
+
+/**
+ * On the selected bike route: its id is one of a path's `routes` (comma-separated). Paths have
+ * routes only from CYCLING_DETAIL_ZOOM.
+ */
+const onSelectedRoute: ExpressionSpecification = [
+  "in",
+  ["concat", ",", ["coalesce", ["global-state", SELECTED_ROUTE], "none"], ","],
+  ["concat", ",", ["coalesce", ["get", "routes"], ""], ","],
+];
+
 /**
  * Helper: the resulting color should normally be 'color',
- * but make it salmon colored when hovered or selected.
+ * but make it salmon colored when hovered or selected, or on the selected route.
  */
 const colorWithHoverAndSelectionStates = (color: string) =>
   [
@@ -145,6 +158,8 @@ const colorWithHoverAndSelectionStates = (color: string) =>
     ["boolean", ["feature-state", "selected"], false],
     "rgba(200, 100, 100, 1)",
     ["boolean", ["feature-state", "hover"], false],
+    "rgba(200, 100, 100, 1)",
+    onSelectedRoute,
     "rgba(200, 100, 100, 1)",
     color,
   ] satisfies ExpressionSpecification;

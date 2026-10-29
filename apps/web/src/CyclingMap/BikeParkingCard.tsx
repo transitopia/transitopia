@@ -4,6 +4,7 @@ import {
   CardRow,
   CardSection,
   InfoCard,
+  shareLink,
   type CardAction,
 } from "../components/InfoCard.tsx";
 import type { MapParkingElement } from "../Map/MapData.ts";
@@ -35,6 +36,13 @@ export const BikeParkingCard: React.FC<{
       label: "Centre on map",
       icon: "crosshair",
       onSelect: onCentre,
+    },
+    {
+      id: "share",
+      label: "Share link",
+      icon: "share",
+      onSelect: () =>
+        shareLink(location.href, `${f.name ?? "Bike parking"} · Transitopia`),
     },
   ];
   const type = f.bicycle_parking && parkingType(f.bicycle_parking);
