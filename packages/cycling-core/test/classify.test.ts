@@ -321,6 +321,90 @@ describe("classifyWay", () => {
     ).toMatchObject({ comfort: 1, dooring_risk: true });
   });
 
+  it("takes any other road designated for bicycles as shared with traffic", () => {
+    // Nelson Avenue, West Vancouver (way 45678152).
+    expect(
+      classify({
+        highway: "tertiary",
+        bicycle: "designated",
+        maxspeed: "30",
+        oneway: "yes",
+      }),
+    ).toEqual({
+      class: "lane",
+      comfort: 3,
+      oneway: 1,
+      shared_with_pedestrians: false,
+      shared_with_vehicles: true,
+    });
+    expect(
+      classify({ highway: "motorway", bicycle: "designated", maxspeed: "100" }),
+    ).toMatchObject({ comfort: 1, shared_with_vehicles: true });
+    expect(
+      classify({ highway: "residential", bicycle: "designated" }),
+    ).toMatchObject({ comfort: 1 });
+    // Lanes on a designated road are still lanes.
+    expect(
+      classify({
+        highway: "tertiary",
+        bicycle: "designated",
+        "cycleway:right": "lane",
+        "cycleway:left": "no",
+      }),
+    ).toMatchObject({ side: "right", comfort: 2 });
+    expect(
+      classify({ highway: "steps", bicycle: "designated" }),
+    ).toBeUndefined();
+    // Its facility is mapped as its own way, or is a track on one side (not recognised yet).
+    expect(
+      classify({
+        highway: "tertiary",
+        bicycle: "designated",
+        oneway: "yes",
+        "cycleway:right": "separate",
+        "cycleway:left": "no",
+      }),
+    ).toBeUndefined();
+    expect(
+      classify({
+        highway: "secondary",
+        bicycle: "designated",
+        "cycleway:right": "track",
+        "cycleway:left": "lane",
+      }),
+    ).toBeUndefined();
+    expect(classify({ highway: "tertiary", bicycle: "yes" })).toBeUndefined();
+  });
+
+  it("takes a road designated for bicycles and closed to motor vehicles as a path", () => {
+    expect(
+      classify({
+        highway: "service",
+        bicycle: "designated",
+        motor_vehicle: "no",
+      }),
+    ).toEqual({
+      class: "track",
+      subclass: "path",
+      comfort: 4,
+      oneway: 0,
+      shared_with_pedestrians: false,
+      shared_with_vehicles: false,
+    });
+    expect(
+      classify({
+        highway: "living_street",
+        bicycle: "designated",
+        foot: "designated",
+        access: "no",
+      }),
+    ).toMatchObject({
+      class: "track",
+      comfort: 3,
+      shared_with_pedestrians: true,
+    });
+  });
+
   it("ignores roads without a cycling facility", () => {
     expect(classify({ highway: "residential" })).toBeUndefined();
     expect(

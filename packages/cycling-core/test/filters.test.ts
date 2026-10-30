@@ -57,6 +57,7 @@ const WAYS: Tags[] = [
     "cycleway:left": "shared_lane",
     "cycleway:right": "lane",
   },
+  { highway: "tertiary", bicycle: "designated" },
 ];
 
 describe("OSM_FILTERS", () => {
