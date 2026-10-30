@@ -92,7 +92,7 @@ export const BikePathCard: React.FC<{
   return (
     <InfoCard
       tile={{
-        icon: f.class === "ferry" ? "directions-boat" : "bicycle",
+        icon: f.class === "ferry" ? "ferry" : "bicycle",
         ...BIKE_TILE,
       }}
       eyebrow={f.class === "ferry" ? "Ferry" : "Bikeway"}
