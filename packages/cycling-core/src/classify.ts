@@ -1,7 +1,7 @@
 // What kind of cycling facility an OSM way is, and how comfortable it is to ride
 // (packages/cycling-core/README.md#classification). Ported from the Planetiler profile this
-// replaced (map-layers/…/layers/Cycling.java), rule for rule and in the same order: the first rule
-// that matches decides.
+// replaced (map-layers/…/layers/Cycling.java), rule for rule and in the same order, with footways,
+// bridleways and tracks since: the first rule that matches decides.
 
 import type { Config } from "@transitopia/transit-core/config.ts";
 import type { Tags } from "./osm.ts";
@@ -113,20 +113,52 @@ export function classifyWay(
     };
   }
   if (
-    has(t, "highway", "path", "pedestrian")
+    has(t, "highway", "path", "pedestrian", "footway", "bridleway")
     && has(t, "bicycle", "designated")
   ) {
+    // Pedestrian streets and footways (sidewalks included) are for pedestrians first, and
+    // bridleways for horses.
     const peds =
-      (has(t, "foot", "designated") || has(t, "highway", "pedestrian"))
+      (has(t, "foot", "designated")
+        || has(t, "highway", "pedestrian", "footway"))
       && !has(t, "segregated", "yes");
     return {
       class: "track",
       subclass: "path",
-      comfort: peds ? COMFORT.high : COMFORT.most,
+      comfort:
+        peds || has(t, "highway", "bridleway") ? COMFORT.high : COMFORT.most,
       oneway: onewayYes,
       shared_with_pedestrians: peds,
       shared_with_vehicles: false,
     };
+  }
+  if (has(t, "highway", "track")) {
+    // Farm and forest roads, and the rail trails mapped as them (the Kettle Valley Rail Trail).
+    // Closed to motor vehicles and open to bicycles, it's a path; designated for bicycles but open
+    // to motor vehicles, a quiet road shared with them. Neither said, it isn't a cycling facility.
+    if (
+      has(t, "motor_vehicle", "no")
+      && has(t, "bicycle", "yes", "designated", "permissive")
+    ) {
+      const peds = has(t, "foot", "designated") && !has(t, "segregated", "yes");
+      return {
+        class: "track",
+        subclass: "track",
+        // Even if shared with pedestrians, such farm/forest roads are still "most" comfortable.
+        comfort: COMFORT.most,
+        oneway: onewayYes,
+        shared_with_pedestrians: peds,
+        shared_with_vehicles: false,
+      };
+    }
+    if (has(t, "bicycle", "designated"))
+      return {
+        class: "lane",
+        comfort: COMFORT.high,
+        oneway: sharedOneway,
+        shared_with_pedestrians: false,
+        shared_with_vehicles: true,
+      };
   }
   if (has(t, "highway") && has(t, "cycleway", "track")) {
     const peds = has(t, "foot", "designated") && !has(t, "segregated", "yes");

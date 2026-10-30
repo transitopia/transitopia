@@ -41,6 +41,74 @@ describe("classifyWay", () => {
     expect(classify({ highway: "path", bicycle: "yes" })).toBeUndefined();
   });
 
+  it("takes footways designated for bicycles as paths shared with pedestrians", () => {
+    expect(
+      classify({
+        highway: "footway",
+        footway: "sidewalk",
+        bicycle: "designated",
+      }),
+    ).toEqual({
+      class: "track",
+      subclass: "path",
+      comfort: 3,
+      oneway: 0,
+      shared_with_pedestrians: true,
+      shared_with_vehicles: false,
+    });
+    expect(
+      classify({
+        highway: "footway",
+        bicycle: "designated",
+        segregated: "yes",
+      }),
+    ).toMatchObject({ comfort: 4, shared_with_pedestrians: false });
+    expect(classify({ highway: "footway", bicycle: "yes" })).toBeUndefined();
+    expect(
+      classify({ highway: "bridleway", bicycle: "designated" }),
+    ).toMatchObject({
+      class: "track",
+      subclass: "path",
+      comfort: 3,
+      shared_with_pedestrians: false,
+    });
+  });
+
+  it("takes tracks closed to motor vehicles as paths, and designated ones open to them as shared", () => {
+    expect(
+      classify({ highway: "track", bicycle: "yes", motor_vehicle: "no" }),
+    ).toEqual({
+      class: "track",
+      subclass: "track",
+      comfort: 4,
+      oneway: 0,
+      shared_with_pedestrians: false,
+      shared_with_vehicles: false,
+    });
+    expect(
+      classify({
+        highway: "track",
+        bicycle: "designated",
+        motor_vehicle: "no",
+        foot: "designated",
+      }),
+    ).toMatchObject({ comfort: 4, shared_with_pedestrians: true });
+    expect(classify({ highway: "track", bicycle: "designated" })).toEqual({
+      class: "lane",
+      comfort: 3,
+      oneway: 0,
+      shared_with_pedestrians: false,
+      shared_with_vehicles: true,
+    });
+    expect(classify({ highway: "track", bicycle: "yes" })).toBeUndefined();
+    expect(
+      classify({ highway: "track", bicycle: "no", motor_vehicle: "no" }),
+    ).toBeUndefined();
+    expect(
+      classify({ highway: "track", railway: "abandoned" }),
+    ).toBeUndefined();
+  });
+
   it("names a track tagged on its road after the road", () => {
     expect(classify({ highway: "secondary", cycleway: "track" })).toMatchObject(
       { class: "track", subclass: "combined-secondary" },
