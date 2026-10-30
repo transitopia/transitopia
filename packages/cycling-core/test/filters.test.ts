@@ -52,6 +52,12 @@ const WAYS: Tags[] = [
     maxspeed: "30",
   },
   { highway: "tertiary", "cycleway:left": "lane", "cycleway:right": "no" },
+  {
+    highway: "tertiary",
+    "cycleway:left": "shared_lane",
+    "cycleway:right": "lane",
+  },
+  { highway: "tertiary", bicycle: "designated" },
 ];
 
 describe("OSM_FILTERS", () => {

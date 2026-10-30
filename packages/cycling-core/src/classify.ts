@@ -53,6 +53,11 @@ export type FacilityClass = {
   shared_with_vehicles: boolean;
   /** A painted lane beside parked cars. */
   dooring_risk?: true;
+  /**
+   * A two-way road with a different facility each way (a painted lane one way, a shared lane the
+   * other): `comfort` is the lower of the two.
+   */
+  varies_by_direction?: true;
   construction?: true;
   website?: string;
   opening_date?: string;
@@ -95,6 +100,31 @@ export function maxspeedKmh(v: string | undefined): number | undefined {
 }
 
 const PARKING_BESIDE = ["separate", "lane", "street_side"];
+const SHARED = ["shared_lane", "shared"];
+const CYCLEWAY_KEYS = [
+  "cycleway",
+  "cycleway:both",
+  "cycleway:left",
+  "cycleway:right",
+];
+/** Roads for motor vehicles (https://wiki.openstreetmap.org/wiki/Key:highway#Roads), not steps or construction. */
+const ROADS = [
+  "motorway",
+  "trunk",
+  "primary",
+  "secondary",
+  "tertiary",
+  "unclassified",
+  "residential",
+  "motorway_link",
+  "trunk_link",
+  "primary_link",
+  "secondary_link",
+  "tertiary_link",
+  "living_street",
+  "service",
+  "road",
+];
 
 /** The way's cycling facility, or undefined if it isn't one. */
 export function classifyWay(
@@ -261,8 +291,8 @@ export function classifyWay(
   }
   // As the Planetiler profile had it: `cycleway:both` matches without a highway tag.
   if (
-    (has(t, "highway") && has(t, "cycleway", "shared_lane", "shared"))
-    || has(t, "cycleway:both", "shared_lane", "shared")
+    (has(t, "highway") && has(t, "cycleway", ...SHARED))
+    || has(t, "cycleway:both", ...SHARED)
   ) {
     // A lane shared with motor vehicles.
     return {
@@ -304,7 +334,64 @@ export function classifyWay(
         || has(t, `parking:${side}`, ...PARKING_BESIDE),
     );
   }
-  // Not yet: other kinds, e.g. https://www.openstreetmap.org/way/74096518 (mixed lane + shared_lane).
+  const mixedLaneSide =
+    has(t, "cycleway:right", "lane") && has(t, "cycleway:left", ...SHARED) ?
+      "right"
+    : has(t, "cycleway:left", "lane") && has(t, "cycleway:right", ...SHARED) ?
+      "left"
+    : undefined;
+  if (has(t, "highway") && !has(t, "oneway", "yes") && mixedLaneSide) {
+    // A painted lane one way and a shared lane the other (Stevens Drive, West Vancouver:
+    // https://www.openstreetmap.org/way/59432713). With one line for both directions, it's rated
+    // by the less comfortable of the two, and it's shared with traffic.
+    const dooring =
+      has(t, "parking:both", ...PARKING_BESIDE)
+      || has(t, `parking:${mixedLaneSide}`, ...PARKING_BESIDE);
+    const sharedComfort =
+      has(t, "motor_vehicle", "private") || calm() ?
+        COMFORT.high
+      : COMFORT.least;
+    const laneClass = lane(mixedLaneSide, 0, dooring);
+    return {
+      ...laneClass,
+      comfort: Math.min(laneClass.comfort, sharedComfort) as Comfort,
+      shared_with_vehicles: true,
+      varies_by_direction: true,
+    };
+  }
+  if (
+    has(t, "highway", ...ROADS)
+    && has(t, "bicycle", "designated")
+    // A side's facility mapped as its own way (`separate`) is drawn as that way, and a track on one
+    // side isn't recognised yet: either way, the road itself isn't the facility (Drake Street,
+    // Vancouver: https://www.openstreetmap.org/way/100761389).
+    && !CYCLEWAY_KEYS.some((k) => has(t, k, "separate", "track"))
+  ) {
+    if (has(t, "motor_vehicle", "no") || has(t, "access", "no")) {
+      // Closed to motor vehicles: a path, as a farm or forest road closed to them is.
+      const peds = has(t, "foot", "designated") && !has(t, "segregated", "yes");
+      return {
+        class: "track",
+        subclass: "path",
+        comfort: peds ? COMFORT.high : COMFORT.most,
+        oneway: onewayYes,
+        shared_with_pedestrians: peds,
+        shared_with_vehicles: false,
+      };
+    }
+    // Any other road designated for bicycles with no facility of its own: a street shared with
+    // traffic, comfortable if calm (Nelson Avenue, West Vancouver: https://www.openstreetmap.org/way/45678152),
+    // otherwise the least (motorway shoulders, for example). A road with no `maxspeed` isn't calm:
+    // its speed limit is fixed in OSM rather than guessed here.
+    return {
+      class: "lane",
+      comfort: calm() ? COMFORT.high : COMFORT.least,
+      oneway: sharedOneway,
+      shared_with_pedestrians: false,
+      shared_with_vehicles: true,
+    };
+  }
+  // Not yet: other kinds, e.g. a track one way and a lane the other.
   return undefined;
 }
 
