@@ -136,6 +136,18 @@ container. Cloudflare proxies `api.transitopia.org` to it. The leader server:
 Setting it up (the VM, Docker, SSH, firewall, accounts, Cloudflare, configuration and the first
 start) is in [api-server-setup.md](api-server-setup.md).
 
+**Edge cache:** one Cloudflare Cache Rule covers every path on `api.transitopia.org` except
+`/admin/` and `/auth/`, following the server's `Cache-Control` and bypassing the cache when a
+response has none:
+
+```
+(http.host eq "api.transitopia.org" and not starts_with(http.request.uri.path, "/admin/") and not starts_with(http.request.uri.path, "/auth/"))
+```
+
+So a new public endpoint is cached by the header it sends, with no change in Cloudflare, and the
+private areas are never cached, even by mistake (the cache key doesn't include `Authorization`).
+The rule's settings and how to check it: [api-server-setup.md → 9. Cloudflare](api-server-setup.md#9-cloudflare).
+
 #### Sizing
 
 Measured on 2026-09-30 on a Mac (Docker for Postgres), with a synthesized weekday of every route
