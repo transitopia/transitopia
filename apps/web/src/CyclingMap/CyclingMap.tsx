@@ -6,6 +6,7 @@ import { useLocation, useSearchParams } from "wouter";
 import {
   cyclingFilters,
   cyclingLayers,
+  FERRY_LAYER,
   mapSource,
   otherLayerIds,
   pathLayerIds,
@@ -29,6 +30,7 @@ import {
 } from "@transitopia/cycling-core/tiles.ts";
 import type { BBox } from "@transitopia/cycling-core/routes.ts";
 import { modeOfKind, type FeatureKind } from "@transitopia/shared/features.ts";
+import { OVER_WATER_LAYER } from "@transitopia/map-style/basemap.ts";
 import { useTheme } from "../Theme/Theme.tsx";
 import { useDatasets } from "../Attribution/Attribution.tsx";
 import { MapOverlayWindow } from "../Map/MapOverlayWindow.tsx";
@@ -167,7 +169,13 @@ export const CyclingMap: React.FC = () => {
       ...cyclingLayers(theme, showRef.current),
     ];
     for (const layer of layers) {
-      if (!map.getLayer(layer.id)) map.addLayer(layer);
+      if (map.getLayer(layer.id)) continue;
+      // Ferries pass under bridges (False Creek's) and end at piers, so they go just over the water.
+      const before =
+        layer.id === FERRY_LAYER && map.getLayer(OVER_WATER_LAYER) ?
+          OVER_WATER_LAYER
+        : undefined;
+      map.addLayer(layer, before);
     }
     return () => {
       try {

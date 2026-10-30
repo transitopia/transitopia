@@ -29,7 +29,7 @@ export const API_UNREACHABLE =
 
 /**
  * The comfort levels (COMFORT), most comfortable first, in the map's greens; COMFORT.none is a
- * route's ways that aren't bike facilities.
+ * route's ways that aren't bike facilities, and ferries are apart from them.
  */
 const COMFORT_LEVELS = [
   {
@@ -59,6 +59,12 @@ const COMFORT_LEVELS = [
   },
 ] as const;
 
+const FERRY = {
+  key: "ferry",
+  label: "Ferry",
+  swatch: "bg-[#7fa9d4] dark:bg-[#3f6f9e]",
+};
+
 const km = (m: number) => `${(m / 1000).toFixed(1)} km`;
 
 /** A share as a whole percentage, "<1%" for a sliver. */
@@ -67,33 +73,40 @@ const percent = (part: number, total: number) => {
   return p === 0 && part > 0 ? "<1%" : `${p}%`;
 };
 
-/** A route's length by comfort: a bar, then a row per level it has. */
+/** A route's length by comfort: a bar, then a row per level it has (and its ferries). */
 const ComfortBreakdown: React.FC<{ route: CyclingRouteDetail }> = ({
   route: r,
 }) => {
-  const total = r.comfortM.reduce((a, b) => a + b, 0);
-  const levels = COMFORT_LEVELS.filter((l) => r.comfortM[l.comfort] > 0);
+  const levels = [
+    ...COMFORT_LEVELS.map((l) => ({
+      ...l,
+      key: l.comfort,
+      m: r.comfortM[l.comfort],
+    })),
+    { ...FERRY, m: r.ferryM },
+  ].filter((l) => l.m > 0);
+  const total = levels.reduce((a, l) => a + l.m, 0);
   // Rows only for what's at least 0.1 km; the bar shows everything.
-  const rows = levels.filter((l) => r.comfortM[l.comfort] >= 50);
+  const rows = levels.filter((l) => l.m >= 50);
   return (
     <CardSection title="Comfort">
       <div
         className="my-2 flex h-2.5 overflow-hidden rounded-full"
         role="img"
         aria-label={levels
-          .map((l) => `${l.label} ${percent(r.comfortM[l.comfort], total)}`)
+          .map((l) => `${l.label} ${percent(l.m, total)}`)
           .join(", ")}>
         {levels.map((l) => (
           <span
-            key={l.comfort}
+            key={l.key}
             className={l.swatch}
-            style={{ width: `${(r.comfortM[l.comfort] / total) * 100}%` }}
+            style={{ width: `${(l.m / total) * 100}%` }}
           />
         ))}
       </div>
       {rows.map((l) => (
         <CardRow
-          key={l.comfort}
+          key={l.key}
           label={
             <span className="flex items-center gap-2">
               <span
@@ -102,7 +115,7 @@ const ComfortBreakdown: React.FC<{ route: CyclingRouteDetail }> = ({
               {l.label}
             </span>
           }
-          value={`${km(r.comfortM[l.comfort])} · ${percent(r.comfortM[l.comfort], total)}`}
+          value={`${km(l.m)} · ${percent(l.m, total)}`}
         />
       ))}
     </CardSection>

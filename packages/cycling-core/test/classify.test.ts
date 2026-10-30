@@ -41,6 +41,15 @@ describe("classifyWay", () => {
     expect(classify({ highway: "path", bicycle: "yes" })).toBeUndefined();
   });
 
+  it("takes ferries that don't refuse bicycles as ferries, with no comfort", () => {
+    expect(classify({ route: "ferry", bicycle: "yes" })).toEqual({
+      class: "ferry",
+      oneway: 0,
+    });
+    expect(classify({ route: "ferry" })).toEqual({ class: "ferry", oneway: 0 });
+    expect(classify({ route: "ferry", bicycle: "no" })).toBeUndefined();
+  });
+
   it("takes footways designated for bicycles as paths shared with pedestrians", () => {
     expect(
       classify({

@@ -26,6 +26,7 @@ function kept(type: "n" | "w" | "r", tags: Tags): boolean {
 /** One way for each of the classifier's rules, and its variants. */
 const WAYS: Tags[] = [
   { highway: "cycleway" },
+  { route: "ferry", bicycle: "yes" },
   { highway: "path", bicycle: "designated" },
   { highway: "pedestrian", bicycle: "designated" },
   { highway: "footway", bicycle: "designated" },

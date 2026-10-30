@@ -242,8 +242,10 @@ export interface Database {
     ref: string | null;
     network: string | null;
     length_m: number;
-    /** Metres by comfort, 0 (no bike facility) to 4. */
+    /** Metres by comfort, 0 (no bike facility) to 4, ferries aside. */
     comfort_m: number[];
+    /** Metres of ferry crossings, in length_m. */
+    ferry_m: Generated<number>;
     /** [west, south, east, north]. */
     bbox: number[] | null;
   };

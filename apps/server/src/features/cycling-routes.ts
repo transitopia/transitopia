@@ -91,6 +91,7 @@ async function replaceBuild(
           network: r.network ?? null,
           length_m: r.lengthM,
           comfort_m: r.comfortM,
+          ferry_m: r.ferryM ?? 0,
           bbox: r.bbox ?? null,
         })),
       )
@@ -201,6 +202,7 @@ interface RouteRow {
   network: string | null;
   length_m: number;
   comfort_m: number[];
+  ferry_m: number;
   bbox: number[] | null;
   feature_id: string;
 }
@@ -229,6 +231,7 @@ async function routeRows(
       "c.network",
       "c.length_m",
       "c.comfort_m",
+      "c.ferry_m",
       "c.bbox",
       "f.id as feature_id",
     ])
@@ -332,6 +335,7 @@ export async function cyclingRouteDetail(
     bbox: route.bbox as BBox | null,
     lengthM: route.length_m,
     comfortM: route.comfort_m as ComfortLengths,
+    ferryM: route.ferry_m,
     parents: await links(db, at.area, parents),
     ancestors: await links(db, at.area, ancestors),
     subroutes: await links(

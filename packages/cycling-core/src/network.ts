@@ -8,6 +8,7 @@ import {
   COMFORT,
   isBikeParking,
   isBikeRoute,
+  isFerry,
   type ClassifyConfig,
   type Comfort,
 } from "./classify.ts";
@@ -34,13 +35,16 @@ export interface CyclingNetwork {
 /** Decimals kept in a route's bbox (about a metre). */
 const BBOX_DECIMALS = 5;
 
-/** A way any bike route might name: where it is, its length (metres) and its comfort (0 if none). */
+/**
+ * A way any bike route might name: where it is, its length (metres), and its comfort (0 if none)
+ * or that it's a ferry crossing.
+ */
 interface WayInfo {
   id: number;
   nodes: readonly number[];
   coords: readonly LonLat[];
   lengthM: number;
-  comfort: Comfort | typeof COMFORT.none;
+  comfort: Comfort | typeof COMFORT.none | "ferry";
 }
 
 function lengthOf(coords: readonly LonLat[]): number {
@@ -149,7 +153,11 @@ export class CyclingNetworkBuilder {
         nodes: e.nodes,
         coords,
         lengthM: lengthOf(coords),
-        comfort: cls?.comfort ?? COMFORT.none,
+        // A ferry closed to bicycles isn't classified, but a bike route through it still crosses.
+        comfort:
+          cls?.class === "ferry" || (!cls && isFerry(e.tags)) ?
+            "ferry"
+          : (cls?.comfort ?? COMFORT.none),
       });
       if (cls)
         this.ways.push({
@@ -162,6 +170,9 @@ export class CyclingNetworkBuilder {
             ...(e.tags.surface === undefined ?
               {}
             : { surface: e.tags.surface }),
+            ...(cls.class === "ferry" && e.tags.operator !== undefined ?
+              { operator: e.tags.operator }
+            : {}),
           },
         });
       if (isBikeParking(e.tags) && canBeArea(e))
@@ -248,10 +259,12 @@ export class CyclingNetworkBuilder {
     const { tags } = this.routes.get(id)!;
     const comfortM: ComfortLengths = [0, 0, 0, 0, 0];
     let lengthM = 0;
+    let ferryM = 0;
     let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
     for (const way of this.waysOf(id)) {
       lengthM += way.lengthM;
-      comfortM[way.comfort] += way.lengthM;
+      if (way.comfort === "ferry") ferryM += way.lengthM;
+      else comfortM[way.comfort] += way.lengthM;
       for (const [lon, lat] of way.coords) {
         [w, s, e, n] = [
           Math.min(w, lon),
@@ -265,6 +278,7 @@ export class CyclingNetworkBuilder {
       lengthM: Math.round(lengthM),
       comfortM: comfortM.map(Math.round) as ComfortLengths,
     };
+    if (ferryM) r.ferryM = Math.round(ferryM);
     if (tags.name !== undefined) r.name = tags.name;
     if (tags.ref !== undefined) r.ref = tags.ref;
     if (tags.network !== undefined) r.network = tags.network;

@@ -43,6 +43,8 @@ export type CyclingWayProperties = WayClass & {
   name?: string;
   /** OSM's surface value, from CYCLING_DETAIL_ZOOM. */
   surface?: string;
+  /** A ferry's operator (OSM's `operator`), from CYCLING_DETAIL_ZOOM. */
+  operator?: string;
   /** The OSM bike route relations it's part of, ids in ascending order, comma-separated; from CYCLING_DETAIL_ZOOM. */
   routes?: string;
 };
@@ -80,6 +82,7 @@ export interface BikeParking {
 const DETAIL_KEYS = [
   "name",
   "surface",
+  "operator",
   "routes",
 ] as const satisfies (keyof CyclingWayProperties)[];
 

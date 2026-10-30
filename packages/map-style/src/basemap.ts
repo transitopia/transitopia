@@ -36,6 +36,13 @@ export interface BasemapOptions {
  * overlays (transit lines, cycling routes) carry the colour.
  */
 const SPRITE: Record<Theme, string> = { light: "white", dark: "black" };
+/**
+ * The first Protomaps layer over water: pedestrian areas (which include bridge decks mapped as
+ * areas, such as the Cambie Street Bridge's), then piers, roads and bridges. An overlay that
+ * belongs on the water, under all of those (ferries), is added before it.
+ */
+export const OVER_WATER_LAYER = "landuse_pedestrian";
+
 /** The land colour, for overlays that fade toward it. */
 export const BACKGROUND: Record<Theme, string> = {
   light: "#f5f4f1",
@@ -73,10 +80,16 @@ function flavor(theme: Theme): Flavor {
 }
 
 /**
- * Protomaps layers we leave out: one-way arrows and highway shields only matter to drivers, and a
- * route number in a white circle reads as a transit stop.
+ * Protomaps layers we leave out: one-way arrows and highway shields only matter to drivers, a
+ * route number in a white circle reads as a transit stop, and boundaries (country and regional)
+ * read as ferry or transit lines where they cross water.
  */
-const HIDDEN_LAYERS = new Set(["roads_oneway", "roads_shields"]);
+const HIDDEN_LAYERS = new Set([
+  "roads_oneway",
+  "roads_shields",
+  "boundaries_country",
+  "boundaries",
+]);
 
 export function basemapStyle(o: BasemapOptions): StyleSpecification {
   const sprite: SpriteSpecification = [

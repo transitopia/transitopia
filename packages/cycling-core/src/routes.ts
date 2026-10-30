@@ -22,8 +22,10 @@ export interface CyclingRoute {
   bbox?: BBox;
   /** The length of its ways and its subroutes' (each counted once), in metres. */
   lengthM: number;
-  /** `lengthM` by the comfort of each way (packages/cycling-core/src/classify.ts). */
+  /** `lengthM` by the comfort of each way (packages/cycling-core/src/classify.ts), ferries aside. */
   comfortM: ComfortLengths;
+  /** The length of its ferry crossings (`route=ferry` ways), in `lengthM` but not `comfortM`; none if 0. */
+  ferryM?: number;
 }
 
 /** var/cycling/<area>/routes.json: an area's bike routes from one build, by relation id. */
@@ -50,6 +52,7 @@ export interface CyclingRouteDetail extends CyclingRouteLink {
   bbox: BBox | null;
   lengthM: number;
   comfortM: ComfortLengths;
+  ferryM: number;
   /** The routes that contain it directly. */
   parents: CyclingRouteLink[];
   /** Every route that contains it, nearest first (its parents, theirs, …), each once. */
