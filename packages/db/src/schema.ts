@@ -180,7 +180,8 @@ export interface Database {
     computed_at: DefaultTimestamp;
   };
   // The feature registry (docs/DESIGN.md#feature-ids). `geom` is a PostGIS geography: write and
-  // read it with SQL (ST_MakePoint, ST_X), never as a value.
+  // read it with SQL (ST_MakePoint, ST_X), never as a value. It's a point (stations, exchanges,
+  // stops), or null (routes, vehicles, and bike routes, whose extent is in cycling_routes).
   features: {
     id: string;
     kind: FeatureKind;

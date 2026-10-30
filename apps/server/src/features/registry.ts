@@ -604,7 +604,8 @@ export async function resolveKey(
     db,
   );
   const e = extent.rows[0];
-  // A cycling route has no geom: its extent is its build's (cycling-routes.ts).
+  // A cycling route's extent is its build's bbox (cycling_routes, cycling-routes.ts), not
+  // features.geom, which is null for it (the readers here take geom as a point).
   const route =
     found.kind === "cycling-route" ?
       await sql<{ bbox: [number, number, number, number] }>`

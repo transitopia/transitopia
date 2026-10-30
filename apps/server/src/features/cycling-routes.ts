@@ -149,7 +149,8 @@ async function reconcileRegistry(
   const minted = d.mint.map((m) => ({ ...m, id: mint("cycling-route") }));
   for (let i = 0; i < minted.length; i += CHUNK) {
     const chunk = minted.slice(i, i + CHUNK);
-    // Their extent is the route's (cycling_routes), so they have no geom of their own.
+    // geom stays null: a route's extent is its build's bbox (cycling_routes), which changes with
+    // each build, and the registry reads geom as a point.
     await tx
       .insertInto("features")
       .values(
