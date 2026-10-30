@@ -35,10 +35,11 @@ The tiles take a few seconds to build from the OSM file, and need tippecanoe 2.1
 
 ## Classification
 
-`classifyWay` decides what a way is, from its tags, by the first of these rules that matches. Ported rule for rule from the Planetiler profile this replaced, so the map stayed the same (verified on the same extract: every attribute equal at z14, with a tile inspector kept on the `cycling-tile-inspector` branch); footways, bridleways and tracks came after.
+`classifyWay` decides what a way is, from its tags, by the first of these rules that matches. Ported rule for rule from the Planetiler profile this replaced, so the map stayed the same (verified on the same extract: every attribute equal at z14, with a tile inspector kept on the `cycling-tile-inspector` branch); ferries, footways, bridleways and tracks came after.
 
 | Rule | `class` | `comfort` |
 |---|---|---|
+| `route=ferry`, unless `bicycle=no` | ferry | none: a way across, not a facility |
 | `highway=cycleway` | track (`subclass` cycleway) | 4, or 3 shared with pedestrians (`foot=designated` + `segregated=no`) |
 | `highway=path\|pedestrian\|footway\|bridleway` + `bicycle=designated` | track (path) | 4, or 3 shared with pedestrians (pedestrian streets and footways are, unless `segregated=yes`); bridleways 3 (shared with horses) |
 | `highway=track` + `motor_vehicle=no` + `bicycle=yes\|designated\|permissive` | track (track) | 4, even shared with pedestrians (few on remote roads) |
@@ -52,7 +53,7 @@ The tiles take a few seconds to build from the OSM file, and need tippecanoe 2.1
 | `highway=residential` + `bicycle=yes\|designated`, calm | lane, `shared_with_vehicles` | 3 |
 | a one-way lane on one side of a two-way road (the other side `no`) | lane, `oneway` 1 (right) or -1 (left) | 2, or 1 with parked cars |
 
-"Calm" is `maxspeed` at or under `classify.calmMaxSpeedKmh` (`maxspeedKmh`): a number in km/h or mph, `walk`, or the fastest of several. Implied limits such as `CA:urban`, and words such as `none`, aren't calm. (The Planetiler profile read any value that didn't start with a number as 0, so `CA:urban` counted as calm.) A `highway=track` (a farm or forest road, or a rail trail mapped as one) open to bicycles but not closed to motor vehicles isn't a cycling way, nor is one that says nothing about access, like any road. Two quirks are kept from the original: `cycleway:both=shared_lane` matches without a `highway` tag, and parking mapped as separate ways (`parking:*=separate`) counts as parked cars beside the lane without looking at those ways.
+"Calm" is `maxspeed` at or under `classify.calmMaxSpeedKmh` (`maxspeedKmh`): a number in km/h or mph, `walk`, or the fastest of several. Implied limits such as `CA:urban`, and words such as `none`, aren't calm. (The Planetiler profile read any value that didn't start with a number as 0, so `CA:urban` counted as calm.) A `highway=track` (a farm or forest road, or a rail trail mapped as one) open to bicycles but not closed to motor vehicles isn't a cycling way, nor is one that says nothing about access, like any road. Ferries are drawn as their own dashed line and counted apart in route summaries (`ferryM`, [Bike routes](#bike-routes)). The extract keeps only ferries with a `bicycle` tag, or in a bike route, so a ferry tagged with neither isn't drawn. Two quirks are kept from the original: `cycleway:both=shared_lane` matches without a `highway` tag, and parking mapped as separate ways (`parking:*=separate`) counts as parked cars beside the lane without looking at those ways.
 
 A way is a line unless it's closed and `area=yes`, and is left out if any of its nodes has no location. Bike parking is a node, or the centre of a closed way (`area` other than `no`); bike parking mapped as a multipolygon relation isn't drawn (there are none in BC). A way's `routes` are the bike route relations (`type=route` + `route=bicycle`) it's a direct member of: a route that contains another route doesn't name its subroute's ways. Superroutes (`type=superroute` + `route=bicycle`, such as the Kettle Valley Rail Trail's) are bike routes too ([Bike routes](#bike-routes)).
 
@@ -66,7 +67,7 @@ Two layers: `transitopia_cycling`, zooms 6–14, and `transitopia_cycling_routes
 
 | Zooms | Features | Id | Properties |
 |---|---|---|---|
-| 13–14 | Paths and lanes: chains of ways with every property | `osmFeatureId("way", <the chain's lowest way id>)` | `CyclingWayProperties`: the classification, plus `name`, `surface`, `routes` (relation ids, ascending, comma-separated) |
+| 13–14 | Paths and lanes: chains of ways with every property | `osmFeatureId("way", <the chain's lowest way id>)` | `CyclingWayProperties`: the classification, plus `name`, `surface`, a ferry's `operator`, `routes` (relation ids, ascending, comma-separated) |
 | 6–12 | Paths and lanes, joined by what's drawn | none | The classification only |
 | 12–14 | Bike parking | `osmFeatureId("node"\|"way", …)` | `BikeParkingProperties`: `amenity`, `name`, its details (`bicycle_parking`, `capacity`, `covered`, `indoor`, `operator`), `osmNodeId` or `osmWayId` |
 | 6–12 (routes layer) | Bike routes: one feature each, its ways and its subroutes' (every way the relations name, cycling way or not), joined into lines | `osmFeatureId("relation", <id>)` | `CyclingRouteProperties`: `network` |
@@ -76,7 +77,7 @@ Two layers: `transitopia_cycling`, zooms 6–14, and `transitopia_cycling_routes
 - **Bike parking carries its details**, so the site's card needs nothing from the OSM API ([docs/DESIGN.md](../../docs/DESIGN.md), principle 3). They're small: 65 KB on BC's 5.3 MB of tiles (7,373 bike parking, measured 2026-10-27), so they're at every zoom bike parking shows. `capacity` is kept only where it's a plain number, and `covered` and `indoor` are true for any value but `no` (`partial`, `room`, …).
 - **A path's OSM ways aren't in the tiles**, only its first by id (in its id). A link naming another of its ways goes through the [lookup](#lookup), which gives the first. Carrying every way id would have added 0.8 MB to BC's tiles (5.4 → 6.2 MB, measured 2026-10-29) for links the site doesn't write.
 - **Bike routes only to z12**, overzoomed beyond: a route is in the tiles whole, so the map highlights the selected one at every zoom, roads without a bike facility included. Its lines at z12 are within about 2 m, plenty for a highlight, and z13–14 would add 1.2 MB to BC's tiles (6.2 MB with the routes to z12, 7.4 MB to z14, 5.4 MB without them, measured 2026-10-29). The site reads the layer through a second source on the same file with `maxzoom: 12`, and loads it only while a route is selected.
-- The site's styles (`apps/web/src/CyclingMap/cycling-map-layers.ts`) filter on `comfort`, `class`, `construction` and `oneway`, and its cards (`BikePathCard`, `BikeParkingCard`) read the other properties.
+- The site's styles (`apps/web/src/CyclingMap/cycling-map-layers.ts`) filter on `comfort`, `class` (ferries have no `comfort` and their own dashed layer), `construction` and `oneway`, and its cards (`BikePathCard`, `BikeParkingCard`) read the other properties.
 
 ## Published files
 

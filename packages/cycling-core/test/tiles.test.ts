@@ -117,7 +117,7 @@ describe("CyclingNetworkBuilder", () => {
   it("measures ferry crossings apart from comfort", () => {
     const n = network([
       ...OPL,
-      "w20 Troute=ferry,name=Crossing Nn5x-123.12y49.25,n6x-123.12y49.26",
+      "w20 Troute=ferry,name=Crossing,operator=Hullo%20%Ferries Nn5x-123.12y49.25,n6x-123.12y49.26",
       "r31 Ttype=route,route=bicycle Mr30@,w20@",
     ]);
     const r = n.routes.get(31)!;
@@ -127,6 +127,12 @@ describe("CyclingNetworkBuilder", () => {
       Math.abs(r.comfortM.reduce((a, b) => a + b) + r.ferryM! - r.lengthM),
     ).toBeLessThanOrEqual(2);
     expect(n.routes.get(30)!.ferryM).toBeUndefined();
+    expect(n.ways.find((w) => w.id === 20)?.attrs).toMatchObject({
+      class: "ferry",
+      name: "Crossing",
+      operator: "Hullo Ferries",
+      routes: "31",
+    });
   });
 
   it("takes superroutes, and routes in several, and survives a route containing itself", () => {

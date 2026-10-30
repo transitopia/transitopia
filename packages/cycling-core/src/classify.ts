@@ -29,8 +29,17 @@ export type Comfort = Exclude<
   typeof COMFORT.none
 >;
 
-/** A path's or lane's attributes, as the tiles carry them (CyclingWayProperties in tiles.ts). */
-export type WayClass = {
+/** A way's attributes, as the tiles carry them (CyclingWayProperties in tiles.ts): a facility or a ferry. */
+export type WayClass = FacilityClass | FerryClass;
+
+/** A ferry crossing that takes bicycles: a way to get across, not a facility, so it has no comfort. */
+export type FerryClass = {
+  class: "ferry";
+  oneway: 0;
+};
+
+/** A path's or lane's attributes. */
+export type FacilityClass = {
   /** "track": separate from the roadway (off-road); "lane": within it (on-road). */
   class: "track" | "lane";
   /** For tracks: "cycleway", "path", or "combined-<highway>" (a track beside a road, tagged on the road). */
@@ -98,6 +107,9 @@ export function classifyWay(
   // A shared road's one-way: the road's, unless bicycles are exempt.
   const sharedOneway = has(t, "oneway:bicycle", "no") ? 0 : onewayYes;
 
+  // Before the facilities: a ferry tagged as a road (rare) is still a ferry.
+  if (isFerry(t) && !has(t, "bicycle", "no"))
+    return { class: "ferry", oneway: 0 };
   // OSM distinguishes cycle tracks, separate from the road (by curbs, parking, verges, trees…),
   // from cycle lanes, on the road itself.
   if (has(t, "highway", "cycleway")) {
@@ -188,10 +200,10 @@ export function classifyWay(
   // Not yet: "T2 (alternative)" on https://wiki.openstreetmap.org/wiki/Bicycle
   // (cycleway:right=track + cycleway:right:oneway=no).
   const lane = (
-    side: NonNullable<WayClass["side"]>,
-    oneway: WayClass["oneway"],
+    side: NonNullable<FacilityClass["side"]>,
+    oneway: FacilityClass["oneway"],
     dooring: boolean,
-  ): WayClass => ({
+  ): FacilityClass => ({
     class: "lane",
     side,
     comfort: dooring ? COMFORT.least : COMFORT.low,

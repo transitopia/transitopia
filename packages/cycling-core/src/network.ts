@@ -153,7 +153,11 @@ export class CyclingNetworkBuilder {
         nodes: e.nodes,
         coords,
         lengthM: lengthOf(coords),
-        comfort: cls?.comfort ?? (isFerry(e.tags) ? "ferry" : COMFORT.none),
+        // A ferry closed to bicycles isn't classified, but a bike route through it still crosses.
+        comfort:
+          cls?.class === "ferry" || (!cls && isFerry(e.tags)) ?
+            "ferry"
+          : (cls?.comfort ?? COMFORT.none),
       });
       if (cls)
         this.ways.push({
@@ -166,6 +170,9 @@ export class CyclingNetworkBuilder {
             ...(e.tags.surface === undefined ?
               {}
             : { surface: e.tags.surface }),
+            ...(cls.class === "ferry" && e.tags.operator !== undefined ?
+              { operator: e.tags.operator }
+            : {}),
           },
         });
       if (isBikeParking(e.tags) && canBeArea(e))

@@ -95,6 +95,15 @@ export const CyclingLayers: React.FC<{
         on={show.construction}
         onChange={set("construction")}
       />
+      <SwitchRow
+        title="Ferries"
+        description="Crossings that take bikes"
+        swatch={
+          <Line className="h-[2px] bg-[repeating-linear-gradient(90deg,#4a7db2_0_8px,transparent_8px_14px)] dark:bg-[repeating-linear-gradient(90deg,#7fa9d4_0_8px,transparent_8px_14px)]" />
+        }
+        on={show.ferries}
+        onChange={set("ferries")}
+      />
       <PanelDivider />
       <SwitchRow
         title="All ages & abilities only"

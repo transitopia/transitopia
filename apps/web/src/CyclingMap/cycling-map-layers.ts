@@ -28,6 +28,9 @@ export const routesSource = "transitopia-cycling-routes";
 export const routesSourceSpec = (url: string) =>
   ({ type: "vector", url, maxzoom: CYCLING_ROUTES_MAX_ZOOM }) as const;
 
+/** Ferries, drawn just over the basemap's water, under its bridges (CyclingMap.tsx); the other layers go over the basemap. */
+export const FERRY_LAYER = "cycling_ferry";
+
 /** Layers with cycling paths, as opposed to other things like bike rack locations */
 export const pathLayerIds = [
   "cycling_path_1",
@@ -35,6 +38,7 @@ export const pathLayerIds = [
   "cycling_path_3",
   "cycling_path_4",
   "cycling_path_construction",
+  FERRY_LAYER,
 ];
 export const otherLayerIds = ["bike_parking_point"];
 
@@ -44,6 +48,7 @@ export const otherLayerIds = ["bike_parking_point"];
  * tracks and paths (comfort 4, or 3 when shared with pedestrians), local = traffic-calmed shared
  * streets (comfort 3 on the road), painted = lanes on the roadway, including shared lanes on busy
  * streets (comfort 1–2). "All ages & abilities only" hides comfort 1–2 whatever `painted` says.
+ * Ferries that take bikes (class "ferry", no comfort) have a switch of their own.
  */
 export interface CyclingShow {
   protected: boolean;
@@ -51,6 +56,7 @@ export interface CyclingShow {
   local: boolean;
   parking: boolean;
   construction: boolean;
+  ferries: boolean;
   aaaOnly: boolean;
 }
 
@@ -60,6 +66,7 @@ export const DEFAULT_SHOW: CyclingShow = {
   local: true,
   parking: true,
   construction: true,
+  ferries: true,
   aaaOnly: false,
 };
 
@@ -104,6 +111,12 @@ export function cyclingFilters(
     ["==", ["get", "oneway"], -1],
   ];
   return {
+    [FERRY_LAYER]: [
+      "all",
+      isLine,
+      ["==", ["get", "class"], "ferry"],
+      show.ferries,
+    ],
     cycling_path_construction: [
       "all",
       isLine,
@@ -209,6 +222,7 @@ const PALETTE = {
     pathLeastComfortable: "rgba(26, 50, 35, 1)",
     pathInner: "rgba(255, 255, 255, 0.6)",
     construction: "rgba(226, 109, 35, 1)",
+    ferry: "rgba(74, 125, 178, 1)",
     name: "rgba(24, 79, 19, 1)",
     nameHalo: "rgba(231, 231, 131, 0.72)",
     parkingFill: "rgba(231, 231, 131, 0.72)",
@@ -218,6 +232,7 @@ const PALETTE = {
     pathLeastComfortable: "rgba(167, 201, 174, 1)",
     pathInner: "rgba(21, 24, 28, 0.7)",
     construction: "rgba(240, 138, 60, 1)",
+    ferry: "rgba(127, 169, 212, 1)",
     name: "rgba(184, 240, 194, 1)",
     nameHalo: "rgba(21, 24, 28, 0.85)",
     parkingFill: "rgba(70, 80, 40, 0.9)",
@@ -231,6 +246,23 @@ export function cyclingLayers(
   const c = PALETTE[theme];
   const filters = cyclingFilters(show);
   const layers: LayerSpecification[] = [
+    {
+      // Long dashes, unlike the paths' short ones: a crossing, not a facility.
+      id: FERRY_LAYER,
+      type: "line",
+      source: mapSource,
+      "source-layer": CYCLING_LAYER,
+      layout: {
+        "line-cap": "butt",
+        "line-join": "round",
+        visibility: "visible",
+      },
+      paint: {
+        "line-color": colorWithHoverAndSelectionStates(c.ferry),
+        "line-width": interpolateZoom({ z6: 1, z10: 1.5, z16: 3 }),
+        "line-dasharray": [4, 3],
+      },
+    },
     {
       id: "cycling_path_construction",
       type: "line",

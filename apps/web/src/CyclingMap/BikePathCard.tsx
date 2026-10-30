@@ -18,6 +18,7 @@ export const BIKE_TILE = { bg: "#5cc88d", fg: "#0b3d23" };
 
 /** What kind of facility this is, from the tiles' attributes (packages/cycling-core/src/classify.ts). */
 function kind(f: MapCyclingElement): string {
+  if (f.class === "ferry") return "Ferry";
   if (f.class === "track")
     return f.shared_with_pedestrians ? "Shared path" : (
         "Protected bike lane or path"
@@ -34,6 +35,7 @@ export const pathTitle = (f: MapCyclingElement) => f.name ?? kind(f);
 
 function chips(f: MapCyclingElement): CardChip[] {
   const out: CardChip[] = [];
+  if (f.class === "ferry") return [{ label: "Takes bikes", tone: "info" }];
   if (f.construction) out.push({ label: "Under construction", tone: "warn" });
   if (f.class === "track")
     out.push({ label: "Separated from traffic", tone: "good" });
@@ -89,43 +91,53 @@ export const BikePathCard: React.FC<{
   ];
   return (
     <InfoCard
-      tile={{ icon: "bicycle", ...BIKE_TILE }}
-      eyebrow="Bikeway"
+      tile={{
+        icon: f.class === "ferry" ? "directions-boat" : "bicycle",
+        ...BIKE_TILE,
+      }}
+      eyebrow={f.class === "ferry" ? "Ferry" : "Bikeway"}
       title={title}
-      subtitle={f.name ? type : undefined}
+      subtitle={f.name && f.class !== "ferry" ? type : undefined}
       chips={chips(f)}
       actions={actions}
       onClose={onClose}
       footer={<p>From OpenStreetMap, via Transitopia's cycling layer.</p>}>
-      <CardSection title="Details">
-        <CardRow
-          label="Surface"
-          value={
-            f.surface ?
-              f.surface[0]!.toUpperCase()
-              + f.surface.slice(1).replace(/_/g, " ")
-            : "Unknown"
-          }
-          muted={!f.surface}
-        />
-        {f.opening_date ?
-          <CardRow label="Opens" value={f.opening_date} />
-        : null}
-        {f.website && /^https?:\/\//i.test(f.website) ?
+      {f.class === "ferry" ?
+        f.operator ?
+          <CardSection title="Details">
+            <CardRow label="Operator" value={f.operator} />
+          </CardSection>
+        : null
+      : <CardSection title="Details">
           <CardRow
-            label="More information"
+            label="Surface"
             value={
-              <a
-                href={f.website}
-                target="_blank"
-                rel="noreferrer"
-                className="text-(--card-link) underline">
-                Website
-              </a>
+              f.surface ?
+                f.surface[0]!.toUpperCase()
+                + f.surface.slice(1).replace(/_/g, " ")
+              : "Unknown"
             }
+            muted={!f.surface}
           />
-        : null}
-      </CardSection>
+          {f.opening_date ?
+            <CardRow label="Opens" value={f.opening_date} />
+          : null}
+          {f.website && /^https?:\/\//i.test(f.website) ?
+            <CardRow
+              label="More information"
+              value={
+                <a
+                  href={f.website}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-(--card-link) underline">
+                  Website
+                </a>
+              }
+            />
+          : null}
+        </CardSection>
+      }
       {routes.some((s) => s.state === "unreachable") ?
         <CardSection title="Part of">
           <p role="alert" className="py-2 text-[13.5px] text-(--card-muted)">
