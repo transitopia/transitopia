@@ -17,8 +17,8 @@ export const COMFORT = {
   /** E.g. a shared lane on a busy street, or a painted lane beside parked cars. */
   least: 1,
   /**
-   * No bike facility: a way of a bike route that isn't a cycling way (an ordinary road). Only in
-   * route summaries (`comfortM`); classified ways are 1–4.
+   * No bike facility: a way of a bike route that isn't a cycling way (an ordinary road) or a ferry.
+   * Only in route summaries (`comfortM`); classified ways are 1–4.
    */
   none: 0,
 } as const;
@@ -312,6 +312,9 @@ export const OSM_FILTERS = [
   "nwr/amenity=bicycle_parking",
   "r/route=bicycle",
 ];
+
+/** Whether a way is a ferry crossing (https://wiki.openstreetmap.org/wiki/Tag:route%3Dferry), which bike routes include. */
+export const isFerry = (t: Tags): boolean => has(t, "route", "ferry");
 
 /** Whether the element is bike parking (https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dbicycle_parking). */
 export const isBikeParking = (t: Tags): boolean =>

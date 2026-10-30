@@ -114,6 +114,21 @@ describe("CyclingNetworkBuilder", () => {
     ).toBeLessThanOrEqual(2);
   });
 
+  it("measures ferry crossings apart from comfort", () => {
+    const n = network([
+      ...OPL,
+      "w20 Troute=ferry,name=Crossing Nn5x-123.12y49.25,n6x-123.12y49.26",
+      "r31 Ttype=route,route=bicycle Mr30@,w20@",
+    ]);
+    const r = n.routes.get(31)!;
+    expect(r.ferryM).toBeGreaterThan(1000);
+    expect(r.comfortM[0]).toBe(0);
+    expect(
+      Math.abs(r.comfortM.reduce((a, b) => a + b) + r.ferryM! - r.lengthM),
+    ).toBeLessThanOrEqual(2);
+    expect(n.routes.get(30)!.ferryM).toBeUndefined();
+  });
+
   it("takes superroutes, and routes in several, and survives a route containing itself", () => {
     const n = network([
       ...OPL,

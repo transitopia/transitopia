@@ -36,7 +36,7 @@ const build = (
       network: "rcn",
       subroutes: [2],
     }),
-    "2": route({ name: "CVG (Vancouver)", parents: [1, 3] }),
+    "2": route({ name: "CVG (Vancouver)", parents: [1, 3], ferryM: 250 }),
     "3": route({ ref: "LP", subroutes: [2, 4], parents: [4] }),
     "4": route({ name: "Loop", subroutes: [3], parents: [3] }),
   },
@@ -90,6 +90,7 @@ describe.skipIf(!TEST_DATABASE_URL)("bike routes", () => {
       name: "CVG (Vancouver)",
       lengthM: 1000,
       comfortM: [100, 0, 200, 300, 400],
+      ferryM: 250,
       bbox: [-123.2, 49.2, -123.1, 49.3],
       subroutes: [],
     });
