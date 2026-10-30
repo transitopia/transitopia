@@ -4,7 +4,12 @@
 // Design license: CC-BY 4.0 https://creativecommons.org/licenses/by/4.0/
 
 import type { ExpressionSpecification, LayerSpecification } from "maplibre-gl";
-import { CYCLING_LAYER } from "@transitopia/cycling-core/tiles.ts";
+import {
+  CYCLING_LAYER,
+  CYCLING_ROUTES_LAYER,
+  CYCLING_ROUTES_MAX_ZOOM,
+  osmFeatureId,
+} from "@transitopia/cycling-core/tiles.ts";
 import type { Theme } from "@transitopia/map-style/basemap.ts";
 import { FONTS } from "@transitopia/map-style/basemap.ts";
 import {
@@ -14,6 +19,14 @@ import {
 
 // Which map "source" file (which .pmtiles file) the cycling data layers are found in
 export const mapSource = "transitopia-cycling";
+/**
+ * The same tiles again for bike routes, which they hold only to CYCLING_ROUTES_MAX_ZOOM: a source of
+ * its own, so MapLibre overzooms them beyond it (packages/cycling-core/README.md#tiles).
+ */
+export const routesSource = "transitopia-cycling-routes";
+
+export const routesSourceSpec = (url: string) =>
+  ({ type: "vector", url, maxzoom: CYCLING_ROUTES_MAX_ZOOM }) as const;
 
 /** Layers with cycling paths, as opposed to other things like bike rack locations */
 export const pathLayerIds = [
@@ -135,34 +148,59 @@ export function cyclingFilters(
   };
 }
 
-/** The global state property naming the selected bike route's relation id (null for none). */
-export const SELECTED_ROUTE = "cyclingSelectedRoute";
-
-/**
- * On the selected bike route: its id is one of a path's `routes` (comma-separated). Paths have
- * routes only from CYCLING_DETAIL_ZOOM.
- */
-const onSelectedRoute: ExpressionSpecification = [
-  "in",
-  ["concat", ",", ["coalesce", ["global-state", SELECTED_ROUTE], "none"], ","],
-  ["concat", ",", ["coalesce", ["get", "routes"], ""], ","],
-];
+/** Selected and hovered paths, and the selected bike route. */
+const HIGHLIGHT = "rgba(200, 100, 100, 1)";
 
 /**
  * Helper: the resulting color should normally be 'color',
- * but make it salmon colored when hovered or selected, or on the selected route.
+ * but make it salmon colored when hovered or selected.
  */
 const colorWithHoverAndSelectionStates = (color: string) =>
   [
     "case",
     ["boolean", ["feature-state", "selected"], false],
-    "rgba(200, 100, 100, 1)",
+    HIGHLIGHT,
     ["boolean", ["feature-state", "hover"], false],
-    "rgba(200, 100, 100, 1)",
-    onSelectedRoute,
-    "rgba(200, 100, 100, 1)",
+    HIGHLIGHT,
     color,
   ] satisfies ExpressionSpecification;
+
+/** The selected bike route's highlight: drawn under the paths, its ways and its subroutes' whole. */
+export const ROUTE_HIGHLIGHT_LAYER = "cycling_route_selected";
+
+/**
+ * The highlight's layer, showing the route with this relation id (none: hidden, so MapLibre
+ * doesn't load the routes' tiles). Add it before the paths' layers.
+ */
+export function routeHighlightLayer(
+  relation: number | undefined,
+): LayerSpecification {
+  return {
+    id: ROUTE_HIGHLIGHT_LAYER,
+    type: "line",
+    source: routesSource,
+    "source-layer": CYCLING_ROUTES_LAYER,
+    layout: { ...defaultLineLayout, ...routeHighlightLayout(relation) },
+    filter: routeHighlightFilter(relation),
+    paint: {
+      "line-color": HIGHLIGHT,
+      "line-opacity": 0.7,
+      "line-width": interpolateZoom({ z6: 3, z10: 6, z16: 18 }),
+    },
+  };
+}
+
+export const routeHighlightFilter = (
+  relation: number | undefined,
+): ExpressionSpecification => [
+  "==",
+  ["id"],
+  relation === undefined ? -1 : osmFeatureId("relation", relation),
+];
+
+export const routeHighlightLayout = (relation: number | undefined) => ({
+  visibility: relation === undefined ? ("none" as const) : ("visible" as const),
+});
 
 /** Colours per theme. Light is the original design; dark keeps the same meaning on a dark basemap. */
 const PALETTE = {

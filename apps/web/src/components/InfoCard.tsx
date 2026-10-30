@@ -236,35 +236,7 @@ export const InfoCard: React.FC<{
           </div>
         : null}
         {chips?.length ?
-          <div className="flex flex-wrap gap-1.5 px-4 pb-3">
-            {chips.map((c) => {
-              const className = `inline-flex h-[26px] items-center gap-1.5 rounded-md px-[9px] text-[13px] font-bold ${c.color ? "" : CHIP_STYLE[c.tone ?? "info"]}`;
-              const style =
-                c.color ?
-                  { background: c.color.bg, color: c.color.fg }
-                : undefined;
-              return c.onSelect ?
-                  <button
-                    key={c.label}
-                    type="button"
-                    onClick={c.onSelect}
-                    aria-label={c.action}
-                    title={c.action}
-                    className={`${className} hover:shadow-[inset_0_0_0_100px_rgb(0_0_0/0.12)]`}
-                    style={style}>
-                    {c.icon ?
-                      <Icon icon={c.icon} size={16} />
-                    : null}
-                    {c.label}
-                  </button>
-                : <span key={c.label} className={className} style={style}>
-                    {c.icon ?
-                      <Icon icon={c.icon} size={16} />
-                    : null}
-                    {c.label}
-                  </span>;
-            })}
-          </div>
+          <CardChips chips={chips} className="px-4 pb-3" />
         : null}
         {children}
         {footer ?
@@ -276,6 +248,43 @@ export const InfoCard: React.FC<{
     </article>
   );
 };
+
+/** Chips in a row, wrapping: under a card's title, or in a section ("Part of", "Contains"). */
+export const CardChips: React.FC<{ chips: CardChip[]; className?: string }> = ({
+  chips,
+  className = "",
+}) => (
+  <div className={`flex flex-wrap gap-1.5 ${className}`}>
+    {chips.map((c, i) => {
+      // Two chips can share a label (bike routes of the same name).
+      const key = `${i}:${c.label}`;
+      // Long labels (bike route names) wrap inside the chip.
+      const className = `inline-flex min-h-[26px] items-center gap-1.5 rounded-md px-[9px] py-[3px] text-left text-[13px] leading-tight font-bold ${c.color ? "" : CHIP_STYLE[c.tone ?? "info"]}`;
+      const style =
+        c.color ? { background: c.color.bg, color: c.color.fg } : undefined;
+      return c.onSelect ?
+          <button
+            key={key}
+            type="button"
+            onClick={c.onSelect}
+            aria-label={c.action}
+            title={c.action}
+            className={`${className} hover:shadow-[inset_0_0_0_100px_rgb(0_0_0/0.12)]`}
+            style={style}>
+            {c.icon ?
+              <Icon icon={c.icon} size={16} />
+            : null}
+            {c.label}
+          </button>
+        : <span key={key} className={className} style={style}>
+            {c.icon ?
+              <Icon icon={c.icon} size={16} />
+            : null}
+            {c.label}
+          </span>;
+    })}
+  </div>
+);
 
 /** A heading over rows, separated from what's above by a 1 px divider. */
 export const CardSection: React.FC<{
