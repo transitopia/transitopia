@@ -8,7 +8,7 @@ import {
   type CardAction,
 } from "../components/InfoCard.tsx";
 import type { MapParkingElement } from "../Map/MapData.ts";
-import { BIKE_TILE } from "./BikeRouteCard.tsx";
+import { BIKE_TILE } from "./BikePathCard.tsx";
 
 /** OSM's bicycle_parking values, in words ("wide_stands" → "Wide stands"). */
 function parkingType(t: string): string {

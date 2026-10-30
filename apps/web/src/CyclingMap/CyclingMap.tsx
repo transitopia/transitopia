@@ -30,7 +30,7 @@ import { modeUrl, useOtherModeRedirect } from "../components/ModeLink.tsx";
 import { transitApi } from "../config.ts";
 import { openedWithPosition } from "../startup.ts";
 import { BikeParkingCard } from "./BikeParkingCard.tsx";
-import { BikeRouteCard, pathTitle } from "./BikeRouteCard.tsx";
+import { BikePathCard, pathTitle } from "./BikePathCard.tsx";
 import { CyclingRouteCard } from "./CyclingRouteCard.tsx";
 import { CyclingLayers, useCyclingShow } from "./CyclingLayers.tsx";
 import { useCyclingRoutes, useCyclingTiles } from "./cycling-data.ts";
@@ -402,7 +402,7 @@ export const CyclingMap: React.FC = () => {
           onClose={closeInfobox}
         />
       : current?.kind === "element" && selectedElement?.type === "cycling_way" ?
-        <BikeRouteCard
+        <BikePathCard
           feature={selectedElement}
           routes={routes}
           onRoute={(id) =>

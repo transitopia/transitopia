@@ -76,7 +76,7 @@ function routeChips(
 }
 
 /** A bike lane or path (apps/web/README.md#feature-cards). Ignores the map's time: OSM has no history. */
-export const BikeRouteCard: React.FC<{
+export const BikePathCard: React.FC<{
   feature: MapCyclingElement;
   /** The bike routes, to name the ones it's part of. */
   routes: CyclingRoutes | undefined;
@@ -103,7 +103,7 @@ export const BikeRouteCard: React.FC<{
   return (
     <InfoCard
       tile={{ icon: "bicycle", ...BIKE_TILE }}
-      eyebrow="Bike route"
+      eyebrow="Bikeway"
       title={title}
       subtitle={f.name ? type : undefined}
       chips={[...chips(f), ...routeChips(f, routes, onRoute)]}

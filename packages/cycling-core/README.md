@@ -70,7 +70,7 @@ One layer, `transitopia_cycling`, zooms 6–14:
 - **The widest views aren't crumbs, and paths don't break up**: below z13 the ways are joined into chains by what's drawn, and a chain shows from the zoom at which its group (the chains with the same properties connected to it) is at least a pixel long (`MIN_PX`). A long path made of short ways or broken by junctions shows whole, and only short, isolated pieces wait for closer zooms. (The Planetiler profile dropped each way under a pixel long, which left gaps in long paths made of short ways.)
 - **Bike parking carries its details**, so the site's card needs nothing from the OSM API ([docs/DESIGN.md](../../docs/DESIGN.md), principle 3). They're small: 65 KB on BC's 5.3 MB of tiles (7,373 bike parking, measured 2026-10-27), so they're at every zoom bike parking shows. `capacity` is kept only where it's a plain number, and `covered` and `indoor` are true for any value but `no` (`partial`, `room`, …).
 - **A path's OSM ways aren't in the tiles**, only its first by id (in its id). A link naming another of its ways goes through the [lookup](#lookup), which gives the first. Carrying every way id would have added 0.8 MB to BC's tiles (5.4 → 6.2 MB, measured 2026-10-29) for links the site doesn't write.
-- The site's styles (`apps/web/src/CyclingMap/cycling-map-layers.ts`) filter on `comfort`, `class`, `construction` and `oneway`, and its cards (`BikeRouteCard`, `BikeParkingCard`) read the other properties.
+- The site's styles (`apps/web/src/CyclingMap/cycling-map-layers.ts`) filter on `comfort`, `class`, `construction` and `oneway`, and its cards (`BikePathCard`, `BikeParkingCard`) read the other properties.
 
 ## Published files
 

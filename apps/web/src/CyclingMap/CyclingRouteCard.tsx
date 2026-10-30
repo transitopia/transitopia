@@ -8,7 +8,7 @@ import {
   shareLink,
   type CardAction,
 } from "../components/InfoCard.tsx";
-import { BIKE_TILE, routeName } from "./BikeRouteCard.tsx";
+import { BIKE_TILE, routeName } from "./BikePathCard.tsx";
 
 /** OSM's route networks, in words. */
 const NETWORKS: Record<string, string> = {
