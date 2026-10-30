@@ -232,6 +232,7 @@ describe("maxspeedKmh", () => {
 describe("isBikeRoute", () => {
   it("takes route relations for bicycles", () => {
     expect(isBikeRoute({ type: "route", route: "bicycle" })).toBe(true);
+    expect(isBikeRoute({ type: "superroute", route: "bicycle" })).toBe(true);
     expect(isBikeRoute({ type: "route", route: "bus" })).toBe(false);
   });
 });

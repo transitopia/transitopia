@@ -1,7 +1,8 @@
-// Where the cycling map's OSM features are, for the server's feature resolver
-// (packages/cycling-core/README.md#lookup): an OSM ref (`osm-way:<id>`, `osm-node:<id>`,
-// `osm-relation:<id>`) → its kind, name and extent, from the latest build, so a link works without
-// the map's position and without calling OSM. Written beside the published files, not published.
+// Where the cycling map's paths and bike parking are, for the server's feature resolver
+// (packages/cycling-core/README.md#lookup): an OSM ref (`osm-way:<id>`, `osm-node:<id>`) → its kind,
+// name and extent, from the latest build, so a link works without the map's position and without
+// calling OSM. Written beside the published files, not published. Bike routes are in the database
+// (README.md#bike-routes).
 
 import {
   chainWayId,
@@ -9,11 +10,8 @@ import {
   type CyclingWayProperties,
 } from "./tiles.ts";
 import type { Chain, LonLat } from "./chains.ts";
-import type { CyclingRoutes } from "./published.ts";
+import type { BBox } from "./routes.ts";
 import { parseKey } from "@transitopia/shared/features.ts";
-
-/** [west, south, east, north]. */
-export type BBox = [number, number, number, number];
 
 /** lookup.json. */
 export interface CyclingLookup {
@@ -35,7 +33,7 @@ export interface CyclingFeature {
    * by id, whichever of its ways the ref named (packages/cycling-core/README.md#lookup).
    */
   key: string;
-  kind: "cycling-route" | "cycling-way" | "bike-parking";
+  kind: "cycling-way" | "bike-parking";
   name: string | null;
   centroid: LonLat;
   bbox: BBox;
@@ -87,30 +85,16 @@ const centre = (b: BBox): LonLat => [
 ];
 
 /**
- * The cycling feature an OSM ref names: a bike route (from the routes file), a path or lane (the
- * chain one of its ways is in), or bike parking (a node, or a way around an area). Undefined for
- * anything else, and for a route with none of its ways in the area.
+ * The cycling feature an OSM ref names: a path or lane (the chain one of its ways is in), or bike
+ * parking (a node, or a way around an area). Undefined for anything else.
  */
 export function findCyclingFeature(
   key: string,
   lookup: CyclingLookup,
-  routes: CyclingRoutes,
 ): CyclingFeature | undefined {
   const k = parseKey(key);
   if (k?.form !== "ref" || !/^\d+$/.test(k.value)) return undefined;
   switch (k.scheme) {
-    case "osm-relation": {
-      const r = routes[k.value];
-      return r?.bbox ?
-          {
-            key: `osm-relation:${k.value}`,
-            kind: "cycling-route",
-            name: r.name ?? r.ref ?? null,
-            centroid: centre(r.bbox),
-            bbox: r.bbox,
-          }
-        : undefined;
-    }
     case "osm-node":
     case "osm-way": {
       const p = lookup.parking[`${k.scheme}:${k.value}`];

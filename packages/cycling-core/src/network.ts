@@ -2,15 +2,17 @@
 // every way that's a cycling facility with its attributes, bike parking, and the bike routes.
 
 import { distM, round } from "@transitopia/transit-core/geo.ts";
-import type { LonLat, ClassifiedWay } from "./chains.ts";
+import { joinChains, type LonLat, type ClassifiedWay } from "./chains.ts";
 import {
   classifyWay,
+  COMFORT,
   isBikeParking,
   isBikeRoute,
   type ClassifyConfig,
+  type Comfort,
 } from "./classify.ts";
 import type { OsmElement, OsmWay, Tags } from "./osm.ts";
-import type { CyclingRoute } from "./published.ts";
+import type { ComfortLengths, CyclingRoute } from "./routes.ts";
 import type {
   BikeParking,
   BikeParkingProperties,
@@ -22,24 +24,30 @@ export interface CyclingNetwork {
   parking: BikeParking[];
   /** The bike routes by relation id, in ascending order. */
   routes: Map<number, CyclingRoute>;
+  /**
+   * A bike route's lines: its ways and its subroutes' that are in the area, each once, joined end to
+   * end where only two of them meet.
+   */
+  routeLines(id: number): LonLat[][];
 }
 
 /** Decimals kept in a route's bbox (about a metre). */
 const BBOX_DECIMALS = 5;
 
-/** A way's length (metres) and [west, south, east, north]. */
-type Extent = [number, number, number, number, number];
+/** A way any bike route might name: where it is, its length (metres) and its comfort (0 if none). */
+interface WayInfo {
+  id: number;
+  nodes: readonly number[];
+  coords: readonly LonLat[];
+  lengthM: number;
+  comfort: Comfort | typeof COMFORT.none;
+}
 
-function extentOf(coords: readonly LonLat[]): Extent {
-  const e: Extent = [0, Infinity, Infinity, -Infinity, -Infinity];
-  for (const [i, c] of coords.entries()) {
-    if (i > 0) e[0] += distM(coords[i - 1]!, c);
-    e[1] = Math.min(e[1], c[0]);
-    e[2] = Math.min(e[2], c[1]);
-    e[3] = Math.max(e[3], c[0]);
-    e[4] = Math.max(e[4], c[1]);
-  }
-  return e;
+function lengthOf(coords: readonly LonLat[]): number {
+  let m = 0;
+  for (let i = 1; i < coords.length; i++)
+    m += distM(coords[i - 1]!, coords[i]!);
+  return m;
 }
 
 /** yes, partial, … → true; no → false. */
@@ -110,8 +118,11 @@ export class CyclingNetworkBuilder {
   private readonly parking: BikeParking[] = [];
   /** Each way's bike route relations (direct members only: a route's subroutes don't name it). */
   private readonly routesOf = new Map<number, Set<number>>();
-  /** Every way's extent, for the routes' lengths and bboxes (relations come after ways in OPL). */
-  private readonly extents = new Map<number, Extent>();
+  /**
+   * Every way, for the routes' lengths, bboxes and lines (relations come after ways in OPL, so which
+   * ways a route names isn't known until then).
+   */
+  private readonly wayInfo = new Map<number, WayInfo>();
   private readonly routes = new Map<
     number,
     { tags: Tags; ways: number[]; subroutes: number[] }
@@ -132,8 +143,14 @@ export class CyclingNetworkBuilder {
     } else if (e.type === "way") {
       const coords = wayCoords(e);
       if (!coords) return;
-      this.extents.set(e.id, extentOf(coords));
       const cls = canBeLine(e) ? classifyWay(e.tags, this.config) : undefined;
+      this.wayInfo.set(e.id, {
+        id: e.id,
+        nodes: e.nodes,
+        coords,
+        lengthM: lengthOf(coords),
+        comfort: cls?.comfort ?? COMFORT.none,
+      });
       if (cls)
         this.ways.push({
           id: e.id,
@@ -177,44 +194,83 @@ export class CyclingNetworkBuilder {
       const ids = this.routesOf.get(w.id);
       if (ids) w.attrs.routes = [...ids].sort((a, b) => a - b).join(",");
     }
+    const parents = new Map<number, number[]>();
+    const ids = [...this.routes.keys()].sort((a, b) => a - b);
+    for (const id of ids)
+      for (const s of new Set(this.subroutesOf(id))) {
+        let l = parents.get(s);
+        if (!l) parents.set(s, (l = []));
+        l.push(id);
+      }
     const routes = new Map<number, CyclingRoute>();
-    for (const id of [...this.routes.keys()].sort((a, b) => a - b))
-      routes.set(id, this.route(id));
-    return { ways: this.ways, parking: this.parking, routes };
+    for (const id of ids) routes.set(id, this.route(id, parents.get(id)));
+    return {
+      ways: this.ways,
+      parking: this.parking,
+      routes,
+      routeLines: (id) =>
+        joinChains(
+          this.waysOf(id).map((w) => ({ ...w, attrs: null })),
+          () => "",
+          () => false,
+        ).map((c) => c.coords),
+    };
   }
 
-  /** A route's summary: its ways and its subroutes' (those that are bike routes), each once. */
-  private route(id: number): CyclingRoute {
-    const { tags, subroutes } = this.routes.get(id)!;
-    const ways = new Set<number>();
+  /** A route's subroutes that are bike routes (not itself), in member order. */
+  private subroutesOf(id: number): number[] {
+    return this.routes
+      .get(id)!
+      .subroutes.filter((s) => s !== id && this.routes.has(s));
+  }
+
+  /** The ways in the area of a route and its subroutes, theirs, and so on, each once. */
+  private waysOf(id: number): WayInfo[] {
+    const ways = new Map<number, WayInfo>();
     const seen = new Set<number>();
     const visit = (r: number) => {
       const route = this.routes.get(r);
+      // `seen` also stops a route that contains itself, through its subroutes or directly.
       if (!route || seen.has(r)) return;
       seen.add(r);
-      for (const w of route.ways) ways.add(w);
+      for (const w of route.ways) {
+        const info = this.wayInfo.get(w);
+        if (info) ways.set(w, info);
+      }
       for (const s of route.subroutes) visit(s);
     };
     visit(id);
+    return [...ways.values()];
+  }
+
+  /** A route's summary: its ways and its subroutes' (those that are bike routes), each once. */
+  private route(id: number, parents: number[] | undefined): CyclingRoute {
+    const { tags } = this.routes.get(id)!;
+    const comfortM: ComfortLengths = [0, 0, 0, 0, 0];
     let lengthM = 0;
     let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
-    for (const way of ways) {
-      const x = this.extents.get(way);
-      if (!x) continue;
-      lengthM += x[0];
-      [w, s, e, n] = [
-        Math.min(w, x[1]),
-        Math.min(s, x[2]),
-        Math.max(e, x[3]),
-        Math.max(n, x[4]),
-      ];
+    for (const way of this.waysOf(id)) {
+      lengthM += way.lengthM;
+      comfortM[way.comfort] += way.lengthM;
+      for (const [lon, lat] of way.coords) {
+        [w, s, e, n] = [
+          Math.min(w, lon),
+          Math.min(s, lat),
+          Math.max(e, lon),
+          Math.max(n, lat),
+        ];
+      }
     }
-    const r: CyclingRoute = { lengthM: Math.round(lengthM) };
+    const r: CyclingRoute = {
+      lengthM: Math.round(lengthM),
+      comfortM: comfortM.map(Math.round) as ComfortLengths,
+    };
     if (tags.name !== undefined) r.name = tags.name;
     if (tags.ref !== undefined) r.ref = tags.ref;
     if (tags.network !== undefined) r.network = tags.network;
-    const subs = subroutes.filter((s) => this.routes.has(s));
+    const subs = [...new Set(this.subroutesOf(id))];
     if (subs.length) r.subroutes = subs;
+    if (parents?.length) r.parents = parents;
     if (w !== Infinity) {
       const d = BBOX_DECIMALS;
       r.bbox = [round(w, d), round(s, d), round(e, d), round(n, d)];

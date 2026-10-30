@@ -8,9 +8,18 @@ import {
   type LonLat,
 } from "./chains.ts";
 import type { WayClass } from "./classify.ts";
+import type { CyclingNetwork } from "./network.ts";
 
-/** The tiles' one layer: paths, lanes and bike parking. */
+/** The tiles' layer of paths, lanes and bike parking. */
 export const CYCLING_LAYER = "transitopia_cycling";
+/** The tiles' layer of bike routes: one feature each, whole, so a selected route is highlighted whole. */
+export const CYCLING_ROUTES_LAYER = "transitopia_cycling_routes";
+/**
+ * Bike routes are in the tiles up to this zoom, and the map overzooms them beyond it: their lines at
+ * z12 are within about 2 m, plenty for a highlight, and z13–14 would add 1.2 MB to BC's 6.2 MB
+ * (measured 2026-10-29).
+ */
+export const CYCLING_ROUTES_MAX_ZOOM = 12;
 export const CYCLING_MIN_ZOOM = 6;
 export const CYCLING_MAX_ZOOM = 14;
 /**
@@ -53,6 +62,12 @@ export type BikeParkingProperties = {
   operator?: string;
   osmNodeId?: number;
   osmWayId?: number;
+};
+
+/** A bike route in the tiles (its id is `osmFeatureId("relation", <its relation id>)`). */
+export type CyclingRouteProperties = {
+  /** OSM's `network`: lcn, rcn, ncn or icn. */
+  network?: string;
 };
 
 /** A bike parking point before tiling. */
@@ -200,4 +215,30 @@ export function* cyclingTileFeatures(
       geometry: { type: "Point", coordinates: p.lonLat },
       tippecanoe: { layer: CYCLING_LAYER, minzoom: PARKING_MIN_ZOOM },
     };
+}
+
+/**
+ * The bike routes' features, for tippecanoe: each route's lines (its ways and its subroutes'), from
+ * CYCLING_MIN_ZOOM to CYCLING_ROUTES_MAX_ZOOM. A route with none of its ways in the area has none.
+ */
+export function* cyclingRouteTileFeatures(
+  network: Pick<CyclingNetwork, "routes" | "routeLines">,
+): Generator<TileFeature> {
+  for (const [id, r] of network.routes) {
+    const lines = network.routeLines(id);
+    if (!lines.length) continue;
+    const properties: CyclingRouteProperties =
+      r.network === undefined ? {} : { network: r.network };
+    yield {
+      type: "Feature",
+      id: osmFeatureId("relation", id),
+      properties,
+      geometry: { type: "MultiLineString", coordinates: lines },
+      tippecanoe: {
+        layer: CYCLING_ROUTES_LAYER,
+        minzoom: CYCLING_MIN_ZOOM,
+        maxzoom: CYCLING_ROUTES_MAX_ZOOM,
+      },
+    };
+  }
 }

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { CyclingNetworkBuilder } from "../src/network.ts";
 import { parseOpl } from "../src/osm.ts";
 import { cyclingLookup, findCyclingFeature } from "../src/lookup.ts";
-import type { CyclingRoutes } from "../src/published.ts";
 import { detailChains } from "../src/tiles.ts";
 
 const b = new CyclingNetworkBuilder({ calmMaxSpeedKmh: 30 });
@@ -16,11 +15,7 @@ for (const l of [
   b.add(parseOpl(l)!);
 const n = b.build();
 const lookup = cyclingLookup(detailChains(n.ways), n.parking);
-const routes: CyclingRoutes = {
-  "40": { name: "Greenway", lengthM: 10, bbox: [-123.2, 49.2, -123, 49.3] },
-  "41": { lengthM: 0 },
-};
-const find = (key: string) => findCyclingFeature(key, lookup, routes);
+const find = (key: string) => findCyclingFeature(key, lookup);
 
 describe("findCyclingFeature", () => {
   it("finds a path's chain by any of its ways, keyed by its first", () => {
@@ -51,21 +46,11 @@ describe("findCyclingFeature", () => {
     });
   });
 
-  it("finds bike routes in the routes file, if any of their ways are in the area", () => {
-    expect(find("osm-relation:40")).toEqual({
-      key: "osm-relation:40",
-      kind: "cycling-route",
-      name: "Greenway",
-      centroid: [-123.1, 49.25],
-      bbox: [-123.2, 49.2, -123, 49.3],
-    });
-    expect(find("osm-relation:41")).toBeUndefined();
-  });
-
   it("knows nothing else", () => {
     expect(find("osm-way:30")).toBeUndefined(); // not a cycling way
     expect(find("osm-node:1")).toBeUndefined(); // a path's node
     expect(find("osm-way:constructor")).toBeUndefined();
+    expect(find("osm-relation:40")).toBeUndefined(); // bike routes are in the database
     expect(find("sn-k3v9qd7m")).toBeUndefined();
     expect(find("gtfs-stop:translink:10")).toBeUndefined();
   });
