@@ -226,6 +226,32 @@ export interface Database {
     created_at: DefaultTimestamp;
     resolved_at: Timestamp | null;
   };
+  // Bike routes from the latest cycling build of each area (migrations/004_cycling_routes.sql).
+  cycling_builds: {
+    area: string;
+    osm_file: string;
+    osm_timestamp: Timestamp;
+    built_at: Timestamp;
+    loaded_at: DefaultTimestamp;
+  };
+  cycling_routes: {
+    area: string;
+    relation_id: number;
+    name: string | null;
+    ref: string | null;
+    network: string | null;
+    length_m: number;
+    /** Metres by comfort, 0 (no bike facility) to 4. */
+    comfort_m: number[];
+    /** [west, south, east, north]. */
+    bbox: number[] | null;
+  };
+  cycling_route_members: {
+    area: string;
+    parent: number;
+    child: number;
+    position: number;
+  };
   job_runs: {
     job: string;
     key: string;

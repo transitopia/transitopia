@@ -60,6 +60,7 @@ import type { CorrectionsRepo } from "./corrections.ts";
 import type { Jobs } from "./jobs/scheduler.ts";
 import { serverConfig } from "./config.ts";
 import type { FindCyclingFeature } from "./features/cycling.ts";
+import { cyclingRouteDetail } from "./features/cycling-routes.ts";
 
 export interface AppDeps {
   service: RtService;
@@ -134,6 +135,19 @@ export function createApp(deps: AppDeps): Hono<Env> {
     }
     if (!r) return c.json({ error: "Unknown feature" }, 404, headers);
     return c.json(r, 200, headers);
+  });
+
+  // ---- Bike routes (apps/server/README.md#cycling-routes) ------------------------------------
+  app.get("/cycling/routes/:key", async (c) => {
+    const headers = {
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "public, max-age=3600",
+    };
+    if (!db) return c.json({ error: "No database" }, 503, headers);
+    const r = await cyclingRouteDetail(db, c.req.param("key"));
+    return r ?
+        c.json(r, 200, headers)
+      : c.json({ error: "Unknown bike route" }, 404, headers);
   });
 
   app.get("/healthz", async (c) => {

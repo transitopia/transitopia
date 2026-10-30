@@ -12,7 +12,8 @@
 //   DATABASE_URL=postgres://… npm run features -- retire <key> [<key> …]
 //
 // reconcile records the feed versions on disk in gtfs_feeds, then reconciles every one not yet
-// reconciled, as the server's data build does (ARCHIVE_REMOTE: fetch older zips from the archive).
+// reconciled, as the server's data build does (ARCHIVE_REMOTE: fetch older zips from the archive),
+// and loads the latest cycling build's bike routes (npm run data:cycling), giving them IDs.
 // IDs minted locally are throwaway: only production's are published.
 
 import { existsSync } from "node:fs";
@@ -33,7 +34,7 @@ import { loadRegistry, registryFromDb } from "../features/export.ts";
 import { createDb, type Db } from "@transitopia/db/connect.ts";
 import { migrate } from "@transitopia/db/migrate.ts";
 import { reconcileConfig } from "../config.ts";
-import { recordFeeds } from "../jobs/data-build.ts";
+import { loadRoutes, recordFeeds } from "../jobs/data-build.ts";
 import { reconcileFeeds } from "../features/reconcile.ts";
 import {
   childrenOf,
@@ -132,6 +133,7 @@ async function main(db: Db): Promise<void> {
         log: console.log,
       });
       console.log(`${r.length} feed versions reconciled`);
+      await loadRoutes(db, console.log);
       return;
     }
     case "show": {

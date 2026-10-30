@@ -105,7 +105,8 @@ var/                       gitignored: downloads, recordings, build output (var/
 | Request ledger (`upstream_requests`) | Database | |
 | Published transit data (plans, movements, patches) | `transitopia-data` on R2, behind data.transitopia.org | |
 | The cycling map's OSM file (what osmium keeps of the BC extract) | `transitopia-data` on R2 (`data/osm/`), published by GitHub Actions | two weeks |
-| The cycling map's tiles and bike routes | `transitopia-data` on R2 (`data/cycling/`), published by the server's data build | two weeks after the index stops naming them |
+| The cycling map's tiles | `transitopia-data` on R2 (`data/cycling/`), published by the server's data build | two weeks after the index stops naming them |
+| Bike routes (from the cycling build) | Database (`cycling_routes`, `cycling_route_members`), replaced by each build; their IDs in the registry | the latest build |
 
 Tables and migrations are described in [packages/db/README.md](../packages/db/README.md).
 
@@ -209,7 +210,7 @@ Time zones come from the runtime's tzdata, never hard-coded. BC moved to permane
 
 ## Feature IDs
 
-Every station, bus exchange, stop and route in every feed has a **persistent, global ID** that survives GTFS feed changes and renames (issue #193; vehicles, cycling features and facts come later). The registry is in the database, and only production's IDs are published.
+Every station, bus exchange, stop and route in every feed, and every bike route, has a **persistent, global ID** that survives GTFS feed changes and renames (issue #193; bike routes, issue #229; vehicles, other cycling features and facts come later: paths and bike parking are named by their OSM refs). The registry is in the database, and only production's IDs are published.
 
 **Two forms of string** name a feature, told apart by their characters alone (`packages/shared/src/features.ts`: `parseKey`, `formatKey`, `mintId`):
 
@@ -251,7 +252,7 @@ The site resolves IDs from published files, without the server (principle: stati
 - **The public export**, `data/features/export/<YYYYMMDD>.ndjson.gz`, with `data/features/latest.json` pointing at the newest: every feature (merged ones too, for redirects), its refs, and the feed versions their ranges are over. No authors, users or flags. `npm run features -- pull` loads it into a development setup.
 - **The resolver**, `GET https://api.transitopia.org/features/<key>` ([apps/server → Feature resolver](../apps/server/README.md#feature-resolver)), for what the loaded places files don't have: another region's feature (its bbox moves the map there). Cached for an hour at the edge.
 
-`?select=<key>` on `/transit` names whatever's selected, a place, route or vehicle, in either form ([apps/web → Modes and URL state](../apps/web/README.md#modes-and-url-state)); on `/cycling`, a path, bike parking or bike route by its OSM ref, until cycling features have IDs ([apps/web → Cycling links](../apps/web/README.md#cycling-links)). A key of the other mode goes to that mode. Older URL forms aren't read (there were few users: nothing from before keeps working).
+`?select=<key>` on `/transit` names whatever's selected, a place, route or vehicle, in either form ([apps/web → Modes and URL state](../apps/web/README.md#modes-and-url-state)); on `/cycling`, a bike route by its `cr` ID, and a path or bike parking by its OSM ref ([apps/web → Cycling links](../apps/web/README.md#cycling-links)). Bike routes aren't in published files: the server answers for them from the database ([apps/server → Cycling routes](../apps/server/README.md#cycling-routes)). A key of the other mode goes to that mode. Older URL forms aren't read (there were few users: nothing from before keeps working).
 
 **Statistics** keep their GTFS keys and record the feed version they were derived from (`feed_version`); the views `route_stats_daily_by_feature` and `observed_stop_times_by_feature` join them to features through the refs, so a route's and a stop's history continue across feed versions.
 
@@ -287,6 +288,7 @@ Made while planning V2 (2026-09-29 to 2026-10-01). Change them deliberately, and
 | Live data | **One poll per map**: `/regions/<id>/live/transit` for transit (later `/regions/<id>/live/cycling` for GBFS), shared by every visitor at the edge, with a section per source (agency or feed) and pointers to immutable per-date files for anything large or slow-changing ([apps/server → Live endpoint](../apps/server/README.md#live-endpoint), issue #177). Polling, not server-sent events or WebSockets: an open connection per visitor would reach the one VM and lose the edge cache. |
 | Feature IDs | **Prefixed random IDs** with a decorative name suffix in URLs, **refs** for source records, **no slugs** (2026-10-18, issue #193). The registry is in the database, GTFS refs hold over ranges of feed versions, containment is the registry's (the heuristics only propose it), and only production mints the IDs that are published. Plans hold no IDs: places files beside them do, so registry edits publish in minutes ([above](#feature-ids)). |
 | Cycling layer | **Built by our TypeScript pipeline** (2026-10-27): osmium filters Geofabrik's extract in GitHub Actions, which publishes the result (about 20 MB for BC), so nothing else needs osmium, the 1.3 GB extract or osmium's 2.5 GB of memory; `packages/cycling-core` classifies ways and joins them into chains, and tippecanoe tiles them, as the transit lines are tiled. It replaced the Java Planetiler profile, so the classification is shared with the site and, later, the server, and a selected path is a whole chain ([packages/cycling-core](../packages/cycling-core/README.md)). |
+| Bike routes | **In the database, with `cr` IDs** (2026-10-29, #229 phases 4–5): each cycling build's routes and their nesting are loaded into the database and served to route cards by the API (`GET /cycling/routes/<key>`), rather than published as one file, so the approach holds for all of Canada and for queries across routes. Route cards need the server; the map, paths and bike parking don't. Only bike routes get IDs (matched by their `osm-relation` ref, which holds for good); paths and bike parking keep OSM refs. In the tiles, each route is one feature up to z12, overzoomed beyond, so the selected route is highlighted whole. |
 | Transit lines | **Vector tiles, built with the data** (2026-10-20, #198): every line a plan draws is in tiles of its own, named by their content, and the engine styles them (feature state, global state, filters) rather than drawing GeoJSON; one overview tileset shows every region zoomed out. No interim GeoJSON overview ([packages/transit-core → Plan tiles](../packages/transit-core/DESIGN.md#plan-tiles)). |
 | Environments | Production and local development. A staging environment can be added cheaply later: configuration in env files, hostnames and buckets as config, unattended migrations, a Compose project per environment. Staging would never poll TransLink. |
 
