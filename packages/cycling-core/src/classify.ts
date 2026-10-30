@@ -16,9 +16,18 @@ export const COMFORT = {
   low: 2,
   /** E.g. a shared lane on a busy street, or a painted lane beside parked cars. */
   least: 1,
+  /**
+   * No bike facility: a way of a bike route that isn't a cycling way (an ordinary road). Only in
+   * route summaries (`comfortM`); classified ways are 1–4.
+   */
+  none: 0,
 } as const;
 
-export type Comfort = (typeof COMFORT)[keyof typeof COMFORT];
+/** A classified way's comfort, 1–4. */
+export type Comfort = Exclude<
+  (typeof COMFORT)[keyof typeof COMFORT],
+  typeof COMFORT.none
+>;
 
 /** A path's or lane's attributes, as the tiles carry them (CyclingWayProperties in tiles.ts). */
 export type WayClass = {
@@ -276,6 +285,9 @@ export const OSM_FILTERS = [
 export const isBikeParking = (t: Tags): boolean =>
   has(t, "amenity", "bicycle_parking");
 
-/** Whether a relation is a bike route whose ways the tiles name (`routes`). */
+/**
+ * Whether a relation is a bike route: a route (whose ways the tiles name in `routes`), or a
+ * superroute, which contains only other routes (https://wiki.openstreetmap.org/wiki/Relation:superroute).
+ */
 export const isBikeRoute = (t: Tags): boolean =>
-  has(t, "type", "route") && has(t, "route", "bicycle");
+  has(t, "type", "route", "superroute") && has(t, "route", "bicycle");

@@ -604,6 +604,19 @@ export async function resolveKey(
     db,
   );
   const e = extent.rows[0];
+  // A cycling route's extent is its build's bbox (cycling_routes, cycling-routes.ts), not
+  // features.geom, which is null for it (the readers here take geom as a point).
+  const route =
+    found.kind === "cycling-route" ?
+      await sql<{ bbox: [number, number, number, number] }>`
+        select c.bbox from cycling_routes c
+        join feature_refs r on r.scheme = 'osm-relation' and r.namespace = ''
+          and r.ref = c.relation_id::text
+        where r.feature_id = ${found.id} and c.bbox is not null
+        order by c.area limit 1`
+        .execute(db)
+        .then((r) => r.rows[0]?.bbox)
+    : undefined;
   const refs = await sql<{ scheme: string; namespace: string; ref: string }>`
     select distinct scheme, namespace, ref from feature_refs where feature_id = ${found.id}
     order by scheme, namespace, ref`.execute(db);
@@ -632,8 +645,12 @@ export async function resolveKey(
     feed: found.feedId,
     parent: found.parentId,
     centroid:
-      found.lon !== null && found.lat !== null ? [found.lon, found.lat] : null,
-    bbox: e && e.xmin !== null ? [e.xmin, e.ymin!, e.xmax!, e.ymax!] : null,
+      route ? [(route[0] + route[2]) / 2, (route[1] + route[3]) / 2]
+      : found.lon !== null && found.lat !== null ? [found.lon, found.lat]
+      : null,
+    bbox:
+      route
+      ?? (e && e.xmin !== null ? [e.xmin, e.ymin!, e.xmax!, e.ymax!] : null),
     refs: refs.rows.map((r) =>
       r.namespace ?
         `${r.scheme}:${r.namespace}:${r.ref}`

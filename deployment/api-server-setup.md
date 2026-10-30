@@ -170,15 +170,25 @@ In the `transitopia.org` zone:
 - **SSL/TLS:** encryption mode **Full (strict)**. SSL/TLS → Origin Server → Create certificate,
   for `api.transitopia.org`, 15 years. Keep the certificate and private key for step 10 (the key is
   shown only once).
-- **Caching → Cache Rules:** when hostname equals `api.transitopia.org` and URI path starts with
-  `/rt/` or `/regions/`: eligible for cache; edge TTL "Use cache-control header if present, bypass cache if not";
-  **browser TTL "Respect origin TTL"**. (the live endpoint sends up to 10 s, coverage and service changes 30 s,
-  a SeaBus day file in progress 60 s, closed history hours and finished days a day, dispatch and
-  service changes versions a year; Cloudflare doesn't cache JSON without a
-  rule.) Without the browser TTL setting, Cloudflare tells browsers to keep every response for its
+- **Caching → Cache Rules:** one rule for everything on `api.transitopia.org` except `/admin/` and
+  `/auth/`:
+
+  ```
+  (http.host eq "api.transitopia.org" and not starts_with(http.request.uri.path, "/admin/") and not starts_with(http.request.uri.path, "/auth/"))
+  ```
+
+  Then: eligible for cache; edge TTL "Use cache-control header if present, bypass cache if not";
+  **browser TTL "Respect origin TTL"**. The server decides what's cached with `Cache-Control` on
+  each response (the live endpoint up to 10 s, coverage and service changes 30 s, a SeaBus day file
+  in progress 60 s, the feature resolver and bike routes an hour, closed history hours and finished
+  days a day, dispatch and service changes versions a year; `/healthz` `no-store`), so a new public
+  endpoint needs no change here; Cloudflare doesn't cache JSON without a rule. `/admin/` and
+  `/auth/` are left out whatever their headers say: Cloudflare's cache key doesn't include the
+  `Authorization` header, so a cacheable admin response would be served to anyone asking for its
+  URL. Without the browser TTL setting, Cloudflare tells browsers to keep every response for its
   default 4 hours, so the site keeps showing hours-old coverage, dispatch versions and AIS fixes.
   Check with `curl -sI https://api.transitopia.org/rt/coverage`: it must say `max-age=30`, not
-  `14400`. Nothing else on `api.` is cached (`/healthz`, `/admin`, `/auth`).
+  `14400`.
 - Optional: a rate-limiting rule for `api.transitopia.org`.
 
 ## 10. Configuration

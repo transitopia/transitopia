@@ -5,6 +5,7 @@
 
 import { LngLat, type Map as MlMap } from "maplibre-gl";
 import type { Theme } from "@transitopia/map-style/basemap.ts";
+import { CardTrail } from "@transitopia/shared/card-trail.ts";
 import { realtimeOf } from "@transitopia/shared/datasets.ts";
 import { bandIndex, FREQUENCY_BANDS } from "@transitopia/shared/frequency.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
@@ -456,8 +457,8 @@ export class TransitEngine {
   /** The SeaBus berth pair last applied to the map (re-applied after the style reloads). */
   private ferryPair: string | null | undefined;
   private lastVehicles: VehicleState[] = [];
-  /** Cards `open()` came through, oldest first, each with its title for the back strip. */
-  private trail: { target: CardTarget; label: string }[] = [];
+  /** Cards `open()` came through, for the back strip. */
+  private readonly trail = new CardTrail<CardTarget>();
   private describers = new Map<string, (d: ServiceDate) => ServiceDayInfo>();
   private snapshot: TransitSnapshot;
   private listeners = new Set<() => void>();
@@ -832,7 +833,7 @@ export class TransitEngine {
    * Forgets the cards `open()` came through.
    */
   select(id: string | undefined, opts?: { follow?: boolean }): void {
-    this.trail = [];
+    this.trail.clear();
     this.selectVehicle(id, opts);
   }
 
@@ -855,7 +856,7 @@ export class TransitEngine {
 
   /** Open a station's or stop's card (closing any vehicle's), forgetting the cards `open()` came through. */
   selectPlace(place: Place): void {
-    this.trail = [];
+    this.trail.clear();
     this.showPlace(place);
   }
 
@@ -869,7 +870,7 @@ export class TransitEngine {
       this.selectedId !== undefined ? { vehicle: this.selectedId }
       : this.place ? { place: this.place }
       : undefined;
-    if (here) this.trail.push({ target: here, label: from });
+    if (here) this.trail.push(here, from);
     this.show(target);
     // A combined route can start well before the stop it was opened from.
     if ("place" in target && target.place.kind === "shared")
@@ -879,7 +880,7 @@ export class TransitEngine {
   /** Back to the card the showing one was opened from. */
   back(): void {
     const prev = this.trail.pop();
-    if (prev) this.show(prev.target);
+    if (prev) this.show(prev);
   }
 
   private show(target: CardTarget): void {
@@ -1835,7 +1836,7 @@ export class TransitEngine {
       following: this.following,
       selected,
       place: this.placeSnapshot(t),
-      back: this.trail.at(-1)?.label,
+      back: this.trail.backLabel,
       pick: this.pick,
       datasets:
         prev && prev.datasets.join() === this.datasets.join() ?

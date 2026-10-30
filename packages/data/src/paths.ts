@@ -94,16 +94,19 @@ export function cyclingPaths(area: string): {
   extracts: string;
   /** var/raw/osm-cycling/<area>/: what osmium keeps for the cycling map (<date>.opl.gz, latest.json). */
   osm: string;
-  /** Published: index.json, tiles/<hash>.pmtiles, routes/<hash>.json (packages/cycling-core/README.md#published-files). */
+  /** Published: index.json, tiles/<hash>.pmtiles (packages/cycling-core/README.md#published-files). */
   out: string;
   /** var/cycling/<area>/lookup.json: the latest build's OSM refs, for the feature resolver (packages/cycling-core/README.md#lookup). */
   lookup: string;
+  /** var/cycling/<area>/routes.json: the latest build's bike routes, for the server's database (packages/cycling-core/README.md#bike-routes). */
+  routes: string;
 } {
   return {
     extracts: join(RAW_DIR, "osm-extracts", area),
     osm: join(RAW_DIR, "osm-cycling", area),
     out: join(PUBLIC_DIR, cyclingDataPath(area)),
     lookup: join(VAR_DIR, "cycling", area, "lookup.json"),
+    routes: join(VAR_DIR, "cycling", area, "routes.json"),
   };
 }
 

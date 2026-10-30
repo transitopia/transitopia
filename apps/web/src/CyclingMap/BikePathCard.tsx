@@ -1,9 +1,6 @@
 import React from "react";
 
-import type {
-  CyclingRoute,
-  CyclingRoutes,
-} from "@transitopia/cycling-core/published.ts";
+import type { CyclingRouteLink } from "@transitopia/cycling-core/routes.ts";
 import {
   CardRow,
   CardSection,
@@ -13,12 +10,11 @@ import {
   type CardChip,
 } from "../components/InfoCard.tsx";
 import type { MapCyclingElement } from "../Map/MapData.ts";
+import type { RouteState } from "./cycling-data.ts";
+import { API_UNREACHABLE, RouteLinks } from "./CyclingRouteCard.tsx";
 
 /** Bike cards use the cycling mode's green (OpenStreetMap features have no route colour). */
 export const BIKE_TILE = { bg: "#5cc88d", fg: "#0b3d23" };
-
-/** A bike route's name, or its ref. */
-export const routeName = (r: CyclingRoute) => r.name ?? r.ref ?? "Bike route";
 
 /** What kind of facility this is, from the tiles' attributes (packages/cycling-core/src/classify.ts). */
 function kind(f: MapCyclingElement): string {
@@ -53,34 +49,25 @@ function chips(f: MapCyclingElement): CardChip[] {
   return out;
 }
 
-/** Its bike routes' chips, each opening its route's card (once the bike routes are read). */
-function routeChips(
-  f: MapCyclingElement,
-  routes: CyclingRoutes | undefined,
-  onRoute: (id: string) => void,
-): CardChip[] {
-  if (!f.routes || !routes) return [];
-  return f.routes.split(",").flatMap((id) => {
-    const r = routes[id];
-    if (!r) return [];
-    const name = routeName(r);
-    return [
-      {
-        label: name,
-        color: BIKE_TILE,
-        onSelect: () => onRoute(id),
-        action: `View bike route: ${name}`,
-      },
-    ];
-  });
+/** The bike route relations a path is part of directly, from the tiles' `routes`. */
+export const pathRoutes = (f: MapCyclingElement): number[] =>
+  f.routes ? f.routes.split(",").map(Number) : [];
+
+/** "Part of": the routes a path is in, then the routes those are in (nearest first), each once. */
+function partOf(routes: readonly RouteState[]): CyclingRouteLink[] {
+  const found = routes.flatMap((s) => (s.state === "found" ? [s.route] : []));
+  const seen = new Set<string>();
+  return [...found, ...found.flatMap((r) => r.ancestors)].filter(
+    (r) => !seen.has(r.key) && !!seen.add(r.key),
+  );
 }
 
 /** A bike lane or path (apps/web/README.md#feature-cards). Ignores the map's time: OSM has no history. */
 export const BikePathCard: React.FC<{
   feature: MapCyclingElement;
-  /** The bike routes, to name the ones it's part of. */
-  routes: CyclingRoutes | undefined;
-  onRoute: (id: string) => void;
+  /** The bike routes it's part of directly (`pathRoutes`), as the API server answers. */
+  routes: readonly RouteState[];
+  onRoute: (route: CyclingRouteLink) => void;
   onCentre: () => void;
   onClose: () => void;
 }> = ({ feature: f, routes, onRoute, onCentre, onClose }) => {
@@ -106,7 +93,7 @@ export const BikePathCard: React.FC<{
       eyebrow="Bikeway"
       title={title}
       subtitle={f.name ? type : undefined}
-      chips={[...chips(f), ...routeChips(f, routes, onRoute)]}
+      chips={chips(f)}
       actions={actions}
       onClose={onClose}
       footer={<p>From OpenStreetMap, via Transitopia's cycling layer.</p>}>
@@ -139,6 +126,14 @@ export const BikePathCard: React.FC<{
           />
         : null}
       </CardSection>
+      {routes.some((s) => s.state === "unreachable") ?
+        <CardSection title="Part of">
+          <p role="alert" className="py-2 text-[13.5px] text-(--card-muted)">
+            {API_UNREACHABLE}
+          </p>
+        </CardSection>
+      : <RouteLinks title="Part of" routes={partOf(routes)} onRoute={onRoute} />
+      }
     </InfoCard>
   );
 };

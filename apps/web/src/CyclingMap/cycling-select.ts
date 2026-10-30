@@ -1,5 +1,5 @@
-// What's selected on /cycling, as a feature key in ?select= (apps/web/README.md#cycling-links): OSM
-// refs until cycling features have IDs (issue #229): `osm-relation:<id>` a bike route,
+// What's selected on /cycling, as a feature key in ?select= (apps/web/README.md#cycling-links): a
+// bike route's `cr` ID (or its `osm-relation:<id>` ref, which the API server turns into the ID),
 // `osm-way:<id>` a path or lane (its chain's first way by id, as its tile id is; the feature
 // resolver finds a path by any of its ways) or bike parking mapped as an area, `osm-node:<id>` bike
 // parking.
@@ -28,6 +28,14 @@ export function osmRef(key: string): FeatureRef | undefined {
     ) ?
       k
     : undefined;
+}
+
+/** Whether a key names a bike route: a `cr` ID or an `osm-relation:` ref. */
+export function isRouteKey(key: string): boolean {
+  const k = parseKey(key);
+  return k?.form === "id" ?
+      k.kind === "cycling-route"
+    : osmRef(key)?.scheme === "osm-relation";
 }
 
 /** A path's or bike parking's key: a path is named by its first way by id, as its tile id is. */
