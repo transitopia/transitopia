@@ -272,17 +272,17 @@ describe("RtService", () => {
         disruptionsDir: dir,
       });
       await service.start(0);
-      // An hour of polling, a minute at a time (each poll awaits real file I/O before it schedules
-      // the next): every feed polls again and again at any time of day.
+      // An hour of polling, a minute at a time: every feed polls again and again at any time of day.
+      // Each poll awaits real file I/O before it schedules the next, which can take many event-loop
+      // turns under load, so wait for the polls under way (private) before moving the clock on.
+      const poller = service.pollers.get("translink")!;
       for (let m = 0; m < 60; m++) {
         await vi.advanceTimersByTimeAsync(60_000);
-        await new Promise((r) => setImmediate(r));
+        await Promise.allSettled(poller["inFlight"]);
       }
       expect(upstream.mock.calls.length).toBeGreaterThan(9);
       // Private: the handles the service holds (it once kept every poll's, forever).
-      expect(
-        Object.keys(service.pollers.get("translink")!["timers"]),
-      ).toHaveLength(3);
+      expect(Object.keys(poller["timers"])).toHaveLength(3);
     } finally {
       vi.useRealTimers();
       // Including the last poll's ledger write, before the directory goes.
