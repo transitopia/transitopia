@@ -23,6 +23,13 @@ const NETWORKS: Record<string, string> = {
   icn: "International bike route",
 };
 
+/** A route's network in words; a route for several modes lists a network for each (`nwn;ncn`). */
+const networkLabel = (network: string | null): string | undefined =>
+  network
+    ?.split(";")
+    .map((n) => NETWORKS[n.trim()])
+    .find((l) => l !== undefined);
+
 /** When the API server (VITE_TRANSIT_API) doesn't answer: bike routes come only from it. */
 export const API_UNREACHABLE =
   "Can't reach the Transitopia API server, so bike routes can't be shown.";
@@ -176,7 +183,7 @@ export const CyclingRouteCard: React.FC<{
   return (
     <InfoCard
       tile={{ icon: "bicycle", ...BIKE_TILE }}
-      eyebrow={(r.network && NETWORKS[r.network]) ?? "Bike route"}
+      eyebrow={networkLabel(r.network) ?? "Bike route"}
       title={r.name}
       subtitle={r.ref && r.ref !== r.name ? r.ref : undefined}
       actions={actions}

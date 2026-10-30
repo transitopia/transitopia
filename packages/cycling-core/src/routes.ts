@@ -12,7 +12,7 @@ export type ComfortLengths = [number, number, number, number, number];
 export interface CyclingRoute {
   name?: string;
   ref?: string;
-  /** OSM's `network`: lcn, rcn, ncn or icn (local, regional, national, international). */
+  /** OSM's `network`: lcn, rcn, ncn or icn (local, regional, national, international), or a list for a route for several modes (`nwn;ncn`). */
   network?: string;
   /** The bike routes it contains, by relation id, in member order. */
   subroutes?: number[];

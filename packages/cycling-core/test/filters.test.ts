@@ -10,7 +10,7 @@ import {
 } from "../src/classify.ts";
 import type { Tags } from "../src/osm.ts";
 
-/** Whether an osmium tags-filter expression (`nwr/key` or `nwr/key=value`) keeps an element. */
+/** Whether an osmium tags-filter expression (`nwr/key`, `nwr/key=value` or `nwr/key=*value*`) keeps an element. */
 function kept(type: "n" | "w" | "r", tags: Tags): boolean {
   return OSM_FILTERS.some((f) => {
     const [types, expr] = f.split("/") as [string, string];
@@ -18,7 +18,10 @@ function kept(type: "n" | "w" | "r", tags: Tags): boolean {
     return (
       types.includes(type)
       && tags[key] !== undefined
-      && (value === undefined || tags[key] === value)
+      && (value === undefined
+        || (value.startsWith("*") && value.endsWith("*") ?
+          tags[key].includes(value.slice(1, -1))
+        : tags[key] === value))
     );
   });
 }
@@ -70,9 +73,12 @@ describe("OSM_FILTERS", () => {
 
   it("keeps bike parking and bike routes", () => {
     const parking = { amenity: "bicycle_parking" };
-    const route = { type: "route", route: "bicycle" };
     expect(isBikeParking(parking) && kept("n", parking)).toBe(true);
     expect(kept("w", parking)).toBe(true);
-    expect(isBikeRoute(route) && kept("r", route)).toBe(true);
+    for (const route of [
+      { type: "route", route: "bicycle" },
+      { type: "superroute", route: "hiking;bicycle" },
+    ])
+      expect(isBikeRoute(route) && kept("r", route)).toBe(true);
   });
 });

@@ -409,7 +409,9 @@ export const OSM_FILTERS = [
   "w/cycleway:right",
   "w/construction=cycleway",
   "nwr/amenity=bicycle_parking",
-  "r/route=bicycle",
+  // Substring: a route for several modes lists them (`route=hiking;bicycle`, as the Trans Canada
+  // Trail's BC superroute does); isBikeRoute picks out the bike routes.
+  "r/route=*bicycle*",
 ];
 
 /** Whether a way is a ferry crossing (https://wiki.openstreetmap.org/wiki/Tag:route%3Dferry), which bike routes include. */
@@ -422,6 +424,8 @@ export const isBikeParking = (t: Tags): boolean =>
 /**
  * Whether a relation is a bike route: a route (whose ways the tiles name in `routes`), or a
  * superroute, which contains only other routes (https://wiki.openstreetmap.org/wiki/Relation:superroute).
+ * `route` can list several modes (`hiking;bicycle`).
  */
 export const isBikeRoute = (t: Tags): boolean =>
-  has(t, "type", "route", "superroute") && has(t, "route", "bicycle");
+  has(t, "type", "route", "superroute")
+  && (t.route?.split(";").some((v) => v.trim() === "bicycle") ?? false);

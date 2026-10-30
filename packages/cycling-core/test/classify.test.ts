@@ -434,4 +434,15 @@ describe("isBikeRoute", () => {
     expect(isBikeRoute({ type: "superroute", route: "bicycle" })).toBe(true);
     expect(isBikeRoute({ type: "route", route: "bus" })).toBe(false);
   });
+
+  it("takes routes for several modes, bicycles among them", () => {
+    expect(isBikeRoute({ type: "superroute", route: "hiking;bicycle" })).toBe(
+      true,
+    );
+    expect(isBikeRoute({ type: "route", route: "foot; bicycle" })).toBe(true);
+    expect(isBikeRoute({ type: "route", route: "hiking;mtb" })).toBe(false);
+    expect(isBikeRoute({ type: "route", route: "bicycle_proposed" })).toBe(
+      false,
+    );
+  });
 });
