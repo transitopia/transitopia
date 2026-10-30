@@ -4,6 +4,7 @@
 // need them.
 
 import React from "react";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { parseConfig } from "@transitopia/transit-core/config.ts";
 import {
   CYCLING_INDEX,
@@ -66,68 +67,54 @@ export type RouteState =
   | { state: "notFound" }
   | { state: "unreachable" };
 
-/** Routes asked for by key (as asked, and as the server names them); a failed request is dropped. */
-const routeRequests = new Map<
-  string,
-  Promise<CyclingRouteDetail | undefined>
->();
-/** What those requests answered, so a route already read shows at once. */
-const routeAnswers = new Map<string, RouteState>();
+/** How long a bike route read from the server is kept: as long as the edge caches it. */
+const ROUTE_STALE_MS = 3600_000;
 
-/** A bike route by `cr` ID or `osm-relation:` ref: undefined if the server doesn't know it. */
-function fetchRoute(key: string): Promise<CyclingRouteDetail | undefined> {
-  let p = routeRequests.get(key);
-  if (p) return p;
-  p = (async () => {
-    if (!transitApi) throw new Error("no API server (VITE_TRANSIT_API)");
-    const r = await fetch(
-      `${transitApi}cycling/routes/${encodeURIComponent(key)}`,
-    );
-    if (r.status === 404) return undefined;
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const route = (await r.json()) as CyclingRouteDetail;
-    routeRequests.set(route.key, Promise.resolve(route));
-    routeAnswers.set(route.key, { state: "found", route });
-    return route;
-  })();
-  routeRequests.set(key, p);
-  p.catch(() => routeRequests.delete(key));
-  return p;
+/** React Query's key for a bike route, by the key it was asked for by. */
+const routeQueryKey = (key: string) => ["cycling", "route", key] as const;
+
+/** A bike route by `cr` ID or `osm-relation:` ref: null if the server doesn't know it. */
+async function fetchRoute(key: string): Promise<CyclingRouteDetail | null> {
+  if (!transitApi) throw new Error("no API server (VITE_TRANSIT_API)");
+  const r = await fetch(
+    `${transitApi}cycling/routes/${encodeURIComponent(key)}`,
+  );
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return (await r.json()) as CyclingRouteDetail;
 }
 
-/** Several bike routes' states, in the order of `keys`. */
+/**
+ * Several bike routes' states, in the order of `keys`. Each is read once and kept for an hour (the
+ * server's cache), also under the key the server names it by, so a ref rewritten to its ID shows
+ * at once. A failure isn't retried: the card says the server can't be reached.
+ */
 export function useCyclingRoutes(keys: readonly string[]): RouteState[] {
-  const id = keys.join(" ");
-  const [states, setStates] = React.useState<{
-    id: string;
-    states: RouteState[];
-  }>();
-  React.useEffect(() => {
-    let live = true;
-    const list = id ? id.split(" ") : [];
-    void Promise.all(
-      list.map((k) =>
-        fetchRoute(k).then(
-          (route): RouteState => {
-            const s: RouteState =
-              route ? { state: "found", route } : { state: "notFound" };
-            routeAnswers.set(k, s);
-            return s;
-          },
-          (e: unknown): RouteState => {
-            console.warn(`Couldn't read bike route ${k}:`, e);
-            return { state: "unreachable" };
-          },
-        ),
-      ),
-    ).then((s) => live && setStates({ id, states: s }));
-    return () => {
-      live = false;
-    };
-  }, [id]);
-  return states?.id === id ?
-      states.states
-    : keys.map((k) => routeAnswers.get(k) ?? { state: "loading" });
+  const queryClient = useQueryClient();
+  return useQueries({
+    queries: keys.map((key) => ({
+      queryKey: routeQueryKey(key),
+      queryFn: async () => {
+        const route = await fetchRoute(key).catch((e: unknown) => {
+          console.warn(`Couldn't read bike route ${key}:`, e);
+          throw e;
+        });
+        if (route && route.key !== key)
+          queryClient.setQueryData(routeQueryKey(route.key), route);
+        return route;
+      },
+      staleTime: ROUTE_STALE_MS,
+      retry: false,
+    })),
+    combine: (results) =>
+      results.map((q): RouteState => {
+        if (q.isPending) return { state: "loading" };
+        if (q.isError) return { state: "unreachable" };
+        return q.data ?
+            { state: "found", route: q.data }
+          : { state: "notFound" };
+      }),
+  });
 }
 
 /** A bike route's state; undefined for no key. */
