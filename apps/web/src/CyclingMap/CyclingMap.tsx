@@ -1,7 +1,7 @@
 import React from "react";
 import type * as MapLibreGL from "maplibre-gl";
 
-import { useLocation } from "wouter";
+import { useLocation, useSearchParams } from "wouter";
 
 import {
   cyclingFilters,
@@ -39,28 +39,29 @@ import {
   findLoaded,
   keyOfElement,
   osmRef,
-  readSelect,
+  selectKey,
   writeSelect,
   type CyclingElement,
 } from "./cycling-select.ts";
 
-/** What's selected, and its key in ?select= (apps/web/README.md#cycling-links). */
-type Selection =
-  | {
-      kind: "element";
-      key: string;
-      element: CyclingElement;
-      /** A point on it, for "Centre on map". */
-      at: [number, number];
-    }
-  | {
-      kind: "route";
-      key: string;
-      /** The OSM relation id. */
-      id: string;
-      /** The path card it was opened from. */
-      from?: Selection | undefined;
-    };
+/** A path or bike parking, as found in the tiles. */
+interface FoundElement {
+  kind: "element";
+  key: string;
+  element: CyclingElement;
+  /** A point on it, for "Centre on map". */
+  at: [number, number];
+}
+
+/**
+ * What the map knows of the key in ?select= (apps/web/README.md#cycling-links), which is the
+ * selection: the path or bike parking it names, a bike route's way back to the path card it was
+ * opened from, or that it couldn't be found. Kept while the URL names that key.
+ */
+type Found =
+  | FoundElement
+  | { kind: "route"; key: string; from: FoundElement }
+  | { kind: "notFound"; key: string };
 
 const PADDING = { top: 90, bottom: 150, left: 20, right: 50 };
 
@@ -152,47 +153,54 @@ export const CyclingMap: React.FC = () => {
       if (map.getLayer(id)) map.setFilter(id, filter);
   }, [map, show]);
 
-  const [selected, setSelected] = React.useState<Selection>();
-  // A key from the URL, until it's found (or not).
-  const [pending, setPending] = React.useState(readSelect);
-  const [notFound, setNotFound] = React.useState<string>();
+  // The selection is the URL's ?select=; `found` is what the map knows of that key.
+  const [searchParams] = useSearchParams();
+  const key = selectKey(searchParams);
+  const [found, setFound] = React.useState<Found>();
   const [, navigate] = useLocation();
   useOtherModeRedirect("cycling");
-  const pendingRef = React.useMemo(
-    () => (pending ? osmRef(pending) : undefined),
-    [pending],
-  );
+  const current = found?.key === key ? found : undefined;
+  const routeId = React.useMemo(() => {
+    const ref = key ? osmRef(key) : undefined;
+    return ref?.scheme === "osm-relation" ? ref.value : undefined;
+  }, [key]);
   const selectedElement =
-    selected?.kind === "element" ? selected.element : undefined;
+    current?.kind === "element" ? current.element : undefined;
   const routes = useCyclingRoutes(
-    pendingRef?.scheme === "osm-relation"
-      || selected?.kind === "route"
+    !!routeId
       || (selectedElement?.type === "cycling_way" && !!selectedElement.routes),
   );
-  const select = React.useCallback((s: Selection | undefined) => {
-    setPending(undefined);
-    setNotFound(undefined);
-    setSelected(s);
+  const route = routeId ? routes?.[routeId] : undefined;
+  const notFound =
+    current?.kind === "notFound" || (routeId && routes && !route) ?
+      key
+    : undefined;
+  // Select something (or nothing), with what the map knows of it, so it isn't looked up again.
+  const select = React.useCallback((f: Found | undefined) => {
+    if (f) setFound(f);
+    writeSelect(f?.key);
   }, []);
+  // The key a link without a map position opened with: the map goes to it once found.
+  const linked = React.useRef(openedWithPosition ? undefined : key);
 
-  // A path or bike parking from the URL: in the tiles where the map is, else as the resolver says.
-  // The tiles know a path only by its first way; the resolver knows it by any of them, and gives
-  // the first (the key written back).
+  // A path or bike parking the map doesn't know yet (from a link, or the URL edited): in the tiles
+  // where the map is, else as the resolver says. The tiles know a path only by its first way; the
+  // resolver knows it by any of them, and gives the first (written back to the URL).
+  const lookUp = key && !routeId && !current ? key : undefined;
   React.useEffect(() => {
-    if (!map || !tiles || !pending) return;
-    const ref = osmRef(pending);
-    if (ref?.scheme === "osm-relation") return; // from the bike routes, below
+    if (!map || !tiles || !lookUp) return;
+    const ref = osmRef(lookUp);
     let cancelled = false;
     void (async () => {
       await whenIdle(map);
-      let key = pending;
+      let key = lookUp;
       let moved = false;
       let found = ref && findLoaded(map, ref);
       if (!found && !cancelled) {
-        const f = await resolve(pending);
+        const f = await resolve(lookUp);
         if (cancelled) return;
         if (f && modeOfKind(f.kind) === "transit") {
-          navigate(modeUrl("transit", pending), { replace: true });
+          navigate(modeUrl("transit", lookUp), { replace: true });
           return;
         }
         const target = f?.key ? osmRef(f.key) : ref;
@@ -208,41 +216,31 @@ export const CyclingMap: React.FC = () => {
         }
       }
       if (cancelled) return;
+      const goTo = linked.current === lookUp;
+      linked.current = undefined;
       if (!found) {
-        setPending(undefined);
-        setNotFound(pending);
+        setFound({ kind: "notFound", key: lookUp });
         return;
       }
       // Found in the default view of a link without a map position: go to it.
-      if (!openedWithPosition && !moved)
+      if (goTo && !moved)
         map.jumpTo({ center: found.at, zoom: Math.max(map.getZoom(), 16) });
       select({ kind: "element", key, ...found });
     })();
     return () => {
       cancelled = true;
     };
-  }, [map, tiles, pending, navigate, select]);
+  }, [map, tiles, lookUp, navigate, select]);
 
-  // A bike route from the URL: in the bike routes, shown whole if the link has no map position.
+  // A bike route from a link without a map position is shown whole.
   React.useEffect(() => {
-    if (!map || !routes || pendingRef?.scheme !== "osm-relation") return;
-    const r = routes[pendingRef.value];
-    if (!r) {
-      setPending(undefined);
-      setNotFound(pending);
-      return;
-    }
-    select({ kind: "route", key: pending!, id: pendingRef.value });
-    if (!openedWithPosition && r.bbox) showBounds(map, r.bbox, false);
-  }, [map, routes, pending, pendingRef, select]);
-
-  // The selection (or the key that wasn't found) in the URL.
-  React.useEffect(() => {
-    if (!pending) writeSelect(selected?.key ?? notFound);
-  }, [pending, selected, notFound]);
+    if (!map || !route || linked.current !== key) return;
+    linked.current = undefined;
+    if (route.bbox) showBounds(map, route.bbox, false);
+  }, [map, route, key]);
 
   // The selected route's paths are highlighted (cycling-map-layers.ts), again after a theme switch.
-  const selectedRoute = selected?.kind === "route" ? selected.id : undefined;
+  const selectedRoute = route ? routeId : undefined;
   React.useEffect(() => {
     map?.setGlobalStateProperty(SELECTED_ROUTE, selectedRoute ?? null);
   }, [map, selectedRoute, styleGeneration]);
@@ -359,13 +357,13 @@ export const CyclingMap: React.FC = () => {
   }, [map, selectedId]);
 
   const closeInfobox = React.useCallback(() => select(undefined), [select]);
-  const at = selected?.kind === "element" ? selected.at : undefined;
+  const at = current?.kind === "element" ? current.at : undefined;
   const centre = React.useCallback(() => {
     if (map && at)
       map.easeTo({ center: at, zoom: Math.max(map.getZoom(), 15) });
   }, [map, at]);
 
-  const route = selected?.kind === "route" ? routes?.[selected.id] : undefined;
+  const from = current?.kind === "route" ? current.from : undefined;
   return (
     <>
       <CyclingLayers show={show} onChange={setShow} />
@@ -381,9 +379,9 @@ export const CyclingMap: React.FC = () => {
           </div>
         </MapOverlayWindow>
       : null}
-      {selected?.kind === "route" && route ?
+      {routeId && route ?
         <CyclingRouteCard
-          id={selected.id}
+          id={routeId}
           route={route}
           onShowAll={
             map && route.bbox ?
@@ -391,29 +389,24 @@ export const CyclingMap: React.FC = () => {
             : undefined
           }
           back={
-            selected.from?.kind === "element" ?
+            from ?
               {
                 label:
-                  selected.from.element.type === "cycling_way" ?
-                    pathTitle(selected.from.element)
-                  : (selected.from.element.name ?? "Bike parking"),
-                onBack: () => select(selected.from),
+                  from.element.type === "cycling_way" ?
+                    pathTitle(from.element)
+                  : (from.element.name ?? "Bike parking"),
+                onBack: () => select(from),
               }
             : undefined
           }
           onClose={closeInfobox}
         />
-      : selectedElement?.type === "cycling_way" ?
+      : current?.kind === "element" && selectedElement?.type === "cycling_way" ?
         <BikeRouteCard
           feature={selectedElement}
           routes={routes}
           onRoute={(id) =>
-            select({
-              kind: "route",
-              key: `osm-relation:${id}`,
-              id,
-              from: selected,
-            })
+            select({ kind: "route", key: `osm-relation:${id}`, from: current })
           }
           onCentre={centre}
           onClose={closeInfobox}

@@ -92,12 +92,15 @@ export function findLoaded(
 }
 
 /** The key in ?select=, if it's a valid one. */
-export function readSelect(): string | undefined {
-  const s = new URLSearchParams(location.search).get("select");
+export function selectKey(q: URLSearchParams): string | undefined {
+  const s = q.get("select");
   return s && parseKey(s) ? s : undefined;
 }
 
-/** Write the selection to ?select=, keeping the map position (the hash). */
+/**
+ * Write the selection to ?select=, keeping the map position (the hash): replaced, not pushed, so the
+ * browser's Back button doesn't step through cards.
+ */
 export function writeSelect(key: string | undefined): void {
   const q = new URLSearchParams(location.search);
   if (key) q.set("select", key);
