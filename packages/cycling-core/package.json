@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p test"
   },
   "dependencies": {
+    "@transitopia/shared": "*",
     "@transitopia/transit-core": "*"
   },
   "devDependencies": {

@@ -1,4 +1,8 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Used by browsers and Node: worker-safe globals only (URLSearchParams), as in transit-core.
+    "lib": ["ES2023", "WebWorker"]
+  },
   "include": ["src", "test"]
 }

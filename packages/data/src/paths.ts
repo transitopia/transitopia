@@ -96,11 +96,14 @@ export function cyclingPaths(area: string): {
   osm: string;
   /** Published: index.json, tiles/<hash>.pmtiles, routes/<hash>.json (packages/cycling-core/README.md#published-files). */
   out: string;
+  /** var/cycling/<area>/lookup.json: the latest build's OSM refs, for the feature resolver (packages/cycling-core/README.md#lookup). */
+  lookup: string;
 } {
   return {
     extracts: join(RAW_DIR, "osm-extracts", area),
     osm: join(RAW_DIR, "osm-cycling", area),
     out: join(PUBLIC_DIR, cyclingDataPath(area)),
+    lookup: join(VAR_DIR, "cycling", area, "lookup.json"),
   };
 }
 

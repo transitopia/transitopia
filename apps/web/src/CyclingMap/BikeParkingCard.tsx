@@ -4,10 +4,11 @@ import {
   CardRow,
   CardSection,
   InfoCard,
+  shareLink,
   type CardAction,
 } from "../components/InfoCard.tsx";
 import type { MapParkingElement } from "../Map/MapData.ts";
-import { BIKE_TILE } from "./BikeRouteCard.tsx";
+import { BIKE_TILE } from "./BikePathCard.tsx";
 
 /** OSM's bicycle_parking values, in words ("wide_stands" → "Wide stands"). */
 function parkingType(t: string): string {
@@ -35,6 +36,13 @@ export const BikeParkingCard: React.FC<{
       label: "Centre on map",
       icon: "crosshair",
       onSelect: onCentre,
+    },
+    {
+      id: "share",
+      label: "Share link",
+      icon: "share",
+      onSelect: () =>
+        shareLink(location.href, `${f.name ?? "Bike parking"} · Transitopia`),
     },
   ];
   const type = f.bicycle_parking && parkingType(f.bicycle_parking);

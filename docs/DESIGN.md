@@ -251,7 +251,7 @@ The site resolves IDs from published files, without the server (principle: stati
 - **The public export**, `data/features/export/<YYYYMMDD>.ndjson.gz`, with `data/features/latest.json` pointing at the newest: every feature (merged ones too, for redirects), its refs, and the feed versions their ranges are over. No authors, users or flags. `npm run features -- pull` loads it into a development setup.
 - **The resolver**, `GET https://api.transitopia.org/features/<key>` ([apps/server → Feature resolver](../apps/server/README.md#feature-resolver)), for what the loaded places files don't have: another region's feature (its bbox moves the map there). Cached for an hour at the edge.
 
-`?select=<key>` on `/transit` names whatever's selected, a place, route or vehicle, in either form ([apps/web → Modes and URL state](../apps/web/README.md#modes-and-url-state)). Older URL forms aren't read (there were few users: nothing from before keeps working).
+`?select=<key>` on `/transit` names whatever's selected, a place, route or vehicle, in either form ([apps/web → Modes and URL state](../apps/web/README.md#modes-and-url-state)); on `/cycling`, a path, bike parking or bike route by its OSM ref, until cycling features have IDs ([apps/web → Cycling links](../apps/web/README.md#cycling-links)). A key of the other mode goes to that mode. Older URL forms aren't read (there were few users: nothing from before keeps working).
 
 **Statistics** keep their GTFS keys and record the feed version they were derived from (`feed_version`); the views `route_stats_daily_by_feature` and `observed_stop_times_by_feature` join them to features through the refs, so a route's and a stop's history continue across feed versions.
 

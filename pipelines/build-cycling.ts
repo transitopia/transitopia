@@ -4,7 +4,8 @@
 // one with osmium): packages/cycling-core classifies the ways and joins them into chains, and
 // tippecanoe tiles them. Files are named by their content; index.json names the current ones, and
 // files it no longer names are removed (the published copies stay for clients holding an older index).
-// Output: var/public/data/cycling/<area>/{index.json, tiles/<hash>.pmtiles, routes/<hash>.json}.
+// Output: var/public/data/cycling/<area>/{index.json, tiles/<hash>.pmtiles, routes/<hash>.json}, and
+// var/cycling/<area>/lookup.json for the server's feature resolver (not published).
 // Needs tippecanoe 2.17 or later (TIPPECANOE names it if it isn't on the PATH).
 //
 //   tsx pipelines/build-cycling.ts
@@ -15,6 +16,7 @@ import { readdir, rename, rm, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { createInterface } from "node:readline";
 import { createGunzip } from "node:zlib";
+import { cyclingLookup } from "@transitopia/cycling-core/lookup.ts";
 import { CyclingNetworkBuilder } from "@transitopia/cycling-core/network.ts";
 import { parseOpl } from "@transitopia/cycling-core/osm.ts";
 import {
@@ -27,6 +29,7 @@ import {
   CYCLING_MIN_ZOOM,
   CYCLING_TILE_BUFFER,
   cyclingTileFeatures,
+  detailChains,
 } from "@transitopia/cycling-core/tiles.ts";
 import { readCyclingOsm } from "@transitopia/data/osm-extracts.ts";
 import {
@@ -101,7 +104,8 @@ async function main() {
   t = Date.now();
   const tilesDir = join(paths.out, "tiles");
   const built = join(tilesDir, `build.${process.pid}.pmtiles`);
-  const features = cyclingTileFeatures(network.ways, network.parking);
+  const chains = detailChains(network.ways);
+  const features = cyclingTileFeatures(network.ways, network.parking, chains);
   const hash = createHash("sha256").update(`cycling tiles ${TILES_FORMAT}\n`);
   await tippecanoe(
     (function* () {
@@ -126,6 +130,9 @@ async function main() {
   const routes = `${hashOf(JSON.stringify(data))}.json`;
   await writeJson(join(routesDir, routes), data);
   await prune(routesDir, routes);
+
+  // Before the index, so the resolver never knows less than the published tiles.
+  await writeJson(paths.lookup, cyclingLookup(chains, network.parking));
 
   const index: CyclingIndex = {
     tiles: `tiles/${tiles}`,

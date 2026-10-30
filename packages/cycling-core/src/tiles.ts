@@ -138,16 +138,27 @@ function groupLengths(
   return chains.map((_, i) => total.get(find(i))!);
 }
 
-/** Every feature of the cycling tiles, for tippecanoe. */
+/** The chains the tiles carry from CYCLING_DETAIL_ZOOM: ways joined where every attribute is the same. */
+export function detailChains(
+  ways: readonly ClassifiedWay<CyclingWayProperties>[],
+): Chain<CyclingWayProperties>[] {
+  return joinChains(ways, keyOf, isDirected);
+}
+
+/** A chain's first way by id: its tile feature id's (and `?select=osm-way:<id>`'s) way. */
+export const chainWayId = (c: Chain<unknown>) => Math.min(...c.wayIds);
+
+/** Every feature of the cycling tiles, for tippecanoe. `chains` are `ways`' detail chains. */
 export function* cyclingTileFeatures(
   ways: readonly ClassifiedWay<CyclingWayProperties>[],
   parking: readonly BikeParking[],
+  chains: readonly Chain<CyclingWayProperties>[] = detailChains(ways),
 ): Generator<TileFeature> {
   // Detail: whole chains with every attribute, and an id.
-  for (const c of joinChains(ways, keyOf, isDirected))
+  for (const c of chains)
     yield {
       type: "Feature",
-      id: osmFeatureId("way", Math.min(...c.wayIds)),
+      id: osmFeatureId("way", chainWayId(c)),
       properties: c.attrs,
       geometry: { type: "LineString", coordinates: c.coords },
       tippecanoe: { layer: CYCLING_LAYER, minzoom: CYCLING_DETAIL_ZOOM },
@@ -158,10 +169,10 @@ export function* cyclingTileFeatures(
     for (const k of DETAIL_KEYS) delete attrs[k];
     return { ...w, attrs: attrs as WayClass };
   });
-  const chains = joinChains(drawn, keyOf, isDirected);
-  const px = chains.map((c) => pixelLength(c.coords));
-  const groupPx = groupLengths(chains, px);
-  for (const [i, c] of chains.entries()) {
+  const overview = joinChains(drawn, keyOf, isDirected);
+  const px = overview.map((c) => pixelLength(c.coords));
+  const groupPx = groupLengths(overview, px);
+  for (const [i, c] of overview.entries()) {
     const z = Math.max(
       CYCLING_MIN_ZOOM,
       Math.ceil(Math.log2(MIN_PX / groupPx[i]!)),

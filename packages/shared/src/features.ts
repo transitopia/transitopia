@@ -115,6 +115,32 @@ export function parseKey(s: string): FeatureKey | undefined {
   };
 }
 
+/** The site's map modes (apps/web/README.md#modes-and-url-state). */
+export type MapMode = "transit" | "cycling";
+
+/** The mode that shows a kind of feature. */
+export function modeOfKind(kind: FeatureKind): MapMode {
+  return (
+      kind === "cycling-route"
+        || kind === "cycling-way"
+        || kind === "bike-parking"
+        || kind === "bikeshare-station"
+    ) ?
+      "cycling"
+    : "transit";
+}
+
+/**
+ * The mode that shows what a key names: its kind's for an ID, else its scheme's. Undefined for an
+ * OSM ref, which a feature of either mode may have (a station may carry an `osm-node` ref): the
+ * feature resolver knows which.
+ */
+export function modeOfKey(k: FeatureKey): MapMode | undefined {
+  if (k.form === "id") return modeOfKind(k.kind);
+  if (k.scheme.startsWith("osm-")) return undefined;
+  return k.scheme === "gbfs-station" ? "cycling" : "transit";
+}
+
 /** A key as a string: an ID with its suffix, if it has one, or a ref. */
 export function formatKey(k: FeatureKey): string {
   if (k.form === "id") return k.suffix ? `${k.id}-${k.suffix}` : k.id;

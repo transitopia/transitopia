@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  modeOfKey,
   formatKey,
   isFeatureId,
   kindOfId,
@@ -113,5 +114,24 @@ describe("name suffixes", () => {
     );
     expect(nameSuffix("stop", "Main St @ 1st Ave")).toBe("main-st-1st-ave");
     expect(nameSuffix("route", "R1")).toBe("r1");
+  });
+});
+
+describe("modeOfKey", () => {
+  const mode = (s: string) => modeOfKey(parseKey(s)!);
+
+  it("sends cycling features to /cycling and the rest to /transit", () => {
+    expect(mode("sn-k3v9qd7m-waterfront")).toBe("transit");
+    expect(mode("vh-k3v9qd7m")).toBe("transit");
+    expect(mode("run:expo-005")).toBe("transit");
+    expect(mode("stop:translink:50123")).toBe("transit");
+    expect(mode("cr-k3v9qd7m-seawall")).toBe("cycling");
+    expect(mode("bp-k3v9qd7m")).toBe("cycling");
+    expect(mode("gbfs-station:mobi:12")).toBe("cycling");
+  });
+
+  it("leaves OSM refs to the resolver", () => {
+    expect(mode("osm-way:123")).toBeUndefined();
+    expect(mode("osm-node:123")).toBeUndefined();
   });
 });

@@ -114,5 +114,5 @@ if (after) await page.waitForTimeout(Number(after));
 await page.screenshot({ path: out });
 for (const [msg, n] of seen)
   if (n > 1) console.log(`(repeated ${n}×) ${msg.split("\n")[0]}`);
-console.log(`Saved ${out}`);
+console.log(`Saved ${out} (at ${page.url()})`);
 await browser.close();

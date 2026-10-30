@@ -10,11 +10,18 @@ import {
   overviewMaxZoom,
 } from "@transitopia/transit-map/overview.ts";
 import { ENGINE_MIN_ZOOM } from "@transitopia/shared/transit-overview.ts";
+import {
+  modeOfKind,
+  parseKey,
+  type FeatureKind,
+} from "@transitopia/shared/features.ts";
+import { useLocation } from "wouter";
 
 import { transitApi, transitData, transitOverviewTiles } from "../config.ts";
 import { openedPath, openedWithPosition } from "../startup.ts";
 import { useMap, useStyleGeneration, type MapType } from "../Map/MapUtils.ts";
 import { MapOverlayWindow } from "../Map/MapOverlayWindow.tsx";
+import { modeUrl, useOtherModeRedirect } from "../components/ModeLink.tsx";
 import { useTheme } from "../Theme/Theme.tsx";
 import { useDatasets } from "../Attribution/Attribution.tsx";
 import { TimeBar } from "./TimeBar.tsx";
@@ -216,6 +223,7 @@ export default function TransitMap() {
   // Bumped when the published data is rebuilt under an engine: the engine is made again.
   const [build, setBuild] = React.useState(0);
   useInitialView(map);
+  useOtherModeRedirect("transit");
   const { region, inView, active, ready } = useRegion(map);
   // The region whose engine is kept: the last one zoomed in to. Zoomed out, its engine is hidden
   // (and paused) rather than disposed, so zooming back in shows it at once; zooming in to
@@ -388,7 +396,8 @@ const EngineControls: React.FC<{
 
 /**
  * A `?select=` key the region's plan doesn't have: ask the feature resolver where it is
- * (apps/server/README.md#feature-resolver), so the map can move to its region.
+ * (apps/server/README.md#feature-resolver), so the map can move to its region. An OSM ref that no
+ * transit feature has goes to /cycling.
  */
 function useElsewhere(
   key: string | undefined,
@@ -396,23 +405,35 @@ function useElsewhere(
 ): void {
   const found = React.useRef(onFound);
   found.current = onFound;
+  const [, navigate] = useLocation();
   React.useEffect(() => {
-    if (!key || !transitApi) return;
+    if (!key) return;
+    const k = parseKey(key);
+    const osm = k?.form === "ref" && k.scheme.startsWith("osm-");
+    const toCycling = () =>
+      navigate(modeUrl("cycling", key), { replace: true });
+    if (!transitApi) {
+      if (osm) toCycling();
+      return;
+    }
     let cancelled = false;
     fetch(`${transitApi}features/${encodeURIComponent(key)}`)
       .then((r) =>
-        r.ok ?
+        r.ok || r.status === 404 ?
           (r.json() as Promise<{
-            bbox: [number, number, number, number] | null;
+            kind?: FeatureKind;
+            bbox?: [number, number, number, number] | null;
           }>)
         : null,
       )
       .then((f) => {
-        if (!cancelled && f?.bbox) found.current(key, f.bbox);
+        if (cancelled || !f) return;
+        if (f.kind ? modeOfKind(f.kind) === "cycling" : osm) toCycling();
+        else if (f.bbox) found.current(key, f.bbox);
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [key]);
+  }, [key, navigate]);
 }
