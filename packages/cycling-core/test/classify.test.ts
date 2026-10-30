@@ -283,6 +283,44 @@ describe("classifyWay", () => {
     ).toMatchObject({ side: "right", oneway: 1, dooring_risk: true });
   });
 
+  it("rates a lane one way and a shared lane the other by the less comfortable", () => {
+    // Stevens Drive, West Vancouver (way 59432713).
+    expect(
+      classify({
+        highway: "tertiary",
+        oneway: "no",
+        maxspeed: "50",
+        "cycleway:left": "shared_lane",
+        "cycleway:right": "lane",
+      }),
+    ).toEqual({
+      class: "lane",
+      side: "right",
+      comfort: 1,
+      oneway: 0,
+      shared_with_pedestrians: false,
+      shared_with_vehicles: true,
+      varies_by_direction: true,
+    });
+    expect(
+      classify({
+        highway: "residential",
+        maxspeed: "30",
+        "cycleway:left": "lane",
+        "cycleway:right": "shared",
+      }),
+    ).toMatchObject({ side: "left", comfort: 2, varies_by_direction: true });
+    expect(
+      classify({
+        highway: "residential",
+        maxspeed: "30",
+        "cycleway:left": "lane",
+        "cycleway:right": "shared_lane",
+        "parking:left": "lane",
+      }),
+    ).toMatchObject({ comfort: 1, dooring_risk: true });
+  });
+
   it("ignores roads without a cycling facility", () => {
     expect(classify({ highway: "residential" })).toBeUndefined();
     expect(

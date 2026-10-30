@@ -23,6 +23,7 @@ function kind(f: MapCyclingElement): string {
     return f.shared_with_pedestrians ? "Shared path" : (
         "Protected bike lane or path"
       );
+  if (f.varies_by_direction) return "Bike lane one way, shared lane the other";
   if (f.shared_with_vehicles)
     return f.comfort >= 3 ?
         "Local street bikeway"

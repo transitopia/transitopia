@@ -53,6 +53,11 @@ export type FacilityClass = {
   shared_with_vehicles: boolean;
   /** A painted lane beside parked cars. */
   dooring_risk?: true;
+  /**
+   * A two-way road with a different facility each way (a painted lane one way, a shared lane the
+   * other): `comfort` is the lower of the two.
+   */
+  varies_by_direction?: true;
   construction?: true;
   website?: string;
   opening_date?: string;
@@ -95,6 +100,7 @@ export function maxspeedKmh(v: string | undefined): number | undefined {
 }
 
 const PARKING_BESIDE = ["separate", "lane", "street_side"];
+const SHARED = ["shared_lane", "shared"];
 
 /** The way's cycling facility, or undefined if it isn't one. */
 export function classifyWay(
@@ -261,8 +267,8 @@ export function classifyWay(
   }
   // As the Planetiler profile had it: `cycleway:both` matches without a highway tag.
   if (
-    (has(t, "highway") && has(t, "cycleway", "shared_lane", "shared"))
-    || has(t, "cycleway:both", "shared_lane", "shared")
+    (has(t, "highway") && has(t, "cycleway", ...SHARED))
+    || has(t, "cycleway:both", ...SHARED)
   ) {
     // A lane shared with motor vehicles.
     return {
@@ -304,7 +310,32 @@ export function classifyWay(
         || has(t, `parking:${side}`, ...PARKING_BESIDE),
     );
   }
-  // Not yet: other kinds, e.g. https://www.openstreetmap.org/way/74096518 (mixed lane + shared_lane).
+  const mixedLaneSide =
+    has(t, "cycleway:right", "lane") && has(t, "cycleway:left", ...SHARED) ?
+      "right"
+    : has(t, "cycleway:left", "lane") && has(t, "cycleway:right", ...SHARED) ?
+      "left"
+    : undefined;
+  if (has(t, "highway") && !has(t, "oneway", "yes") && mixedLaneSide) {
+    // A painted lane one way and a shared lane the other (Stevens Drive, West Vancouver:
+    // https://www.openstreetmap.org/way/59432713). With one line for both directions, it's rated
+    // by the less comfortable of the two, and it's shared with traffic.
+    const dooring =
+      has(t, "parking:both", ...PARKING_BESIDE)
+      || has(t, `parking:${mixedLaneSide}`, ...PARKING_BESIDE);
+    const sharedComfort =
+      has(t, "motor_vehicle", "private") || calm() ?
+        COMFORT.high
+      : COMFORT.least;
+    const laneClass = lane(mixedLaneSide, 0, dooring);
+    return {
+      ...laneClass,
+      comfort: Math.min(laneClass.comfort, sharedComfort) as Comfort,
+      shared_with_vehicles: true,
+      varies_by_direction: true,
+    };
+  }
+  // Not yet: other kinds, e.g. a track one way and a lane the other.
   return undefined;
 }
 
