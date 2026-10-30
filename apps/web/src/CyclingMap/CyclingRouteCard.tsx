@@ -1,5 +1,6 @@
 import React from "react";
 
+import { COMFORT } from "@transitopia/cycling-core/classify.ts";
 import type {
   CyclingRouteDetail,
   CyclingRouteLink,
@@ -27,32 +28,32 @@ export const API_UNREACHABLE =
   "Can't reach the Transitopia API server, so bike routes can't be shown.";
 
 /**
- * The comfort levels (packages/cycling-core/src/classify.ts, COMFORT), most comfortable first, in
- * the map's greens; 0 is a route's ways that aren't bike facilities.
+ * The comfort levels (COMFORT), most comfortable first, in the map's greens; COMFORT.none is a
+ * route's ways that aren't bike facilities.
  */
 const COMFORT_LEVELS = [
   {
-    comfort: 4,
+    comfort: COMFORT.most,
     label: "Separated from traffic",
     swatch: "bg-[#1a6d23] dark:bg-[#4cc26a]",
   },
   {
-    comfort: 3,
+    comfort: COMFORT.high,
     label: "Quiet street or shared path",
     swatch: "bg-[#5c9e63] dark:bg-[#33874a]",
   },
   {
-    comfort: 2,
+    comfort: COMFORT.low,
     label: "Painted bike lane",
     swatch: "bg-[#a5cfa8] dark:bg-[#285e36]",
   },
   {
-    comfort: 1,
+    comfort: COMFORT.least,
     label: "Busy street or beside parked cars",
     swatch: "bg-[#e0a33a] dark:bg-[#c98a2a]",
   },
   {
-    comfort: 0,
+    comfort: COMFORT.none,
     label: "No bike facility",
     swatch: "bg-[#c9cdd2] dark:bg-[#4a5058]",
   },
