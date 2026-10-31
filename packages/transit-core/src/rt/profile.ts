@@ -12,9 +12,12 @@
 //    those bins get the nearby pace), which is what makes predicted buses visibly stop.
 // Totals are preserved: pace × distance + dwells ≈ observed running time.
 //
+// Published one band per file (profile-bands.ts), with the all-day profile filled in where a band
+// has no data.
+//
 // Prediction: from a fix, walk bin by bin, stopping at each upcoming stop for its expected dwell,
-// scaled by how this bus has been running relative to the profile. Gaps fall back to the all-day
-// profile, then to the timetable, then to a default speed. Stops TransLink reports as skipped by a
+// scaled by how this bus has been running relative to the profile. Gaps (and bands not loaded yet)
+// fall back to the timetable, then to a default speed. Stops TransLink reports as skipped by a
 // trip (GTFS-RT, e.g. on a detour) get no dwell.
 
 import { cumulativeLengths, projectOnto, type LonLat } from "../geo.ts";
@@ -30,6 +33,7 @@ import {
   toWallTime,
   type ServiceDate,
 } from "../time.ts";
+import type { RtBandProfile } from "./profile-bands.ts";
 import type { RtSnapshot, RtVehicle } from "./types.ts";
 
 export interface PredictionConfig {
@@ -93,8 +97,8 @@ export interface ShapeProfile {
   all: BandProfile;
 }
 
-export interface RtProfileFile {
-  schema: 1;
+/** A learned profile, every band; published per band (profile-bands.ts). */
+export interface RtProfile {
   feedVersion: string;
   builtAt: string;
   binM: number;
@@ -220,7 +224,7 @@ export class ProfileBuilder {
     return a;
   }
 
-  build(): RtProfileFile {
+  build(): RtProfile {
     const { cfg, pp } = this;
     const shapes: Record<string, ShapeProfile> = {};
     for (const [shape, accs] of this.acc) {
@@ -249,7 +253,6 @@ export class ProfileBuilder {
       shapes[shape] = { bands: accs.slice(0, -1).map(toBand), all };
     }
     return {
-      schema: 1,
       feedVersion: pp.plan.feedVersion,
       builtAt: new Date().toISOString(),
       binM: cfg.binM,
@@ -449,18 +452,19 @@ export class Predictor {
 
   private pp: PreparedPlan;
   private cfg: PredictionConfig;
-  private profile: RtProfileFile | undefined;
+  private bands: readonly (RtBandProfile | undefined)[];
   private skipped: SkippedStops | undefined;
 
+  /** @param bands The profile by band, where loaded. */
   constructor(
     pp: PreparedPlan,
     cfg: PredictionConfig,
-    profile?: RtProfileFile,
+    bands: readonly (RtBandProfile | undefined)[] = [],
     skipped?: SkippedStops,
   ) {
     this.pp = pp;
     this.cfg = cfg;
-    this.profile = profile;
+    this.bands = bands;
     this.skipped = skipped;
   }
 
@@ -497,22 +501,24 @@ export class Predictor {
       cum ?
         cum[cum.length - 1]!
       : trip.pattern.dist[trip.pattern.dist.length - 1]!;
-    const binM = this.profile?.binM ?? cfg.binM;
+    const bp = this.bands[band];
+    const binM = bp?.binM ?? cfg.binM;
     const bins = Math.max(1, Math.ceil(length / binM));
-    const sp = this.profile?.shapes[trip.pattern.shape];
-    const bp = sp?.bands[band] ?? null;
+    const sp = bp?.shapes.get(trip.pattern.shape);
     const dist = trip.pattern.dist;
     const ids = trip.pattern.stops.map((si) => pp.plan.stops[si]!.id);
     const pace = new Float64Array(bins);
-    for (let b = 0; b < bins; b++)
-      pace[b] = bp?.pace[b] ?? sp?.all.pace[b] ?? NaN;
-    const stops = ids.map((id, i) => ({
-      along: dist[i]!,
-      dwell:
-        skip?.has(id) ?
-          0
-        : (bp?.dwell[id] ?? sp?.all.dwell[id] ?? cfg.defaultDwellS),
-    }));
+    for (let b = 0; b < bins; b++) pace[b] = sp?.pace[b] ?? NaN;
+    const stops = ids.map((id, i) => {
+      const k = sp ? sp.stops.indexOf(id) : -1;
+      return {
+        along: dist[i]!,
+        dwell:
+          skip?.has(id) ? 0
+          : k >= 0 ? sp!.dwell[k]!
+          : cfg.defaultDwellS,
+      };
+    });
     return { binM, length, pace, stops, dist };
   }
 

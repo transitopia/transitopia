@@ -15,6 +15,7 @@ import {
   ProfileBuilder,
   type PredictionConfig,
 } from "../src/rt/profile.ts";
+import { bandProfiles } from "../src/rt/profile-bands.ts";
 import {
   cumulativeLengths,
   pointAlong,
@@ -214,7 +215,7 @@ describe("prediction", () => {
       bands: [],
       all: { pace: Array(40).fill(0.1), dwell: { mid: 30 } },
     };
-    const p = new Predictor(pp2, cfg, profile);
+    const p = new Predictor(pp2, cfg, bandProfiles(profile));
     const c = p.course(pp2.tripIndex.get("trip1")!, T0);
     expect(p.walk(c, 900, 5).along).toBeCloseTo(950, 5); // 10 m/s
     expect(p.walk(c, 900, 20)).toEqual({ along: 1000, speed: 0 }); // arrived at 10 s, dwelling
@@ -242,7 +243,7 @@ describe("prediction", () => {
       all: { pace: Array(40).fill(0.1), dwell: { mid: 30 } },
     };
     // Skipped on the fix's service date only.
-    const p = new Predictor(pp2, cfg, profile, (date, trip) =>
+    const p = new Predictor(pp2, cfg, bandProfiles(profile), (date, trip) =>
       date === serviceDate("20260928") && trip === "trip1" ?
         new Set(["mid"])
       : undefined,
@@ -280,7 +281,7 @@ describe("prediction", () => {
       bands: [null, band(0.1), band(0.5), null, null],
       all: band(0.2),
     };
-    const p = new Predictor(pp2, cfg, profile);
+    const p = new Predictor(pp2, cfg, bandProfiles(profile));
     const trip = pp2.tripIndex.get("trip1")!;
     const date = serviceDate("20260928");
     // What delayAt answers: the first and last second the paced schedule has the bus at `along`.

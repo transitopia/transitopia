@@ -23,7 +23,7 @@ import { PUBLIC_DATA_DIR, PUBLISH_DATA_DIR } from "@transitopia/data/paths.ts";
 import { run } from "@transitopia/data/exec.ts";
 
 /** Extensions of the files uploaded compressed; anything else (the features export is already gzipped) goes as it is. */
-const COMPRESSED_EXTENSIONS = ["json", "geojson"];
+const COMPRESSED_EXTENSIONS = ["json", "geojson", "bin"];
 const COMPRESSED = COMPRESSED_EXTENSIONS.map((ext) => `*.${ext}`);
 const isCompressed = (name: string) =>
   COMPRESSED_EXTENSIONS.some((ext) => name.endsWith(`.${ext}`));
@@ -62,7 +62,7 @@ export interface StageResult {
 }
 
 /**
- * Write a brotli copy (quality 11) of each JSON and GeoJSON file under `from` to the same path under
+ * Write a brotli copy (quality 11) of each JSON, GeoJSON and .bin file under `from` to the same path under
  * `to`, with its source's modification time, skipping those whose copy already decompresses to the
  * source, and remove copies whose source is gone. With `include`, only the files it names are
  * staged or removed. Copies are written beside `to` and renamed into place, so a concurrent upload

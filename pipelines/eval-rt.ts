@@ -28,6 +28,7 @@ import {
   ProfileBuilder,
   type PredictionConfig,
 } from "@transitopia/transit-core/rt/profile.ts";
+import { publishedBandProfiles } from "@transitopia/transit-core/rt/profile-bands.ts";
 import { RtTimeline } from "@transitopia/transit-core/rt/timeline.ts";
 import { distM } from "@transitopia/transit-core/geo.ts";
 import type { RtVehicle } from "@transitopia/transit-core/rt/types.ts";
@@ -163,7 +164,8 @@ async function main() {
   );
   log(`Test: ${test.map((h) => h.label).join(", ")}`);
 
-  const withProfile = new Predictor(pp, cfg, profile);
+  const bands = publishedBandProfiles(profile);
+  const withProfile = new Predictor(pp, cfg, bands);
   const timetable = new Predictor(pp, cfg);
   // Horizon buckets (s ahead of the fix the prediction starts from).
   const buckets: [string, number, number][] = [
@@ -223,7 +225,7 @@ async function main() {
   }
   printPrediction(err, buckets);
   if (!args.includes("--no-live"))
-    liveReplay(test, pp, plans.kin, new Predictor(pp, cfg, profile));
+    liveReplay(test, pp, plans.kin, new Predictor(pp, cfg, bands));
 }
 
 function printPrediction(

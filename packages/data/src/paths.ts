@@ -116,7 +116,7 @@ export function feedPaths(feed: string): {
   dir: string;
   /** Archived GTFS zips, one directory per version. */
   raw: string;
-  /** Published: manifest.json, and <version dir>/{plan.json, movements/, platforms.json, rt-profile.json}. */
+  /** Published: manifest.json, and <version dir>/{plan.json, movements/, platforms.json, rt-profile.<band>.bin}. */
   out: string;
   manifest: string;
   /** Real-time recordings (hour files, service changes, alerts, coverage, the request ledger). */
@@ -335,15 +335,23 @@ export async function exists(p: string): Promise<boolean> {
   }
 }
 
-/** Write JSON atomically (temp file + rename) so a crashed build never leaves a half-written file. */
+/** Write JSON atomically (writeAtomic). */
 export async function writeJson(
   path: string,
   value: unknown,
   pretty = false,
 ): Promise<void> {
+  await writeAtomic(path, JSON.stringify(value, null, pretty ? 2 : undefined));
+}
+
+/** Write a file atomically (temp file + rename) so a crashed build never leaves a half-written file. */
+export async function writeAtomic(
+  path: string,
+  data: string | Uint8Array,
+): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   const tmp = `${path}.tmp-${process.pid}`;
-  await writeFile(tmp, JSON.stringify(value, null, pretty ? 2 : undefined));
+  await writeFile(tmp, data);
   await rename(tmp, path);
 }
 

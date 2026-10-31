@@ -24,10 +24,15 @@ import {
 } from "@transitopia/transit-core/rt/packed.ts";
 import { RtTimeline } from "@transitopia/transit-core/rt/timeline.ts";
 import {
+  bandOf,
   Predictor,
   type PredictionConfig,
-  type RtProfileFile,
 } from "@transitopia/transit-core/rt/profile.ts";
+import {
+  bandFileName,
+  decodeBandProfile,
+  type RtBandProfile,
+} from "@transitopia/transit-core/rt/profile-bands.ts";
 import type {
   PreparedPlan,
   ScheduleCorrections,
@@ -85,6 +90,11 @@ const CHANGES_REFRESH_MS = 60_000;
 /** A version the live endpoint points to is retried no sooner than this after a failed fetch. */
 const CHANGES_RETRY_MS = 10_000;
 const MAX_CHANGE_DAYS_CACHED = 6;
+/**
+ * A profile's bands are loaded for the clock time and this far ahead of it, so the next band is in
+ * by the time the clock reaches it.
+ */
+const PROFILE_PREFETCH_MS = 10 * 60_000;
 
 export type RtMode =
   | "live"
@@ -154,8 +164,23 @@ export class RtClient {
     string,
     { version: number; corr: ScheduleCorrections | undefined }
   >();
-  /** Per feed version: the predictor, once its travel-time profile has loaded (or turned out missing). */
-  private predictors = new Map<string, Predictor | "loading">();
+  /**
+   * Per feed version: its travel-time profile's bands (packages/transit-core/src/rt/profile-bands.ts),
+   * as they're needed. Loaded bands stay: they're small, and scrubbing crosses them all.
+   */
+  private profiles = new Map<
+    string,
+    (RtBandProfile | "loading" | "missing")[]
+  >();
+  /** Bumped whenever a band of a profile loads. */
+  private profileVersion = 0;
+  /** Per feed version: its predictor, on the bands loaded when it was made. */
+  private predictors = new Map<
+    string,
+    { predictor: Predictor; profileVersion: number }
+  >();
+  /** The clock time at the last update(): which bands of a profile to load. */
+  private clockT = Date.now();
   private listeners = new Set<() => void>();
   available: boolean;
   /** The URL of a published file (PlanStore.dataUrl). */
@@ -209,6 +234,7 @@ export class RtClient {
    * any fetches needed.
    */
   update(t: number, day: [number, number]): void {
+    this.clockT = t;
     if (!this.api) return;
     this.setDay(day);
     if (this.prefetchRequested) {
@@ -283,7 +309,7 @@ export class RtClient {
     const predictor = pp ? this.predictorFor(pp) : undefined;
     // The prepared plan grows as its trip files load (PlanStore.planFor): its trip count is part of
     // the key, so vehicles are matched against every trip in so far.
-    const key = `${live ? "live" : "rec"}:${snapshots.length}:${snapshots[0]?.fetchedAt}:${snapshots.at(-1)?.fetchedAt}:${pp?.plan.feedVersion}:${pp?.tripIndex.size}:${predictor ? "p" : ""}:${this.changesVersion}`;
+    const key = `${live ? "live" : "rec"}:${snapshots.length}:${snapshots[0]?.fetchedAt}:${snapshots.at(-1)?.fetchedAt}:${pp?.plan.feedVersion}:${pp?.tripIndex.size}:${this.profileVersion}:${this.changesVersion}`;
     let timeline = this.timelines.get(key);
     if (timeline) this.timelines.delete(key);
     else {
@@ -320,7 +346,7 @@ export class RtClient {
         carried: Map<string, CarriedBus>;
       }
     | undefined {
-    if (!this.available || !pp || !this.predictorFor(pp)) return undefined;
+    if (!this.available || !pp) return undefined;
     const fromLive = this.live.length > 0 && t >= this.live[0]!.fetchedAt;
     const recorded =
       (
@@ -443,29 +469,66 @@ export class RtClient {
     }
   }
 
-  /** Profile-based predictor for a feed; undefined while its profile loads. */
-  predictorFor(pp: PreparedPlan): Predictor | undefined {
+  /**
+   * Profile-based predictor for a feed. Bands of the profile not loaded yet fall back to the
+   * timetable; it loads those the clock needs, and a new predictor takes over as each arrives.
+   */
+  predictorFor(pp: PreparedPlan): Predictor {
     const version = pp.plan.feedVersion;
-    const p = this.predictors.get(version);
-    if (p === "loading") return undefined;
-    if (p) return p;
-    this.predictors.set(version, "loading");
     // Scenario plans ("<version>~<name>") share the base feed's profile.
     const base = version.split("~")[0]!;
-    void fetch(this.data(feedDataPath(pp.plan.feed, base, "rt-profile.json")))
-      .then((r) => (r.ok ? (r.json() as Promise<RtProfileFile>) : undefined))
-      .catch(() => undefined)
-      .then((profile) => {
-        // Without a profile, the timetable still gives better predictions than a fixed speed.
-        this.predictors.set(
-          version,
-          new Predictor(pp, this.prediction, profile, (date, tripId) =>
-            this.changesView().skipped(date, tripId),
-          ),
-        );
-        this.emit();
-      });
-    return undefined;
+    let bands = this.profiles.get(base);
+    if (!bands) this.profiles.set(base, (bands = []));
+    for (const t of [this.clockT, this.clockT + PROFILE_PREFETCH_MS]) {
+      const band = bandOf(
+        this.prediction.bandStartHours,
+        toWallTime(t, pp.plan.timezone).hour,
+      );
+      if (!bands[band]) {
+        bands[band] = "loading";
+        void this.loadBand(pp.plan.feed, base, band, bands);
+      }
+    }
+    let p = this.predictors.get(version);
+    if (p?.profileVersion !== this.profileVersion) {
+      const loaded = Array.from(bands, (b) =>
+        typeof b === "object" ? b : undefined,
+      );
+      p = {
+        profileVersion: this.profileVersion,
+        predictor: new Predictor(pp, this.prediction, loaded, (date, tripId) =>
+          this.changesView().skipped(date, tripId),
+        ),
+      };
+      this.predictors.set(version, p);
+    }
+    return p.predictor;
+  }
+
+  private async loadBand(
+    feed: string,
+    version: string,
+    band: number,
+    bands: (RtBandProfile | "loading" | "missing")[],
+  ): Promise<void> {
+    const profile = await fetch(
+      this.data(feedDataPath(feed, version, bandFileName(band))),
+    )
+      .then(async (r) =>
+        r.ok ?
+          decodeBandProfile(new Uint8Array(await r.arrayBuffer()))
+        : undefined,
+      )
+      .catch(() => undefined);
+    // A profile built with other bands than the site's (a deploy between the two) doesn't fit.
+    const fits =
+      profile?.band === band
+      && profile.bandStartHours.join()
+        === this.prediction.bandStartHours.join();
+    bands[band] = fits ? profile : "missing";
+    if (!fits) return;
+    this.profileVersion++;
+    this.emit();
   }
 
   liveStatus(): string | undefined {

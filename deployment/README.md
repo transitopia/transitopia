@@ -94,7 +94,7 @@ One-time setup (done):
    headers, and the files must go up compressed. The upload passes `--no-update-modtime`: when only
    a file's time changed, rclone otherwise updates it by copying the object onto itself with new
    metadata, which drops the headers too.
-4. Compression: the upload compresses every JSON and GeoJSON file with brotli at its highest
+4. Compression: the upload compresses every JSON, GeoJSON and `.bin` (bus profile) file with brotli at its highest
    quality (`apps/server/src/jobs/publish.ts`; staged in `var/publish/data`, recompressed only when
    the file changes) and stores it with `Content-Encoding: br` and `Cache-Control: …, no-transform`,
    so the edge serves our copy as it is instead of compressing the plain file itself, which it does

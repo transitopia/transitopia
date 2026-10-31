@@ -1,15 +1,21 @@
 // Learn bus travel-time profiles from each feed's recorded GTFS-RT positions (packages/transit-core/DESIGN.md#buses):
-//   var/rt-history/<feed>/**  →  var/public/data/feeds/<feed>/<version>/rt-profile.json (one per version with data)
+//   var/rt-history/<feed>/**  →  var/public/data/feeds/<feed>/<version>/rt-profile.<band>.bin (one per time-of-day band, per version with data)
 //
 //   npm run build:rt-profile [-- --feed <id>]
 // Prediction settings are those of the first region showing the feed (config/defaults/rt.json → prediction).
 // The live view uses the profile to predict buses between fixes; without one it falls back to the
 // timetable. Rebuild as history accumulates. Check the effect with `npx tsx pipelines/eval-rt.ts`.
 
+import { rm } from "node:fs/promises";
 import {
   ProfileBuilder,
   type PredictionConfig,
 } from "@transitopia/transit-core/rt/profile.ts";
+import {
+  bandFileName,
+  bandProfiles,
+  encodeBandProfile,
+} from "@transitopia/transit-core/rt/profile-bands.ts";
 import type { PreparedPlan } from "@transitopia/transit-core/schedule/engine.ts";
 import {
   feedVersionFile,
@@ -17,7 +23,7 @@ import {
   readFeed,
   readFeeds,
   regionOfFeed,
-  writeJson,
+  writeAtomic,
   readFeedConfig,
 } from "@transitopia/data/paths.ts";
 import type { FeedInfo } from "@transitopia/transit-core/config.ts";
@@ -61,12 +67,18 @@ async function buildFeed(feed: FeedInfo): Promise<void> {
   }
   for (const [pp, b] of builders) {
     const profile = b.build();
-    await writeJson(
-      feedVersionFile(feed.id, pp.plan.feedVersion, "rt-profile.json"),
-      profile,
-    );
+    const file = (name: string) =>
+      feedVersionFile(feed.id, pp.plan.feedVersion, name);
+    let bytes = 0;
+    for (const band of bandProfiles(profile)) {
+      const data = encodeBandProfile(band);
+      await writeAtomic(file(bandFileName(band.band)), data);
+      bytes += data.length;
+    }
+    // The single-file profile these replaced.
+    await rm(file("rt-profile.json"), { force: true });
     log(
-      `${feed.id} ${pp.plan.feedVersion}: profile for ${Object.keys(profile.shapes).length} shapes from ${profile.hours.length} recorded hours`,
+      `${feed.id} ${pp.plan.feedVersion}: profile for ${Object.keys(profile.shapes).length} shapes from ${profile.hours.length} recorded hours (${profile.bandStartHours.length} bands, ${Math.round(bytes / 1024)} KB)`,
     );
   }
 }

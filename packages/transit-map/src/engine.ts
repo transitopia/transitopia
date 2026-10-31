@@ -576,7 +576,7 @@ export class TransitEngine {
     // SeaBus: AIS fixes anchor the timetable (packages/transit-core/DESIGN.md#seabus-ais).
     this.ais = new AisClient(regionBase, opts.config, () => this.live.fresh);
     // Schedule estimates for buses stop at stops, using the same travel-time profile as live prediction.
-    store.pacerFor = (pp) => this.rt.predictorFor(pp)?.pacer;
+    store.pacerFor = (pp) => this.rt.predictorFor(pp).pacer;
     this.snapshot = this.buildSnapshot(this.clock.now());
 
     // Track infrastructure, in a region with track-level rail (optional even there: without it,
