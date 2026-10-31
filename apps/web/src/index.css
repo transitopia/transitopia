@@ -209,6 +209,30 @@
       border-radius: 0 0 1.25rem 1.25rem;
     }
   }
+  /* The active mode pill's ring until a layers panel has been opened (src/components/ModeSwitch.tsx). */
+  .mode-pulse::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border: 2px solid var(--pulse);
+    border-radius: 9999px;
+    pointer-events: none;
+    animation: mode-pulse 1.8s ease-out infinite;
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+      opacity: 0.8;
+    }
+  }
+  @keyframes mode-pulse {
+    from {
+      opacity: 0.9;
+      transform: scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: scale(1.25);
+    }
+  }
   .layers-scrim {
     position: absolute;
     top: 100%;

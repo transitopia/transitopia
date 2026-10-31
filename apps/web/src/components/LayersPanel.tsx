@@ -8,21 +8,50 @@ import { createPortal } from "react-dom";
 const LayersPanelContext = React.createContext<{
   open: boolean;
   setOpen: (open: boolean) => void;
+  /** Whether this browser has ever opened a layers panel (the mode switch's tip waits for it). */
+  seen: boolean;
   /** The element inside the header that the panel is rendered into. */
   host: HTMLElement | null;
   setHost: (el: HTMLElement | null) => void;
-}>({ open: false, setOpen: () => {}, host: null, setHost: () => {} });
+}>({
+  open: false,
+  setOpen: () => {},
+  seen: true,
+  host: null,
+  setHost: () => {},
+});
 
 export const useLayersPanel = () => React.useContext(LayersPanelContext);
+
+const SEEN_KEY = "transitopia:layers-panel-seen";
+
+function loadSeen(): boolean {
+  try {
+    return JSON.parse(localStorage.getItem(SEEN_KEY) ?? "false") === true;
+  } catch {
+    return false; // Storage unavailable: the tip shows each visit.
+  }
+}
 
 export const LayersPanelProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpenState] = React.useState(false);
+  const [seen, setSeen] = React.useState(loadSeen);
   const [host, setHost] = React.useState<HTMLElement | null>(null);
+  const setOpen = React.useCallback((next: boolean) => {
+    setOpenState(next);
+    if (!next) return;
+    setSeen(true);
+    try {
+      localStorage.setItem(SEEN_KEY, JSON.stringify(true));
+    } catch {
+      // Preferences are optional.
+    }
+  }, []);
   const value = React.useMemo(
-    () => ({ open, setOpen, host, setHost }),
-    [open, host],
+    () => ({ open, setOpen, seen, host, setHost }),
+    [open, setOpen, seen, host],
   );
   return (
     <LayersPanelContext.Provider value={value}>
