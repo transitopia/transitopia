@@ -114,6 +114,22 @@ describe("CyclingNetworkBuilder", () => {
     ).toBeLessThanOrEqual(2);
   });
 
+  it("keeps a path open to bicycles only if it's in a bike route", () => {
+    const n = network([
+      ...OPL,
+      "w13 Thighway=bridleway,bicycle=yes Nn4x-123.11y49.27,n9x-123.12y49.27",
+      "w14 Thighway=path,bicycle=yes Nn10x-123.13y49.27,n11x-123.14y49.27",
+      "r31 Ttype=route,route=bicycle Mr30@,w13@",
+    ]);
+    expect(n.ways.map((w) => w.id)).toEqual([10, 11, 13]);
+    expect(n.ways[2]!.attrs).toMatchObject({
+      subclass: "path",
+      comfort: 3,
+      routes: "31",
+    });
+    expect(n.routes.get(31)!.comfortM[3]).toBeGreaterThan(700);
+  });
+
   it("measures ferry crossings apart from comfort", () => {
     const n = network([
       ...OPL,

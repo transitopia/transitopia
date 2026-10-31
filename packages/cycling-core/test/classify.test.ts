@@ -41,6 +41,22 @@ describe("classifyWay", () => {
     expect(classify({ highway: "path", bicycle: "yes" })).toBeUndefined();
   });
 
+  it("takes paths and bridleways open to bicycles as paths only in a bike route", () => {
+    const inRoute = (tags: Record<string, string>) =>
+      classifyWay(tags, config, true);
+    expect(
+      inRoute({ highway: "bridleway", bicycle: "yes", foot: "yes" }),
+    ).toMatchObject({ class: "track", subclass: "path", comfort: 3 });
+    expect(inRoute({ highway: "path", bicycle: "permissive" })).toMatchObject({
+      subclass: "path",
+      comfort: 4,
+    });
+    expect(classify({ highway: "bridleway", bicycle: "yes" })).toBeUndefined();
+    expect(inRoute({ highway: "footway", bicycle: "yes" })).toBeUndefined();
+    expect(inRoute({ highway: "path", bicycle: "no" })).toBeUndefined();
+    expect(inRoute({ highway: "path" })).toBeUndefined();
+  });
+
   it("takes ferries that don't refuse bicycles as ferries, with no comfort", () => {
     expect(classify({ route: "ferry", bicycle: "yes" })).toEqual({
       class: "ferry",

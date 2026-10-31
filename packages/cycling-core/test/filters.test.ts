@@ -26,7 +26,7 @@ function kept(type: "n" | "w" | "r", tags: Tags): boolean {
   });
 }
 
-/** One way for each of the classifier's rules, and its variants. */
+/** One way for each of the classifier's rules, and its variants; the route-only rules in ROUTE_WAYS. */
 const WAYS: Tags[] = [
   { highway: "cycleway" },
   { route: "ferry", bicycle: "yes" },
@@ -63,10 +63,20 @@ const WAYS: Tags[] = [
   { highway: "tertiary", bicycle: "designated" },
 ];
 
+/** Ways that are cycling ways only in a bike route (`classifyWay`'s `inBikeRoute`). */
+const ROUTE_WAYS: Tags[] = [
+  { highway: "path", bicycle: "yes" },
+  { highway: "bridleway", bicycle: "permissive" },
+];
+
 describe("OSM_FILTERS", () => {
   it("keeps every way the classifier accepts", () => {
     for (const tags of WAYS) {
       expect(classifyWay(tags, { calmMaxSpeedKmh: 30 })).toBeDefined();
+      expect(kept("w", tags), JSON.stringify(tags)).toBe(true);
+    }
+    for (const tags of ROUTE_WAYS) {
+      expect(classifyWay(tags, { calmMaxSpeedKmh: 30 }, true)).toBeDefined();
       expect(kept("w", tags), JSON.stringify(tags)).toBe(true);
     }
   });

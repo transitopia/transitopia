@@ -123,6 +123,11 @@ export class CyclingNetworkBuilder {
   /** Each way's bike route relations (direct members only: a route's subroutes don't name it). */
   private readonly routesOf = new Map<number, Set<number>>();
   /**
+   * Ways that are cycling ways only in a bike route (`classifyWay`'s `inBikeRoute`), kept until
+   * `build`, when the routes are known. Their `wayInfo` comfort is read only by the routes they're in.
+   */
+  private readonly routeOnly = new Set<number>();
+  /**
    * Every way, for the routes' lengths, bboxes and lines (relations come after ways in OPL, so which
    * ways a route names isn't known until then).
    */
@@ -147,7 +152,11 @@ export class CyclingNetworkBuilder {
     } else if (e.type === "way") {
       const coords = wayCoords(e);
       if (!coords) return;
-      const cls = canBeLine(e) ? classifyWay(e.tags, this.config) : undefined;
+      let cls = canBeLine(e) ? classifyWay(e.tags, this.config) : undefined;
+      if (!cls && canBeLine(e)) {
+        cls = classifyWay(e.tags, this.config, true);
+        if (cls) this.routeOnly.add(e.id);
+      }
       this.wayInfo.set(e.id, {
         id: e.id,
         nodes: e.nodes,
@@ -201,7 +210,10 @@ export class CyclingNetworkBuilder {
 
   /** The network, each way with the bike routes it's part of. */
   build(): CyclingNetwork {
-    for (const w of this.ways) {
+    const ways = this.ways.filter(
+      (w) => !this.routeOnly.has(w.id) || this.routesOf.has(w.id),
+    );
+    for (const w of ways) {
       const ids = this.routesOf.get(w.id);
       if (ids) w.attrs.routes = [...ids].sort((a, b) => a - b).join(",");
     }
@@ -216,7 +228,7 @@ export class CyclingNetworkBuilder {
     const routes = new Map<number, CyclingRoute>();
     for (const id of ids) routes.set(id, this.route(id, parents.get(id)));
     return {
-      ways: this.ways,
+      ways,
       parking: this.parking,
       routes,
       routeLines: (id) =>

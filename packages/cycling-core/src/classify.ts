@@ -126,10 +126,14 @@ const ROADS = [
   "road",
 ];
 
-/** The way's cycling facility, or undefined if it isn't one. */
+/**
+ * The way's cycling facility, or undefined if it isn't one. `inBikeRoute`: the way is a member of a
+ * bike route, which makes a path or bridleway merely open to bicycles one.
+ */
 export function classifyWay(
   t: Tags,
   config: ClassifyConfig,
+  inBikeRoute = false,
 ): WayClass | undefined {
   const onewayYes = has(t, "oneway", "yes") ? 1 : 0;
   const calm = () =>
@@ -154,9 +158,15 @@ export function classifyWay(
       shared_with_vehicles: false,
     };
   }
+  // A path or bridleway that's only open to bicycles counts in a bike route (the Trans Canada
+  // Trail's bridleways): the route says it's for riding. Elsewhere it's mostly hiking trails and
+  // mountain bike singletrack.
   if (
     has(t, "highway", "path", "pedestrian", "footway", "bridleway")
-    && has(t, "bicycle", "designated")
+    && (has(t, "bicycle", "designated")
+      || (inBikeRoute
+        && has(t, "highway", "path", "bridleway")
+        && has(t, "bicycle", "yes", "permissive")))
   ) {
     // Pedestrian streets and footways (sidewalks included) are for pedestrians first, and
     // bridleways for horses.
