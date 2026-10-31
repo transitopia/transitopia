@@ -48,7 +48,6 @@
     "validate:plan": "tsx pipelines/validate-plan.ts",
     "build:observations": "tsx pipelines/build-observations.ts",
     "build:dispatch": "tsx pipelines/build-dispatch.ts",
-    "disruptions": "tsx pipelines/disruptions.ts",
     "build:rt-profile": "tsx pipelines/build-rt-profile.ts",
     "scenario": "tsx pipelines/scenario.ts"
   },

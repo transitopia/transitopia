@@ -53,65 +53,57 @@ export interface DataBuildResult {
 }
 
 export async function buildData(opts: {
-  db: Db | undefined;
+  db: Db;
   feeds: FeedInfo[];
-  repo: CorrectionsRepo | undefined;
+  repo: CorrectionsRepo;
   env: ServerEnv;
   log: (msg: string) => void;
 }): Promise<DataBuildResult> {
   const { db, repo, env, log } = opts;
   // The server writes the places files itself, after reconciling.
   const childEnv: NodeJS.ProcessEnv = { TRANSITOPIA_SKIP_PLACES: "1" };
-  if (repo) {
-    // The pipelines read a region's corrections from <dir>/<region>/ (regionPaths).
-    const n = await repo.exportFiles(
-      join(CORRECTIONS_EXPORT_DIR, repo.regionId),
-    );
-    log(
-      `exported ${n.observationSets} observation sets and ${n.disruptions} disruptions for the build`,
-    );
-    childEnv.TRANSITOPIA_CORRECTIONS_DIR = CORRECTIONS_EXPORT_DIR;
-  }
+  // The pipelines read a region's corrections from <dir>/<region>/ (regionPaths).
+  const n = await repo.exportFiles(join(CORRECTIONS_EXPORT_DIR, repo.regionId));
+  log(
+    `exported ${n.observationSets} observation sets and ${n.disruptions} disruptions for the build`,
+  );
+  childEnv.TRANSITOPIA_CORRECTIONS_DIR = CORRECTIONS_EXPORT_DIR;
   await run(process.execPath, ["--import", "tsx", "pipelines/data.ts"], {
     cwd: ROOT,
     env: childEnv,
     log: (l) => log(`data: ${l}`),
   });
   const newFeeds: string[] = [];
-  if (db)
-    for (const f of opts.feeds)
-      newFeeds.push(...(await recordFeeds(db, f.id, env.archiveRemote, log)));
+  for (const f of opts.feeds)
+    newFeeds.push(...(await recordFeeds(db, f.id, env.archiveRemote, log)));
   // Feature IDs for the new versions (and any not yet reconciled), apps/server/README.md#feature-reconciliation.
   const reconciled: string[] = [];
   let reconcileError: string | undefined;
-  if (db)
-    try {
-      for (const r of await reconcileFeeds({
-        db,
-        feeds: opts.feeds,
-        settings: reconcileConfig,
-        archiveRemote: env.archiveRemote,
-        log,
-      }))
-        reconciled.push(`${r.feed}/${r.version}`);
-    } catch (e) {
-      reconcileError = (e as Error).message;
-      log(`feature reconciliation failed: ${reconcileError}`);
-    }
+  try {
+    for (const r of await reconcileFeeds({
+      db,
+      feeds: opts.feeds,
+      settings: reconcileConfig,
+      archiveRemote: env.archiveRemote,
+      log,
+    }))
+      reconciled.push(`${r.feed}/${r.version}`);
+  } catch (e) {
+    reconcileError = (e as Error).message;
+    log(`feature reconciliation failed: ${reconcileError}`);
+  }
   // Bike routes and their IDs, before the export so it has them.
-  if (db)
-    try {
-      await loadRoutes(db, log);
-    } catch (e) {
-      log(`loading bike routes failed: ${(e as Error).message}`);
-    }
+  try {
+    await loadRoutes(db, log);
+  } catch (e) {
+    log(`loading bike routes failed: ${(e as Error).message}`);
+  }
   // Places files and the public export, from the registry (docs/DESIGN.md#published-features).
-  if (db)
-    try {
-      await writeFeatureData(db, opts.feeds, log);
-    } catch (e) {
-      log(`writing places files failed: ${(e as Error).message}`);
-    }
+  try {
+    await writeFeatureData(db, opts.feeds, log);
+  } catch (e) {
+    log(`writing places files failed: ${(e as Error).message}`);
+  }
   let published = false;
   if (env.dataPublishRemote) {
     await publishData(env.dataPublishRemote, { log });

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
@@ -95,10 +95,9 @@ describe("RtService", () => {
       log: () => {},
       apiKey: "test-key",
       dispatch: false,
-      disruptionsDir: dir,
       regionId: "test-region",
     });
-    await service.start(0);
+    await service.start();
     // Let the first positions + trip-updates + alerts polls complete.
     await vi.waitFor(() => expect(latest(service!)).not.toBeNull());
     await vi.waitFor(() => expect(upstream.mock.calls.length).toBe(3));
@@ -138,10 +137,9 @@ describe("RtService", () => {
       apiKey: "test-key",
       aisApiKey: null,
       dispatch: false,
-      disruptionsDir: dir,
       regionId: "test-region",
     });
-    await service.start(0);
+    await service.start();
     await vi.waitFor(() => expect(upstream.mock.calls.length).toBe(3));
     await vi.waitFor(() => expect(latest(service!)).not.toBeNull());
 
@@ -214,49 +212,6 @@ describe("RtService", () => {
     expect(upstream.mock.calls.length).toBe(3);
   });
 
-  it("records each request in a ledger and resumes the schedule after a restart", async () => {
-    dir = await mkdtemp(join(tmpdir(), "rt-test-"));
-    const upstream = vi.fn(
-      async () =>
-        new Response(new Blob([emptyFeed() as Uint8Array<ArrayBuffer>]), {
-          status: 200,
-        }),
-    );
-    vi.stubGlobal("fetch", upstream);
-    const opts = {
-      historyDir: dir,
-      record: false,
-      log: () => {},
-      apiKey: "test-key",
-      dispatch: false as const,
-      disruptionsDir: dir,
-    };
-    service = new RtService(opts);
-    await service.start(0);
-    await vi.waitFor(() => expect(upstream.mock.calls.length).toBe(3));
-    await vi.waitFor(async () =>
-      expect(
-        JSON.parse(
-          await readFile(join(dir!, "translink", "requests.json"), "utf8"),
-        ).requests,
-      ).toHaveLength(3),
-    );
-    await service.stop();
-
-    // A restart right away polls nothing until each feed's interval has passed.
-    service = new RtService(opts);
-    await service.start(0);
-    await new Promise((r) => setTimeout(r, 200));
-    expect(upstream.mock.calls.length).toBe(3);
-    const status = JSON.parse(
-      String((await service.handle("/rt/status", new URLSearchParams())).body),
-    );
-    expect(status.providers.translink.budget.used24h).toBe(3);
-    expect(
-      status.providers.translink.budget.nextPollInS.positions,
-    ).toBeGreaterThan(30);
-  });
-
   it("keeps one pending timer per feed however long it polls", async () => {
     dir = await mkdtemp(join(tmpdir(), "rt-test-"));
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
@@ -269,9 +224,8 @@ describe("RtService", () => {
         log: () => {},
         apiKey: "test-key",
         dispatch: false,
-        disruptionsDir: dir,
       });
-      await service.start(0);
+      await service.start();
       // An hour of polling, a minute at a time: every feed polls again and again at any time of day.
       // Each poll awaits real file I/O before it schedules the next, which can take many event-loop
       // turns under load, so wait for the polls under way (private) before moving the clock on.
@@ -285,44 +239,9 @@ describe("RtService", () => {
       expect(Object.keys(poller["timers"])).toHaveLength(3);
     } finally {
       vi.useRealTimers();
-      // Including the last poll's ledger write, before the directory goes.
+      // Including the last poll's writes, before the directory goes.
       await service?.stop();
     }
-  });
-
-  it("stops polling at the daily cap", async () => {
-    dir = await mkdtemp(join(tmpdir(), "rt-test-"));
-    const hourAgo = Date.now() - 3_600_000;
-    const requests = Array.from({ length: 1000 }, (_, i) => [
-      hourAgo + i,
-      "positions",
-    ]);
-    await mkdir(join(dir, "translink"));
-    await writeFile(
-      join(dir, "translink", "requests.json"),
-      JSON.stringify({ requests }),
-    );
-    const upstream = vi.fn();
-    vi.stubGlobal("fetch", upstream);
-    service = new RtService({
-      historyDir: dir,
-      record: false,
-      log: () => {},
-      apiKey: "test-key",
-      dispatch: false,
-      disruptionsDir: dir,
-    });
-    await service.start(0);
-    await vi.waitFor(async () =>
-      expect(
-        JSON.parse(
-          String(
-            (await service!.handle("/rt/status", new URLSearchParams())).body,
-          ),
-        ).providers.translink.budget.capped,
-      ).toBe(true),
-    );
-    expect(upstream).not.toHaveBeenCalled();
   });
 
   it("reports no key without calling upstream", async () => {
@@ -337,7 +256,7 @@ describe("RtService", () => {
       dispatch: false,
       regionId: "test-region",
     });
-    await service.start(0);
+    await service.start();
     const r = await service.handle(
       "/regions/test-region/live/transit",
       new URLSearchParams(),
@@ -387,9 +306,8 @@ describe("RtService", () => {
       log: () => {},
       apiKey: "test-key",
       dispatch: false,
-      disruptionsDir: dir,
     });
-    await service.start(0);
+    await service.start();
     const status = async () =>
       JSON.parse(
         String(
@@ -426,40 +344,6 @@ describe("RtService", () => {
     );
   });
 
-  it("passes health after a restart until trip updates are due", async () => {
-    dir = await mkdtemp(join(tmpdir(), "rt-test-"));
-    // The previous leader polled everything 10 s ago, so this one continues the schedule from there.
-    const before = Date.now() - 10_000;
-    await mkdir(join(dir, "translink"));
-    await writeFile(
-      join(dir, "translink", "requests.json"),
-      JSON.stringify({
-        requests: [
-          [before, "tripUpdates"],
-          [before, "positions"],
-          [before, "alerts"],
-        ],
-      }),
-    );
-    const upstream = vi.fn();
-    vi.stubGlobal("fetch", upstream);
-    service = new RtService({
-      historyDir: dir,
-      record: false,
-      log: () => {},
-      apiKey: "test-key",
-      dispatch: false,
-      disruptionsDir: dir,
-    });
-    await service.start(0);
-    const h = await health({ service } as unknown as AppDeps);
-    expect(upstream).not.toHaveBeenCalled();
-    expect(h.checks["translink/tripUpdates"]?.ok).toBe(true);
-    expect(h.checks["translink/tripUpdates"]?.detail).toMatch(
-      /no successful poll since polling started \d+ s ago \(limit \d+ s\); next poll in \d+ s/,
-    );
-  });
-
   it("fails health when trip updates succeed but give no delays for the buses for a while", async () => {
     dir = await mkdtemp(join(tmpdir(), "rt-test-"));
     // Two buses first (too few to judge, as at the ends of service), then twelve.
@@ -478,9 +362,8 @@ describe("RtService", () => {
       log: () => {},
       apiKey: "test-key",
       dispatch: false,
-      disruptionsDir: dir,
     });
-    await service.start(0);
+    await service.start();
     // Positions polled again once trip updates have been read (the first may come back before them).
     await vi.waitFor(async () => {
       const st = JSON.parse(
@@ -543,9 +426,8 @@ describe("RtService", () => {
       log: (m: string) => logs.push(m),
       apiKey: "test-key",
       dispatch: false,
-      disruptionsDir: dir,
     });
-    await service.start(0);
+    await service.start();
     await vi.waitFor(() => expect(latest(service!)).not.toBeNull());
     // The first trip-updates poll may have come before any positions: poll again now.
     const internals = service.pollers.get("translink") as unknown as {

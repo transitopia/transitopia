@@ -4,6 +4,7 @@ import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import sirv from "sirv";
+import serverJson from "@transitopia/config/server/server.json" with { type: "json" };
 
 /** Pipeline output (packages/data/src/paths.ts): tiles, basemap assets and transit data. */
 const VAR_PUBLIC = fileURLToPath(new URL("../../var/public", import.meta.url));
@@ -68,8 +69,11 @@ function analytics(token: string | undefined): Plugin {
 }
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
+  // Development uses the local server (npm run server) unless told otherwise (src/config.ts).
+  if (command === "serve" && env.VITE_TRANSIT_API === undefined)
+    process.env.VITE_TRANSIT_API = `http://localhost:${serverJson.port}/`;
   return {
     plugins: [
       react(),

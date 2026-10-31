@@ -1,7 +1,6 @@
 // Live dispatch (apps/server/README.md#live-dispatch-and-previews): one dispatcher per deployment, shared by every client.
 //
-// Every `dispatchCheckS` it reads the confirmed corrections (the database, or without one
-// config/regions/metro-vancouver/observations/*.json and disruptions/*.json) and, for each service date near
+// Every `dispatchCheckS` it reads the confirmed corrections (from the database) and, for each service date near
 // today whose inputs changed, re-dispatches that date and publishes a new patch version. Clients
 // learn the current versions from the live endpoint (or /rt/dispatch) and fetch
 // /rt/dispatch/<date>/<version>.json, which never changes. Client requests never start a dispatch.
@@ -17,7 +16,6 @@ import { serverConfig } from "../config.ts";
 import {
   DISPATCH_HISTORY_DIR,
   feedPaths,
-  regionPaths,
   type RailNetwork,
 } from "@transitopia/data/paths.ts";
 import { DispatchContexts } from "@transitopia/data/dispatch-context.ts";
@@ -40,16 +38,14 @@ import {
   type ServiceDate,
   isoToServiceDate,
 } from "@transitopia/transit-core/time.ts";
-import { FileCorrections, type Corrections } from "../corrections.ts";
+import type { Corrections } from "../corrections.ts";
 import type { Store } from "../store.ts";
 
 export interface LiveDispatchOptions {
   /** The rail network it dispatches (packages/data/src/paths.ts → railNetwork). */
   net: RailNetwork;
-  /** Where confirmed corrections come from (default: the files in the network's region). */
-  corrections?: Corrections;
-  observationsDir?: string;
-  disruptionsDir?: string;
+  /** Where confirmed corrections come from (the database: CorrectionsRepo). */
+  corrections: Corrections;
   historyDir?: string;
   /** Lists published versions in the database. */
   store?: Store;
@@ -77,14 +73,7 @@ export class LiveDispatcher {
   constructor(opts: LiveDispatchOptions) {
     this.log = opts.log ?? ((m) => console.log(`[dispatch] ${m}`));
     this.contexts = new DispatchContexts(opts.net);
-    const files = regionPaths(opts.net.region);
-    this.corrections =
-      opts.corrections
-      ?? new FileCorrections({
-        observationsDir: opts.observationsDir ?? files.observations,
-        disruptionsDir: opts.disruptionsDir ?? files.disruptions,
-        log: this.log,
-      });
+    this.corrections = opts.corrections;
     this.store = opts.store;
     this.historyDir = opts.historyDir ?? DISPATCH_HISTORY_DIR;
     this.now = opts.now ?? Date.now;

@@ -196,10 +196,6 @@ export class RequestLedger {
       if (this.entries[i]![1] === feed) return this.entries[i]![0];
     return undefined;
   }
-
-  toJSON(): { requests: [number, PollFeed][] } {
-    return { requests: this.entries };
-  }
 }
 
 /** rt.json settings for thresholds that follow the poll schedule. */

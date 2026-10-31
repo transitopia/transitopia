@@ -114,16 +114,16 @@ describe("RequestLedger", () => {
     expect(l.nextAllowedAt(86_400_000)).toBe(86_400_000);
   });
 
-  it("remembers the last request per feed and round-trips through JSON", () => {
-    const l = new RequestLedger(10);
-    l.record("positions", 100);
-    l.record("tripUpdates", 200);
+  it("remembers the last request per feed, recorded or loaded", () => {
+    const l = new RequestLedger(10, [
+      [100, "positions"],
+      [200, "tripUpdates"],
+    ]);
     l.record("positions", 300);
-    const back = new RequestLedger(10, JSON.parse(JSON.stringify(l)).requests);
-    expect(back.lastAt("positions")).toBe(300);
-    expect(back.lastAt("tripUpdates")).toBe(200);
-    expect(back.lastAt("alerts")).toBeUndefined();
-    expect(back.count(300)).toBe(3);
+    expect(l.lastAt("positions")).toBe(300);
+    expect(l.lastAt("tripUpdates")).toBe(200);
+    expect(l.lastAt("alerts")).toBeUndefined();
+    expect(l.count(300)).toBe(3);
   });
 
   it("ignores malformed entries", () => {

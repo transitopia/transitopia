@@ -134,7 +134,7 @@ Every feed is polled within a budget of its own (`config/feeds/<feed>/feed.json`
 
 Weekends have their own, flatter schedule with a midday peak. Together they stay at about 970 requests in any 24 hours. BC Transit's feeds need no key and state no limit; each is polled every 30 s for positions, 2 minutes for trip updates and 5 for alerts while buses run (less overnight), about 3,500 requests a day, with a cap of 4,000.
 
-- **Hard cap**: a ledger per feed (`upstream_requests`, or `var/rt-history/<feed>/requests.json` without a database) counts every attempt, including failures. The poller stops at the cap, error backoff is long because it spends budget, and a restarted leader resumes each feed's schedule instead of polling at once.
+- **Hard cap**: a ledger per feed (`upstream_requests`) counts every attempt, including failures. The poller stops at the cap, error backoff is long because it spends budget, and a restarted leader resumes each feed's schedule instead of polling at once.
 - **One poller**: only the leader polls (a Postgres advisory lock), so there's one counter. Other instances forward `/rt/*` to it.
 - **Only production polls.** The key's budget is shared, so a server polls only with `RT_POLL=1`, keyless feeds included. Local development forwards to production (`RT_FORWARD_TO=https://api.transitopia.org`), points the site straight at it, or uses snapshots of production data ([deployment/README.md → Snapshots](../deployment/README.md#snapshots-for-development)).
 - **Effect on quality**: fixes come 1–5 minutes apart instead of ~30 s. Thresholds that depend on the cadence (stale data, coverage gaps, "observed" windows, prediction limits) follow the interval in use (`packages/transit-core/src/rt/budget.ts`). `npx tsx pipelines/eval-rt.ts --subsample schedule` replays recorded history as if polled on the schedule.
@@ -148,7 +148,7 @@ Observations (sightings of a train or vessel at a stop at a time, consists, canc
 - In production they live in the database, each with a review state: `draft → previewing → confirmed | discarded`. The server drafts disruptions from TransLink alerts; admins edit them at `/admin`.
 - **Preview**: an admin dispatches the dates a draft touches (within a week of today) with the draft added. The result is a **preview version**: an immutable dispatch patch like any other, but not advertised by the live endpoint. `/admin` links to `/transit?preview=<YYYYMMDD>:<version>`, and the time bar says it's showing unconfirmed corrections. Preview versions hold nothing private, so anyone with the link can see one.
 - **Confirm** publishes the input, and the next regular dispatch includes it. A disruption can't be confirmed without saying which track stays open. Editing a confirmed input sends it back to draft.
-- The files under `config/regions/metro-vancouver/{observations,disruptions}/` are imported into a new database, and are what local runs without a database use. `npm run corrections -- export|import|pull` moves corrections between the two.
+- The files under `config/regions/metro-vancouver/{observations,disruptions}/` are imported into a new database, and are what local pipeline runs (`npm run data`) read; the server's data build exports the database's confirmed ones for its pipelines instead. `npm run corrections -- export|import|pull` moves corrections between the two.
 - Precedence, shown as provenance: manual observation > live sensor (GTFS-RT, AIS) > confirmed disruption or alert > schedule.
 
 ## Attribution

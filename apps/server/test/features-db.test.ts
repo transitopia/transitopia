@@ -1,5 +1,6 @@
 // The feature registry in PostgreSQL: reconciliation over feed versions (ranges of refs, IDs kept),
-// the admin changes, lookups by ID and ref, the migration's statistics views. Skipped without
+// the admin changes, lookups by ID and ref (and the resolver's fallback to the cycling map), the
+// migration's statistics views. Skipped without
 // TEST_DATABASE_URL (infra/compose.dev.yml).
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -27,6 +28,7 @@ import {
   setParent,
 } from "../src/features/registry.ts";
 import { loadRegistry, registryFromDb } from "../src/features/export.ts";
+import { createApp, type AppDeps } from "../src/app.ts";
 import { syncSources } from "../src/sources.ts";
 
 const M = 1 / 111_195;
@@ -262,6 +264,41 @@ describe.skipIf(!TEST_DATABASE_URL)("feature registry", () => {
     expect(r !== "unminted" && r?.bbox).toBeTruthy();
     expect(await resolveKey(t.db, "osm-way:1")).toBe("unminted");
     expect(await resolveKey(t.db, "sn-00000000")).toBeUndefined();
+  });
+
+  it("answers an OSM ref the registry has no feature for from the cycling map", async () => {
+    const app = createApp({
+      service: { handle: async () => ({ status: 404, headers: {}, body: "" }) },
+      auth: {},
+      env: { allowedOrigins: [] },
+      db: t.db,
+      cycling: async (key: string) =>
+        key === "osm-way:10" ?
+          {
+            key: "osm-way:9",
+            kind: "cycling-way",
+            name: "Seaside",
+            centroid: [-123.1, 49.26],
+            bbox: [-123.1, 49.25, -123.1, 49.27],
+          }
+        : undefined,
+    } as unknown as AppDeps);
+    const r = await app.request("/features/osm-way:10");
+    expect(r.status).toBe(200);
+    expect(r.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(await r.json()).toEqual({
+      unminted: true,
+      key: "osm-way:9",
+      kind: "cycling-way",
+      name: "Seaside",
+      centroid: [-123.1, 49.26],
+      bbox: [-123.1, 49.25, -123.1, 49.27],
+      refs: ["osm-way:10"],
+    });
+    const unknown = await app.request("/features/osm-way:11");
+    expect(unknown.status).toBe(404);
+    expect(await unknown.json()).toEqual({ unminted: true });
+    expect((await app.request("/features/sn-00000000")).status).toBe(404);
   });
 
   it("round-trips the registry through its export", async () => {

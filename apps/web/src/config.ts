@@ -27,7 +27,11 @@ export const basemapAssets: string = absolute(
  */
 export const transitData: string = env.VITE_TRANSIT_DATA ?? "/dev-data/";
 
-/** The RT service (…/regions/<id>/live/transit), ending in "/"; undefined for schedules only. */
+/**
+ * The API server (…/regions/<id>/live/transit), ending in "/"; undefined for schedules only. In
+ * development, the local one (npm run server) unless VITE_TRANSIT_API says otherwise
+ * (vite.config.ts): set it empty for schedules only.
+ */
 export const transitApi: string | undefined = env.VITE_TRANSIT_API || undefined;
 
 /**

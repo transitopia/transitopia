@@ -240,7 +240,7 @@ downloads recorded hours for that range from the archive bucket (the last 60 day
 have statistics and observed stop times but no raw fixes), and with `--db` restores the nightly
 developer snapshot: every table except users, sessions and raw rows (the feature registry included); then
 `npm run db:import-history` adds the pulled hours' positions and AIS fixes.
-Without it, `npm run features -- pull` (after `npm run db:up`, or with no database at all) loads the
+Without it, `npm run features -- pull` (after `npm run db:up`) loads the
 public registry export, so local places files carry production's IDs ([docs/DESIGN.md → Published features](../docs/DESIGN.md#published-features)). It needs rclone access to
 `transitopia-archive`. Snapshots stay private to the team until each source's terms allow
 publishing them ([DATA-LICENSES.md](../DATA-LICENSES.md)).

@@ -25,22 +25,18 @@ export class Auth {
   /** OAuth state → when it was issued (in memory: a restart only fails sign-ins in progress). */
   private states = new Map<string, number>();
 
-  private readonly db: Db | undefined;
+  private readonly db: Db;
   private readonly env: ServerEnv;
   private readonly fetch: typeof fetch;
 
-  constructor(
-    db: Db | undefined,
-    env: ServerEnv,
-    fetchImpl: typeof fetch = fetch,
-  ) {
+  constructor(db: Db, env: ServerEnv, fetchImpl: typeof fetch = fetch) {
     this.db = db;
     this.env = env;
     this.fetch = fetchImpl;
   }
 
   get enabled(): boolean {
-    return Boolean(this.db && this.env.github);
+    return Boolean(this.env.github);
   }
 
   /** Where to send the browser to sign in. */
@@ -67,12 +63,7 @@ export class Auth {
     const back = (hash: string) => `${this.env.siteUrl}/admin#${hash}`;
     const issued = this.states.get(state);
     this.states.delete(state);
-    if (
-      !issued
-      || Date.now() - issued > STATE_TTL_MS
-      || !this.env.github
-      || !this.db
-    )
+    if (!issued || Date.now() - issued > STATE_TTL_MS || !this.env.github)
       return back("error=expired");
     const tokenRes = await this.fetch(
       "https://github.com/login/oauth/access_token",
@@ -134,7 +125,6 @@ export class Auth {
     if (!token) return undefined;
     if (this.env.adminDevToken && token === this.env.adminDevToken)
       return { id: 0, login: "dev", role: "admin" };
-    if (!this.db) return undefined;
     const row = await this.db
       .selectFrom("sessions")
       .innerJoin("users", "users.id", "sessions.user_id")
@@ -155,7 +145,7 @@ export class Auth {
 
   async logout(authorization: string | undefined): Promise<void> {
     const token = /^Bearer (.+)$/.exec(authorization ?? "")?.[1];
-    if (!token || !this.db) return;
+    if (!token) return;
     await this.db
       .deleteFrom("sessions")
       .where("token_hash", "=", sha256(token))

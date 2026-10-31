@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ServiceAlert } from "@transitopia/transit-core/disruption/alerts.ts";
 import { AlertDrafts } from "../src/rt/alerts.ts";
+import type { CorrectionsRepo } from "../src/corrections.ts";
 
 const alert = (id: string, header: string): ServiceAlert => ({
   id,
@@ -18,7 +19,13 @@ describe("AlertDrafts", () => {
   it("restores the last recorded alerts after a restart", async () => {
     const dir = await mkdtemp(join(tmpdir(), "alerts-"));
     try {
-      const opts = { disruptionsDir: dir, historyDir: dir, log: () => {} };
+      // Neither alert can be drafted, so nothing reaches the database.
+      const repo = { saveAlertDraft: async () => false };
+      const opts = {
+        historyDir: dir,
+        repo: repo as unknown as CorrectionsRepo,
+        log: () => {},
+      };
       const first = new AlertDrafts(opts);
       expect(await first.restore()).toEqual([]);
       await first.update([alert("1", "Elevator at Braid is out of service.")]);

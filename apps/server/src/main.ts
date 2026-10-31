@@ -1,7 +1,7 @@
 // The Transitopia server (apps/server/README.md): the real-time API, and on the leader the budgeted
 // pollers, recorder, live dispatcher and scheduled jobs. Settings come from the environment (env.ts).
 //
-//   npm run server                                   # local: schedules only, or forward (below)
+//   npm run server                                   # local (the database from npm run db:up): schedules only, or forward (below)
 //   RT_FORWARD_TO=https://api.transitopia.org npm run server   # local, with production's live data
 //   DATABASE_URL=postgres://… RT_POLL=1 npm run server         # production (infra/compose.yml)
 
@@ -60,28 +60,33 @@ try {
   console.error(`[server] ${(e as Error).message}`);
   process.exit(1);
 }
-let db: ReturnType<typeof createDb> | undefined;
-if (env.databaseUrl) {
-  db = createDb(env.databaseUrl);
+const db = createDb(env.databaseUrl);
+try {
   const applied = await migrate(db.pool, log);
   if (!applied.length) log("database schema up to date");
-  await ensurePartitions(db.db);
-  await syncSources(db.db, regions, feeds);
+} catch (e) {
+  // A refused connection is an AggregateError with no message of its own.
+  const err = e as Error & { code?: string };
+  console.error(
+    `[server] Can't use the database at ${new URL(env.databaseUrl).host} (${err.message || err.code}).`
+      + " Locally, start it with npm run db:up; otherwise set DATABASE_URL.",
+  );
+  process.exit(1);
 }
-const store = db ? new Store(db.db, rail.region) : undefined;
-const repo = db ? new CorrectionsRepo(db.db, rail.region) : undefined;
-if (repo) {
-  // First start on a new database: bring in the committed corrections (existing ids are kept).
-  const n = await repo.importFiles();
-  if (n.observationSets || n.disruptions)
-    log(
-      `imported ${n.observationSets} observation sets and ${n.disruptions} disruptions from files`,
-    );
-}
+await ensurePartitions(db.db);
+await syncSources(db.db, regions, feeds);
+const store = new Store(db.db, rail.region);
+const repo = new CorrectionsRepo(db.db, rail.region);
+// First start on a new database: bring in the committed corrections (existing ids are kept).
+const imported = await repo.importFiles();
+if (imported.observationSets || imported.disruptions)
+  log(
+    `imported ${imported.observationSets} observation sets and ${imported.disruptions} disruptions from files`,
+  );
 
 const jobs =
   env.jobs && !env.forwardTo ?
-    new Jobs({ db: db?.db, feeds, repo, env })
+    new Jobs({ db: db.db, feeds, repo, env })
   : undefined;
 
 const service = new RtService({
@@ -96,21 +101,18 @@ const service = new RtService({
   forwardTo: env.forwardTo,
   store,
   corrections: repo,
-  leaderLock:
-    db && env.databaseUrl ?
-      new PgLeaderLock({
-        url: env.databaseUrl,
-        db: db.db,
-        regionId: rail.region,
-        advertiseUrl: env.advertiseUrl,
-        onLost: () => {
-          console.error(
-            "[server] lost the leader lock's database connection; exiting to restart",
-          );
-          process.exit(1);
-        },
-      })
-    : undefined,
+  leaderLock: new PgLeaderLock({
+    url: env.databaseUrl,
+    db: db.db,
+    regionId: rail.region,
+    advertiseUrl: env.advertiseUrl,
+    onLost: () => {
+      console.error(
+        "[server] lost the leader lock's database connection; exiting to restart",
+      );
+      process.exit(1);
+    },
+  }),
   onLead: () => jobs?.start(),
 });
 if (!env.poll && !env.forwardTo)
@@ -119,12 +121,12 @@ if (!env.poll && !env.forwardTo)
       + "or RT_FORWARD_TO=https://api.transitopia.org to use production's live data)",
   );
 
-const auth = new Auth(db?.db, env);
+const auth = new Auth(db.db, env);
 const app = createApp({
   service,
   auth,
   env,
-  db: db?.db,
+  db: db.db,
   repo,
   jobs,
   diskPath: VAR_DIR,
@@ -134,7 +136,7 @@ const server = serve({ fetch: app.fetch, port: env.port }, (info) => {
   log(
     `Listening on http://localhost:${info.port} (/regions/<id>/live/transit, /rt/*, /healthz)`,
   );
-  void service.start(info.port);
+  void service.start();
 });
 
 const shutdown = () => {
@@ -142,7 +144,7 @@ const shutdown = () => {
   const stopped = service.stop();
   server.close(() => {
     // After the pollers' last writes, which can use the database.
-    void stopped.then(() => db?.db.destroy()).finally(() => process.exit(0));
+    void stopped.then(() => db.db.destroy()).finally(() => process.exit(0));
   });
   setTimeout(() => process.exit(0), 10_000).unref();
 };

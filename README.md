@@ -44,6 +44,7 @@ You need Node.js 26+. Clone this repo, then run `npm install` at its root.
    npm run data:gtfs       # fetch the latest GTFS feed and build the timetable data
    npm run build:infra     # publish the track network and platform mapping
    npm run build:movements # infer train runs and dispatch them, per day type
+   npm run db:up            # the local database (Docker), for the server and feature IDs
    npm run features -- pull # production's feature IDs, for links (?select=)
    ```
 
@@ -51,7 +52,7 @@ You need Node.js 26+. Clone this repo, then run `npm install` at its root.
 
 Downloads and build output go to `var/` (gitignored). The track network itself is committed (`config/regions/metro-vancouver/infrastructure/`), and `npm run data:osm` re-imports it from OpenStreetMap.
 
-The site shows transit schedules only (*estimated* positions) unless it's pointed at an RT service: run `npm run server` and start the site with `VITE_TRANSIT_API=http://localhost:8787/ npm run dev`. A local server doesn't poll TransLink or aisstream.io (even with API keys) unless started with `RT_POLL=1`: TransLink allows 1,000 requests a day per key, and the production server spends them (see [docs/DESIGN.md → Upstream request budget](docs/DESIGN.md#upstream-request-budget)). To see live data locally, start it with `RT_FORWARD_TO=https://api.transitopia.org`, or point the site straight at production with `VITE_TRANSIT_DATA=https://data.transitopia.org/ VITE_TRANSIT_API=https://api.transitopia.org/ npm run dev`. Set both: live positions also depend on published data, such as the bus travel-time profiles (`rt-profile.json`) production rebuilds nightly, so with only the API pointed at production the buses won't match transitopia.org.
+The site reads real-time data from the local server: start the database with `npm run db:up`, then `npm run server` alongside `npm run dev`. Without a server running it shows transit schedules only (*estimated* positions). A local server doesn't poll TransLink or aisstream.io (even with API keys) unless started with `RT_POLL=1`: TransLink allows 1,000 requests a day per key, and the production server spends them (see [docs/DESIGN.md → Upstream request budget](docs/DESIGN.md#upstream-request-budget)). To see live data locally, start it with `RT_FORWARD_TO=https://api.transitopia.org`, or point the site straight at production with `VITE_TRANSIT_DATA=https://data.transitopia.org/ VITE_TRANSIT_API=https://api.transitopia.org/ npm run dev`. Set both: live positions also depend on published data, such as the bus travel-time profiles (`rt-profile.json`) production rebuilds nightly, so with only the API pointed at production the buses won't match transitopia.org.
 
 ## Credits
 

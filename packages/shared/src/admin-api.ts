@@ -125,20 +125,18 @@ export const statusResponse = z.object({
   jobs: z.array(jobRun),
   /** Every daily run within retention: rows and trips per service date, for sizing. */
   daily: z.array(jobRun),
-  /** Disk used per table (deployment/README.md#sizing); null without a database. */
-  storage: z
-    .object({
-      databaseBytes: z.number(),
-      tables: z.array(
-        z.object({
-          table: z.string(),
-          bytes: z.number(),
-          rows: z.number(),
-          partitions: z.number(),
-        }),
-      ),
-    })
-    .nullable(),
+  /** Disk used per table (deployment/README.md#sizing). */
+  storage: z.object({
+    databaseBytes: z.number(),
+    tables: z.array(
+      z.object({
+        table: z.string(),
+        bytes: z.number(),
+        rows: z.number(),
+        partitions: z.number(),
+      }),
+    ),
+  }),
 });
 export type StatusResponse = z.infer<typeof statusResponse>;
 

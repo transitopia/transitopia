@@ -1,8 +1,8 @@
-// Corrections: observations and disruptions (docs/DESIGN.md#corrections-and-previews). With a database they live in the
+// Corrections: observations and disruptions (docs/DESIGN.md#corrections-and-previews), in the
 // observation_sets and disruptions tables with a review state (draft → previewing → confirmed |
-// discarded); without one, in the files under config/regions/metro-vancouver/ as before. The live
-// dispatcher reads whichever applies through `Corrections`; `export` writes the confirmed ones back
-// to the file format (for tests, reproducible bug reports and the static build).
+// discarded). The live dispatcher reads the confirmed ones through `Corrections`; `importFiles`
+// brings in the committed files under config/regions/metro-vancouver/, and `export` writes the
+// confirmed ones back to that format (for tests, reproducible bug reports and the static build).
 
 import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -32,33 +32,6 @@ export interface CorrectionInputs {
 /** What the live dispatcher applies: confirmed corrections only. */
 export interface Corrections {
   load(): Promise<CorrectionInputs>;
-}
-
-export class FileCorrections implements Corrections {
-  private readonly observationsDir: string;
-  private readonly disruptionsDir: string;
-  private readonly log: (msg: string) => void;
-
-  constructor(opts: {
-    observationsDir: string;
-    disruptionsDir: string;
-    log?: (msg: string) => void;
-  }) {
-    this.observationsDir = opts.observationsDir;
-    this.disruptionsDir = opts.disruptionsDir;
-    this.log = opts.log ?? (() => {});
-  }
-
-  async load(): Promise<CorrectionInputs> {
-    const [observations, disruptions] = await Promise.all([
-      loadObservationFiles(this.observationsDir, this.log),
-      loadDisruptions(this.disruptionsDir),
-    ]);
-    return {
-      observations: observations.flatMap((f) => valid(f.file.observations)),
-      disruptions: disruptions.filter((d) => d.status !== "draft"),
-    };
-  }
 }
 
 export async function loadObservationFiles(

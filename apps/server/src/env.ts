@@ -2,6 +2,7 @@
 // production). Everything that differs between environments is here; region assumptions stay in
 // config/regions/ and the server's own in config/server/.
 
+import { databaseUrl } from "@transitopia/db/connect.ts";
 import { serverConfig } from "./config.ts";
 
 const list = (v: string | undefined) =>
@@ -14,8 +15,8 @@ const url = (v: string | undefined) => (v ? v.replace(/\/$/, "") : undefined);
 
 export interface ServerEnv {
   port: number;
-  /** postgres://…; without it the server records to files only. */
-  databaseUrl: string | undefined;
+  /** postgres://… (DATABASE_URL); without it, the local database (npm run db:up). */
+  databaseUrl: string;
   /**
    * Poll TransLink and aisstream.io with the keys in the environment or .secrets. Off unless set:
    * every poll spends the key's daily budget, which production needs (docs/DESIGN.md#upstream-request-budget).
@@ -63,7 +64,7 @@ export function readEnv(env: NodeJS.ProcessEnv = process.env): ServerEnv {
     );
   return {
     port,
-    databaseUrl: env.DATABASE_URL || undefined,
+    databaseUrl: databaseUrl(env),
     poll: flag(env.RT_POLL),
     forwardTo: url(env.RT_FORWARD_TO),
     advertiseUrl: url(env.ADVERTISE_URL),

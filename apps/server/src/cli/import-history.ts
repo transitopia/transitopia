@@ -2,12 +2,11 @@
 // Idempotent: hours, batches and versions already imported (with their positions or fixes) are
 // skipped, so it fills in a restored developer snapshot (npm run snapshot:pull -- --db).
 //
-//   DATABASE_URL=postgres://… npm run db:import-history [-- --var <dir>]
+//   npm run db:import-history [-- --var <dir>]   # into DATABASE_URL's database, else the local one (npm run db:up)
 //
 // For each feed with real time (config/feeds/<feed>/feed.json):
 //   var/rt-history/<feed>/<date>/<HH>.ndjson[.gz]  → rt_polls + rt_positions
 //   var/rt-history/<feed>/changes/<date>.json      → trip_changes (drawn routes only, as recorded)
-//   var/rt-history/<feed>/requests.json            → upstream_requests (the 24-hour ledger)
 //   var/raw/gtfs/<feed>/<version>/                 → gtfs_feeds (without archive keys; the data job uploads them)
 // and:
 //   var/ais-history/<feed>/<date>/<HH>.ndjson[.gz] → rt_polls + ais_fixes, for each feed with vessels
@@ -31,7 +30,7 @@ import {
   readManifest,
 } from "@transitopia/data/paths.ts";
 import { archivedFeeds } from "@transitopia/data/gtfs-day.ts";
-import { createDb } from "@transitopia/db/connect.ts";
+import { createDb, databaseUrl } from "@transitopia/db/connect.ts";
 import { migrate } from "@transitopia/db/migrate.ts";
 import { ensurePartitionsFor } from "@transitopia/db/partitions.ts";
 import {
@@ -52,13 +51,8 @@ import { syncSources } from "../sources.ts";
 const args = process.argv.slice(2);
 const varDir =
   args.includes("--var") ? args[args.indexOf("--var") + 1]! : VAR_DIR;
-const url = process.env.DATABASE_URL;
-if (!url) {
-  console.error("Set DATABASE_URL");
-  process.exit(1);
-}
 const log = (m: string) => console.log(`[import] ${m}`);
-const { db, pool } = createDb(url);
+const { db, pool } = createDb(databaseUrl());
 await migrate(pool, log);
 await syncSources(db);
 const rail = await railNetwork();
@@ -162,7 +156,7 @@ function hourImported(
   return imported(feed, source, last.fetchedAt);
 }
 
-// Positions, service changes and the request ledger, per feed.
+// Positions and service changes, per feed.
 for (const feed of (await readFeeds()).filter((f) => f.realtime)) {
   const dir = join(varDir, "rt-history", feed.id);
   const ids = await routeIds(feed.id);
@@ -245,30 +239,6 @@ for (const feed of (await readFeeds()).filter((f) => f.realtime)) {
       }
     }
   log(`${feed.id} trip changes: ${tripChanges}`);
-
-  // The request ledger, so the daily cap counts the local recorder's last 24 hours.
-  try {
-    const ledger = await readJson<{ requests?: [number, string][] }>(
-      join(dir, "requests.json"),
-    );
-    const since = Date.now() - 86_400_000;
-    const known = new Set(
-      (await store.recentRequests(feed.id)).map(([t]) => t),
-    );
-    let n = 0;
-    for (const [ts, endpoint] of ledger.requests ?? [])
-      if (ts > since && !known.has(ts)) {
-        await store.recordRequest({
-          provider: feed.id,
-          feed: endpoint,
-          ts,
-        });
-        n++;
-      }
-    log(`${feed.id} request ledger: ${n} requests from the last 24 hours`);
-  } catch {
-    log(`${feed.id}: no request ledger (${join(dir, "requests.json")})`);
-  }
 
   // GTFS feeds (the data job archives the zips and fills in object keys).
   for (const f of await archivedFeeds(

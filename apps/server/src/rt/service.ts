@@ -23,7 +23,6 @@
 // leader.ts); the others forward /rt/* and /regions/* to it and take over when it goes away. Every
 // route's vehicles are recorded (files and database); clients only ever see the routes we draw.
 
-import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import translinkFeed from "@transitopia/config/feeds/translink/feed.json" with { type: "json" };
@@ -36,7 +35,6 @@ import {
 } from "@transitopia/transit-core/config.ts";
 import type { RtCoverageResponse } from "@transitopia/transit-core/rt/types.ts";
 import {
-  regionPaths,
   type RailNetwork,
   RT_HISTORY_DIR,
   AIS_HISTORY_DIR,
@@ -51,7 +49,7 @@ import type { AisFix } from "@transitopia/transit-core/ais/match.ts";
 import { Recorder } from "./recorder.ts";
 import { LiveDispatcher, type LiveDispatchOptions } from "./dispatch.ts";
 import type { Store } from "../store.ts";
-import { FileLeaderLock, type LeaderLock } from "../leader.ts";
+import type { LeaderLock } from "../leader.ts";
 import type { CorrectionsRepo } from "../corrections.ts";
 import type { RtStatus } from "@transitopia/shared/admin-api.ts";
 import { FeedPoller } from "./feed.ts";
@@ -132,7 +130,7 @@ const AIS_DAY_MAX_AGE_S = 60;
 export type ServedRegion = Pick<RegionInfo, "id" | "feeds">;
 
 export interface RtServiceOptions {
-  /** Where recordings go: each feed's under <historyDir>/<feed>/, the leader's lock file at the top. */
+  /** Where recordings go: each feed's under <historyDir>/<feed>/. */
   historyDir?: string;
   /** Record snapshots to disk (default true). */
   record?: boolean;
@@ -151,15 +149,19 @@ export interface RtServiceOptions {
   aisApiKey?: string | null;
   /** Where AIS fixes go: each feed's under <aisHistoryDir>/<feed>/. */
   aisHistoryDir?: string;
-  /** Where confirmed disruptions live and alert drafts are written (default config/regions/metro-vancouver/disruptions). */
-  disruptionsDir?: string;
   /** Live dispatch (apps/server/README.md#live-dispatch-and-previews): on by default; false disables it, an object configures it. */
   dispatch?: boolean | LiveDispatchOptions;
-  /** Record to PostgreSQL as well as files (and keep the request ledger there). */
+  /**
+   * Record to PostgreSQL as well as files, and keep the request ledger there. The server always
+   * has one; without it (tests), the ledger is only in memory.
+   */
   store?: Store | undefined;
-  /** Corrections in the database: alert drafts go there, and the dispatcher reads it. */
+  /**
+   * Corrections in the database: alert drafts go there, and the dispatcher reads it. The server
+   * always has them; without them (tests), there's no live dispatch and no alert drafts.
+   */
   corrections?: CorrectionsRepo | undefined;
-  /** Leader election; default: the lock file in the history directory. */
+  /** Leader election (the server's: PgLeaderLock); without one (tests), this process leads. */
   leaderLock?: LeaderLock | undefined;
   /** Only forward /rt/* to this RT service (e.g. production's, for local development). */
   forwardTo?: string | undefined;
@@ -180,7 +182,7 @@ const LEADER_RETRY_MS = 30_000;
 
 export class RtService {
   private alerts: ServiceAlert[] = [];
-  /** Drafts from the rail feed's alerts (none without a rail network). */
+  /** Drafts from the rail feed's alerts (none without a rail network or corrections). */
   readonly alertDrafts: AlertDrafts | undefined;
   /** One per feed with real time, by feed id. */
   readonly pollers = new Map<string, FeedPoller>();
@@ -206,7 +208,6 @@ export class RtService {
   private leaderLock: LeaderLock | undefined;
   private leaderRetry: ReturnType<typeof setTimeout> | undefined;
   private forwardOnly: boolean;
-  private port: number | undefined;
   readonly store: Store | undefined;
   private onLead: (() => void) | undefined;
 
@@ -254,13 +255,18 @@ export class RtService {
       );
     }
     this.dispatcher =
-      opts.dispatch === false || opts.forwardTo || !this.rail ?
+      (
+        opts.dispatch === false
+        || opts.forwardTo
+        || !this.rail
+        || !opts.corrections
+      ) ?
         undefined
       : new LiveDispatcher({
           net: this.rail,
           log: this.log,
+          corrections: opts.corrections,
           ...(opts.store ? { store: opts.store } : {}),
-          ...(opts.corrections ? { corrections: opts.corrections } : {}),
           ...(typeof opts.dispatch === "object" ? opts.dispatch : {}),
         });
     const aisKey =
@@ -294,11 +300,9 @@ export class RtService {
     }
     // Alert drafts and their history go with the rail feed's recordings.
     this.alertDrafts =
-      this.rail ?
+      this.rail && opts.corrections ?
         new AlertDrafts({
           repo: opts.corrections,
-          disruptionsDir:
-            opts.disruptionsDir ?? regionPaths(this.rail.region).disruptions,
           historyDir: join(this.historyDir, this.rail.feed),
           log: this.log,
         })
@@ -342,10 +346,7 @@ export class RtService {
    */
   private async acquireLeadership(): Promise<boolean> {
     if (!this.running) return false;
-    this.leaderLock ??= new FileLeaderLock(
-      join(this.historyDir, ".lock"),
-      this.port,
-    );
+    if (!this.leaderLock) return true;
     const state = await this.leaderLock.tryAcquire().catch((e: Error) => {
       this.log(`leader election failed (${e.message})`);
       return { leader: false as const, url: undefined };
@@ -369,21 +370,17 @@ export class RtService {
     return false;
   }
 
-  /** @param port the port this process serves /rt/* on, advertised to followers. */
-  async start(port?: number): Promise<void> {
+  async start(): Promise<void> {
     if (this.running) return;
     this.running = true;
-    this.port = port;
     if (this.forwardOnly) {
       this.log(`Forwarding /rt/* to ${this.leaderUrl} (no polling here)`);
       return;
     }
     const polls = [...this.pollers.values()].some((p) => p.polling);
     const streams = [...this.aisFeeds.values()].some((a) => a.stream);
-    if (polls || streams || this.store) {
-      await mkdir(this.historyDir, { recursive: true });
-      if (!(await this.acquireLeadership())) return;
-    }
+    if ((polls || streams || this.store) && !(await this.acquireLeadership()))
+      return;
     await this.lead();
   }
 

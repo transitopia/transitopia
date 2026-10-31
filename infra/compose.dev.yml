@@ -1,7 +1,7 @@
 # Local development database (PostgreSQL 18 + PostGIS 3.6, as in production).
 #
-#   docker compose -f infra/compose.dev.yml up -d
-#   DATABASE_URL=postgres://transitopia:transitopia@localhost:5433/transitopia npm run server
+#   npm run db:up    # docker compose -f infra/compose.dev.yml up -d
+#   npm run server   # DATABASE_URL defaults to this database (packages/db/src/connect.ts)
 #
 # Tests use it too: TEST_DATABASE_URL=postgres://transitopia:transitopia@localhost:5433/postgres
 # (each test file creates and drops its own database).

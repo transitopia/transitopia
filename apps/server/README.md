@@ -3,16 +3,15 @@
 The server behind `api.transitopia.org` (Node, TypeScript, [Hono](https://hono.dev)). It serves real-time data to the site for every region, and on the leader it polls each feed's GTFS-realtime within its request budget ([docs/DESIGN.md → Regions and feeds](../../docs/DESIGN.md#regions-and-feeds)), streams SeaBus AIS, records everything, re-dispatches SkyTrain when corrections change, and runs the scheduled jobs. How it fits with the rest: [docs/DESIGN.md](../../docs/DESIGN.md). Hosting and operations: [deployment/README.md](../../deployment/README.md#the-server-apitransitopiaorg).
 
 ```sh
+# the local PostgreSQL (infra/compose.dev.yml), once
+npm run db:up
 # run using schedules only: no polling of real-time APIs
 npm run server
 # run with production's live data
 RT_FORWARD_TO=https://api.transitopia.org npm run server
-# Start using local PostgreSQL (infra/compose.dev.yml):
-npm run db:up
-DATABASE_URL=postgres://transitopia:transitopia@localhost:5433/transitopia npm run server
 ```
 
-Run the site against it with `VITE_TRANSIT_API=http://localhost:8787/ npm run dev`. Without `DATABASE_URL` the server records to files only (`var/rt-history/<feed>/`, `var/ais-history/<feed>/`, `var/dispatch-history/`), uses a lock file for leadership, and reads corrections from `config/regions/metro-vancouver/{observations,disruptions}/`.
+The server needs its database: `DATABASE_URL`, else the local one `npm run db:up` starts (`postgres://transitopia:transitopia@localhost:5433/transitopia`). It refuses to start without it. `npm run dev` uses the local server (`VITE_TRANSIT_API` defaults to `http://localhost:8787/`).
 
 ## API
 
@@ -37,18 +36,18 @@ GET /auth/github/login, /auth/github/callback, /auth/me; POST /auth/logout     a
 
 ## Leader
 
-Exactly one process polls, records, dispatches and runs jobs: the leader (`src/leader.ts`), elected by a Postgres advisory lock (a lock file without a database). Other instances forward `/rt/*` to it (`ADVERTISE_URL`) and take over when it goes away. If the leader loses the lock's database connection, it exits so it can restart cleanly.
+Exactly one process polls, records, dispatches and runs jobs: the leader (`src/leader.ts`), elected by a Postgres advisory lock. Other instances forward `/rt/*` to it (`ADVERTISE_URL`) and take over when it goes away. If the leader loses the lock's database connection, it exits so it can restart cleanly.
 
 ## Real-time service
 
 `src/rt/service.ts`, `feed.ts`, `upstream.ts`, `recorder.ts`, `changes.ts`, `alerts.ts`, `ais.ts`. `RtService` runs one `FeedPoller` (`feed.ts`) per feed with real time; everything below is per feed unless it says otherwise.
 
 - **One upstream poller per feed**: a loop per endpoint fetches positions, trip updates (delays, cancellations, skipped stops) and alerts from the URLs in `config/feeds/<feed>/feed.json` → `realtime` (with its key, where it needs one) on the feed's time-of-day schedule (`realtime.poll`), regardless of how many clients are connected. Client requests never trigger upstream fetches; they read the latest cached snapshot. The schedule and the hard cap are described in [docs/DESIGN.md → Upstream request budget](../../docs/DESIGN.md#upstream-request-budget).
-- **The request ledger** (`upstream_requests` with the feed id as `provider`, or `var/rt-history/<feed>/requests.json`) counts every attempt in the last 24 hours, including failures, and survives restarts: a restarted leader continues each feed's schedule from its last request instead of polling at once, and serves the last recorded snapshot meanwhile. `/rt/status` reports `budget`.
+- **The request ledger** (`upstream_requests` with the feed id as `provider`) counts every attempt in the last 24 hours, including failures, and survives restarts: a restarted leader continues each feed's schedule from its last request instead of polling at once, and serves the last recorded snapshot meanwhile. `/rt/status` reports `budget`.
 - **Backoff**: on upstream errors it keeps serving the last snapshot, marked `stale` with its age, and backs off: the interval doubles with each consecutive failure, up to 5 minutes (or the normal interval, if that's longer). Retries spend budget too. Errors never include the request URL, which contains the key. Each feed's last success and last error are kept apart (`/rt/status` → `feeds`), so a positions poll can't hide a failing trip-updates feed. `delayCoverage` is the share of the latest positions' buses (on a trip) with a TransLink delay, 75–85 % normally; `/healthz` fails when trip updates are stale (no success for 3 poll intervals) or it stays below `minCoverage` for `lowForS` (`/rt/status` → `lowCoverageForS`; the thresholds are `config/server/server.json` → `tripUpdatesHealth`, which a feed can override in `feed.json` → `realtime.tripUpdatesHealth`), which is how a feed that answers but no longer matches the positions shows up (seen from 04:00 on 2026-10-12). Only polls with at least `minBuses` buses on a trip count: at the ends of service, the few buses out are signed on to trips the feed has already dropped or doesn't list yet (0 % in Kelowna around 00:20 and 05:00), and coverage dips for a few minutes as morning service builds up. A restarted leader continues the schedule instead of polling at once, so until trip updates' first success their age counts from when it started polling (`/rt/status` → `pollingForS`): a deploy doesn't fail the check, but a feed that stays down from the start still does. To tell an empty feed from one whose trip ids don't match the buses', each trip-updates poll is summarised against the trips in the latest positions poll (`/rt/status` → `tripFeed`: trips in the feed, with stop delays, matched both ways, the feed's age and size, and a few unmatched trip ids each way), and logged while fewer than `minCoverage` of the buses' trips are in it (with at least `minBuses` buses). Response sizes go to `upstream_requests.bytes`.
 - **Recorder**: every poll is recorded for **every route**: to `rt_positions` (partitioned by day, with its `feed_id`) and to hourly files, `var/rt-history/<feed>/YYYY-MM-DD/HH.ndjson.gz`, one line per snapshot. `/rt/history` filters a closed hour to the routes we draw (and caches it). `/rt/coverage` returns the ranges where the recorder was running (gaps longer than the poll interval allows count as uncovered). A positions poll without vehicles is recorded but isn't coverage: an empty feed is an outage, not a report that no buses run (TransLink's was empty from 01:50 to 08:26 on 2026-10-23), so playback shows schedule estimates there, as the live view does (`packages/transit-map/src/rt.ts`, `liveSpan`). The nightly statistics count only polls with vehicles too. A missing `coverage.json` is rebuilt from the hour files when the recorder starts (delete it after changing what counts), as `npm run snapshot:pull` does after pulling hours.
 - **Service changes**: each trip-updates and alerts poll updates the service date's cancelled trips, skipped stops and route alerts, with when each was first and last seen (`trip_changes`, `alerts`, and `var/rt-history/<feed>/changes/YYYYMMDD.json`). They exist because the feeds forget a trip once it has run and an alert once it's over. Each state of a day is a version (a hash of its content): the live endpoint points to today's and yesterday's, and the server keeps the last few of each so a pointer a poll or two old still resolves.
-- **Alert drafts** (Metro Vancouver's feed only): SkyTrain alerts the parser understands become draft disruptions in the review queue (or `config/regions/metro-vancouver/disruptions/drafts/` without a database); others are listed as unparsed in `/admin` ([packages/transit-core/DESIGN.md → Disruptions and alerts](../../packages/transit-core/DESIGN.md#disruptions-and-alerts)).
+- **Alert drafts** (Metro Vancouver's feed only): SkyTrain alerts the parser understands become draft disruptions in the review queue; others are listed as unparsed in `/admin` ([packages/transit-core/DESIGN.md → Disruptions and alerts](../../packages/transit-core/DESIGN.md#disruptions-and-alerts)).
 - **AIS**: for each feed whose vessels report AIS (`feed.json` → `ais`: TransLink's SeaBus), one WebSocket to aisstream.io (which allows 3 per account) for its vessels' MMSIs, reconnecting with backoff; two days of fixes in memory, recorded every 10 s (`ais_fixes` and `var/ais-history/`). Each fix keeps the time of the batch it was recorded in, which is how the day files and the live window meet (below). Matching happens in the browser ([packages/transit-core/DESIGN.md → SeaBus AIS](../../packages/transit-core/DESIGN.md#seabus-ais)).
 - Polling needs `RT_POLL=1`, for every feed, keyless ones (BC Transit) included. Without it, keys in `.secrets` or the environment are ignored: only production polls, because the key's budget is shared.
 
@@ -95,25 +94,25 @@ Feature reconciliation is the process of matching GTFS features like bus stops t
 ```sh
 npm run features -- pull                                                     # production's registry → local (WIPES the local one)
 npm run features -- places                                                   # the places files from the local registry
-DATABASE_URL=… npm run features -- reconcile [--feed <id>] [--skip-missing]   # IDs minted locally are throwaway
-DATABASE_URL=… npm run features -- show stop:translink:50123                # a feature by ID or ref: refs, parent, stops
-DATABASE_URL=… npm run features -- detach <stop> [<stop> …]                  # e.g. Blanca Loop's bays: not an exchange
-DATABASE_URL=… npm run features -- retire <exchange>                         # once it has no stops
-DATABASE_URL=… npm run features -- move <stop> <station or exchange>
+npm run features -- reconcile [--feed <id>] [--skip-missing]   # IDs minted locally are throwaway
+npm run features -- show stop:translink:50123                # a feature by ID or ref: refs, parent, stops
+npm run features -- detach <stop> [<stop> …]                  # e.g. Blanca Loop's bays: not an exchange
+npm run features -- retire <exchange>                         # once it has no stops
+npm run features -- move <stop> <station or exchange>
 ```
 
 Each change is recorded in `feature_changes`, and later builds keep it.
 
 ## Feature resolver
 
-`GET /features/<key>` (`resolveKey` in `src/features/registry.ts`): a feature by ID (its name suffix ignored) or ref (percent-encoded), as JSON: `id`, `kind`, `name`, `suffix` (the canonical key is `<id>-<suffix>`), `status`, `operator`, `feed`, `parent`, `centroid`, `bbox` (of it and the stops inside it), `refs`, and `facts` (empty until facts exist). A merged feature's ID returns the feature it was merged into, with `redirectedFrom`. A ref names the feature it names today, or with `?date=YYYYMMDD` (GTFS refs) in the feed version in use that day. An unknown key is a 404. A bike route (`cr` ID or `osm-relation:` ref) is the registry's, with its `centroid` and `bbox` from its build ([Cycling routes](#cycling-routes)). An OSM ref with no feature is looked up in the latest cycling build (`src/features/cycling.ts`: the build's `lookup.json`, [packages/cycling-core → Lookup](../../packages/cycling-core/README.md#lookup), read again when a build replaces it): a path's chain or bike parking answers 200 with `unminted: true`, `key` (how the cycling tiles know it: a path's first way by id, whichever of its ways was asked for), `kind` (`cycling-way`, `bike-parking`), `name`, `centroid`, `bbox` and `refs`; otherwise it's a 404 with `{ "unminted": true }`. OSM refs work without a database; only the leader, which runs the data build, has the lookup. Public, with CORS for everyone, `Cache-Control: public, max-age=3600` (the edge follows it: [deployment → The server](../../deployment/README.md#the-server-apitransitopiaorg)). Without a database, 503 for anything but OSM refs.
+`GET /features/<key>` (`resolveKey` in `src/features/registry.ts`): a feature by ID (its name suffix ignored) or ref (percent-encoded), as JSON: `id`, `kind`, `name`, `suffix` (the canonical key is `<id>-<suffix>`), `status`, `operator`, `feed`, `parent`, `centroid`, `bbox` (of it and the stops inside it), `refs`, and `facts` (empty until facts exist). A merged feature's ID returns the feature it was merged into, with `redirectedFrom`. A ref names the feature it names today, or with `?date=YYYYMMDD` (GTFS refs) in the feed version in use that day. An unknown key is a 404. A bike route (`cr` ID or `osm-relation:` ref) is the registry's, with its `centroid` and `bbox` from its build ([Cycling routes](#cycling-routes)). An OSM ref with no feature is looked up in the latest cycling build (`src/features/cycling.ts`: the build's `lookup.json`, [packages/cycling-core → Lookup](../../packages/cycling-core/README.md#lookup), read again when a build replaces it): a path's chain or bike parking answers 200 with `unminted: true`, `key` (how the cycling tiles know it: a path's first way by id, whichever of its ways was asked for), `kind` (`cycling-way`, `bike-parking`), `name`, `centroid`, `bbox` and `refs`; otherwise it's a 404 with `{ "unminted": true }`. Only the leader, which runs the data build, has the lookup. Public, with CORS for everyone, `Cache-Control: public, max-age=3600` (the edge follows it: [deployment → The server](../../deployment/README.md#the-server-apitransitopiaorg)).
 
 ## Cycling routes
 
 Bike routes ([packages/cycling-core → Bike routes](../../packages/cycling-core/README.md#bike-routes)) live in the database (`src/features/cycling-routes.ts`, `packages/db/migrations/004_cycling_routes.sql`):
 
 - **Loading**: after the data build has built the cycling tiles, the leader loads `var/cycling/<area>/routes.json` (`loadCyclingRoutes`), replacing the area's previous routes and their nesting (`cycling_builds`, `cycling_routes`, `cycling_route_members`), then reconciles the registry's cycling routes with every area's (`reconcileRoutes` in cycling-core): `cr` IDs minted for new relations, names following OSM unless an admin renamed one, routes no build has retired, and routes that come back made active again. One transaction holding the registry lock, before the public export. The same build isn't loaded twice, but the registry is reconciled every time (`features -- pull` replaces a local registry). `npm run features -- reconcile` does the same locally. Loading BC's 965 routes takes about 0.2 s.
-- **`GET /cycling/routes/<key>`** (`cyclingRouteDetail`): a route card's data by `cr` ID (its name suffix ignored) or `osm-relation:` ref, as `CyclingRouteDetail`: `key` (the ID with its name suffix), `osmRelation`, `name` (OSM's `name`, else `ref`), `network`, `ref`, `bbox`, `lengthM`, `comfortM` (metres at comfort 0–4), `ferryM` (metres of ferry crossings, in `lengthM` but not `comfortM`), `parents` and `subroutes` (each `key`, `osmRelation`, `name`, `network`), `ancestors` (every route above it, nearest first, each once, so a path's card needs one request per route it's in) and `builtAt`. A retired route, or one in no build, is a 404; without a database, 503. Public, with CORS for everyone, `Cache-Control: public, max-age=3600` (the edge follows it: [deployment → The server](../../deployment/README.md#the-server-apitransitopiaorg)).
+- **`GET /cycling/routes/<key>`** (`cyclingRouteDetail`): a route card's data by `cr` ID (its name suffix ignored) or `osm-relation:` ref, as `CyclingRouteDetail`: `key` (the ID with its name suffix), `osmRelation`, `name` (OSM's `name`, else `ref`), `network`, `ref`, `bbox`, `lengthM`, `comfortM` (metres at comfort 0–4), `ferryM` (metres of ferry crossings, in `lengthM` but not `comfortM`), `parents` and `subroutes` (each `key`, `osmRelation`, `name`, `network`), `ancestors` (every route above it, nearest first, each once, so a path's card needs one request per route it's in) and `builtAt`. A retired route, or one in no build, is a 404. Public, with CORS for everyone, `Cache-Control: public, max-age=3600` (the edge follows it: [deployment → The server](../../deployment/README.md#the-server-apitransitopiaorg)).
 
 ## Admin API and sign-in
 
@@ -131,7 +130,7 @@ From the environment (`src/env.ts`; production values in `infra/.env.example`):
 
 | Variable | |
 |---|---|
-| `DATABASE_URL` | PostgreSQL; without it, files only |
+| `DATABASE_URL` | PostgreSQL (required; default: the local one, `npm run db:up`) |
 | `RT_POLL=1` | Poll every feed's GTFS-realtime and aisstream.io (production only) |
 | `RT_FORWARD_TO` | Forward `/rt/*` to another server instead of polling (local development) |
 | `ADVERTISE_URL` | How followers reach this process if it becomes the leader |
@@ -150,6 +149,6 @@ The server refuses to start on outdated time zone data (`timezoneChecks` in each
 - `npm run db:import-history`: import `var/rt-history/<feed>/`, `var/{ais,dispatch}-history` into the database (idempotent: a poll counts as imported once its positions or fixes are there, so it fills in a restored developer snapshot, which has the polls without them).
 - `npm run stats -- <YYYYMMDD> [--feed <id>]`: recompute a date's observed stop times and statistics (every feed with real time, or one).
 - `npm run corrections -- export <dir> | import [<dir>] | pull`: move corrections between the database and the file format.
-- `npm run features -- pull | places | reconcile | show | move | detach | retire`: the feature registry ([above](#feature-reconciliation)). `pull` and `places` work without a database too, with `var/features/registry.ndjson.gz`.
+- `npm run features -- pull | places | reconcile | show | move | detach | retire`: the feature registry ([above](#feature-reconciliation)). `places` pulls production's registry first when the database has none.
 
 Tests (`test/`) use a scratch database when `TEST_DATABASE_URL` is set.

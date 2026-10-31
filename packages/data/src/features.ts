@@ -27,7 +27,6 @@ import {
   feedVersionFile,
   PUBLIC_DIR,
   readManifest,
-  VAR_DIR,
   writeJson,
 } from "./paths.ts";
 
@@ -41,8 +40,6 @@ export interface Registry {
 /** Where the public export is published, relative to the data root's parent (var/public). */
 export const FEATURES_DATA_PATH = "data/features";
 export const EXPORT_POINTER = `${FEATURES_DATA_PATH}/latest.json`;
-/** The local registry without a database: the last pulled export. */
-export const LOCAL_REGISTRY = join(VAR_DIR, "features", "registry.ndjson.gz");
 
 export function encodeRegistry(r: Registry): Buffer {
   const lines = [...r.versions, ...r.features, ...r.refs].map((l) =>
@@ -69,10 +66,6 @@ export function decodeRegistry(gz: Buffer): Registry {
     else if (l.t === "ref") r.refs.push(l);
   }
   return r;
-}
-
-export async function readRegistryFile(path: string): Promise<Registry> {
-  return decodeRegistry(await readFile(path));
 }
 
 /** Write the export for a date (YYYYMMDD) and point latest.json at it. Returns its path under the data root. */

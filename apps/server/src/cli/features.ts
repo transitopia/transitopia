@@ -2,36 +2,30 @@
 // /admin has these tools. Keys are IDs (a name suffix is fine) or refs (stop:translink:50123).
 //
 //   npm run features -- pull       production's latest public export → the local registry (WIPES
-//                                  the local database's feature tables, or var/features/registry.ndjson.gz
-//                                  without DATABASE_URL), then the places files
-//   npm run features -- places     the places files from the local registry (the database, else the file)
-//   DATABASE_URL=postgres://… npm run features -- reconcile [--feed <id>] [--skip-missing]
-//   DATABASE_URL=postgres://… npm run features -- show <key>
-//   DATABASE_URL=postgres://… npm run features -- move <stop> <station or exchange>
-//   DATABASE_URL=postgres://… npm run features -- detach <stop> [<stop> …]
-//   DATABASE_URL=postgres://… npm run features -- retire <key> [<key> …]
+//                                  the database's feature tables), then the places files
+//   npm run features -- places     the places files from the registry (pulled first if it's empty)
+//   npm run features -- reconcile [--feed <id>] [--skip-missing]
+//   npm run features -- show <key>
+//   npm run features -- move <stop> <station or exchange>
+//   npm run features -- detach <stop> [<stop> …]
+//   npm run features -- retire <key> [<key> …]
 //
+// The registry is DATABASE_URL's database, else the local one (npm run db:up).
 // reconcile records the feed versions on disk in gtfs_feeds, then reconciles every one not yet
 // reconciled, as the server's data build does (ARCHIVE_REMOTE: fetch older zips from the archive),
 // and loads the latest cycling build's bike routes (npm run data:cycling), giving them IDs.
 // IDs minted locally are throwaway: only production's are published.
 
-import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
 import { readFeed, readFeeds } from "@transitopia/data/paths.ts";
 import {
   decodeRegistry,
-  encodeRegistry,
   EXPORT_POINTER,
-  LOCAL_REGISTRY,
-  readRegistryFile,
   writeFeedPlaces,
   type Registry,
 } from "@transitopia/data/features.ts";
 import type { ExportPointer } from "@transitopia/shared/features.ts";
 import { loadRegistry, registryFromDb } from "../features/export.ts";
-import { createDb, type Db } from "@transitopia/db/connect.ts";
+import { createDb, databaseUrl, type Db } from "@transitopia/db/connect.ts";
 import { migrate } from "@transitopia/db/migrate.ts";
 import { reconcileConfig } from "../config.ts";
 import { loadRoutes, recordFeeds } from "../jobs/data-build.ts";
@@ -59,48 +53,44 @@ const USAGE = `Usage: [DATABASE_URL=postgres://…] npm run features -- <command
 const PULL_FROM =
   process.env.FEATURES_PULL_FROM ?? "https://data.transitopia.org/";
 
-const url = process.env.DATABASE_URL;
 const [command, ...args] = process.argv.slice(2);
-const local = command === "pull" || command === "places";
-if (!command || (!url && !local)) {
+if (!command) {
   console.error(USAGE);
   process.exit(1);
 }
 
-/** pull and places, with a database or without one. */
-async function localCommand(db: Db | undefined): Promise<void> {
+/** Production's latest public export into the database, replacing its registry. */
+async function pull(db: Db): Promise<Registry> {
+  const get = async (path: string) => {
+    const r = await fetch(new URL(path, PULL_FROM));
+    if (!r.ok)
+      throw new Error(`${r.status} for ${new URL(path, PULL_FROM).href}`);
+    return r;
+  };
+  const pointer = (await (await get(EXPORT_POINTER)).json()) as ExportPointer;
+  const gz = Buffer.from(await (await get(pointer.path)).arrayBuffer());
+  const registry = decodeRegistry(gz);
+  console.log(
+    `pulled ${pointer.path} (${registry.features.length} features, ${registry.refs.length} refs, ${pointer.generatedAt})`,
+  );
+  await syncSources(db);
+  const r = await loadRegistry(db, registry);
+  console.log(
+    `the local database's registry was replaced: ${Object.entries(r.cleared)
+      .map(([t, n]) => `${n} ${t}`)
+      .join(", ")} deleted`,
+  );
+  return registry;
+}
+
+/** The places files, from the registry (production's, pulled, when the database has none yet). */
+async function places(db: Db, registry?: Registry): Promise<void> {
+  registry ??= await registryFromDb(db);
+  if (!registry.features.length) {
+    console.log("the registry is empty: pulling production's");
+    registry = await pull(db);
+  }
   const feeds = (await readFeeds()).map((f) => f.id);
-  let registry: Registry;
-  if (command === "pull") {
-    const get = async (path: string) => {
-      const r = await fetch(new URL(path, PULL_FROM));
-      if (!r.ok)
-        throw new Error(`${r.status} for ${new URL(path, PULL_FROM).href}`);
-      return r;
-    };
-    const pointer = (await (await get(EXPORT_POINTER)).json()) as ExportPointer;
-    const gz = Buffer.from(await (await get(pointer.path)).arrayBuffer());
-    registry = decodeRegistry(gz);
-    console.log(
-      `pulled ${pointer.path} (${registry.features.length} features, ${registry.refs.length} refs, ${pointer.generatedAt})`,
-    );
-    if (db) {
-      await syncSources(db);
-      const r = await loadRegistry(db, registry);
-      console.log(
-        `the local database's registry was replaced: ${Object.entries(r.cleared)
-          .map(([t, n]) => `${n} ${t}`)
-          .join(", ")} deleted`,
-      );
-    } else {
-      await mkdir(dirname(LOCAL_REGISTRY), { recursive: true });
-      await writeFile(LOCAL_REGISTRY, encodeRegistry(registry));
-      console.log(`wrote ${LOCAL_REGISTRY}`);
-    }
-  } else if (db) registry = await registryFromDb(db);
-  else if (existsSync(LOCAL_REGISTRY))
-    registry = await readRegistryFile(LOCAL_REGISTRY);
-  else throw new Error(`No local registry: run npm run features -- pull`);
   const written = await writeFeedPlaces(registry, feeds, console.log);
   console.log(`${written.length} places files written`);
 }
@@ -116,6 +106,10 @@ const describe = (f: FeatureRow) =>
 
 async function main(db: Db): Promise<void> {
   switch (command) {
+    case "pull":
+      return places(db, await pull(db));
+    case "places":
+      return places(db);
     case "reconcile": {
       const only =
         args.includes("--feed") ? args[args.indexOf("--feed") + 1] : undefined;
@@ -185,14 +179,13 @@ async function main(db: Db): Promise<void> {
 }
 
 // Last, so every declaration above is initialised before it runs.
-const conn = url ? createDb(url) : undefined;
+const conn = createDb(databaseUrl());
 try {
-  if (conn) await migrate(conn.pool);
-  if (local) await localCommand(conn?.db);
-  else await main(conn!.db);
+  await migrate(conn.pool);
+  await main(conn.db);
 } catch (e) {
   console.error((e as Error).message);
   process.exitCode = 1;
 } finally {
-  await conn?.db.destroy();
+  await conn.db.destroy();
 }

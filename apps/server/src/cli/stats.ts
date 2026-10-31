@@ -2,32 +2,32 @@
 // changing their definitions (bump STATS_VERSION in packages/transit-core/src/rt/stats.ts). The
 // server does this nightly on its own; raw positions older than the retention period are gone.
 //
-//   DATABASE_URL=postgres://… npm run stats -- 20260928 [20260929 …] [--feed translink]
+//   npm run stats -- 20260928 [20260929 …] [--feed translink]
 //
-// Every feed with real-time data, or the one named.
+// Every feed with real-time data, or the one named. The database is DATABASE_URL's, else the local
+// one (npm run db:up).
 
 import { isServiceDate } from "@transitopia/transit-core/time.ts";
 import { readFeed, readFeeds } from "@transitopia/data/paths.ts";
-import { createDb } from "@transitopia/db/connect.ts";
+import { createDb, databaseUrl } from "@transitopia/db/connect.ts";
 import { migrate } from "@transitopia/db/migrate.ts";
 import { dailyStats, type RealtimeFeed } from "../jobs/daily.ts";
 import { syncSources } from "../sources.ts";
 
-const url = process.env.DATABASE_URL;
 const args = process.argv.slice(2);
 const dates = args.filter(isServiceDate);
 const only =
   args.includes("--feed") ? args[args.indexOf("--feed") + 1] : undefined;
-if (!url || !dates.length) {
+if (!dates.length) {
   console.error(
-    "Usage: DATABASE_URL=postgres://… npm run stats -- YYYYMMDD [YYYYMMDD …] [--feed <id>]",
+    "Usage: [DATABASE_URL=postgres://…] npm run stats -- YYYYMMDD [YYYYMMDD …] [--feed <id>]",
   );
   process.exit(1);
 }
 const feeds = (only ? [await readFeed(only)] : await readFeeds()).filter(
   (f): f is typeof f & RealtimeFeed => Boolean(f.realtime),
 );
-const { db, pool } = createDb(url);
+const { db, pool } = createDb(databaseUrl());
 await migrate(pool);
 await syncSources(db);
 for (const feed of feeds)

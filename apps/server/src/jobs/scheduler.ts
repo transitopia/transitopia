@@ -58,20 +58,19 @@ export class Jobs {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private running = false;
   private ticking: Promise<void> | undefined;
-  private lastDataBuild: number | undefined;
   private recovered = false;
 
-  private readonly db: Db | undefined;
+  private readonly db: Db;
   /** Every feed the regions show: the data build publishes them, statistics are of those with real time. */
   private readonly feeds: FeedInfo[];
-  private readonly repo: CorrectionsRepo | undefined;
+  private readonly repo: CorrectionsRepo;
   private readonly env: ServerEnv;
   private readonly log: (msg: string) => void;
 
   constructor(opts: {
-    db: Db | undefined;
+    db: Db;
     feeds: FeedInfo[];
-    repo: CorrectionsRepo | undefined;
+    repo: CorrectionsRepo;
     env: ServerEnv;
     log?: (msg: string) => void;
   }) {
@@ -87,7 +86,7 @@ export class Jobs {
     this.running = true;
     const loop = async () => {
       // This process is the leader: runs another process left "running" were interrupted.
-      if (this.db && !this.recovered) {
+      if (!this.recovered) {
         this.recovered = true;
         const reset = await recoverInterrupted(this.db).catch((e: Error) => {
           this.log(`could not reset interrupted jobs: ${e.message}`);
@@ -120,11 +119,6 @@ export class Jobs {
     key: string,
     fn: () => Promise<unknown>,
   ): Promise<void> {
-    if (!this.db) {
-      // Without a database there's no job_runs: run what's needed in memory, once per process.
-      await fn();
-      return;
-    }
     const t0 = Date.now();
     const r = await runOnce(this.db, name, key, fn);
     if (r !== "skipped")
@@ -137,21 +131,17 @@ export class Jobs {
     const db = this.db;
     const today = localDate(now);
     const wall = toWallTime(now);
-    if (db) {
-      await this.job(
-        "partitions",
-        new Date(now).toISOString().slice(0, 10),
-        () => ensurePartitions(db, now),
-      );
-      await this.job("retention", today, () =>
-        expireRawData({
-          db,
-          retentionDays: recording.retentionDays,
-          archiveRemote: this.env.archiveRemote,
-          now,
-        }),
-      );
-    }
+    await this.job("partitions", new Date(now).toISOString().slice(0, 10), () =>
+      ensurePartitions(db, now),
+    );
+    await this.job("retention", today, () =>
+      expireRawData({
+        db,
+        retentionDays: recording.retentionDays,
+        archiveRemote: this.env.archiveRemote,
+        now,
+      }),
+    );
     if (this.env.buildData) {
       const [h, m] = recording.dataBuildAt.split(":").map(Number);
       await dueDataBuilds({
@@ -159,31 +149,20 @@ export class Jobs {
         due: wall.hour * 60 + wall.minute >= h! * 60 + m!,
         missing: () =>
           this.feeds.some((f) => !existsSync(feedPaths(f.id).manifest)),
-        run: async (key) => {
-          // Without a database there's no job_runs: the day's build runs once per process.
-          if (
-            !db
-            && key === today
-            && this.lastDataBuild
-            && localDate(this.lastDataBuild) === today
-          )
-            return;
-          await this.job("data", key, async () => {
-            const r = await buildData({
+        // The RT service and the dispatcher notice the new manifest themselves.
+        run: (key) =>
+          this.job("data", key, () =>
+            buildData({
               db,
               feeds: this.feeds,
               repo: this.repo,
               env: this.env,
               log: this.log,
-            });
-            // The RT service and the dispatcher notice the new manifest themselves.
-            this.lastDataBuild = Date.now();
-            return r;
-          });
-        },
+            }),
+          ),
       });
     }
-    if (db && this.env.buildData) {
+    if (this.env.buildData) {
       // The registry's state: any change to a feature or by an admin gives a new key.
       const state = await sql<{ stamp: string }>`
         select concat_ws(':', (select count(*) from features),
@@ -204,24 +183,19 @@ export class Jobs {
         return { written };
       });
     }
-    if (db) {
-      const realtime = this.feeds.filter((f): f is FeedInfo & RealtimeFeed =>
-        Boolean(f.realtime),
-      );
-      // Every finished service date still within the raw data's lifetime, oldest first.
-      for (let d = recording.retentionDays - 1; d >= 1; d--) {
-        const date = addDays(today, -d);
-        if (
-          now
-          < serviceDayStart(date) + recording.afterServiceDayH * 3_600_000
-        )
-          continue;
-        for (const feed of realtime) {
-          if (!(await hasRecording(db, feed.id, date))) continue;
-          await this.job("daily", `${feed.id}:${date}`, () =>
-            dailyStats(db, feed, date, this.log),
-          );
-        }
+    const realtime = this.feeds.filter((f): f is FeedInfo & RealtimeFeed =>
+      Boolean(f.realtime),
+    );
+    // Every finished service date still within the raw data's lifetime, oldest first.
+    for (let d = recording.retentionDays - 1; d >= 1; d--) {
+      const date = addDays(today, -d);
+      if (now < serviceDayStart(date) + recording.afterServiceDayH * 3_600_000)
+        continue;
+      for (const feed of realtime) {
+        if (!(await hasRecording(db, feed.id, date))) continue;
+        await this.job("daily", `${feed.id}:${date}`, () =>
+          dailyStats(db, feed, date, this.log),
+        );
       }
     }
     if (this.env.archiveRemote) {
@@ -236,7 +210,6 @@ export class Jobs {
 
   /** For /healthz: daily jobs that failed lately, or haven't succeeded for a while. */
   async health(): Promise<Health["checks"]> {
-    if (!this.db) return {};
     const out: Health["checks"] = {};
     const failures = await this.db
       .selectFrom("job_runs")

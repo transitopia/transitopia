@@ -125,6 +125,6 @@ if (args.includes("--db")) {
   if ((r.status ?? 1) > 1)
     throw new Error(`pg_restore failed (exit ${r.status})`);
   log(
-    "Done. Import the pulled hours into it too with: DATABASE_URL=postgres://transitopia:transitopia@localhost:5433/transitopia npm run db:import-history",
+    "Done. Import the pulled hours into it too with: npm run db:import-history",
   );
 }

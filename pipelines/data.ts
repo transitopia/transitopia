@@ -7,7 +7,7 @@
 // ROADS_MAX_AGE_DAYS old (every feed with --osm). A failed roads fetch doesn't stop the build:
 // plans are built with the roads already fetched, or without corridors.
 //
-// Last, the places files (docs/DESIGN.md#published-features) from the local registry, pulled from
+// Last, the places files (docs/DESIGN.md#published-features) from the local database's registry, pulled from
 // production first when there's none (optional: without them the site names features by ref).
 // The server's data build writes its own after reconciling (TRANSITOPIA_SKIP_PLACES).
 //
@@ -15,8 +15,6 @@
 //   npm run data -- --osm   # also re-fetch and re-import OpenStreetMap tracks
 
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { LOCAL_REGISTRY } from "@transitopia/data/features.ts";
 import { log } from "@transitopia/data/paths.ts";
 
 /** OSM roads older than this are fetched again (a guess: bus loops and new roads change rarely). */
@@ -57,12 +55,7 @@ const steps: [string, string[], boolean?][] = [
   : ([
       [
         "Write places files",
-        [
-          "apps/server/src/cli/features.ts",
-          process.env.DATABASE_URL || existsSync(LOCAL_REGISTRY) ?
-            "places"
-          : "pull",
-        ],
+        ["apps/server/src/cli/features.ts", "places"],
         true,
       ],
     ] as [string, string[], boolean][])),

@@ -66,8 +66,8 @@ export interface AppDeps {
   service: RtService;
   auth: Auth;
   env: ServerEnv;
-  db?: Db | undefined;
-  repo?: CorrectionsRepo | undefined;
+  db: Db;
+  repo: CorrectionsRepo;
   jobs?: Jobs | undefined;
   /** A directory on the disk /healthz watches (var/); none, no disk check. */
   diskPath?: string | undefined;
@@ -118,19 +118,19 @@ export function createApp(deps: AppDeps): Hono<Env> {
       "Cache-Control": "public, max-age=3600",
     };
     const key = c.req.param("key");
-    const k = parseKey(key);
-    const osm = k?.form === "ref" && k.scheme.startsWith("osm-");
-    if (!db && !osm)
-      return c.json({ error: "No feature registry" }, 503, headers);
     const date = c.req.query("date");
     if (date !== undefined && !isServiceDate(date))
       return c.json({ error: "date is YYYYMMDD" }, 400, headers);
-    const r = db ? await resolveKey(db, key, date) : "unminted";
+    const r = await resolveKey(db, key, date);
     if (r === "unminted") {
       // No ID yet: the cycling map's latest build may still know where it is.
       const f = await deps.cycling?.(key);
       return f ?
-          c.json({ unminted: true, ...f, refs: [formatKey(k!)] }, 200, headers)
+          c.json(
+            { unminted: true, ...f, refs: [formatKey(parseKey(key)!)] },
+            200,
+            headers,
+          )
         : c.json({ unminted: true }, 404, headers);
     }
     if (!r) return c.json({ error: "Unknown feature" }, 404, headers);
@@ -143,7 +143,6 @@ export function createApp(deps: AppDeps): Hono<Env> {
       "Access-Control-Allow-Origin": "*",
       "Cache-Control": "public, max-age=3600",
     };
-    if (!db) return c.json({ error: "No database" }, 503, headers);
     const r = await cyclingRouteDetail(db, c.req.param("key"));
     return r ?
         c.json(r, 200, headers)
@@ -205,15 +204,13 @@ export function createApp(deps: AppDeps): Hono<Env> {
     c.json({
       rt: await rtStatusOf(service),
       health: await health(deps),
-      jobs: db ? await recentRuns(db, 40) : [],
-      daily: db ? await recentRuns(db, 60, "daily") : [],
-      storage: db ? await storageSizes(db) : null,
+      jobs: await recentRuns(db, 40),
+      daily: await recentRuns(db, 60, "daily"),
+      storage: await storageSizes(db),
     } satisfies StatusResponse),
   );
 
   // ---- Features (docs/DESIGN.md#feature-ids): containment, merges and flags ------------------
-  const needDb = (c: Context<Env>) =>
-    c.json({ error: "No database: no feature registry" }, 409);
   /**
    * Who made a registry change (feature_changes.user_id): a signed-in admin's users row; none for
    * ADMIN_DEV_TOKEN's local admin, who has no row.
@@ -233,21 +230,18 @@ export function createApp(deps: AppDeps): Hono<Env> {
   };
 
   app.get("/admin/api/features", async (c) => {
-    if (!db) return needDb(c);
     return c.json({
       results: await searchFeatures(db, c.req.query("q") ?? ""),
     } satisfies z.input<typeof featureSearchResponse>);
   });
 
   app.get("/admin/api/features/:id", async (c) => {
-    if (!db) return needDb(c);
     const d = await featureDetail(db, c.req.param("id"));
     if (!d) return c.json({ error: "No such feature" }, 404);
     return c.json(d satisfies z.input<typeof featureDetailResponse>);
   });
 
   app.post("/admin/api/features/:id/parent", async (c) => {
-    if (!db) return needDb(c);
     const body = await parseBody(c, setParentRequest);
     if (!body.ok) return body.response;
     return change(c, () =>
@@ -256,12 +250,10 @@ export function createApp(deps: AppDeps): Hono<Env> {
   });
 
   app.post("/admin/api/features/:id/retire", async (c) => {
-    if (!db) return needDb(c);
     return change(c, () => retire(db, c.req.param("id"), userId(c)));
   });
 
   app.post("/admin/api/features/:id/merge", async (c) => {
-    if (!db) return needDb(c);
     const body = await parseBody(c, mergeRequest);
     if (!body.ok) return body.response;
     return change(c, () =>
@@ -270,7 +262,6 @@ export function createApp(deps: AppDeps): Hono<Env> {
   });
 
   app.post("/admin/api/features/exchange", async (c) => {
-    if (!db) return needDb(c);
     const body = await parseBody(c, newExchangeRequest);
     if (!body.ok) return body.response;
     try {
@@ -287,14 +278,12 @@ export function createApp(deps: AppDeps): Hono<Env> {
   });
 
   app.get("/admin/api/feature-flags", async (c) => {
-    if (!db) return needDb(c);
     return c.json({
       flags: await openFlags(db),
     } satisfies z.input<typeof featureFlagsResponse>);
   });
 
   app.post("/admin/api/feature-flags/:id/resolve", async (c) => {
-    if (!db) return needDb(c);
     const body = await parseBody(c, resolveFlagRequest);
     if (!body.ok) return body.response;
     return change(c, () =>
@@ -307,13 +296,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
     );
   });
 
-  const needRepo = (c: Context<Env>) =>
-    repo ? undefined : (
-      c.json({ error: "No database: corrections are files" }, 409)
-    );
-
   app.get("/admin/api/corrections", async (c) => {
-    if (!repo) return needRepo(c)!;
     const [disruptions, observationSets] = await Promise.all([
       repo.disruptions(),
       repo.observationSets(),
@@ -329,7 +312,6 @@ export function createApp(deps: AppDeps): Hono<Env> {
   // Edit (or create) a disruption. Edits keep the review state, except that a confirmed one goes
   // back to draft: it has to be previewed and confirmed again.
   app.put("/admin/api/disruptions/:id", async (c) => {
-    if (!repo) return needRepo(c)!;
     const id = c.req.param("id");
     const body = await parseBody(c, disruption);
     if (!body.ok) return body.response;
@@ -345,7 +327,6 @@ export function createApp(deps: AppDeps): Hono<Env> {
   });
 
   app.put("/admin/api/observations/:id", async (c) => {
-    if (!repo) return needRepo(c)!;
     const id = c.req.param("id");
     if (!ID.test(id)) return c.json({ error: "Bad id" }, 400);
     const body = await parseBody(c, observationSetPut);
@@ -370,7 +351,6 @@ export function createApp(deps: AppDeps): Hono<Env> {
   app.post(
     "/admin/api/:kind{disruptions|observations}/:id/preview",
     async (c) => {
-      if (!repo) return needRepo(c)!;
       if (!service.dispatcher)
         return c.json({ error: "Live dispatch runs on the leader" }, 409);
       const { kind, id } = c.req.param();
@@ -403,7 +383,6 @@ export function createApp(deps: AppDeps): Hono<Env> {
   app.post(
     "/admin/api/:kind{disruptions|observations}/:id/:action{confirm|discard|reopen}",
     async (c) => {
-      if (!repo) return needRepo(c)!;
       const { kind, id, action } = c.req.param();
       if (kind === "disruptions" && action === "confirm") {
         const d = await repo.disruption(id);
@@ -427,7 +406,6 @@ export function createApp(deps: AppDeps): Hono<Env> {
 
   // The confirmed corrections in the file format, e.g. for a test fixture or the static build.
   app.get("/admin/api/export", async (c) => {
-    if (!repo) return needRepo(c)!;
     const observations: Record<string, ObservationFile> = {};
     for (const s of await repo.observationSets(["confirmed"]))
       observations[s.id] = s.body;
@@ -483,13 +461,11 @@ export async function health({
   diskPath,
 }: AppDeps): Promise<Health> {
   const checks: Health["checks"] = {};
-  if (db) {
-    try {
-      await sql`select 1`.execute(db);
-      checks.database = { ok: true };
-    } catch (e) {
-      checks.database = { ok: false, detail: (e as Error).message };
-    }
+  try {
+    await sql`select 1`.execute(db);
+    checks.database = { ok: true };
+  } catch (e) {
+    checks.database = { ok: false, detail: (e as Error).message };
   }
   const status = await rtStatusOf(service);
   // Each feed the leader polls: its positions, and its trip updates' freshness and coverage.

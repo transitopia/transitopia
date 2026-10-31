@@ -38,7 +38,6 @@ What they check is in [packages/transit-core/DESIGN.md → Validation](../packag
 
 | Command | What |
 |---|---|
-| `npm run disruptions` | Without a database: list, confirm or discard drafted disruptions (production uses `/admin`) |
 | `npm run snapshot:pull -- --from <date> --to <date> [--db]` | Pull production recordings (and a database snapshot) into `var/` ([deployment/README.md → Snapshots](../deployment/README.md#snapshots-for-development)) |
 | `npx tsx pipelines/eval-rt.ts` | Replay recorded RT data as the live view would: prediction error and jumps (`--feed <id>`, default TransLink; `--subsample schedule` thins it to the feed's poll schedule) |
 | `npx tsx pipelines/probe-ais.ts` | Record raw aisstream.io messages for the SeaBus fleet and summarise them |

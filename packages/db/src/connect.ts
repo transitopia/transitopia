@@ -1,4 +1,5 @@
-// A Kysely instance on a pg pool. DATABASE_URL is e.g. postgres://transitopia:…@db:5432/transitopia.
+// A Kysely instance on a pg pool. DATABASE_URL is e.g. postgres://transitopia:…@db:5432/transitopia;
+// without it, the local database (npm run db:up, infra/compose.dev.yml).
 
 import { Kysely, PostgresDialect } from "kysely";
 import pg from "pg";
@@ -14,6 +15,14 @@ pg.types.setTypeParser(DATE_ARRAY, pg.types.getTypeParser(TEXT_ARRAY));
 pg.types.setTypeParser(pg.types.builtins.INT8, (v) => Number(v));
 
 export type Db = Kysely<Database>;
+
+/** The local development database that `npm run db:up` starts (infra/compose.dev.yml). */
+export const LOCAL_DATABASE_URL =
+  "postgres://transitopia:transitopia@localhost:5433/transitopia";
+
+/** DATABASE_URL, or the local development database. */
+export const databaseUrl = (env: NodeJS.ProcessEnv = process.env): string =>
+  env.DATABASE_URL || LOCAL_DATABASE_URL;
 
 export function createPool(url: string, max = 10): pg.Pool {
   const pool = new pg.Pool({ connectionString: url, max });

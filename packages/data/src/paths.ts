@@ -76,7 +76,7 @@ export const VAR_DIR = join(ROOT, "var");
 export const RAW_DIR = join(VAR_DIR, "raw");
 /** var/raw/gtfs/<feed>/<version dir>/google_transit.zip. */
 export const GTFS_RAW_DIR = join(RAW_DIR, "gtfs");
-/** var/rt-history/<feed>/: each feed's recordings. The leader's lock file is at the top. */
+/** var/rt-history/<feed>/: each feed's recordings. */
 export const RT_HISTORY_DIR = join(VAR_DIR, "rt-history");
 export const AIS_HISTORY_DIR = join(VAR_DIR, "ais-history");
 export const DISPATCH_HISTORY_DIR = join(VAR_DIR, "dispatch-history");
