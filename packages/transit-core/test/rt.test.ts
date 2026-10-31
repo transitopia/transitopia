@@ -538,6 +538,18 @@ describe("carrying RT delays into schedule estimates", () => {
     expect(delays[0]!.delay).toBeCloseTo(300, 0);
   });
 
+  it("measures only the delays asked for", () => {
+    const t = fixTs + 1000;
+    expect(tl.tripDelays(t, new Set(["rt:bus1"]))).toEqual([]);
+    // The same delays are the same result.
+    expect(tl.tripDelays(t)).toBe(tl.tripDelays(t + 1000));
+    const [shown] = tl.vehiclesAt(t);
+    expect(shown!.delay).toBeCloseTo(300, -1);
+    const [plain] = tl.vehiclesAt(t, undefined, (id) => id === "rt:other");
+    expect(plain!.delay).toBeUndefined();
+    expect(alongOf(plain!)).toBeCloseTo(alongOf(shown!), 5);
+  });
+
   it("takes over from exactly where RT prediction leaves the bus", () => {
     const handover = fixTs + opts.maxExtrapolateS * 1000;
     const rtAlong = alongOf(tl.vehiclesAt(handover)[0]!);

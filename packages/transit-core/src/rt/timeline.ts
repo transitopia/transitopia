@@ -187,9 +187,9 @@ export class RtTimeline {
   >();
   /** `${id}#${i}` → along shown when obs i became known, using fixes before it. */
   private shownAtFetch = new Map<string, number>();
-  /** Every fix time, sorted (for caching per-instant results). */
-  private fixTimes: number[] = [];
-  private delaysMemo: { upTo: number; delays: TripDelay[] } | undefined;
+  private delaysMemo: TripDelay[] | undefined;
+  /** During vehiclesAt: which vehicles (`rt:<id>`) get a delay (undefined: every one). */
+  private withDelay: ((id: string) => boolean) | undefined;
   /**
    * Per fix, its bus's delay against the paced schedule: it depends on the fix alone, and working it
    * out (Predictor.delayAt) for every bus at every frame was most of the map's CPU time.
@@ -233,10 +233,8 @@ export class RtTimeline {
         if (last && v.ts < last.v.ts) continue; // out-of-order fix
         if (!plausible(v, last?.v)) continue;
         tr.obs.push({ v, knownAt: s.receivedAt ?? s.fetchedAt });
-        this.fixTimes.push(v.ts);
       }
     }
-    this.fixTimes.sort((a, b) => a - b);
     for (const tr of this.tracks.values()) this.dropSpikes(tr);
   }
 
@@ -280,15 +278,16 @@ export class RtTimeline {
    * predictor). Measured where this timeline shows the bus when its prediction runs out (the fix +
    * maxExtrapolateS), so a schedule estimate carrying the delay takes over from exactly there. A bus
    * already at its trip's end by then uses the delay at the fix instead (waiting at the terminus
-   * isn't lateness). The same result object is returned until t passes another fix.
+   * isn't lateness). Buses in `skip` (vehicle ids, `rt:<id>`: those drawn from their fixes at t,
+   * when nothing else needs their delays) are left out. The same result object is returned while
+   * the delays are the same ones.
    */
-  tripDelays(t: number): TripDelay[] {
-    const upTo = floorCount(this.fixTimes, t);
-    if (this.delaysMemo?.upTo === upTo) return this.delaysMemo.delays;
+  tripDelays(t: number, skip?: ReadonlySet<string>): TripDelay[] {
     const delays: TripDelay[] = [];
     const pr = this.opts.prediction;
     if (pr && this.pp) {
       for (const [id, tr] of this.tracks) {
+        if (skip?.has(`rt:${id}`)) continue;
         const i = floorIndex(tr.obs, t);
         if (i < 0) continue;
         let d = tr.delays[i];
@@ -296,7 +295,11 @@ export class RtTimeline {
         if (d) delays.push(d);
       }
     }
-    this.delaysMemo = { upTo, delays };
+    // Each fix's delay is one object (Track.delays), so the same delays are the same objects.
+    const memo = this.delaysMemo;
+    if (memo?.length === delays.length && memo.every((d, k) => d === delays[k]))
+      return memo;
+    this.delaysMemo = delays;
     return delays;
   }
 
@@ -341,7 +344,25 @@ export class RtTimeline {
     return [this.fetchTimes[0]!, this.fetchTimes[this.fetchTimes.length - 1]!];
   }
 
-  vehiclesAt(t: number, routes?: Set<string>): VehicleState[] {
+  /**
+   * The vehicles shown at t, on `routes` if given. Only those `withDelay` accepts (vehicle ids,
+   * `rt:<id>`; default every one) get a delay: measuring it is most of the cost of a vehicle whose
+   * fix is new, and only a vehicle's card shows it.
+   */
+  vehiclesAt(
+    t: number,
+    routes?: Set<string>,
+    withDelay?: (id: string) => boolean,
+  ): VehicleState[] {
+    this.withDelay = withDelay;
+    try {
+      return this.drawnAt(t, routes);
+    } finally {
+      this.withDelay = undefined;
+    }
+  }
+
+  private drawnAt(t: number, routes: Set<string> | undefined): VehicleState[] {
     const out: VehicleState[] = [];
     // Latest snapshot fetched at or before t: vehicles absent from it have left service.
     const latestFetch = floorValue(this.fetchTimes, t);
@@ -911,6 +932,7 @@ export class RtTimeline {
     const kin =
       trip?.kin ?? kinematicsFor(this.kin, route?.mode ?? "bus", v.routeKey);
     let stop = v.stopId ? this.pp?.stopById.get(v.stopId) : undefined;
+    const wantDelay = this.withDelay?.(`rt:${id}`) ?? true;
     let delay = v.delay;
     const notes: string[] = [];
     /** Whose service changes these are ("TransLink"), as the plan names the feed's agency. */
@@ -967,7 +989,7 @@ export class RtTimeline {
           this.pp.plan.stops[trip.pattern.stops[actual]!]
         : undefined;
       const pr = this.opts.prediction;
-      if (pr) {
+      if (pr && wantDelay) {
         const o = onRoute.tr.obs[onRoute.i]!;
         let d = this.fixDelays.get(o);
         if (d === undefined) {
@@ -1036,7 +1058,7 @@ export class RtTimeline {
     if (speed !== undefined) s.speed = speed;
     if (stop) s.stopName = stop.name;
     if (v.label) s.label = v.label;
-    if (delay !== undefined) s.delay = delay;
+    if (wantDelay && delay !== undefined) s.delay = delay;
     if (notes.length) s.note = notes.join(". ");
     return s;
   }
@@ -1083,18 +1105,6 @@ function floorIndex(obs: Obs[], t: number): number {
     } else hi = mid - 1;
   }
   return ans;
-}
-
-/** How many values are ≤ t. */
-function floorCount(sorted: number[], t: number): number {
-  let lo = 0;
-  let hi = sorted.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (sorted[mid]! <= t) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
 }
 
 function floorValue(sorted: number[], t: number): number | undefined {

@@ -2131,9 +2131,20 @@ export class TransitEngine {
     const live =
       store.scenario ?
         { mode: "estimated" as const, vehicles: undefined }
-      : rt.vehiclesAt(t, pp, visible);
-    // RT delays carried forward: schedule estimates continue from where buses really were.
-    const carry = store.scenario ? undefined : rt.delayCorrections(t, pp);
+      : rt.vehiclesAt(t, pp, visible, (id) => id === this.selectedId);
+    // RT delays carried forward: schedule estimates continue from where buses really were. Of a
+    // bus drawn from RT only a place card needs the delay (its departure times); the map draws an
+    // estimate only for a bus that isn't (below), so the rest are left out.
+    const carry =
+      store.scenario ? undefined : (
+        rt.delayCorrections(
+          t,
+          pp,
+          live.vehicles && !this.place ?
+            new Set(live.vehicles.map((v) => v.id))
+          : undefined,
+        )
+      );
     let byDate = carry?.byDate;
     let aisUsed = false;
     if (!store.scenario) {

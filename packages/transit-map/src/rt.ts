@@ -242,11 +242,15 @@ export class RtClient {
     return out;
   }
 
-  /** RT vehicles at t, or undefined when RT data doesn't cover t (use schedule estimates). */
+  /**
+   * RT vehicles at t, or undefined when RT data doesn't cover t (use schedule estimates). Only
+   * those `withDelay` accepts (vehicle ids; default every one) get a delay (RtTimeline.vehiclesAt).
+   */
   vehiclesAt(
     t: number,
     pp: PreparedPlan | undefined,
     routes?: Set<string>,
+    withDelay?: (id: string) => boolean,
   ): { mode: RtMode; vehicles?: VehicleState[] } {
     if (!this.available) return { mode: "unavailable" };
     const liveSpan = this.liveSpan();
@@ -263,7 +267,11 @@ export class RtClient {
     if (!snapshots) return { mode: "loading" };
     return {
       mode: inLive ? "live" : "recorded",
-      vehicles: this.timelineFor(snapshots, inLive, pp).vehiclesAt(t, routes),
+      vehicles: this.timelineFor(snapshots, inLive, pp).vehiclesAt(
+        t,
+        routes,
+        withDelay,
+      ),
     };
   }
 
@@ -299,11 +307,13 @@ export class RtClient {
   /**
    * RT bus delays at t carried forward into schedule corrections (per service date), and the trips
    * they affect. Uses the live buffer from its start onwards (including the future, when
-   * fast-forwarding past the live edge), else recorded data covering t.
+   * fast-forwarding past the live edge), else recorded data covering t. Buses in `skip` (vehicle
+   * ids) carry no delay: those drawn from RT at t, when no estimate of theirs is needed.
    */
   delayCorrections(
     t: number,
     pp: PreparedPlan | undefined,
+    skip?: ReadonlySet<string>,
   ):
     | {
         byDate: Map<ServiceDate, ScheduleCorrections>;
@@ -321,7 +331,10 @@ export class RtClient {
       : undefined;
     const snapshots = fromLive ? this.live : recorded;
     if (!snapshots) return undefined;
-    const delays = this.timelineFor(snapshots, fromLive, pp).tripDelays(t);
+    const delays = this.timelineFor(snapshots, fromLive, pp).tripDelays(
+      t,
+      skip,
+    );
     if (
       this.carryMemo?.delays !== delays
       || this.carryMemo.pp !== pp
