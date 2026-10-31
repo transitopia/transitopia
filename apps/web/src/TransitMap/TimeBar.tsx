@@ -442,7 +442,9 @@ const Slider: React.FC<Props & { ticks: number[] }> = ({
         aria-label="Time of day"
         className="time-slider relative block h-5 w-full cursor-pointer"
         min={Math.round(lo / 1000)}
-        max={Math.round(hi / 1000)}
+        // A second short of the range's end: that instant starts the next service day, so dragging
+        // to the end would move the slider to that day (and on, a day per move, while held there).
+        max={Math.round(hi / 1000) - 1}
         step={1}
         value={value}
         onPointerDown={() => setScrub(value)}
