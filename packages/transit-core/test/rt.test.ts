@@ -255,6 +255,69 @@ describe("prediction", () => {
     });
   });
 
+  it("measures delays against the paced schedule, across a change of band", () => {
+    // 08:50–09:10: 10 m/s in the AM peak, 2 m/s from 09:00 (midday), a 30 s dwell at 1000 m.
+    const withStop = {
+      ...plan,
+      stops: [
+        ...plan.stops,
+        { id: "mid", name: "Mid", lon: at(1000)[0], lat: at(1000)[1] },
+      ],
+    };
+    withStop.patterns = [
+      { ...plan.patterns[0]!, stops: [0, 2, 1], dist: [0, 1000, 2000] },
+    ];
+    withStop.trips = [
+      { ...plan.trips[0]!, start: 8 * 3600 + 50 * 60, arr: [0, 300, 1200] },
+    ];
+    const pp2 = preparePlan(withStop, kin);
+    const profile = new ProfileBuilder(pp2, cfg).build();
+    const band = (pace: number) => ({
+      pace: Array(40).fill(pace),
+      dwell: { mid: 30 },
+    });
+    profile.shapes.L = {
+      bands: [null, band(0.1), band(0.5), null, null],
+      all: band(0.2),
+    };
+    const p = new Predictor(pp2, cfg, profile);
+    const trip = pp2.tripIndex.get("trip1")!;
+    const date = serviceDate("20260928");
+    // What delayAt answers: the first and last second the paced schedule has the bus at `along`.
+    const reference = (along: number, sec: number) => {
+      const lo = trip.dep[0]!;
+      const hi = trip.arr[trip.arr.length - 1]!;
+      const alongAt = (x: number) =>
+        x <= lo ? 0
+        : x >= hi ? 2000
+        : p.pacer(trip, x, date)!.along;
+      const search = (pred: (x: number) => boolean) => {
+        let a = lo;
+        let b = hi;
+        while (b - a > 0.01) {
+          const m = (a + b) / 2;
+          if (pred(m)) b = m;
+          else a = m;
+        }
+        return b;
+      };
+      const first = search((x) => alongAt(x) >= along - 0.05);
+      const last = search((x) => alongAt(x) > along + 0.05);
+      return (
+        sec < first ? sec - first
+        : sec > last ? sec - last
+        : 0
+      );
+    };
+    const start = trip.trip.start;
+    for (const along of [0, 300, 999, 1000, 1001, 1500, 1990, 2000])
+      for (const s of [0, 120, 300, 500, 600, 700, 1200, 1500])
+        expect(p.delayAt(trip, along, start + s, date)).toBeCloseTo(
+          reference(along, start + s),
+          1,
+        );
+  });
+
   it("paces schedule estimates between timetable times, stopping at stops", () => {
     // Stop at 1000 m, due at 200 s; the timetable gives no dwell, the default dwell (15 s) applies.
     const withStop = {

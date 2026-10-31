@@ -86,6 +86,8 @@ interface Track {
   between: boolean[];
   /** Fetch times of snapshots that included this vehicle, sorted. */
   seenAt: number[];
+  /** Per obs: its trip delay (tripDelays; null: none), filled lazily: it depends only on the fix. */
+  delays: (TripDelay | null)[];
 }
 
 /** A vehicle as drawn at t from one of its fixes, before its stop, delay and notes are worked out. */
@@ -222,6 +224,7 @@ export class RtTimeline {
               held: [],
               between: [],
               seenAt: [],
+              delays: [],
             }),
           );
         tr.seenAt.push(s.fetchedAt);
@@ -288,32 +291,44 @@ export class RtTimeline {
       for (const [id, tr] of this.tracks) {
         const i = floorIndex(tr.obs, t);
         if (i < 0) continue;
-        const o = tr.obs[i]!;
-        const trip = this.trip(o.v.tripId);
-        const along = this.alongOf(tr, i);
-        if (!trip || trip.route.kind !== "bus" || Number.isNaN(along)) continue;
-        const { date } = this.serviceTime(trip, o.v.ts);
-        const secOf = (ms: number) => (ms - serviceDayStart(date)) / 1000;
-        const handover = o.v.ts + this.extrapolateS(o.v.ts) * 1000;
-        const shown = this.shownAlong(tr, i, handover)?.along;
-        const end = trip.pattern.dist[trip.pattern.dist.length - 1]!;
-        const [ms, a] =
-          shown !== undefined && shown < end - 1 ?
-            [handover, shown]
-          : [o.v.ts, along];
-        const delay = pr.predictor.delayAt(trip, a, secOf(ms), date);
-        delays.push({
-          tripId: trip.trip.id,
-          serviceDate: date,
-          delay,
-          schedSec: secOf(ms) - delay,
-          fixTs: o.v.ts,
-          vehicle: { id: `rt:${id}`, label: o.v.label },
-        });
+        let d = tr.delays[i];
+        if (d === undefined) d = tr.delays[i] = this.delayOf(id, tr, i, pr);
+        if (d) delays.push(d);
       }
     }
     this.delaysMemo = { upTo, delays };
     return delays;
+  }
+
+  /** A bus's delay as of its fix i (tripDelays). */
+  private delayOf(
+    id: string,
+    tr: Track,
+    i: number,
+    pr: NonNullable<TimelineOptions["prediction"]>,
+  ): TripDelay | null {
+    const o = tr.obs[i]!;
+    const trip = this.trip(o.v.tripId);
+    const along = this.alongOf(tr, i);
+    if (!trip || trip.route.kind !== "bus" || Number.isNaN(along)) return null;
+    const { date } = this.serviceTime(trip, o.v.ts);
+    const secOf = (ms: number) => (ms - serviceDayStart(date)) / 1000;
+    const handover = o.v.ts + this.extrapolateS(o.v.ts) * 1000;
+    const shown = this.shownAlong(tr, i, handover)?.along;
+    const end = trip.pattern.dist[trip.pattern.dist.length - 1]!;
+    const [ms, a] =
+      shown !== undefined && shown < end - 1 ?
+        [handover, shown]
+      : [o.v.ts, along];
+    const delay = pr.predictor.delayAt(trip, a, secOf(ms), date);
+    return {
+      tripId: trip.trip.id,
+      serviceDate: date,
+      delay,
+      schedSec: secOf(ms) - delay,
+      fixTs: o.v.ts,
+      vehicle: { id: `rt:${id}`, label: o.v.label },
+    };
   }
 
   get size(): number {
