@@ -10,6 +10,7 @@ import {
   CYCLING_ROUTES_MAX_ZOOM,
   osmFeatureId,
 } from "@transitopia/cycling-core/tiles.ts";
+import type { Comfort } from "@transitopia/cycling-core/classify.ts";
 import type { Theme } from "@transitopia/map-style/basemap.ts";
 import { FONTS } from "@transitopia/map-style/basemap.ts";
 import {
@@ -43,32 +44,32 @@ export const pathLayerIds = [
 export const otherLayerIds = ["bike_parking_point"];
 
 /**
- * What the cycling layers panel shows (CyclingLayers.tsx). The categories follow the tiles' comfort
- * levels (packages/cycling-core/src/classify.ts): protected = separated
- * tracks and paths (comfort 4, or 3 when shared with pedestrians), local = traffic-calmed shared
- * streets (comfort 3 on the road), painted = lanes on the roadway, including shared lanes on busy
- * streets (comfort 1–2). "All ages & abilities only" hides comfort 1–2 whatever `painted` says.
- * Ferries that take bikes (class "ferry", no comfort) have a switch of their own.
+ * What the cycling layers panel shows (CyclingLayers.tsx): paths at each of the tiles' comfort
+ * levels (`comfort4` … `comfort1`: packages/cycling-core/src/classify.ts, named in comfort.ts), and
+ * the rest. Ferries that take bikes (class "ferry", no comfort) have a switch of their own.
  */
 export interface CyclingShow {
-  protected: boolean;
-  painted: boolean;
-  local: boolean;
+  comfort4: boolean;
+  comfort3: boolean;
+  comfort2: boolean;
+  comfort1: boolean;
   parking: boolean;
   construction: boolean;
   ferries: boolean;
-  aaaOnly: boolean;
 }
 
 export const DEFAULT_SHOW: CyclingShow = {
-  protected: true,
-  painted: true,
-  local: true,
+  comfort4: true,
+  comfort3: true,
+  comfort2: true,
+  comfort1: true,
   parking: true,
   construction: true,
   ferries: true,
-  aaaOnly: false,
 };
+
+/** The switch for paths at a comfort level. */
+export const comfortKey = (c: Comfort) => `comfort${c}` as const;
 
 const comfort: ExpressionSpecification = ["to-number", ["get", "comfort"]];
 const isLine: ExpressionSpecification = ["==", ["geometry-type"], "LineString"];
@@ -78,19 +79,10 @@ const notConstruction: ExpressionSpecification = [
   true,
 ];
 
-/** Paths (not under construction) in a category the panel shows. */
+/** Paths (not under construction) at a comfort level the panel shows. */
 function shownPaths(show: CyclingShow): ExpressionSpecification {
-  const any: ExpressionSpecification[] = [];
-  if (show.protected)
-    any.push([
-      "any",
-      ["==", comfort, 4],
-      ["all", ["==", comfort, 3], ["==", ["get", "class"], "track"]],
-    ]);
-  if (show.local)
-    any.push(["all", ["==", comfort, 3], ["!=", ["get", "class"], "track"]]);
-  if (show.painted && !show.aaaOnly) any.push(["<=", comfort, 2]);
-  return ["any", ...any];
+  const levels = ([4, 3, 2, 1] as const).filter((c) => show[comfortKey(c)]);
+  return ["in", comfort, ["literal", levels]];
 }
 
 /** Each layer's filter for what the panel shows. */

@@ -1,11 +1,19 @@
 import React from "react";
 
+import { COMFORT, type Comfort } from "@transitopia/cycling-core/classify.ts";
+
 import {
   LayersPanel,
   PanelDivider,
+  PanelHeading,
   SwitchRow,
 } from "../components/LayersPanel.tsx";
-import { DEFAULT_SHOW, type CyclingShow } from "./cycling-map-layers.ts";
+import { COMFORT_NAMES } from "./comfort.ts";
+import {
+  comfortKey,
+  DEFAULT_SHOW,
+  type CyclingShow,
+} from "./cycling-map-layers.ts";
 
 const STORAGE_KEY = "transitopia:cycling:layers";
 
@@ -36,49 +44,59 @@ export function useCyclingShow(): [CyclingShow, (show: CyclingShow) => void] {
 }
 
 /** A line sample in the cycling layer's style (cycling-map-layers.ts). */
-const Line: React.FC<{ className: string }> = ({ className }) => (
-  <span className={`block w-7 ${className}`} />
-);
+const Line: React.FC<{ className: string; children?: React.ReactNode }> = ({
+  className,
+  children,
+}) => <span className={`block w-7 ${className}`}>{children}</span>;
 
-/** The cycling layers panel (apps/web/README.md#header-and-layers). */
+/** Each comfort level's line, as the map draws it (cycling-map-layers.ts). */
+const COMFORT_SWATCHES: Record<Comfort, React.ReactNode> = {
+  [COMFORT.most]: (
+    <Line className="h-[5px] rounded-full bg-[#1a6d23] dark:bg-[#4cc26a]" />
+  ),
+  // With the white centre dashes the map adds from z13.
+  [COMFORT.high]: (
+    <Line className="flex h-[5px] items-center rounded-full bg-[#1a6d23] px-0.5 dark:bg-[#4cc26a]">
+      <span className="h-px flex-1 bg-[repeating-linear-gradient(90deg,rgba(255,255,255,0.8)_0_2px,transparent_2px_5px)] dark:bg-[repeating-linear-gradient(90deg,rgba(21,24,28,0.8)_0_2px,transparent_2px_5px)]" />
+    </Line>
+  ),
+  [COMFORT.low]: (
+    <Line className="h-[3px] bg-[repeating-linear-gradient(90deg,#1a6d23_0_4px,transparent_4px_9px)] dark:bg-[repeating-linear-gradient(90deg,#4cc26a_0_4px,transparent_4px_9px)]" />
+  ),
+  // Round dots, as the map draws comfort 1 (round caps on a short dash).
+  [COMFORT.least]: (
+    <Line className="h-[3px] bg-[radial-gradient(circle,#1a3223_1.2px,transparent_1.6px)] bg-[length:6px_3px] dark:bg-[radial-gradient(circle,#a7c9ae_1.2px,transparent_1.6px)]" />
+  ),
+};
+
+/** The cycling layers panel (apps/web/README.md#header-and-layers), by comfort level. */
 export const CyclingLayers: React.FC<{
   show: CyclingShow;
   onChange: (show: CyclingShow) => void;
 }> = ({ show, onChange }) => {
   const set = (k: keyof CyclingShow) => (on: boolean) =>
     onChange({ ...show, [k]: on });
+  const comfortRow = (c: Comfort) => (
+    <SwitchRow
+      key={c}
+      title={COMFORT_NAMES[c].title}
+      description={COMFORT_NAMES[c].description}
+      swatch={COMFORT_SWATCHES[c]}
+      on={show[comfortKey(c)]}
+      onChange={set(comfortKey(c))}
+    />
+  );
   return (
-    <LayersPanel label="Cycling layers">
-      <SwitchRow
-        title="Protected lanes & paths"
-        description="Separated from traffic"
-        swatch={
-          <Line className="h-[5px] rounded-full bg-[#1a6d23] dark:bg-[#4cc26a]" />
-        }
-        on={show.protected}
-        onChange={set("protected")}
-      />
-      <SwitchRow
-        title="Local street bikeways"
-        description="Shared, traffic-calmed streets"
-        swatch={
-          <Line className="h-1 rounded-full bg-[#1a6d23] dark:bg-[#4cc26a]" />
-        }
-        on={show.local}
-        onChange={set("local")}
-      />
-      <SwitchRow
-        title="Painted bike lanes"
-        description="On the roadway, and shared lanes on busy streets"
-        swatch={
-          <Line className="h-[3px] bg-[repeating-linear-gradient(90deg,#1a6d23_0_4px,transparent_4px_9px)] dark:bg-[repeating-linear-gradient(90deg,#4cc26a_0_4px,transparent_4px_9px)]" />
-        }
-        on={show.painted && !show.aaaOnly}
-        onChange={(on) =>
-          // Showing painted lanes again also lifts "all ages & abilities only".
-          onChange({ ...show, painted: on, aaaOnly: on ? false : show.aaaOnly })
-        }
-      />
+    <LayersPanel label="Cycling layers" sectioned>
+      <PanelHeading>Most comfortable</PanelHeading>
+      {comfortRow(COMFORT.most)}
+      {comfortRow(COMFORT.high)}
+      <PanelDivider />
+      <PanelHeading>Less comfortable</PanelHeading>
+      {comfortRow(COMFORT.low)}
+      {comfortRow(COMFORT.least)}
+      <PanelDivider />
+      <PanelHeading>More</PanelHeading>
       <SwitchRow
         title="Bike parking"
         swatch={
@@ -86,14 +104,6 @@ export const CyclingLayers: React.FC<{
         }
         on={show.parking}
         onChange={set("parking")}
-      />
-      <SwitchRow
-        title="Under construction"
-        swatch={
-          <Line className="h-[3.5px] bg-[repeating-linear-gradient(90deg,#e26d23_0_4px,transparent_4px_9px)] dark:bg-[repeating-linear-gradient(90deg,#f08a3c_0_4px,transparent_4px_9px)]" />
-        }
-        on={show.construction}
-        onChange={set("construction")}
       />
       <SwitchRow
         title="Ferries"
@@ -104,12 +114,13 @@ export const CyclingLayers: React.FC<{
         on={show.ferries}
         onChange={set("ferries")}
       />
-      <PanelDivider />
       <SwitchRow
-        title="All ages & abilities only"
-        description="Hide painted lanes and busy shared roads"
-        on={show.aaaOnly}
-        onChange={set("aaaOnly")}
+        title="Under construction"
+        swatch={
+          <Line className="h-[3.5px] bg-[repeating-linear-gradient(90deg,#e26d23_0_4px,transparent_4px_9px)] dark:bg-[repeating-linear-gradient(90deg,#f08a3c_0_4px,transparent_4px_9px)]" />
+        }
+        on={show.construction}
+        onChange={set("construction")}
       />
     </LayersPanel>
   );

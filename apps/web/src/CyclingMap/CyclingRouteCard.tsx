@@ -14,6 +14,7 @@ import {
   type CardAction,
 } from "../components/InfoCard.tsx";
 import { BIKE_TILE } from "./BikePathCard.tsx";
+import { COMFORT_NAMES } from "./comfort.ts";
 
 /** OSM's route networks, in words. */
 const NETWORKS: Record<string, string> = {
@@ -35,28 +36,29 @@ export const API_UNREACHABLE =
   "Can't reach the Transitopia API server, so bike routes can't be shown.";
 
 /**
- * The comfort levels (COMFORT), most comfortable first, in the map's greens; COMFORT.none is a
- * route's ways that aren't bike facilities, and ferries are apart from them.
+ * The comfort levels (COMFORT, named as the layers panel names them: comfort.ts), most comfortable
+ * first, in the map's greens; COMFORT.none is a route's ways that aren't bike facilities, and
+ * ferries are apart from them.
  */
 const COMFORT_LEVELS = [
   {
     comfort: COMFORT.most,
-    label: "Separated from traffic",
+    label: COMFORT_NAMES[COMFORT.most].title,
     swatch: "bg-[#1a6d23] dark:bg-[#4cc26a]",
   },
   {
     comfort: COMFORT.high,
-    label: "Quiet street or shared path",
+    label: COMFORT_NAMES[COMFORT.high].title,
     swatch: "bg-[#5c9e63] dark:bg-[#33874a]",
   },
   {
     comfort: COMFORT.low,
-    label: "Painted bike lane",
+    label: COMFORT_NAMES[COMFORT.low].title,
     swatch: "bg-[#a5cfa8] dark:bg-[#285e36]",
   },
   {
     comfort: COMFORT.least,
-    label: "Busy street or beside parked cars",
+    label: COMFORT_NAMES[COMFORT.least].title,
     swatch: "bg-[#e0a33a] dark:bg-[#c98a2a]",
   },
   {

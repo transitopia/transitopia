@@ -72,8 +72,10 @@ export const LAYERS_PANEL_ID = "layers-panel";
 export const LayersPanel: React.FC<{
   /** "Transit layers": the panel's name, and its heading on phones. */
   label: string;
+  /** The rows come in sections with their own headings (`PanelHeading`), so the panel's "Show" is left out. */
+  sectioned?: boolean | undefined;
   children: React.ReactNode;
-}> = ({ label, children }) => {
+}> = ({ label, sectioned, children }) => {
   const { open, setOpen, host } = useLayersPanel();
   const ref = React.useRef<HTMLElement>(null);
 
@@ -121,9 +123,9 @@ export const LayersPanel: React.FC<{
             Done
           </button>
         </div>
-        <h2 className="px-4 pt-2 pb-1 text-xs font-bold uppercase tracking-wider text-gray-500 max-sm:hidden dark:text-gray-400">
-          Show
-        </h2>
+        {sectioned ? null : (
+          <h2 className={`${HEADING} max-sm:hidden`}>Show</h2>
+        )}
         {children}
       </section>
     </>,
@@ -185,6 +187,14 @@ export const SwitchRow: React.FC<{
     <SwitchKnob on={on && !disabled} />
   </button>
 );
+
+const HEADING =
+  "px-4 pt-2 pb-1 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400";
+
+/** A section's heading, in a `sectioned` panel. */
+export const PanelHeading: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => <h3 className={HEADING}>{children}</h3>;
 
 export const PanelDivider: React.FC = () => (
   <div className="mx-4 my-1.5 h-px bg-gray-200 dark:bg-gray-700" />
