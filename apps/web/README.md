@@ -107,9 +107,13 @@ Everything tapped on the map opens the same card (`src/components/InfoCard.tsx`)
 - Vehicles: `src/TransitMap/VehicleCard.tsx`; stations and stops: `PlaceCard.tsx` ([above](#station-and-stop-cards)); routes: `RouteCard.tsx` ([above](#route-cards)).
 - Bike lanes and paths (`src/CyclingMap/BikePathCard.tsx`, labelled "Bikeway") from the cycling tiles' attributes, with "Part of" chips for the bike routes they're in (`CyclingRouteCard.tsx`, [Cycling links](#cycling-links)), and bike parking (`BikeParkingCard.tsx`: capacity, type, covered, indoors, operator) from the tiles too, with a link to view or edit it on OpenStreetMap. Bike cards ignore the map's time: OpenStreetMap has no history. The selected feature is highlighted on the map; bike parking stays a faint dot.
 
+## Context menu
+
+A right-click on the map, or a long press on a touch screen (MapLibre fires `contextmenu` for both), opens the map's menu at that point (`src/Map/MapContextMenu.tsx`, a `MenuList` like the [tap menu](#tap-menu)), in every mode: the point's coordinates (choosing them copies them, as Google Maps does), Show legend and layers (the active mode's [layers panel](#header-and-layers)), Open in OpenStreetMap, Open in Google Maps (its universal link, which opens the app on phones that have it), About Transitopia (the [attribution](#attribution) panel) and Report an issue or suggestion (GitHub issues). Escape, a press elsewhere or moving the map closes it.
+
 ## Attribution
 
-The site replaces MapLibre's attribution control with its own (`src/Attribution/`), which credits exactly the data on screen: each mode declares what it draws with `useDatasets([...])`, and the transit engine reports the datasets it's drawing. Entries come from the registry in [packages/shared](../../packages/shared/src/datasets.ts). Design: [docs/DESIGN.md → Attribution](../../docs/DESIGN.md#attribution).
+The site replaces MapLibre's attribution control with its own (`src/Attribution/`), which credits exactly the data on screen, under a few lines about Transitopia with its source and a link to report an issue or suggestion (its ⓘ button or the [context menu](#context-menu) opens it): each mode declares what it draws with `useDatasets([...])`, and the transit engine reports the datasets it's drawing. Entries come from the registry in [packages/shared](../../packages/shared/src/datasets.ts). Design: [docs/DESIGN.md → Attribution](../../docs/DESIGN.md#attribution).
 
 ## Themes
 

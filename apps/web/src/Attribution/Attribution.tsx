@@ -9,11 +9,16 @@ const BASEMAP_DATASETS = ["osm", "protomaps"];
 type Registry = {
   add: (ids: readonly string[]) => () => void;
   ids: readonly string[];
+  /** Whether the About panel (the credits) is open: its ⓘ button or the map's context menu. */
+  aboutOpen: boolean;
+  setAboutOpen: (open: boolean) => void;
 };
 
 const AttributionContext = React.createContext<Registry>({
   add: () => () => {},
   ids: BASEMAP_DATASETS,
+  aboutOpen: false,
+  setAboutOpen: () => {},
 });
 
 export const AttributionProvider: React.FC<{ children: React.ReactNode }> = ({
@@ -22,6 +27,7 @@ export const AttributionProvider: React.FC<{ children: React.ReactNode }> = ({
   const [counts, setCounts] = React.useState<ReadonlyMap<string, number>>(
     new Map(),
   );
+  const [aboutOpen, setAboutOpen] = React.useState(false);
   const add = React.useCallback((ids: readonly string[]) => {
     const bump = (d: 1 | -1) =>
       setCounts((prev) => {
@@ -37,8 +43,13 @@ export const AttributionProvider: React.FC<{ children: React.ReactNode }> = ({
     return () => bump(-1);
   }, []);
   const value = React.useMemo(
-    () => ({ add, ids: [...BASEMAP_DATASETS, ...counts.keys()] }),
-    [add, counts],
+    () => ({
+      add,
+      ids: [...BASEMAP_DATASETS, ...counts.keys()],
+      aboutOpen,
+      setAboutOpen,
+    }),
+    [add, counts, aboutOpen],
   );
   return (
     <AttributionContext.Provider value={value}>
@@ -54,9 +65,21 @@ export function useDatasets(ids: readonly string[]): void {
   React.useEffect(() => (key ? add(key.split(",")) : undefined), [add, key]);
 }
 
+/** Open or close the About panel. */
+export function useAboutPanel(): {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+} {
+  const { aboutOpen, setAboutOpen } = React.useContext(AttributionContext);
+  return { open: aboutOpen, setOpen: setAboutOpen };
+}
+
 export const AttributionControl: React.FC = () => {
-  const { ids } = React.useContext(AttributionContext);
-  const [open, setOpen] = React.useState(false);
+  const {
+    ids,
+    aboutOpen: open,
+    setAboutOpen: setOpen,
+  } = React.useContext(AttributionContext);
   const datasets = creditsFor(ids);
   const legends = legendsFor(datasets);
   return (
@@ -121,6 +144,14 @@ export const AttributionControl: React.FC = () => {
             </p>
           ))}
           <p className="mt-2">
+            <a
+              href="https://github.com/transitopia/transitopia/issues"
+              className="underline"
+              target="_blank"
+              rel="noreferrer">
+              Report an issue or suggestion
+            </a>
+            {" · "}
             <a
               href="https://github.com/transitopia/transitopia/blob/main/DATA-LICENSES.md"
               className="underline"

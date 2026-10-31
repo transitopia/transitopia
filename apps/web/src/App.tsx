@@ -4,6 +4,7 @@ import React from "react";
 import { Redirect, Route, Switch } from "wouter";
 
 import { AsyncMapLibreGLLoader, Map } from "./Map/Map.tsx";
+import { MapContextMenu } from "./Map/MapContextMenu.tsx";
 import { CyclingMap } from "./CyclingMap/CyclingMap.tsx";
 import { ModeSwitch } from "./components/ModeSwitch.tsx";
 import {
@@ -97,6 +98,7 @@ function MapApp() {
               </Route>
             </Switch>
             <AttributionControl />
+            <MapContextMenu />
           </Map>
         </AsyncMapLibreGLLoader>
       </LayersPanelProvider>
