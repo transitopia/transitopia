@@ -353,6 +353,12 @@ const SNAPSHOT_INTERVAL_MS = 200;
  */
 const IDLE_RECOMPUTE_MS = 1000;
 /**
+ * Bus frequencies (corridor, stop tick and vehicle colours, and "Now"'s label) follow the clock at
+ * most this often: dragging the slider crosses a five-minute step nearly every frame, and working
+ * them out again took a quarter of the main thread while it was shown for a frame (2026-10-31).
+ */
+const FREQUENCY_INTERVAL_MS = 250;
+/**
  * While playing, vehicles are recomputed (and the map repainted) for a new time only once the
  * fastest could have moved this far on screen (px): zoomed out, a train moves about a pixel a
  * second, and recomputing every vehicle every frame kept the main thread busy for nothing.
@@ -425,6 +431,8 @@ export class TransitEngine {
   >();
   /** What route colours were last set for (syncRouteColors). */
   private routeColorsFor: { pp: PreparedPlan; key: string } | undefined;
+  /** The time bus frequencies are shown for (FREQUENCY_INTERVAL_MS), and when it was set (performance.now()). */
+  private frequencyAt: { t: number; at: number } | undefined;
   /** The real-time corrections last applied, per service date (for departure times). */
   private lastCorrections: Map<ServiceDate, ScheduleCorrections> | undefined;
   private following = false;
@@ -1761,6 +1769,11 @@ export class TransitEngine {
     return fn(date).label;
   }
 
+  /** The time bus frequencies are shown for: the clock's, at most FREQUENCY_INTERVAL_MS behind. */
+  private frequencyTime(): number {
+    return this.frequencyAt?.t ?? this.clock.now();
+  }
+
   private sliderRange(t: number): [number, number] {
     const start = serviceDayStart(displayServiceDate(t));
     return [start + SLIDER_START_S * 1000, start + SLIDER_END_S * 1000];
@@ -1829,8 +1842,9 @@ export class TransitEngine {
       linesReady: this.linesReady,
       busFrequency: this.busFrequency,
       busFrequencyHour: (() => {
-        const day = serviceDayStart(serviceDate);
-        const from = day + nowWindowStart((t - day) / 1000) * 1000;
+        const ft = this.frequencyTime();
+        const day = serviceDayStart(displayServiceDate(ft));
+        const from = day + nowWindowStart((ft - day) / 1000) * 1000;
         const same = prev?.busFrequencyHour;
         // A stable identity while the window stays put, so React skips re-rendering the key.
         return same?.[0] === from ? same : [from, from + 3600_000];
@@ -1986,7 +2000,7 @@ export class TransitEngine {
     const pp = this.shownFeed;
     if (!pp) return false;
     const freq = this.frequencyLayer;
-    const t = this.clock.now();
+    const t = this.frequencyTime();
     const date = displayServiceDate(t);
     const step =
       this.busFrequency === "now" ?
@@ -2069,12 +2083,21 @@ export class TransitEngine {
       }
     }
     this.syncStatic();
+    if (
+      !this.frequencyAt
+      || (t !== this.frequencyAt.t
+        && at - this.frequencyAt.at >= FREQUENCY_INTERVAL_MS)
+    ) {
+      this.frequencyAt = { t, at };
+      this.dirty = true; // "Now"'s label
+    }
     if (this.frequencyLayer && this.styleReady) {
-      const date = displayServiceDate(t);
+      const ft = this.frequencyTime();
+      const date = displayServiceDate(ft);
       this.frequencyLayer.update(
         map,
         date,
-        (t - serviceDayStart(date)) / 1000,
+        (ft - serviceDayStart(date)) / 1000,
         this.busFrequency,
         this.hidden,
         this.focus(),
