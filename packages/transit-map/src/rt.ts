@@ -7,8 +7,8 @@
 
 import {
   coverageContains,
-  decodeSnapshot,
   expandSnapshot,
+  type CompactSnapshot,
   type RtCoverageResponse,
   type RtSnapshot,
 } from "@transitopia/transit-core/rt/types.ts";
@@ -17,6 +17,11 @@ import {
   type LiveTransitResponse,
   type VersionPointer,
 } from "@transitopia/transit-core/rt/live.ts";
+import {
+  SnapshotPacker,
+  unpackSnapshots,
+  type PackedSnapshots,
+} from "@transitopia/transit-core/rt/packed.ts";
 import { RtTimeline } from "@transitopia/transit-core/rt/timeline.ts";
 import {
   Predictor,
@@ -40,6 +45,7 @@ import {
 } from "@transitopia/transit-core/rt/changes.ts";
 import {
   addDays,
+  fromWallTime,
   localDate,
   toWallTime,
   type ServiceDate,
@@ -61,9 +67,17 @@ const NO_REALTIME: Cadence = {
 
 /** How much live history to keep in memory for interpolation. */
 const LIVE_BUFFER_MS = 20 * 60_000;
-const MAX_HOURS_CACHED = 8;
-/** Recorded hours fetched at once: scrubbing across the day shouldn't fetch every hour it passes. */
+/**
+ * Recorded hours fetched at once, besides the one shown: the shown hour doesn't wait behind hours
+ * scrubbed past or prefetched.
+ */
 const MAX_HOUR_LOADS = 2;
+/** Loaded hours kept as RtSnapshot objects (the rest stay packed): the one shown and its neighbours. */
+const MAX_HOURS_UNPACKED = 3;
+/** An hour loaded before it closed (plus this, for the recorder to write it) is reloaded this often while shown. */
+const HOUR_RELOAD_MS = 60_000;
+/** A failed hour is retried after this. */
+const HOUR_RETRY_MS = 30_000;
 /** Timelines kept for recently shown snapshot sets: scrubbing back and forth near hour boundaries switches between them. */
 const MAX_TIMELINES_CACHED = 4;
 /** Without the live endpoint, service changes for today and yesterday are refetched this often (cheap: they come from our server, which polls TransLink on its own schedule). */
@@ -89,8 +103,17 @@ interface DayChanges {
 }
 
 interface HourChunk {
+  /** "ready" stays while a reload is in flight: the snapshots loaded before still show. */
   status: "loading" | "ready" | "missing";
-  snapshots: RtSnapshot[];
+  packed?: PackedSnapshots | undefined;
+  /** Epoch ms when the hour ends. */
+  end: number;
+  /** Epoch ms when the snapshots held were requested. */
+  loadedAt: number;
+  /** When a failed load may be retried (undefined: the hour isn't recorded). */
+  retryAt?: number | undefined;
+  /** Set while a load is in flight. */
+  abort?: AbortController | undefined;
 }
 
 export class RtClient {
@@ -100,7 +123,16 @@ export class RtClient {
   private changesPointer: Record<string, VersionPointer> | undefined;
   /** Whether the live endpoint answered its last poll (until it fails, recent days wait for its pointer). */
   private liveOk = true;
+  /** Recorded hours of the displayed day (hour id → chunk), packed (packages/transit-core/src/rt/packed.ts). */
   private hours = new Map<string, HourChunk>();
+  /** Unpacked snapshots of recently shown hours, most recently used last. */
+  private unpacked = new Map<string, RtSnapshot[]>();
+  /** The displayed service day's [start, end], from update(). */
+  private day: [number, number] | undefined;
+  /** Whether to load every recorded hour of the day (set once the time is scrubbed). */
+  private prefetching = false;
+  /** prefetchDay() since the last update(): it applies to the day that update shows. */
+  private prefetchRequested = false;
   private coverage: [number, number][] = [];
   private coverageRange: [number, number] | undefined;
   private coverageFetchedAt = 0;
@@ -172,9 +204,17 @@ export class RtClient {
     for (const fn of this.listeners) fn();
   }
 
-  /** Called every frame with the clock time; schedules any fetches needed. */
-  update(t: number): void {
+  /**
+   * Called every frame with the clock time and the displayed service day's [start, end]; schedules
+   * any fetches needed.
+   */
+  update(t: number, day: [number, number]): void {
     if (!this.api) return;
+    this.setDay(day);
+    if (this.prefetchRequested) {
+      this.prefetching = true;
+      this.prefetchRequested = false;
+    }
     const nearNow = Math.abs(t - Date.now()) < LIVE_WINDOW_MS;
     if (!nearNow || t < Date.now() - this.cadence.maxInterpolateLimitS * 1000)
       this.ensureHours(t);
@@ -484,67 +524,171 @@ export class RtClient {
     return { id: `${date}T${hour}`, date, hour };
   }
 
-  /** Load the hour containing t, plus the neighbouring hour when t is near a boundary. */
-  private ensureHours(t: number): void {
-    if (!coverageContains(this.coverage, t, 15 * 60_000)) return;
+  /** Epoch ms of the end of the hour containing t. */
+  private hourEnd(t: number): number {
+    const w = toWallTime(t);
+    return fromWallTime({ ...w, minute: 0, second: 0 }) + 3600_000;
+  }
+
+  /**
+   * The displayed service day (the slider's range): hours kept loaded are those around it, so a
+   * different day drops the others.
+   */
+  private setDay(day: [number, number]): void {
+    if (this.day?.[0] === day[0] && this.day[1] === day[1]) return;
+    this.day = day;
+    this.prefetching = false;
     const margin = this.cadence.maxInterpolateLimitS * 1000;
-    const ids = new Map<string, { date: string; hour: string }>();
-    // The hour containing t first: it's the one needed to show anything.
-    for (const x of [t, t - margin, t + margin]) {
-      const h = this.hourId(x);
-      ids.set(h.id, h);
+    for (const [id, chunk] of this.hours)
+      if (
+        chunk.end <= day[0] - margin
+        || chunk.end - 3600_000 >= day[1] + margin
+      ) {
+        chunk.abort?.abort();
+        this.hours.delete(id);
+        this.unpacked.delete(id);
+      }
+  }
+
+  /** Load every recorded hour of the displayed day from now on (the time is being scrubbed). */
+  prefetchDay(): void {
+    this.prefetchRequested = true;
+  }
+
+  /**
+   * Load the hour containing t, plus the neighbouring hour when t is near a boundary; while
+   * prefetching, the rest of the day's recorded hours too, nearest first.
+   */
+  private ensureHours(t: number): void {
+    const now = Date.now();
+    const margin = this.cadence.maxInterpolateLimitS * 1000;
+    // Hour id → a time in it; the hours shown first, the one containing t leading.
+    const shown = new Map<string, number>();
+    if (coverageContains(this.coverage, t, 15 * 60_000))
+      for (const x of [t, t - margin, t + margin]) {
+        const { id } = this.hourId(x);
+        if (!shown.has(id)) shown.set(id, x);
+      }
+    const rest = new Map<string, number>();
+    if (this.prefetching && this.day) {
+      const starts: number[] = [];
+      const end = Math.min(this.day[1], now);
+      for (let x = this.hourEnd(this.day[0]) - 3600_000; x < end; x += 3600_000)
+        if (this.coverage.some(([a, b]) => a < x + 3600_000 && b >= x))
+          starts.push(x);
+      const mid = (x: number) => Math.abs(x + 1800_000 - t);
+      starts.sort((a, b) => mid(a) - mid(b));
+      for (const x of starts) {
+        const { id } = this.hourId(x);
+        if (!shown.has(id)) rest.set(id, x);
+      }
     }
     let loading = 0;
-    for (const chunk of this.hours.values())
-      if (chunk.status === "loading") loading++;
-    for (const [id, { date, hour }] of ids) {
-      const cached = this.hours.get(id);
-      if (cached) {
-        // Most recently used last.
-        this.hours.delete(id);
-        this.hours.set(id, cached);
-        continue;
+    for (const chunk of this.hours.values()) if (chunk.abort) loading++;
+    const own = shown.keys().next().value;
+    for (const [hours, isShown] of [
+      [shown, true],
+      [rest, false],
+    ] as const)
+      for (const [id, x] of hours) {
+        const chunk = this.hours.get(id);
+        if (chunk && !this.needsLoad(chunk, now, isShown)) continue;
+        // The hour containing t never waits for others to finish.
+        if (id !== own && loading >= MAX_HOUR_LOADS) continue;
+        loading++;
+        const { date, hour } = this.hourId(x);
+        const c: HourChunk = chunk ?? {
+          status: "loading",
+          end: this.hourEnd(x),
+          loadedAt: 0,
+        };
+        this.hours.set(id, c);
+        void this.loadHour(id, date, hour, c);
       }
-      if (loading >= MAX_HOUR_LOADS) continue;
-      loading++;
-      const chunk: HourChunk = { status: "loading", snapshots: [] };
-      this.hours.set(id, chunk);
-      void this.loadHour(date, hour, chunk);
-    }
-    // Evict least-recently-used hours beyond the cache size.
-    while (this.hours.size > MAX_HOURS_CACHED)
-      this.hours.delete(this.hours.keys().next().value!);
+  }
+
+  /**
+   * Whether to (re)load an hour: never loaded, a failed load due for a retry, or (while shown)
+   * loaded before the recorder finished writing it.
+   */
+  private needsLoad(chunk: HourChunk, now: number, shown: boolean): boolean {
+    if (chunk.abort) return false;
+    if (chunk.retryAt !== undefined) return now >= chunk.retryAt;
+    if (chunk.status === "missing") return false;
+    return (
+      shown
+      && chunk.loadedAt < chunk.end + HOUR_RELOAD_MS
+      && now - chunk.loadedAt >= HOUR_RELOAD_MS
+    );
   }
 
   private async loadHour(
+    id: string,
     date: string,
     hour: string,
     chunk: HourChunk,
   ): Promise<void> {
+    const abort = new AbortController();
+    chunk.abort = abort;
+    const startedAt = Date.now();
     try {
       const res = await fetch(
         `${this.api}rt/history?feed=${this.feed}&date=${date}&hour=${hour}`,
+        { signal: abort.signal },
       );
       if (!res.ok) {
-        chunk.status = "missing";
+        if (chunk.status === "loading") chunk.status = "missing";
+        // The recorder may not have written an hour that's still open.
+        if (res.status !== 404 || startedAt < chunk.end + HOUR_RELOAD_MS)
+          chunk.retryAt = startedAt + HOUR_RETRY_MS;
         return;
       }
       const text = await res.text();
-      chunk.snapshots = text.split("\n").filter(Boolean).map(decodeSnapshot);
+      const packer = new SnapshotPacker();
+      for (const line of text.split("\n"))
+        if (line) packer.add(JSON.parse(line) as CompactSnapshot);
+      chunk.packed = packer.finish();
       chunk.status = "ready";
-      this.emit();
+      chunk.loadedAt = startedAt;
+      chunk.retryAt = undefined;
+      this.unpacked.delete(id);
     } catch {
-      chunk.status = "missing";
+      if (abort.signal.aborted) return;
+      if (chunk.status === "loading") chunk.status = "missing";
+      chunk.retryAt = startedAt + HOUR_RETRY_MS;
+    } finally {
+      chunk.abort = undefined;
+      this.emit();
     }
   }
 
+  /** A loaded hour's snapshots, unpacked for the few hours around the time shown. */
+  private hourSnapshots(id: string): RtSnapshot[] | undefined {
+    const chunk = this.hours.get(id);
+    if (chunk?.status !== "ready" || !chunk.packed) return undefined;
+    let s = this.unpacked.get(id);
+    if (s) this.unpacked.delete(id);
+    else {
+      s = unpackSnapshots(chunk.packed);
+      if (this.unpacked.size >= MAX_HOURS_UNPACKED)
+        this.unpacked.delete(this.unpacked.keys().next().value!);
+    }
+    this.unpacked.set(id, s);
+    return s;
+  }
+
   /**
-   * Snapshots from loaded hours around t, or undefined while the hour containing t loads. A
-   * neighbouring hour still loading is left out until it arrives.
+   * Snapshots from loaded hours around t, or undefined while the hour containing t loads (or
+   * failed and will be retried). A neighbouring hour still loading is left out until it arrives.
    */
   private snapshotsAround(t: number): RtSnapshot[] | undefined {
     const own = this.hours.get(this.hourId(t).id);
-    if (!own || own.status === "loading") return undefined;
+    if (
+      !own
+      || own.status === "loading"
+      || (own.status === "missing" && own.retryAt !== undefined)
+    )
+      return undefined;
     const margin = this.cadence.maxInterpolateLimitS * 1000;
     const out: RtSnapshot[] = [];
     const seen = new Set<string>();
@@ -552,8 +696,8 @@ export class RtClient {
       const { id } = this.hourId(x);
       if (seen.has(id)) continue;
       seen.add(id);
-      const chunk = this.hours.get(id);
-      if (chunk?.status === "ready") out.push(...chunk.snapshots);
+      const snapshots = this.hourSnapshots(id);
+      if (snapshots) out.push(...snapshots);
     }
     return out.sort((a, b) => a.fetchedAt - b.fetchedAt);
   }

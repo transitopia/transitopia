@@ -731,8 +731,10 @@ export class TransitEngine {
     this.clock.goLive();
   }
 
+  /** Seek to t: scrubbing, so the day's recorded buses start loading. */
   seek(t: number): void {
     this.clock.seek(t);
+    this.rt.prefetchDay();
   }
 
   /** Jump to another service date at the same time of day. */
@@ -745,7 +747,7 @@ export class TransitEngine {
   /** Seconds since the start of the displayed service day (the slider's value). */
   seekServiceSeconds(sec: number): void {
     const d = displayServiceDate(this.clock.now());
-    this.clock.seek(serviceDayStart(d) + sec * 1000);
+    this.seek(serviceDayStart(d) + sec * 1000);
   }
 
   /** Show or hide a group's routes (a route in another group that's shown stays drawn). */
@@ -2035,7 +2037,7 @@ export class TransitEngine {
     const t = clock.now();
     // Scenarios are hypothetical: never mix in real bus positions.
     if (!store.scenario) {
-      rt.update(t);
+      rt.update(t, this.sliderRange(t));
       this.live.update(t);
     }
     // Vehicles (and the map repaint their upload triggers) only when something they depend on
