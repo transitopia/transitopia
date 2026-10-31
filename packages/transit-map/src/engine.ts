@@ -353,6 +353,12 @@ const SNAPSHOT_INTERVAL_MS = 200;
  */
 const IDLE_RECOMPUTE_MS = 1000;
 /**
+ * Bus frequencies (corridor, stop tick and vehicle colours, and "Now"'s label) follow the clock at
+ * most this often: dragging the slider crosses a five-minute step nearly every frame, and working
+ * them out again took a quarter of the main thread while it was shown for a frame (2026-10-31).
+ */
+const FREQUENCY_INTERVAL_MS = 250;
+/**
  * While playing, vehicles are recomputed (and the map repainted) for a new time only once the
  * fastest could have moved this far on screen (px): zoomed out, a train moves about a pixel a
  * second, and recomputing every vehicle every frame kept the main thread busy for nothing.
@@ -425,6 +431,8 @@ export class TransitEngine {
   >();
   /** What route colours were last set for (syncRouteColors). */
   private routeColorsFor: { pp: PreparedPlan; key: string } | undefined;
+  /** The time bus frequencies are shown for (FREQUENCY_INTERVAL_MS), and when it was set (performance.now()). */
+  private frequencyAt: { t: number; at: number } | undefined;
   /** The real-time corrections last applied, per service date (for departure times). */
   private lastCorrections: Map<ServiceDate, ScheduleCorrections> | undefined;
   private following = false;
@@ -731,8 +739,10 @@ export class TransitEngine {
     this.clock.goLive();
   }
 
+  /** Seek to t: scrubbing, so the day's recorded buses start loading. */
   seek(t: number): void {
     this.clock.seek(t);
+    this.rt.prefetchDay();
   }
 
   /** Jump to another service date at the same time of day. */
@@ -745,7 +755,7 @@ export class TransitEngine {
   /** Seconds since the start of the displayed service day (the slider's value). */
   seekServiceSeconds(sec: number): void {
     const d = displayServiceDate(this.clock.now());
-    this.clock.seek(serviceDayStart(d) + sec * 1000);
+    this.seek(serviceDayStart(d) + sec * 1000);
   }
 
   /** Show or hide a group's routes (a route in another group that's shown stays drawn). */
@@ -1759,6 +1769,11 @@ export class TransitEngine {
     return fn(date).label;
   }
 
+  /** The time bus frequencies are shown for: the clock's, at most FREQUENCY_INTERVAL_MS behind. */
+  private frequencyTime(): number {
+    return this.frequencyAt?.t ?? this.clock.now();
+  }
+
   private sliderRange(t: number): [number, number] {
     const start = serviceDayStart(displayServiceDate(t));
     return [start + SLIDER_START_S * 1000, start + SLIDER_END_S * 1000];
@@ -1827,8 +1842,9 @@ export class TransitEngine {
       linesReady: this.linesReady,
       busFrequency: this.busFrequency,
       busFrequencyHour: (() => {
-        const day = serviceDayStart(serviceDate);
-        const from = day + nowWindowStart((t - day) / 1000) * 1000;
+        const ft = this.frequencyTime();
+        const day = serviceDayStart(displayServiceDate(ft));
+        const from = day + nowWindowStart((ft - day) / 1000) * 1000;
         const same = prev?.busFrequencyHour;
         // A stable identity while the window stays put, so React skips re-rendering the key.
         return same?.[0] === from ? same : [from, from + 3600_000];
@@ -1984,7 +2000,7 @@ export class TransitEngine {
     const pp = this.shownFeed;
     if (!pp) return false;
     const freq = this.frequencyLayer;
-    const t = this.clock.now();
+    const t = this.frequencyTime();
     const date = displayServiceDate(t);
     const step =
       this.busFrequency === "now" ?
@@ -2035,7 +2051,7 @@ export class TransitEngine {
     const t = clock.now();
     // Scenarios are hypothetical: never mix in real bus positions.
     if (!store.scenario) {
-      rt.update(t);
+      rt.update(t, this.sliderRange(t));
       this.live.update(t);
     }
     // Vehicles (and the map repaint their upload triggers) only when something they depend on
@@ -2067,12 +2083,21 @@ export class TransitEngine {
       }
     }
     this.syncStatic();
+    if (
+      !this.frequencyAt
+      || (t !== this.frequencyAt.t
+        && at - this.frequencyAt.at >= FREQUENCY_INTERVAL_MS)
+    ) {
+      this.frequencyAt = { t, at };
+      this.dirty = true; // "Now"'s label
+    }
     if (this.frequencyLayer && this.styleReady) {
-      const date = displayServiceDate(t);
+      const ft = this.frequencyTime();
+      const date = displayServiceDate(ft);
       this.frequencyLayer.update(
         map,
         date,
-        (t - serviceDayStart(date)) / 1000,
+        (ft - serviceDayStart(date)) / 1000,
         this.busFrequency,
         this.hidden,
         this.focus(),
@@ -2129,9 +2154,20 @@ export class TransitEngine {
     const live =
       store.scenario ?
         { mode: "estimated" as const, vehicles: undefined }
-      : rt.vehiclesAt(t, pp, visible);
-    // RT delays carried forward: schedule estimates continue from where buses really were.
-    const carry = store.scenario ? undefined : rt.delayCorrections(t, pp);
+      : rt.vehiclesAt(t, pp, visible, (id) => id === this.selectedId);
+    // RT delays carried forward: schedule estimates continue from where buses really were. Of a
+    // bus drawn from RT only a place card needs the delay (its departure times); the map draws an
+    // estimate only for a bus that isn't (below), so the rest are left out.
+    const carry =
+      store.scenario ? undefined : (
+        rt.delayCorrections(
+          t,
+          pp,
+          live.vehicles && !this.place ?
+            new Set(live.vehicles.map((v) => v.id))
+          : undefined,
+        )
+      );
     let byDate = carry?.byDate;
     let aisUsed = false;
     if (!store.scenario) {

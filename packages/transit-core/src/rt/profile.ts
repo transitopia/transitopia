@@ -599,7 +599,19 @@ export class Predictor {
    */
   readonly pacer: TripPacer = (trip, sec, serviceDate) => {
     if (trip.route.kind !== "bus") return undefined;
-    const c = this.course(trip, serviceDayStart(serviceDate) + sec * 1000);
+    return this.paceOn(
+      trip,
+      this.course(trip, serviceDayStart(serviceDate) + sec * 1000),
+      sec,
+    );
+  };
+
+  /** The pacer on a course already looked up (`course` is most of a pacer call's cost). */
+  private paceOn(
+    trip: PreparedTrip,
+    c: Course,
+    sec: number,
+  ): { along: number; speed: number } {
     let spans = this.anchors.get(c);
     if (!spans) this.anchors.set(c, (spans = this.buildAnchors(trip, c)));
     let k = spans.length - 2;
@@ -611,7 +623,7 @@ export class Predictor {
       along: Math.min(b.along, w.along),
       speed: w.along >= b.along ? 0 : w.speed,
     };
-  };
+  }
 
   /**
    * Delay (s, + late) of a bus at `along` at service-day second `sec` on a trip, against where the
@@ -626,11 +638,21 @@ export class Predictor {
   ): number {
     const lo = trip.dep[0]!;
     const hi = trip.arr[trip.arr.length - 1]!;
+    const dayStart = serviceDayStart(serviceDate);
+    // The course by service-day hour (`course` is most of a pacer call's cost, and the search makes
+    // dozens): a course changes only with the local hour (its band), and a service day starts on a
+    // local hour (noon − 12 h), so every second of a service-day hour has the same one.
+    const courses = new Map<number, Course>();
     const alongAt = (s: number): number => {
       if (s <= lo) return trip.pattern.dist[0]!;
       if (s >= hi) return trip.pattern.dist[trip.pattern.dist.length - 1]!;
-      const p = this.pacer(trip, s, serviceDate);
-      if (p) return p.along;
+      if (trip.route.kind === "bus") {
+        const h = Math.floor(s / 3600);
+        let c = courses.get(h);
+        if (!c)
+          courses.set(h, (c = this.course(trip, dayStart + h * 3600_000)));
+        return this.paceOn(trip, c, s).along;
+      }
       // Not paced: linear between stops.
       let i = 0;
       while (i < trip.arr.length - 2 && trip.arr[i + 1]! <= s) i++;

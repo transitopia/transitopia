@@ -71,11 +71,16 @@ export class BusFrequencyLayer {
     /** Short corridors and the corridors they join (none for stops). */
     short: [number, number[]][];
     stops: boolean;
+    /**
+     * Per feature, the state last set (UNSET: none since invalidate): `style` encodes tier, idle
+     * and dim (styleCode), `brand` the brand index or -1. Only changes are set: MapLibre rebuilds a
+     * tile's paint data for every feature given state, changed or not.
+     */
+    style: Int32Array;
+    brand: Int32Array;
   })[];
   /** Brand index (brandedRoutes order) per routeDir, or -1. */
   private readonly brandOf: number[];
-  /** Per target (by sourceLayer or source), the corridors (or stops) last given a `brand`. */
-  private readonly brandShown = new Map<string, Set<number>>();
   private key = "";
   /** Every shown route's frequencies, as last applied. */
   private rates: ComboFrequencies | undefined;
@@ -101,6 +106,8 @@ export class BusFrequencyLayer {
       combo: Int32Array.from(set.combo),
       short: set.short,
       stops: false,
+      style: new Int32Array(set.combo.length).fill(UNSET),
+      brand: new Int32Array(set.combo.length).fill(UNSET),
     });
     const stopIds = tickStops(plan);
     this.targets = [
@@ -113,6 +120,8 @@ export class BusFrequencyLayer {
         combo: this.combos.combosOfStops(stopIds),
         short: [],
         stops: true,
+        style: new Int32Array(stopIds.length).fill(UNSET),
+        brand: new Int32Array(stopIds.length).fill(UNSET),
       },
     ];
   }
@@ -122,12 +131,13 @@ export class BusFrequencyLayer {
    * which MapLibre keeps by feature id across new data. Removing it isn't enough: MapLibre applies a
    * source's state changes only while it's drawn, and changes still queued (the detailed corridors'
    * while zoomed out) outlive a removal followed by new state. So the next update also sets every
-   * feature's `brand`, as for features that had one.
+   * feature's state, `brand` included.
    */
   invalidate(map: MlMap): void {
     this.key = "";
     for (const t of this.targets) {
-      this.brandShown.set(keyOf(t), new Set(t.ids));
+      t.style.fill(UNSET);
+      t.brand.fill(UNSET);
       if (map.getSource(t.source))
         map.removeFeatureState(
           t.sourceLayer ?
@@ -207,22 +217,21 @@ export class BusFrequencyLayer {
       t.ids.forEach((id, i) => {
         const wait =
           segmentWait !== undefined && onFocus[i] ? segmentWait : waits[i]!;
+        const tier = Number.isFinite(wait) ? bandIndex(wait) : -1;
+        const idle = !Number.isFinite(wait) && carriesShown(t.combo[i]!);
+        const dim = !onFocus[i];
+        const code = styleCode(tier, idle, dim);
+        const brand = brands.get(i) ?? -1;
+        if (code === t.style[i] && brand === t.brand[i]) return;
         map.setFeatureState(
           { ...target(t), id },
-          {
-            tier: Number.isFinite(wait) ? bandIndex(wait) : -1,
-            idle: !Number.isFinite(wait) && carriesShown(t.combo[i]!),
-            dim: !onFocus[i],
-          },
+          code === t.style[i] ? { brand }
+          : brand === t.brand[i] ? { tier, idle, dim }
+          : { tier, idle, dim, brand },
         );
+        t.style[i] = code;
+        t.brand[i] = brand;
       });
-      const shown = new Map([...brands].map(([i, b]) => [t.ids[i]!, b]));
-      for (const id of this.brandShown.get(keyOf(t)) ?? [])
-        if (!shown.has(id))
-          map.setFeatureState({ ...target(t), id }, { brand: -1 });
-      for (const [id, b] of shown)
-        map.setFeatureState({ ...target(t), id }, { brand: b });
-      this.brandShown.set(keyOf(t), new Set(shown.keys()));
     }
   }
 
@@ -264,7 +273,10 @@ export class BusFrequencyLayer {
   }
 }
 
-const keyOf = (t: Target) => t.sourceLayer ?? t.source;
+/** A feature with no state set since invalidate: style codes are never negative, brands -1 at least. */
+const UNSET = -2;
+const styleCode = (tier: number, idle: boolean, dim: boolean): number =>
+  ((tier + 1) << 2) | (idle ? 2 : 0) | (dim ? 1 : 0);
 const target = (t: Target): Target =>
   t.sourceLayer ?
     { source: t.source, sourceLayer: t.sourceLayer }

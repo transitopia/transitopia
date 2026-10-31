@@ -72,6 +72,7 @@ const plan = (cs: CorridorSet): ServicePlan =>
 /** A map that keeps the feature state set since the last removal, as MapLibre's queue would. */
 function fakeMap() {
   const set = new Map<string, Map<number, Record<string, unknown>>>();
+  const calls: Record<string, unknown>[] = [];
   const map = {
     getSource: () => ({}),
     setFeatureState(
@@ -82,6 +83,7 @@ function fakeMap() {
       }: { source: string; sourceLayer?: string; id: number },
       state: Record<string, unknown>,
     ) {
+      calls.push(state);
       const key = sourceLayer ?? source;
       if (!set.has(key)) set.set(key, new Map());
       const s = set.get(key)!;
@@ -97,7 +99,7 @@ function fakeMap() {
       set.delete(sourceLayer ?? source);
     },
   };
-  return { map: map as unknown as MlMap, set };
+  return { map: map as unknown as MlMap, set, calls };
 }
 
 describe("BusFrequencyLayer", () => {
@@ -126,5 +128,35 @@ describe("BusFrequencyLayer", () => {
     const detailed = set.get(PLAN_TILE_LAYERS.corridors)!;
     expect(detailed.get(0)?.["brand"]).toBe(-1);
     expect(detailed.get(1)?.["brand"]).toBe(0);
+  });
+
+  it("sets only the state that changed", () => {
+    const { map, set, calls } = fakeMap();
+    const layer = new BusFrequencyLayer(plan(corridors(0, 1)));
+    layer.invalidate(map);
+    const update = (seconds: number, hidden = new Set<string>()) => {
+      calls.length = 0;
+      layer.update(
+        map,
+        serviceDate("20261019"),
+        seconds,
+        "now",
+        hidden,
+        undefined,
+      );
+      return calls.length;
+    };
+    // Two corridors (both sets) and no stops: each feature once.
+    expect(update(8 * 3600)).toBe(4);
+    // Another five-minute step, every 10 minutes as before.
+    expect(update(8 * 3600 + 300)).toBe(0);
+    // Hiding the 19 idles its corridors and nothing else.
+    expect(update(8 * 3600 + 300, new Set(["19"]))).toBe(2);
+    const detailed = set.get(PLAN_TILE_LAYERS.corridors)!;
+    expect(detailed.get(1)).toMatchObject({ tier: -1, idle: false, brand: -1 });
+    expect(detailed.get(0)).toMatchObject({ brand: 0, dim: false });
+    // After the sources are replaced, everything again.
+    layer.invalidate(map);
+    expect(update(8 * 3600 + 300, new Set(["19"]))).toBe(4);
   });
 });
