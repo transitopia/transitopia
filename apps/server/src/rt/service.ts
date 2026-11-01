@@ -16,8 +16,6 @@
 //   GET /rt/alerts                      current alerts for our rail lines (and whether drafted)
 //   GET /networks/<id>/dispatch                    a rail network's live dispatch: current patch per service date (index)
 //   GET /networks/<id>/dispatch/<date>/<v>.json    a patch version (immutable)
-//   GET /rt/dispatch[/<date>/<v>.json]             the same for the one rail network, while sites from before
-//                                                  /networks/ may still ask (docs/DESIGN.md#feeds-operators-and-rail-networks)
 //
 // `feed` is required where it's a parameter. Client requests never trigger upstream
 // calls: each feed's rate is fixed by its poll schedule within its daily cap
@@ -618,8 +616,6 @@ export class RtService {
       return inNetwork[1] === this.rail?.network ?
           this.handleDispatch(inNetwork[2] ?? "")
         : json(404, { error: "No such rail network" });
-    if (pathname.startsWith("/rt/dispatch"))
-      return this.handleDispatch(pathname.slice("/rt/dispatch".length));
     // A feed's poller, for the endpoints that take `feed=<id>`.
     const feedParam = params.get("feed");
     const poller = feedParam ? this.pollers.get(feedParam) : undefined;

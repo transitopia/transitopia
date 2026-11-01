@@ -2,8 +2,6 @@
 //   var/public/data/networks/<network>/infra/tracks.geojson   segments, nodes, stop positions
 //   var/public/data/networks/<network>/infra/lines.geojson    line centrelines and ribbons, for drawing
 //   var/public/data/feeds/<rail feed>/<version>/platforms.json   GTFS stop_id → track position
-// and, until the site reading data/networks/ is confirmed, a copy of infra/ under data/regions/
-// (packages/data/src/region-mirror.ts).
 //
 //   npm run build:infra [-- --network skytrain]
 
@@ -18,7 +16,6 @@ import {
   readNetworkConfig,
   type RailNetwork,
 } from "@transitopia/data/paths.ts";
-import { mirrorToRegions } from "@transitopia/data/region-mirror.ts";
 import { loadAllPlans, loadGraph } from "@transitopia/data/infra.ts";
 import { mapPlatforms } from "@transitopia/transit-core/infra/platforms.ts";
 import {
@@ -90,7 +87,6 @@ async function buildNetwork(net: RailNetwork) {
     lineGeometry(tracks, service),
   );
   log("Wrote infra/lines.geojson");
-  await mirrorToRegions(net.feed, infraDir, "infra");
 }
 
 async function main() {

@@ -26,7 +26,6 @@ GET /rt/status                      each feed's poller health and budget, AIS (n
 GET /rt/alerts                      current TransLink alerts for our rail lines, and whether each was drafted
 GET /networks/<id>/dispatch                    a rail network's live dispatch: current patch version per service date
 GET /networks/<id>/dispatch/<date>/<v>.json    a patch version (immutable)
-GET /rt/dispatch[/<date>/<v>.json]             the same, while sites from before /networks/ may still ask
 GET /features/<key>[?date=YYYYMMDD]  a feature by ID or ref (below)
 GET /healthz                        data freshness: 503 when polls (or trip updates' delays), AIS, the database or a daily job are stale, or the disk is nearly full
 GET /auth/github/login, /auth/github/callback, /auth/me; POST /auth/logout     admin sign-in
@@ -63,7 +62,7 @@ Exactly one process polls, records, dispatches and runs jobs: the leader (`src/l
 
 ## Live dispatch and previews
 
-`src/rt/dispatch.ts`. The leader runs the [dispatcher](../../packages/transit-core/DESIGN.md#dispatcher) for every date whose confirmed observations or disruptions change (checked every `dispatchCheckS`), in the background. Each result is a version: a patch of the runs that differ from the published build, named by a content hash of its inputs, stored in `dispatch_versions` (by `network_id`) and `var/dispatch-history/<network>/`, and kept. The live endpoint (of each region showing the network's feed) and `/networks/<id>/dispatch` advertise the current version per date; `/networks/<id>/dispatch/<date>/<version>.json` serves a patch, cacheable forever. The index still lists them under `rt/dispatch/`, which `/rt/dispatch` serves too, while sites from before `/networks/` may still read it. A restart moves versions kept before they were a network's (`var/dispatch-history/<date>/`) into its directory. A restart reloads them.
+`src/rt/dispatch.ts`. The leader runs the [dispatcher](../../packages/transit-core/DESIGN.md#dispatcher) for every date whose confirmed observations or disruptions change (checked every `dispatchCheckS`), in the background. Each result is a version: a patch of the runs that differ from the published build, named by a content hash of its inputs, stored in `dispatch_versions` (by `network_id`) and `var/dispatch-history/<network>/`, and kept. The live endpoint (of each region showing the network's feed) and `/networks/<id>/dispatch` advertise the current version per date; `/networks/<id>/dispatch/<date>/<version>.json` serves a patch, cacheable forever. A restart reloads them.
 
 A patch only fits the build it was dispatched against (`baseBuiltAt`), which is why this server also builds and publishes the transit data (the `data` job below).
 

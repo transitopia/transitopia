@@ -1,7 +1,6 @@
 // Validate and publish observation files (packages/transit-core/DESIGN.md#corrections):
 //   config/feeds/<feed>/observations/*.json → var/public/data/feeds/<feed>/observations/<name>.json + index.json (by service date),
-//   for each feed with track-level rail, and until the site reading them there is confirmed, a copy
-//   of observations/ under data/regions/ (packages/data/src/region-mirror.ts)
+//   for each feed with track-level rail
 //
 //   npm run build:observations
 
@@ -24,7 +23,6 @@ import type {
 } from "@transitopia/transit-core/corrections/types.ts";
 import { observationProblems } from "@transitopia/transit-core/corrections/validate.ts";
 import { feedDataPath } from "@transitopia/transit-core/plan/types.ts";
-import { mirrorToRegions } from "@transitopia/data/region-mirror.ts";
 
 /** A rail feed's observations (railNetworks: whose dispatcher reads them). */
 async function buildFeed(net: RailNetwork) {
@@ -57,7 +55,6 @@ async function buildFeed(net: RailNetwork) {
     count += valid.length;
   }
   await writeJson(join(OUT, "index.json"), index, true);
-  await mirrorToRegions(net.feed, OUT, "observations");
   log(
     `Published ${count} observations from ${files.length} files (${bad} invalid, skipped)`,
   );

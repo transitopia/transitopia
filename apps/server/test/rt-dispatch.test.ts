@@ -1,16 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  mkdir,
-  mkdtemp,
-  readdir,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RtService } from "../src/rt/service.ts";
-import { moveDispatchHistory } from "../src/rt/dispatch.ts";
 import type { CorrectionsRepo } from "../src/corrections.ts";
 import type { LiveTransitResponse } from "@transitopia/transit-core/rt/live.ts";
 
@@ -27,7 +19,7 @@ afterEach(async () => {
 });
 
 describe("live dispatch by rail network", () => {
-  it("serves a network's dispatch under /networks/<id>/ and /rt/dispatch, and in the live endpoint of regions showing its feed", async () => {
+  it("serves a network's dispatch under /networks/<id>/, and in the live endpoint of regions showing its feed", async () => {
     dir = await mkdtemp(join(tmpdir(), "rt-dispatch-"));
     const service = new RtService({
       historyDir: dir,
@@ -50,12 +42,12 @@ describe("live dispatch by rail network", () => {
       ],
     });
     const get = (p: string) => service.handle(p, new URLSearchParams());
-    for (const p of ["/networks/skytrain/dispatch", "/rt/dispatch"]) {
-      const r = await get(p);
-      expect(r.status, p).toBe(200);
-      expect(JSON.parse(String(r.body))).toEqual({ schema: 1, byDate: {} });
-    }
+    const r = await get("/networks/skytrain/dispatch");
+    expect(r.status).toBe(200);
+    expect(JSON.parse(String(r.body))).toEqual({ schema: 1, byDate: {} });
     expect((await get("/networks/elsewhere/dispatch")).status).toBe(404);
+    // The pre-network endpoint is gone.
+    expect((await get("/rt/dispatch")).status).toBe(404);
     expect(
       (await get("/networks/skytrain/dispatch/20260928/abc.json")).status,
     ).toBe(404);
@@ -68,30 +60,5 @@ describe("live dispatch by rail network", () => {
       versions: {},
     });
     expect((await live("elsewhere")).sources["dispatch"]).toBeUndefined();
-  });
-
-  it("moves versions kept before they were a network's into its directory", async () => {
-    dir = await mkdtemp(join(tmpdir(), "dispatch-history-"));
-    await mkdir(join(dir, "20260928"));
-    await writeFile(join(dir, "20260928", "a.json"), "a");
-    await writeFile(join(dir, "20260928", "b.json"), "b");
-    // Some of the date's versions already moved.
-    await mkdir(join(dir, "skytrain", "20260928"), { recursive: true });
-    await writeFile(join(dir, "skytrain", "20260928", "c.json"), "c");
-    const logs: string[] = [];
-    await moveDispatchHistory("skytrain", (m) => logs.push(m), dir);
-    expect((await readdir(dir)).sort()).toEqual(["skytrain"]);
-    expect((await readdir(join(dir, "skytrain", "20260928"))).sort()).toEqual([
-      "a.json",
-      "b.json",
-      "c.json",
-    ]);
-    expect(
-      await readFile(join(dir, "skytrain", "20260928", "a.json"), "utf8"),
-    ).toBe("a");
-    expect(logs).toEqual(["moved 1 dates of dispatch versions into skytrain/"]);
-    // Again, nothing to move.
-    await moveDispatchHistory("skytrain", (m) => logs.push(m), dir);
-    expect(logs).toHaveLength(1);
   });
 });

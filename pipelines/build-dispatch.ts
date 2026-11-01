@@ -2,8 +2,6 @@
 // observations or disruptions and write what changed against its base plan.
 //   var/public/data/feeds/<rail feed>/observations/*.json (from build:observations) + config/networks/<network>/disruptions/*.json
 //     → var/public/data/networks/<network>/dispatch/<date>.json + index.json
-// and, until the site reading data/networks/ is confirmed, a copy of dispatch/ under data/regions/
-// (packages/data/src/region-mirror.ts).
 //
 //   npm run build:dispatch [-- --network skytrain]
 
@@ -32,7 +30,6 @@ import {
   feedDataPath,
   networkDataPath,
 } from "@transitopia/transit-core/plan/types.ts";
-import { mirrorToRegions } from "@transitopia/data/region-mirror.ts";
 
 /** One rail network's dates with inputs (railNetworks). */
 async function buildNetwork(net: RailNetwork) {
@@ -85,7 +82,6 @@ async function buildNetwork(net: RailNetwork) {
     for (const p of patch.problems ?? []) log(`    disruption problem: ${p}`);
   }
   await writeJson(join(OUT, "index.json"), index, true);
-  await mirrorToRegions(net.feed, OUT, "dispatch");
 }
 
 async function main() {

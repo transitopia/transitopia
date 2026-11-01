@@ -36,7 +36,7 @@ export interface DispatchPatch {
   problems?: string[];
 }
 
-/** Published index of patches (var/public/data/dispatch/index.json, or the RT service's /rt/dispatch). */
+/** Published index of patches (data/networks/<id>/dispatch/index.json, or the RT service's /networks/<id>/dispatch). */
 export interface DispatchIndex {
   schema: 1;
   /** Service date (YYYYMMDD) → patch version and path (relative to the site root: data/… or rt/…). */

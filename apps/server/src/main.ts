@@ -13,7 +13,6 @@ import {
   readFeeds,
   readRegions,
 } from "@transitopia/data/paths.ts";
-import { moveDispatchHistory } from "./rt/dispatch.ts";
 import { createDb } from "@transitopia/db/connect.ts";
 import { migrate } from "@transitopia/db/migrate.ts";
 import { ensurePartitions } from "@transitopia/db/partitions.ts";
@@ -76,7 +75,6 @@ try {
 }
 await ensurePartitions(db.db);
 await syncSources(db.db, feeds);
-await moveDispatchHistory(rail.network, log);
 const store = new Store(db.db);
 const repo = new CorrectionsRepo(db.db, rail);
 // First start on a new database: bring in the committed corrections (existing ids are kept).

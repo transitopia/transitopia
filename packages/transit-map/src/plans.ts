@@ -302,12 +302,8 @@ export class PlanStore {
     if (p === undefined) {
       this.fetchOnce(
         key,
-        // Live and preview versions are served by the RT service (under networks/, or rt/ as the
-        // server still lists them for sites from before networks/), static ones with the data.
-        (
-          (entry.path.startsWith("networks/") || entry.path.startsWith("rt/"))
-            && this.apiBase
-        ) ?
+        // Live and preview versions are served by the RT service, static ones with the data.
+        entry.path.startsWith("networks/") && this.apiBase ?
           `${this.apiBase}${entry.path}`
         : this.dataUrl(entry.path),
         this.patches,
