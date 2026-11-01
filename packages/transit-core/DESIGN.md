@@ -4,7 +4,7 @@ How Transitopia turns timetables, OpenStreetMap track and real-time data into th
 
 ## Overview
 
-The engine animates, on a to-scale vector map of Metro Vancouver (and a few BC Transit bus routes in Greater Victoria and Kelowna: [docs/DESIGN.md → Regions and feeds](../../docs/DESIGN.md#regions-and-feeds)):
+The engine animates, on a to-scale vector map of Metro Vancouver (and BC Transit's buses in Greater Victoria, Kelowna and the Fraser Valley: [docs/DESIGN.md → Regions and feeds](../../docs/DESIGN.md#regions-and-feeds)):
 
 - **SkyTrain** (Expo, Millennium and Canada Lines): every train on the correct track, through switches, pocket tracks and turnbacks, and moving to and from the operations and maintenance centres (OMCs) and yards as trains enter and leave service. Positions are **inferred from the schedule**, refined by corrections and dispatched through a signalling simulation.
 - **SeaBus** and **West Coast Express**: from the schedule along simpler geometry. SeaBus is anchored by live AIS.
@@ -67,7 +67,7 @@ Verified 2026-09-25 against TransLink GTFS feed `26SEP_20260925` (valid 2026-09-
 
 ### BC Transit GTFS and GTFS-realtime
 
-Verified 2026-10-14 against the Victoria (operator 48) and Kelowna (operator 47) feeds ([bctransit.com/open-data](https://www.bctransit.com/open-data/), `feeds/bc-transit-*/feed.json`).
+Verified 2026-10-14 against the Victoria (operator 48) and Kelowna (operator 47) feeds, and 2026-11-01 against the Fraser Valley (operator 13, one export for four systems) ([bctransit.com/open-data](https://www.bctransit.com/open-data/), `feeds/bc-transit-*/feed.json`).
 
 | Fact | Implication |
 |---|---|
@@ -81,7 +81,7 @@ Verified 2026-10-14 against the Victoria (operator 48) and Kelowna (operator 47)
 
 OSM maps SkyTrain **per track** in detail: 264 `railway=switch` nodes, 45+ crossovers, named pockets (Metrotown, Vanness, Holdom, Moody Centre, Great Northern, "Mainline Pocket", Waterfront Tail), and yard tracks: the **Canada Line OMC** (~50 tracks, east of Bridgeport), **OMC 1** (~75 tracks across two clusters, south of Edmonds), and a **~16-track yard near Inlet Centre/Coquitlam Central**. OSM is our primary source for geometry *and* topology.
 
-OSM's roads are also where buses run: `fetch-osm-roads` takes every public road class, busways, service roads open to buses and service roads within 150 m of a bus stop (exchange loops are often plain service roads) for the bbox of the regions showing each feed (TransLink, 2026-10-17: 123,414 ways, 618,799 nodes, 96 MB). See [Bus corridors](#bus-corridors).
+OSM's roads are also where buses run: `fetch-osm-roads` takes every public road class, busways, service roads open to buses and service roads within 150 m of a bus stop (exchange loops are often plain service roads) for the bbox of the regions showing each feed and of its stops, since a route can run past its region (the Fraser Valley's 66 to Lougheed Station) (TransLink, 2026-10-17: 123,414 ways, 618,799 nodes, 96 MB). See [Bus corridors](#bus-corridors).
 
 ### Wikipedia track diagram
 
