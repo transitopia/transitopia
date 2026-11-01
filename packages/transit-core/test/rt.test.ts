@@ -72,6 +72,7 @@ const plan: ServicePlan = {
       brand: false,
       color: "#f76707",
       textColor: "#fff",
+      feed: "translink",
       gtfsRouteId: "6641",
     },
   ],
@@ -126,7 +127,13 @@ function snap(
     })),
   };
 }
-const opts = { maxInterpolateS: 180, maxExtrapolateS: 90, source: "test" };
+const opts = {
+  maxInterpolateS: 180,
+  maxExtrapolateS: 90,
+  source: "test",
+  feed: "translink",
+  timezone: "America/Vancouver",
+};
 
 describe("RtTimeline", () => {
   // Fix 1: 200 m before the corner; fix 2: 200 m after it, 60 s later.

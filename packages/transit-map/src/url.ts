@@ -18,6 +18,8 @@ import type { Clock } from "./clock.ts";
 /** A tapped station, bus exchange, bus stop or route line (its card), or a combined route. */
 export interface Place {
   kind: "station" | "exchange" | "stop" | "route" | "shared";
+  /** The feed it's in: its id is that feed's (packages/transit-map/README.md#feeds). */
+  feed: string;
   /**
    * Station (parent stop_id), exchange id (BusHub), GTFS stop_id, route key, or a combined route's
    * ends (`sharedPlace`).
@@ -26,11 +28,11 @@ export interface Place {
 }
 
 /**
- * A combined route between two stops or stations (stop keys: a station's id or a stop's,
+ * A feed's combined route between two stops or stations (stop keys: a station's id or a stop's,
  * packages/transit-core/DESIGN.md#combined-routes).
  */
-export function sharedPlace(from: string, to: string): Place {
-  return { kind: "shared", id: `${from}>${to}` };
+export function sharedPlace(feed: string, from: string, to: string): Place {
+  return { kind: "shared", feed, id: `${from}>${to}` };
 }
 
 /** A combined route's ends (`sharedPlace`). */
@@ -49,7 +51,8 @@ export interface UrlState {
   preview?: Record<string, string>;
 }
 
-export function readUrl(): UrlState {
+/** The URL's state; `tz` is the time zone its date and time are in (the shown feed's). */
+export function readUrl(tz: string): UrlState {
   const q = new URLSearchParams(location.search);
   const out: UrlState = {};
   const date = /^(\d{4})-(\d{2})-(\d{2})$/.exec(q.get("date") ?? "");
@@ -62,7 +65,7 @@ export function readUrl(): UrlState {
     } catch {
       // Keep the default time for malformed input.
     }
-    if (Number.isFinite(sec)) out.t = serviceDayStart(d) + sec * 1000;
+    if (Number.isFinite(sec)) out.t = serviceDayStart(d, tz) + sec * 1000;
   }
   const rate = Number(q.get("rate"));
   if (q.has("rate") && Number.isFinite(rate) && rate !== 0) out.rate = rate;
@@ -80,13 +83,17 @@ export function readUrl(): UrlState {
   return out;
 }
 
-export function writeUrl(clock: Clock, select: string | undefined): void {
+export function writeUrl(
+  clock: Clock,
+  select: string | undefined,
+  tz: string,
+): void {
   const q = new URLSearchParams();
   if (!clock.isLive()) {
     const t = clock.now();
-    const d = displayServiceDate(t);
+    const d = displayServiceDate(t, tz);
     q.set("date", `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`);
-    q.set("t", formatServiceTime((t - serviceDayStart(d)) / 1000, true));
+    q.set("t", formatServiceTime((t - serviceDayStart(d, tz)) / 1000, true));
     if (clock.rate !== 1) q.set("rate", String(clock.rate));
     if (!clock.playing) q.set("paused", "1");
   }

@@ -42,6 +42,7 @@ const plan: ServicePlan = {
       brand: true,
       color: "#000",
       textColor: "#fff",
+      feed: "translink",
       gtfsRouteId: "998",
     },
   ],

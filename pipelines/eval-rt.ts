@@ -302,6 +302,8 @@ function liveReplay(
     maxInterpolateS: CADENCE.maxInterpolateS,
     maxExtrapolateS: CADENCE.maxExtrapolateS,
     source: "eval",
+    feed: FEED,
+    timezone: pp.plan.timezone,
   };
   const variants = {
     old: base,

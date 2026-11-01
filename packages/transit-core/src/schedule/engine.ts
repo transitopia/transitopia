@@ -35,8 +35,10 @@ export type VehicleStatus =
   "moving" | "dwell" | "layover" | "turnback" | "pullout" | "pullin" | "held";
 
 export interface VehicleState {
-  /** Stable across consecutive trips of the same vehicle, where known. */
+  /** Stable across consecutive trips of the same vehicle, where known: unique only within its feed. */
   id: string;
+  /** The feed it's from (ServicePlan.feed): its id and route key are that feed's. */
+  feed: string;
   routeKey: string;
   mode: PlanRoute["mode"];
   tripId: string;
@@ -575,7 +577,9 @@ export function scheduledVehicles(
           ),
         ];
         v.source = `${sources.join(", ") || "observation"} + ${v.source}`;
-        if (seen) v.observedAt = serviceDayStart(q.serviceDate) + seen.t * 1000;
+        if (seen)
+          v.observedAt =
+            serviceDayStart(q.serviceDate, pp.plan.timezone) + seen.t * 1000;
         if (shift !== 0 && q.sec <= lastArr + endShift)
           v.delay = Math.round(shift);
       }
@@ -671,6 +675,7 @@ function positionOnTrip(
   const stop = pp.plan.stops[pattern.stops[stopIdx]!];
   return {
     id: t.vehicleId,
+    feed: pp.plan.feed,
     routeKey: t.route.key,
     mode: t.route.mode,
     tripId: t.trip.id,

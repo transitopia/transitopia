@@ -42,6 +42,7 @@ import {
 } from "@transitopia/transit-core/schedule/shared-segment.ts";
 import { displayServiceDate, hubsOf, placeOfStop } from "./plans.ts";
 import { sharedPlace, type Place } from "./url.ts";
+import { vehicleId } from "./keys.ts";
 
 /** A route + destination leaving a station or stop, with its next departures. */
 export interface PlaceGroup {
@@ -54,7 +55,7 @@ export interface PlaceGroup {
   frequency: Frequency | undefined;
   /** Stops it leaves from (at a station: platforms or bus bays), by GTFS stop_id. */
   stopIds: string[];
-  /** The vehicle on the map running its next departure, if that trip is drawn yet. */
+  /** The vehicle on the map running its next departure (src/keys.ts → vehicleId), if that trip is drawn yet. */
   vehicle: string | undefined;
   /**
    * Where its next departure ends ("Boundary Loop"): the station or exchange that stop belongs to,
@@ -66,6 +67,7 @@ export interface PlaceGroup {
 /** The selected route line: how often it runs now and how many of its vehicles are out. */
 export interface RouteSnapshot {
   kind: "route";
+  feed: string;
   id: string;
   route: PlanRoute;
   /** How often its trips start in the hour from the shown time (timetable), better direction. */
@@ -85,6 +87,7 @@ export interface RouteSnapshot {
  */
 export interface SharedSnapshot {
   kind: "shared";
+  feed: string;
   id: string;
   /** Its routes, in the plan's order; none when no route runs the stretch in this timetable. */
   routes: PlanRoute[];
@@ -114,7 +117,8 @@ export interface PlaceSnapshot extends Place {
   bays: { id: string; label: string }[];
   /** The station or exchange a bay belongs to. */
   partOf?:
-    { kind: "station" | "exchange"; id: string; name: string } | undefined;
+    | { kind: "station" | "exchange"; feed: string; id: string; name: string }
+    | undefined;
   /** Groups running the same way from here, to where they split ("R5 or 14, to Renfrew St"). */
   shared: {
     routes: PlanRoute[];
@@ -138,6 +142,7 @@ export interface PlaceSnapshot extends Place {
 export type PickChoice =
   | {
       kind: "vehicle";
+      /** Its id across feeds (src/keys.ts → vehicleId). */
       id: string;
       vehicle: VehicleState;
       route: PlanRoute | undefined;
@@ -190,11 +195,11 @@ const DEPARTURES_PER_GROUP = 3;
 
 /** What a card's snapshot is computed from, besides the place. */
 export interface PlaceContext {
-  /** The shown feed. */
+  /** The place's feed's plan. */
   pp: PreparedPlan;
   /** The shown instant (epoch ms). */
   t: number;
-  /** Every vehicle computed for t, and whether one is drawn (its route shown, and not a hidden estimate). */
+  /** Every vehicle computed for t (every feed's), and whether one is drawn (its route shown, and not a hidden estimate). */
   vehicles: VehicleState[];
   drawn: (v: VehicleState) => boolean;
   /** The real-time corrections the vehicles use, per service date. */
@@ -237,12 +242,16 @@ export function placeSnapshot(
   if (p.kind === "route") {
     const route = pp.routes.get(p.id);
     if (!route) return undefined;
-    const date = displayServiceDate(t);
+    const tz = pp.plan.timezone;
+    const date = displayServiceDate(t, tz);
     // Whole seconds, so the value only changes when a trip enters or leaves the hour.
-    const sec = Math.floor((t - serviceDayStart(date)) / 1000);
-    const mine = ctx.vehicles.filter((v) => v.routeKey === p.id);
+    const sec = Math.floor((t - serviceDayStart(date, tz)) / 1000);
+    const mine = ctx.vehicles.filter(
+      (v) => v.feed === p.feed && v.routeKey === p.id,
+    );
     return {
       kind: "route",
+      feed: p.feed,
       id: p.id,
       route,
       nextHour: routeFrequency(pp, p.id, date, sec, 3600),
@@ -266,7 +275,7 @@ export function placeSnapshot(
     : p.kind === "exchange" ? hub
     : pp.stopById.get(p.id);
   if (!where) return undefined;
-  const date = displayServiceDate(t);
+  const date = displayServiceDate(t, plan.timezone);
   const stopIds =
     p.kind === "exchange" ? new Set(hub!.bays) : stopsOf(plan, p.id, hub?.bays);
   const deps = departuresAt(
@@ -283,8 +292,8 @@ export function placeSnapshot(
   // Vehicles on the map by the trip they're running, for "View bus" on a departure.
   const drawn = new Map(
     ctx.vehicles
-      .filter(ctx.drawn)
-      .map((v) => [`${v.serviceDate}|${v.tripId}`, v.id]),
+      .filter((v) => v.feed === plan.feed && ctx.drawn(v))
+      .map((v) => [`${v.serviceDate}|${v.tripId}`, vehicleId(v)]),
   );
   const routeKeys =
     p.kind === "station" || p.kind === "exchange" ?
@@ -311,10 +320,10 @@ export function placeSnapshot(
     const hub = hubs.find((h) => h.bays.includes(stop.id));
     const place: Place =
       stop.parent && plan.stations.some((s) => s.id === stop.parent) ?
-        { kind: "station", id: stop.parent }
-      : hub ? parentPlace(hub)
-      : { kind: "stop", id: stop.id };
-    const here = [p, ...(parent ? [parentPlace(parent)] : [])];
+        { kind: "station", feed: plan.feed, id: stop.parent }
+      : hub ? parentPlace(plan.feed, hub)
+      : { kind: "stop", feed: plan.feed, id: stop.id };
+    const here = [p, ...(parent ? [parentPlace(plan.feed, parent)] : [])];
     return here.some((h) => h.kind === place.kind && h.id === place.id) ?
         undefined
       : {
@@ -340,12 +349,18 @@ export function placeSnapshot(
       && (parent.station ?
         {
           kind: "station",
+          feed: plan.feed,
           id: parent.station,
           name:
             plan.stations.find((s) => s.id === parent.station)?.name
             ?? parent.name,
         }
-      : { kind: "exchange", id: parent.id, name: parent.name }),
+      : {
+          kind: "exchange",
+          feed: plan.feed,
+          id: parent.id,
+          name: parent.name,
+        }),
     lon: where.lon,
     lat: where.lat,
     routes: routeKeys.flatMap((k) => pp.routes.get(k) ?? []),
@@ -408,7 +423,7 @@ function sharedSegmentOf(
   );
   const end = placeOf(s.toStopId);
   const to = plan.stations.some((x) => x.id === end) ? end : s.toStopId;
-  return placeOf(from) === end ? undefined : sharedPlace(from, to);
+  return placeOf(from) === end ? undefined : sharedPlace(plan.feed, from, to);
 }
 
 /** A combined route's card at ctx.t (`SharedSnapshot`). */
@@ -418,8 +433,8 @@ function sharedSnapshot(p: Place, ctx: PlaceContext): SharedSnapshot {
   const [from, to] = p.id.split(">") as [string, string];
   const seg = ctx.segment(p);
   const routes = (seg?.routes ?? []).flatMap((k) => pp.routes.get(k) ?? []);
-  const date = displayServiceDate(t);
-  const sec = Math.floor((t - serviceDayStart(date)) / 1000);
+  const date = displayServiceDate(t, plan.timezone);
+  const sec = Math.floor((t - serviceDayStart(date, plan.timezone)) / 1000);
   // Real positions on it, for the credits.
   const live =
     seg ?
@@ -434,6 +449,7 @@ function sharedSnapshot(p: Place, ctx: PlaceContext): SharedSnapshot {
     ?? placeName(plan, key);
   return {
     kind: "shared",
+    feed: p.feed,
     id: p.id,
     routes,
     from: name(from),
@@ -450,8 +466,8 @@ function sharedSnapshot(p: Place, ctx: PlaceContext): SharedSnapshot {
 }
 
 /** The card for a station's bus bays or an exchange. */
-function parentPlace(hub: BusHub): Place {
+function parentPlace(feed: string, hub: BusHub): Place {
   return hub.station ?
-      { kind: "station", id: hub.station }
-    : { kind: "exchange", id: hub.id };
+      { kind: "station", feed, id: hub.station }
+    : { kind: "exchange", feed, id: hub.id };
 }

@@ -182,7 +182,10 @@ export const VehicleCard: React.FC<{
       label: `View route: ${route.label}`,
       lead: <RouteBadge route={route} colors={colors} />,
       onSelect: () =>
-        engine.open({ place: { kind: "route", id: route.key } }, title),
+        engine.open(
+          { place: { kind: "route", feed: route.feed, id: route.key } },
+          title,
+        ),
     },
   ];
   const details: [string, string | undefined][] = [
@@ -190,7 +193,7 @@ export const VehicleCard: React.FC<{
     [
       "Trip",
       sel.trip ?
-        `${clockMinutes(sel.trip.start)} from ${sel.trip.from} · ${sel.trip.shortId}`
+        `${clockMinutes(sel.trip.start, snap.timezone)} from ${sel.trip.from} · ${sel.trip.shortId}`
       : v.tripId || undefined,
     ],
     ["Train (inferred run)", v.runId],
@@ -257,7 +260,10 @@ export const VehicleCard: React.FC<{
               className="h-[26px] min-w-0 truncate rounded-md px-[9px] text-[13px] leading-[26px] font-bold hover:shadow-[inset_0_0_0_100px_rgb(0_0_0/0.12)]"
               style={{ background: colors.bg, color: colors.fg }}
               onClick={() =>
-                engine.open({ place: { kind: "route", id: route.key } }, title)
+                engine.open(
+                  { place: { kind: "route", feed: route.feed, id: route.key } },
+                  title,
+                )
               }>
               {route.label}
             </button>

@@ -55,7 +55,7 @@ import {
   toWallTime,
   type ServiceDate,
 } from "@transitopia/transit-core/time.ts";
-import type { RegionConfig } from "./config.ts";
+import type { FeedConfig } from "./config.ts";
 import { cadence, type Cadence } from "@transitopia/transit-core/rt/budget.ts";
 import { feedDataPath } from "@transitopia/transit-core/plan/types.ts";
 import { LIVE_WINDOW_MS } from "./live.ts";
@@ -189,7 +189,9 @@ export class RtClient {
   private readonly api: string | undefined;
   /** URL prefix of the region on the RT service (…/regions/<id>/). */
   private readonly region: string | undefined;
-  private readonly config: Pick<RegionConfig, "kinematics" | "rt" | "feed">;
+  private readonly config: Pick<FeedConfig, "kinematics" | "rt" | "feed">;
+  /** The feed's time zone: its service dates. */
+  private readonly tz: string;
   /** The feed whose vehicles these are: its live sections, history and changes. */
   private readonly feed: string;
   /** Thresholds that follow the feed's poll schedule (packages/transit-core/src/rt/budget.ts). */
@@ -202,10 +204,11 @@ export class RtClient {
       api: string | undefined;
       region: string | undefined;
     },
-    config: Pick<RegionConfig, "kinematics" | "rt" | "feed">,
+    config: Pick<FeedConfig, "kinematics" | "rt" | "feed">,
   ) {
     const rt = config.feed.realtime;
     this.feed = config.feed.id;
+    this.tz = config.feed.timezone;
     this.data = urls.data;
     this.api = rt ? urls.api : undefined;
     this.region = urls.region;
@@ -317,6 +320,8 @@ export class RtClient {
         maxInterpolateS: this.cadence.maxInterpolateS,
         maxExtrapolateS: this.cadence.maxExtrapolateS,
         source: `${pp?.plan.agency ? `${pp.plan.agency} ` : ""}GTFS-RT ${live ? "live" : "recorded"}`,
+        feed: this.feed,
+        timezone: this.tz,
         changes: this.changesView(),
         detourNearM: this.config.rt.detourNearM,
         ...(predictor ?
@@ -417,8 +422,8 @@ export class RtClient {
   /** Loads the service changes for the dates around t, refreshing recent ones. */
   private ensureChanges(t: number, nearNow: boolean): void {
     const now = Date.now();
-    const today = localDate(t);
-    const recentFrom = addDays(localDate(now), -1);
+    const today = localDate(t, this.tz);
+    const recentFrom = addDays(localDate(now, this.tz), -1);
     for (const date of [addDays(today, -1), today]) {
       let e = this.changes.get(date);
       const pointer = this.changesPointer?.[date];
@@ -593,6 +598,7 @@ export class RtClient {
 
   // --- recorded history ---
 
+  // Hour files are named in the recorder's time zone (apps/server/src/rt/recorder.ts), whatever the feed's.
   private hourId(t: number): { id: string; date: string; hour: string } {
     const w = toWallTime(t);
     const date = `${w.year}-${String(w.month).padStart(2, "0")}-${String(w.day).padStart(2, "0")}`;

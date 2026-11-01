@@ -25,7 +25,7 @@ export function routeColorsFor(
   return (r) => {
     const own = { bg: r.color, fg: r.textColor };
     if (r.brand && showBrandColors) return own;
-    const wait = engine.dayWait(r.key);
+    const wait = engine.dayWait(r);
     return wait === undefined ? own : { bg: bandOf(wait).color, fg: "#ffffff" };
   };
 }

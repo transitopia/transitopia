@@ -212,6 +212,7 @@ export async function buildPlan(
   const selected = selectRoutes(
     await readCsvAll(zipPath, "routes.txt"),
     routeCfg,
+    feed.id,
     gtfsDataset,
   );
   for (const { row, reason } of selected.skipped)

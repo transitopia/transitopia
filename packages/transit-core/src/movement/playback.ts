@@ -81,7 +81,7 @@ interface PreparedRun {
 /** What every state of a run at one instant shares. */
 type Base = Pick<
   VehicleState,
-  "id" | "provenance" | "source" | "serviceDate" | "length" | "width"
+  "id" | "feed" | "provenance" | "source" | "serviceDate" | "length" | "width"
 >;
 
 /** Where a run's train is and what it's doing, for TrainPlayback.state(). */
@@ -218,7 +218,9 @@ export class TrainPlayback {
         v.provenance = near ? "observed" : "interpolated";
         if (run.sources?.length)
           v.source = `${run.sources.join(", ")} + ${v.source}`;
-        if (near) v.observedAt = serviceDayStart(serviceDate) + near.t * 1000;
+        if (near)
+          v.observedAt =
+            serviceDayStart(serviceDate, this.pp.plan.timezone) + near.t * 1000;
       }
       if (run.consist) v.consist = run.consist;
       const note = run.notes?.find((n) => sec >= n.t0 && sec <= n.t1);
@@ -252,6 +254,7 @@ export class TrainPlayback {
     const near = Math.abs(sec - p.seen) <= OBSERVED_WINDOW_S;
     const v: VehicleState = {
       id: `${serviceDate}:parked-${i}`,
+      feed: this.pp.plan.feed,
       routeKey: p.line,
       mode: "skytrain",
       tripId: "",
@@ -266,7 +269,8 @@ export class TrainPlayback {
       serviceDate,
       length: k.length,
       width: k.width,
-      observedAt: serviceDayStart(serviceDate) + p.seen * 1000,
+      observedAt:
+        serviceDayStart(serviceDate, this.pp.plan.timezone) + p.seen * 1000,
       track: { seg: pos.seg, offset: pos.offset },
     };
     if (p.consist) v.consist = p.consist;
@@ -295,6 +299,7 @@ export class TrainPlayback {
     const e = te.e;
     const base: Base = {
       id: `${serviceDate}:${r.run.id}`,
+      feed: this.pp.plan.feed,
       provenance: "estimated",
       source: this.source,
       serviceDate,

@@ -33,13 +33,11 @@ import { FREQUENCY_BANDS, NO_SERVICE } from "@transitopia/shared/frequency.ts";
 import { hubsOf } from "../plans.ts";
 import { SHOW_BRAND_COLORS } from "../overview.ts";
 import { hexToRgb } from "./vehicle-geometry.ts";
+import type { FeedIds } from "./ids.ts";
 
-/** The plan's tiles: every line drawn (PLAN_TILE_LAYERS). */
-export const LINES_SOURCE = "transit-lines";
-export const STATIONS_SOURCE = "transit-stations";
-export const EXCHANGES_SOURCE = "transit-exchanges";
-export const BUS_STOPS_SOURCE = "transit-bus-stops";
-export const BUS_TICKS_SOURCE = "transit-bus-stop-ticks";
+// Every source and layer here is a feed's (`FeedIds`: its plan's tiles are its `lines`), named by
+// `ids.layer`; the names below are within a feed.
+
 const TICK_IMAGE = "bus-stop-tick";
 /** Text anchor for a label placed in each compass direction (N, NE, E, …) from its point. */
 const ANCHORS = [
@@ -56,6 +54,17 @@ const ANCHORS = [
 export const VEHICLES_BEFORE_LAYER = "bus-stops-label";
 /** The first of the focused route's layers, drawn over SkyTrain's (addTrackLayers goes beneath it). */
 export const FOCUS_LAYERS_START = "corridors-overview-focus-casing";
+/** Layers drawing stations, exchanges and stops (and their names): taps on them open their cards. */
+export const PLACE_LAYERS = [
+  "stations",
+  "stations-label",
+  "exchanges",
+  "exchanges-label",
+  "bus-stops",
+  "bus-stops-focus",
+  VEHICLES_BEFORE_LAYER,
+];
+/** The selected place's ring is map-wide: one at a time, whichever feed's place it is. */
 export const SELECTED_PLACE_SOURCE = "transit-selected-place";
 /** The ring around a selected place (px); also how far a tap looks for what it might mean. */
 export const SELECTED_PLACE_RADIUS_PX = 20;
@@ -71,28 +80,29 @@ const BUS_LIMITED: ExpressionSpecification = [
   ["==", ["get", "kind"], "bus"],
   ["get", "limited"],
 ];
-/** Map global state: the ferry berth pair in use on the day shown (see setFerryPair). */
+/** Map global state, per feed: the ferry berth pair in use on the day shown (see setFerryPair). */
 const FERRY_PAIR = "ferryPair";
 /** Shape routes, except a ferry's berth pair that isn't in use that day (drawn dotted instead). */
-const SHAPE_ACTIVE: ExpressionSpecification = [
+const shapeActive = (ids: FeedIds): ExpressionSpecification => [
   "all",
   ["==", ["get", "kind"], "shape"],
   [
     "any",
     ["!", ["has", "berthPair"]],
-    ["==", ["get", "berthPair"], ["global-state", FERRY_PAIR]],
+    ["==", ["get", "berthPair"], ["global-state", ids.state(FERRY_PAIR)]],
   ],
 ];
-const SHAPE_INACTIVE: ExpressionSpecification = [
+const shapeInactive = (ids: FeedIds): ExpressionSpecification => [
   "all",
   ["==", ["get", "kind"], "shape"],
   ["has", "berthPair"],
-  ["!=", ["get", "berthPair"], ["global-state", FERRY_PAIR]],
+  ["!=", ["get", "berthPair"], ["global-state", ids.state(FERRY_PAIR)]],
 ];
 
 /**
- * Map global state: the route whose card is open, or null. Every other route is drawn at
- * DIM_OPACITY of its usual opacity (packages/transit-map/README.md#route-focus).
+ * Map global state: the route whose card is open (its feed and key, src/keys.ts), or null. Every
+ * other route, whichever feed's, is drawn at DIM_OPACITY of its usual opacity
+ * (packages/transit-map/README.md#route-focus).
  */
 const FOCUS_ROUTE = "focusRoute";
 export const DIM_OPACITY = 0.2;
@@ -101,16 +111,36 @@ const focusKey = [
   ["global-state", FOCUS_ROUTE],
   "",
 ] as ExpressionSpecification;
+/** No route has this key: the focus is on another feed's route (`localFocus`). */
+const OTHER_FEED = "*";
+/**
+ * The focused route's key within a feed (tiles and stops name routes by key alone): "" while nothing
+ * is focused, OTHER_FEED while another feed's route (or a combined route, SEGMENT_FOCUS) is.
+ */
+const localFocus = (ids: FeedIds): ExpressionSpecification => {
+  const prefix = `${ids.feed}:`;
+  return [
+    "case",
+    ["==", focusKey, ""],
+    "",
+    ["==", ["slice", focusKey, 0, prefix.length], prefix],
+    ["slice", focusKey, prefix.length],
+    OTHER_FEED,
+  ];
+};
 /** True where a feature's route (`prop`) is the focused one, or nothing is focused. */
-export const onFocus = (prop = "route"): ExpressionSpecification => [
+export const onFocus = (
+  ids: FeedIds,
+  prop = "route",
+): ExpressionSpecification => [
   "any",
   ["==", focusKey, ""],
-  ["==", ["get", prop], focusKey],
+  ["==", ["get", prop], localFocus(ids)],
 ];
 /**
- * Map global state while a combined route is focused: its stops' ids (",50123,50124,"). The focused
- * route is then SEGMENT_FOCUS, which no route has, so every route line is dimmed; its corridors are
- * kept by feature state (BusFrequencyLayer).
+ * Map global state while a combined route is focused: its stops (",translink:50123,translink:50124,",
+ * src/keys.ts). The focused route is then SEGMENT_FOCUS, which no route has, so every route line is
+ * dimmed; its corridors are kept by feature state (BusFrequencyLayer).
  */
 const FOCUS_STOPS = "focusStops";
 export const SEGMENT_FOCUS = "*segment";
@@ -118,25 +148,26 @@ export const SEGMENT_FOCUS = "*segment";
  * True where the focused route stops (a stop's `routes`, ",99,R4,"), where a focused combined route
  * stops, or where nothing is focused.
  */
-const stopOnFocus: ExpressionSpecification = [
+const stopOnFocus = (ids: FeedIds): ExpressionSpecification => [
   "any",
   ["==", focusKey, ""],
-  ["in", ["concat", ",", focusKey, ","], ["get", "routes"]],
+  ["in", ["concat", ",", localFocus(ids), ","], ["get", "routes"]],
   [
     "in",
-    ["concat", ",", ["to-string", ["get", "stop"]], ","],
+    ["concat", ",", `${ids.feed}:`, ["to-string", ["get", "stop"]], ","],
     ["coalesce", ["global-state", FOCUS_STOPS], ""],
   ],
 ];
 /**
- * Map global states while every route is coloured by frequency (the viewer turned brand colours
- * off, `setRouteColors`): per route key, the colour its lines are drawn in, and the colour off the
- * focused route; null while routes are drawn in their own colours.
+ * Map global states, per feed, while every route is coloured by frequency (the viewer turned brand
+ * colours off, `setRouteColors`): per route key, the colour its lines are drawn in, and the colour
+ * off the focused route; null while routes are drawn in their own colours.
  */
 const ROUTE_COLORS = "routeColors";
 const ROUTE_FADED = "routeFaded";
 /** The colour ROUTE_COLORS or ROUTE_FADED (`state`) gives the feature's route (`prop`), else `own`. */
 const colorOverride = (
+  ids: FeedIds,
   state: string,
   prop: string,
   own: ExpressionSpecification,
@@ -145,27 +176,29 @@ const colorOverride = (
   [
     "get",
     ["to-string", ["get", prop]],
-    ["object", ["global-state", state], ["literal", {}]],
+    ["object", ["global-state", ids.state(state)], ["literal", {}]],
   ],
   own,
 ];
 /** A line's colour: its route's own (`color`), or its frequency colour while routes are coloured by frequency. */
 export const routeLineColor = (
+  ids: FeedIds,
   prop = "route",
   own: ExpressionSpecification = ["get", "color"],
-): ExpressionSpecification => colorOverride(ROUTE_COLORS, prop, own);
+): ExpressionSpecification => colorOverride(ids, ROUTE_COLORS, prop, own);
 
 /**
- * Colour every route by frequency (`colors`: per route key, its colour; `faded`, off the focused
+ * Colour a feed's routes by frequency (`colors`: per route key, its colour; `faded`, off the focused
  * route), or with none, in their own colours.
  */
 export function setRouteColors(
   map: MlMap,
+  ids: FeedIds,
   colors: Record<string, string> | undefined,
   faded: Record<string, string> | undefined,
 ): void {
-  map.setGlobalStateProperty(ROUTE_COLORS, colors ?? null);
-  map.setGlobalStateProperty(ROUTE_FADED, faded ?? null);
+  map.setGlobalStateProperty(ids.state(ROUTE_COLORS), colors ?? null);
+  map.setGlobalStateProperty(ids.state(ROUTE_FADED), faded ?? null);
 }
 
 /**
@@ -178,14 +211,14 @@ const brandShown: ExpressionSpecification = [
   true,
 ];
 
-/** An opacity, dimmed off the focused route (for symbols, which don't overlap themselves). */
+/** An opacity, dimmed off the focused route (`on`, for symbols, which don't overlap themselves). */
 export const focusOpacity = (
   base: number,
-  on: ExpressionSpecification = onFocus(),
+  on: ExpressionSpecification,
 ): ExpressionSpecification => ["case", on, base, base * DIM_OPACITY];
-/** A casing's opacity: none off the focused route. */
+/** A casing's opacity: none off the focused route (`on`). */
 export const casingOpacity = (
-  on: ExpressionSpecification = onFocus(),
+  on: ExpressionSpecification,
 ): ExpressionSpecification => ["case", on, 1, 0];
 
 /**
@@ -207,18 +240,19 @@ export function fadeColor(hex: string, theme: Theme): string {
  * frequency), faded off the focused route; `prop` names the route.
  */
 export function focusColor(
+  ids: FeedIds,
   routes: readonly { key: string; color: string }[],
   theme: Theme,
   prop = "route",
   own: ExpressionSpecification = ["get", "color"],
 ): ExpressionSpecification {
-  const color = routeLineColor(prop, own);
+  const color = routeLineColor(ids, prop, own);
   if (!routes.length) return color;
   return [
     "case",
-    onFocus(prop),
+    onFocus(ids, prop),
     color,
-    colorOverride(ROUTE_FADED, prop, [
+    colorOverride(ids, ROUTE_FADED, prop, [
       "match",
       ["get", prop],
       ...routes.flatMap((r) => [r.key, fadeColor(r.color, theme)]),
@@ -255,8 +289,8 @@ const corridorCasingOpacity: ExpressionSpecification = [
 ];
 
 /**
- * Focus the map on one route (its card is open), or a combined route (its stops' ids), dimming
- * the rest, or on none.
+ * Focus the map on one route (its card is open), or a combined route (its stops), dimming the rest,
+ * or on none. Routes and stops are named with their feed (src/keys.ts).
  */
 export function setFocus(
   map: MlMap,
@@ -494,44 +528,46 @@ function stationsGeoJson(plan: ServicePlan): FeatureCollection {
  */
 export function addStaticLayers(
   map: MlMap,
+  ids: FeedIds,
   plan: ServicePlan,
   tiles: string,
   theme: Theme,
   hiddenRoutes: ReadonlySet<string>,
 ): boolean {
+  const L = ids.layer;
   const stations: GeoJSONSourceSpecification = {
     type: "geojson",
     data: stationsGeoJson(plan),
   };
-  const shown = map.getStyle()?.sources[LINES_SOURCE];
+  const shown = map.getStyle()?.sources[ids.lines];
   if (shown && "url" in shown && shown.url === tiles) {
-    void (map.getSource(STATIONS_SOURCE) as GeoJSONSource).setData(
+    void (map.getSource(ids.stations) as GeoJSONSource).setData(
       stations.data as FeatureCollection,
     );
-    void (map.getSource(EXCHANGES_SOURCE) as GeoJSONSource).setData(
+    void (map.getSource(ids.exchanges) as GeoJSONSource).setData(
       exchangesGeoJson(plan),
     );
-    void (map.getSource(BUS_STOPS_SOURCE) as GeoJSONSource).setData(
+    void (map.getSource(ids.busStops) as GeoJSONSource).setData(
       busStopsGeoJson(plan),
     );
-    void (map.getSource(BUS_TICKS_SOURCE) as GeoJSONSource).setData(
+    void (map.getSource(ids.busTicks) as GeoJSONSource).setData(
       busTicksGeoJson(plan),
     );
-    applyRouteFilter(map, hiddenRoutes);
+    applyRouteFilter(map, ids, hiddenRoutes);
     return false;
   }
-  removeSources(map, STATIC_SOURCES);
-  map.addSource(LINES_SOURCE, { type: "vector", url: tiles });
-  map.addSource(STATIONS_SOURCE, stations);
-  map.addSource(EXCHANGES_SOURCE, {
+  removeSources(map, staticSources(ids));
+  map.addSource(ids.lines, { type: "vector", url: tiles });
+  map.addSource(ids.stations, stations);
+  map.addSource(ids.exchanges, {
     type: "geojson",
     data: exchangesGeoJson(plan),
   });
-  map.addSource(BUS_STOPS_SOURCE, {
+  map.addSource(ids.busStops, {
     type: "geojson",
     data: busStopsGeoJson(plan),
   });
-  map.addSource(BUS_TICKS_SOURCE, {
+  map.addSource(ids.busTicks, {
     type: "geojson",
     data: busTicksGeoJson(plan),
   });
@@ -557,7 +593,9 @@ export function addStaticLayers(
     : "rgba(0,0,0,0)") as unknown as ExpressionSpecification;
   const brandColor = brandColorOf((r) => r.color);
   const fadedBrandColor = brandColorOf((r) => fadeColor(r.color, theme));
-  const routeColor = focusColor(plan.routes, theme);
+  const routeColor = focusColor(ids, plan.routes, theme);
+  const routeOnFocus = onFocus(ids);
+  const stopFocused = stopOnFocus(ids);
   /** Widths per tier at each zoom; with `only`, zero where it's false. */
   const tierWidth = (
     extra: number,
@@ -580,7 +618,7 @@ export function addStaticLayers(
   // Bus corridors: one line per street, coloured and weighted by how often buses pass; the most
   // frequent tiers get a casing so they read over crossing streets. Zoomed out, divided roads are
   // one line (the overview corridors); closer in, each carriageway is its own.
-  const source = LINES_SOURCE;
+  const source = ids.lines;
   const routes = {
     source,
     "source-layer": PLAN_TILE_LAYERS.routes,
@@ -690,11 +728,11 @@ export function addStaticLayers(
         "line-width": brandWidth(0, only),
       },
     });
-    map.addLayer(casingLayer(`${prefix}-casing`, tierWidth(2, [0, 1])));
+    map.addLayer(casingLayer(L(`${prefix}-casing`), tierWidth(2, [0, 1])));
     // Corridors whose routes don't run in the window (feature state `idle`): dotted grey, beneath
     // the tiers, so a route the site mentions is never missing from the map.
     map.addLayer({
-      id: `${prefix}-idle`,
+      id: L(`${prefix}-idle`),
       type: "line",
       source,
       "source-layer": sourceLayer,
@@ -720,9 +758,9 @@ export function addStaticLayers(
         "line-dasharray": [2, 2],
       },
     });
-    map.addLayer({ id: prefix, ...line });
-    map.addLayer(casingLayer(`${prefix}-brand-casing`, brandWidth(2)));
-    map.addLayer(brandLayer(`${prefix}-brand`));
+    map.addLayer({ id: L(prefix), ...line });
+    map.addLayer(casingLayer(L(`${prefix}-brand-casing`), brandWidth(2)));
+    map.addLayer(brandLayer(L(`${prefix}-brand`)));
     // The focused corridors again, on top of everything but stations, exchanges and labels
     // (packages/transit-map/README.md#route-focus): another route's corridor along the same street
     // (the other direction) can come later in the tile and cover them, SkyTrain's lines are drawn
@@ -732,11 +770,11 @@ export function addStaticLayers(
     // source's tiles): elsewhere they're zero wide.
     return [
       casingLayer(
-        `${prefix}-focus-casing`,
+        L(`${prefix}-focus-casing`),
         tierWidth(2, [0, 1], corridorFocused),
       ),
       {
-        id: `${prefix}-focus`,
+        id: L(`${prefix}-focus`),
         ...line,
         paint: {
           ...line.paint,
@@ -760,15 +798,15 @@ export function addStaticLayers(
         },
       },
       casingLayer(
-        `${prefix}-brand-focus-casing`,
+        L(`${prefix}-brand-focus-casing`),
         brandWidth(2, corridorFocused),
       ),
-      brandLayer(`${prefix}-brand-focus`, corridorFocused),
+      brandLayer(L(`${prefix}-brand-focus`), corridorFocused),
     ] satisfies LineLayerSpecification[];
   });
   // Bus routes drawn on their own (99 B-Line, RapidBus; every route without corridors).
   map.addLayer({
-    id: "routes-bus",
+    id: L("routes-bus"),
     type: "line",
     ...routes,
     filter: BUS_FREQUENT,
@@ -795,7 +833,7 @@ export function addStaticLayers(
     },
   });
   map.addLayer({
-    id: "routes-bus-limited",
+    id: L("routes-bus-limited"),
     type: "line",
     ...routes,
     filter: BUS_LIMITED,
@@ -808,10 +846,10 @@ export function addStaticLayers(
     },
   });
   map.addLayer({
-    id: "routes-shape-inactive",
+    id: L("routes-shape-inactive"),
     type: "line",
     ...routes,
-    filter: SHAPE_INACTIVE,
+    filter: shapeInactive(ids),
     layout: { "line-join": "round" },
     paint: {
       "line-color": routeColor,
@@ -821,10 +859,10 @@ export function addStaticLayers(
     },
   });
   map.addLayer({
-    id: "routes-shape",
+    id: L("routes-shape"),
     type: "line",
     ...routes,
-    filter: SHAPE_ACTIVE,
+    filter: shapeActive(ids),
     layout: { "line-join": "round", "line-cap": "round" },
     paint: {
       "line-color": routeColor,
@@ -832,14 +870,14 @@ export function addStaticLayers(
     },
   });
   map.addLayer({
-    id: "routes-skytrain-casing",
+    id: L("routes-skytrain-casing"),
     type: "line",
     ...routes,
     filter: ["==", ["get", "kind"], "skytrain"],
     layout: { "line-join": "round", "line-cap": "round" },
     paint: {
       "line-color": casing,
-      "line-opacity": casingOpacity(),
+      "line-opacity": casingOpacity(routeOnFocus),
       "line-width": [
         "interpolate",
         ["linear"],
@@ -856,7 +894,7 @@ export function addStaticLayers(
     },
   });
   map.addLayer({
-    id: "routes-skytrain",
+    id: L("routes-skytrain"),
     type: "line",
     ...routes,
     filter: ["==", ["get", "kind"], "skytrain"],
@@ -881,9 +919,9 @@ export function addStaticLayers(
   // Express bus stops: a tick in the route colour toward the stop's side of the street (opposite
   // stops make a "+"), labelled only close in.
   const ticks: SymbolLayerSpecification = {
-    id: "bus-stops",
+    id: L("bus-stops"),
     type: "symbol",
-    source: BUS_TICKS_SOURCE,
+    source: ids.busTicks,
     minzoom: 12,
     layout: {
       "icon-image": TICK_IMAGE,
@@ -925,9 +963,9 @@ export function addStaticLayers(
       // The focused route's ticks are drawn by bus-stops-focus, over its corridors.
       "icon-opacity": [
         "case",
-        ["all", focusSet, stopOnFocus],
+        ["all", focusSet, stopFocused],
         0,
-        focusOpacity(0.9, stopOnFocus),
+        focusOpacity(0.9, stopFocused),
       ],
     },
   };
@@ -937,17 +975,17 @@ export function addStaticLayers(
   for (const layer of corridorSets.flat()) map.addLayer(layer);
   map.addLayer({
     ...ticks,
-    id: "bus-stops-focus",
+    id: L("bus-stops-focus"),
     paint: {
       ...ticks.paint,
-      "icon-opacity": ["case", ["all", focusSet, stopOnFocus], 0.9, 0],
+      "icon-opacity": ["case", ["all", focusSet, stopFocused], 0.9, 0],
     },
   });
   // Bus exchanges: drawn like stations, in the stop labels' grey, once bus stops show.
   map.addLayer({
-    id: "exchanges",
+    id: L("exchanges"),
     type: "circle",
-    source: EXCHANGES_SOURCE,
+    source: ids.exchanges,
     minzoom: 11,
     paint: {
       "circle-color": casing,
@@ -975,9 +1013,9 @@ export function addStaticLayers(
     },
   });
   map.addLayer({
-    id: "stations",
+    id: L("stations"),
     type: "circle",
-    source: STATIONS_SOURCE,
+    source: ids.stations,
     paint: {
       "circle-color": casing,
       "circle-stroke-color": text,
@@ -996,9 +1034,9 @@ export function addStaticLayers(
     },
   });
   map.addLayer({
-    id: "stations-label",
+    id: L("stations-label"),
     type: "symbol",
-    source: STATIONS_SOURCE,
+    source: ids.stations,
     minzoom: 11,
     layout: {
       "text-field": ["get", "name"],
@@ -1017,9 +1055,9 @@ export function addStaticLayers(
   });
   map.addLayer(
     {
-      id: VEHICLES_BEFORE_LAYER,
+      id: L(VEHICLES_BEFORE_LAYER),
       type: "symbol",
-      source: BUS_STOPS_SOURCE,
+      source: ids.busStops,
       minzoom: 14,
       layout: {
         "text-field": ["get", "name"],
@@ -1051,17 +1089,17 @@ export function addStaticLayers(
         "text-color": mutedText,
         "text-halo-color": halo,
         "text-halo-width": 1.5,
-        "text-opacity": focusOpacity(1, stopOnFocus),
+        "text-opacity": focusOpacity(1, stopFocused),
       },
     },
-    "stations-label",
+    L("stations-label"),
   );
   // Beneath station labels, which win where they collide.
   map.addLayer(
     {
-      id: "exchanges-label",
+      id: L("exchanges-label"),
       type: "symbol",
-      source: EXCHANGES_SOURCE,
+      source: ids.exchanges,
       minzoom: 12,
       layout: {
         "text-field": ["get", "name"],
@@ -1077,25 +1115,25 @@ export function addStaticLayers(
         "text-halo-width": 1.5,
       },
     },
-    "stations-label",
+    L("stations-label"),
   );
-  applyRouteFilter(map, hiddenRoutes);
+  applyRouteFilter(map, ids, hiddenRoutes);
   return true;
 }
 
-/** The ferry berth pair in use on the day shown; the other pairs' routes are drawn dotted. */
-export function setFerryPair(map: MlMap, pair: string | undefined): void {
-  map.setGlobalStateProperty(FERRY_PAIR, pair ?? null);
+/** The feed's ferry berth pair in use on the day shown; its other pairs' routes are drawn dotted. */
+export function setFerryPair(
+  map: MlMap,
+  ids: FeedIds,
+  pair: string | undefined,
+): void {
+  map.setGlobalStateProperty(ids.state(FERRY_PAIR), pair ?? null);
 }
 
 /** Sources addStaticLayers adds. */
-export const STATIC_SOURCES = [
-  LINES_SOURCE,
-  STATIONS_SOURCE,
-  EXCHANGES_SOURCE,
-  BUS_STOPS_SOURCE,
-  BUS_TICKS_SOURCE,
-];
+function staticSources(ids: FeedIds): string[] {
+  return [ids.lines, ids.stations, ids.exchanges, ids.busStops, ids.busTicks];
+}
 
 /** Remove these sources and every layer drawing from them. */
 export function removeSources(map: MlMap, sources: readonly string[]): void {
@@ -1105,10 +1143,13 @@ export function removeSources(map: MlMap, sources: readonly string[]): void {
   for (const s of sources) if (map.getSource(s)) map.removeSource(s);
 }
 
+/** Hide a feed's routes (`hidden`: their keys). */
 export function applyRouteFilter(
   map: MlMap,
+  ids: FeedIds,
   hidden: ReadonlySet<string>,
 ): void {
+  const L = ids.layer;
   const visible: ExpressionSpecification = [
     "!",
     ["in", ["get", "route"], ["literal", [...hidden]]],
@@ -1116,12 +1157,12 @@ export function applyRouteFilter(
   for (const [id, base] of [
     ["routes-bus", BUS_FREQUENT],
     ["routes-bus-limited", BUS_LIMITED],
-    ["routes-shape", SHAPE_ACTIVE],
-    ["routes-shape-inactive", SHAPE_INACTIVE],
+    ["routes-shape", shapeActive(ids)],
+    ["routes-shape-inactive", shapeInactive(ids)],
     ["routes-skytrain-casing", ["==", ["get", "kind"], "skytrain"]],
     ["routes-skytrain", ["==", ["get", "kind"], "skytrain"]],
   ] as [string, ExpressionSpecification][]) {
-    if (map.getLayer(id)) map.setFilter(id, ["all", base, visible]);
+    if (map.getLayer(L(id))) map.setFilter(L(id), ["all", base, visible]);
   }
   // A bus stop or exchange shows while any of its routes is visible.
   const hiddenAtStop: ExpressionSpecification = [
@@ -1143,38 +1184,40 @@ export function applyRouteFilter(
     hiddenAtStop,
     ["get", "n"],
   ];
-  for (const id of [
+  for (const name of [
     VEHICLES_BEFORE_LAYER,
     "exchanges",
     "exchanges-label",
     "bus-stops",
     "bus-stops-focus",
   ])
-    if (map.getLayer(id)) map.setFilter(id, stopVisible);
+    if (map.getLayer(L(name))) map.setFilter(L(name), stopVisible);
 }
 
-/** Station, exchange and bus stop markers and their labels (the layers panel's "Stations & stops"). */
-export function applyStopsVisibility(map: MlMap, shown: boolean): void {
-  for (const id of [
-    "stations",
-    "stations-label",
-    "exchanges",
-    "exchanges-label",
-    "bus-stops",
-    "bus-stops-focus",
-    VEHICLES_BEFORE_LAYER,
-  ])
-    if (map.getLayer(id))
-      map.setLayoutProperty(id, "visibility", shown ? "visible" : "none");
+/** A feed's station, exchange and bus stop markers and their labels (the layers panel's "Stations & stops"). */
+export function applyStopsVisibility(
+  map: MlMap,
+  ids: FeedIds,
+  shown: boolean,
+): void {
+  for (const name of PLACE_LAYERS)
+    if (map.getLayer(ids.layer(name)))
+      map.setLayoutProperty(
+        ids.layer(name),
+        "visibility",
+        shown ? "visible" : "none",
+      );
 }
 
 /**
- * A ring around the selected station, exchange or stop (its card is open), or none. Re-call after a style
- * change: it adds its source and layer when they're missing.
+ * A ring around the selected station, exchange or stop (its card is open), or none, beneath the
+ * layer `before` where it's on the map. Re-call after a style change: it adds its source and layer
+ * when they're missing.
  */
 export function setSelectedPlace(
   map: MlMap,
   at: [number, number] | undefined,
+  before: string,
 ): void {
   const data: FeatureCollection = {
     type: "FeatureCollection",
@@ -1207,6 +1250,6 @@ export function setSelectedPlace(
           "circle-stroke-width": 2,
         },
       },
-      map.getLayer("stations") ? "stations" : undefined,
+      map.getLayer(before) ? before : undefined,
     );
 }

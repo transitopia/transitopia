@@ -60,6 +60,9 @@ export interface TimelineOptions {
   maxExtrapolateS: number | ((t: number) => number);
   /** Label for VehicleState.source, e.g. "GTFS-RT live". */
   source: string;
+  /** The feed the fixes are from (VehicleState.feed), and its time zone, for service dates. */
+  feed: string;
+  timezone: string;
   /** Profile-based prediction and correction settings; without it, fixed-speed dead reckoning. */
   prediction?: { cfg: PredictionConfig; predictor: Predictor };
   /** The feed's cancellations, skipped stops and detour alerts for the days covered. */
@@ -315,7 +318,8 @@ export class RtTimeline {
     const along = this.alongOf(tr, i);
     if (!trip || trip.route.kind !== "bus" || Number.isNaN(along)) return null;
     const { date } = this.serviceTime(trip, o.v.ts);
-    const secOf = (ms: number) => (ms - serviceDayStart(date)) / 1000;
+    const secOf = (ms: number) =>
+      (ms - serviceDayStart(date, this.opts.timezone)) / 1000;
     const handover = o.v.ts + this.extrapolateS(o.v.ts) * 1000;
     const shown = this.shownAlong(tr, i, handover)?.along;
     const end = trip.pattern.dist[trip.pattern.dist.length - 1]!;
@@ -649,8 +653,11 @@ export class RtTimeline {
     trip: PreparedTrip,
     ts: number,
   ): { date: ServiceDate; sec: number } {
-    const date = tripServiceDate(trip, ts);
-    return { date, sec: (ts - serviceDayStart(date)) / 1000 };
+    const date = tripServiceDate(trip, ts, this.opts.timezone);
+    return {
+      date,
+      sec: (ts - serviceDayStart(date, this.opts.timezone)) / 1000,
+    };
   }
 
   /** The detour alert covering a fix's bus at t, where it is, if any. */
@@ -1009,7 +1016,7 @@ export class RtTimeline {
     }
     const changes = this.opts.changes;
     if (trip && changes && this.pp) {
-      const date = tripServiceDate(trip, basis.v.ts);
+      const date = tripServiceDate(trip, basis.v.ts, this.opts.timezone);
       if (changes.cancelled(date, trip.trip.id)) {
         notes.push(`${agency ?? "Its operator"} lists this trip as cancelled`);
         delay = undefined;
@@ -1036,6 +1043,7 @@ export class RtTimeline {
     }
     const s: VehicleState = {
       id: `rt:${id}`,
+      feed: this.opts.feed,
       routeKey: v.routeKey,
       mode: route?.mode ?? "bus",
       tripId: v.tripId ?? "",
@@ -1050,7 +1058,7 @@ export class RtTimeline {
         : "moving",
       provenance,
       source: this.opts.source,
-      serviceDate: localDate(t),
+      serviceDate: localDate(t, this.opts.timezone),
       length: kin.length,
       width: kin.width,
       observedAt: basis.v.ts,

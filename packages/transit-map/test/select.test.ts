@@ -29,6 +29,7 @@ const plan: SelectContext["plan"] = {
       brand: false,
       color: "#000",
       textColor: "#fff",
+      feed: "translink",
       gtfsRouteId: "6612",
     },
   ],
@@ -69,19 +70,19 @@ const bare: SelectContext = { ...ctx, places: null };
 describe("?select=", () => {
   it("finds IDs in the places file, whatever their suffix", () => {
     expect(resolveSelect("sn-00000001", ctx)).toEqual({
-      place: { kind: "station", id: "12034" },
+      place: { kind: "station", feed: "translink", id: "12034" },
     });
     expect(resolveSelect("st-00000004-wrong-name", ctx)).toEqual({
-      place: { kind: "stop", id: "13001" },
+      place: { kind: "stop", feed: "translink", id: "13001" },
     });
     expect(resolveSelect("st-00000009", ctx)).toEqual({
-      place: { kind: "stop", id: "13001" },
+      place: { kind: "stop", feed: "translink", id: "13001" },
     });
     expect(resolveSelect("rt-00000006-99", ctx)).toEqual({
-      place: { kind: "route", id: "99" },
+      place: { kind: "route", feed: "translink", id: "99" },
     });
     expect(resolveSelect("ex-00000002", ctx)).toEqual({
-      place: { kind: "exchange", id: "ubc-exchange" },
+      place: { kind: "exchange", feed: "translink", id: "ubc-exchange" },
     });
     expect(resolveSelect("sn-0000000z", ctx)).toBe("elsewhere");
     expect(resolveSelect("sn-00000001", bare)).toBe("elsewhere");
@@ -89,13 +90,13 @@ describe("?select=", () => {
 
   it("finds refs in the plan", () => {
     expect(resolveSelect("stop:translink:60001", bare)).toEqual({
-      place: { kind: "stop", id: "13001" },
+      place: { kind: "stop", feed: "translink", id: "13001" },
     });
     expect(resolveSelect("gtfs-stop:translink:12034", bare)).toEqual({
-      place: { kind: "station", id: "12034" },
+      place: { kind: "station", feed: "translink", id: "12034" },
     });
     expect(resolveSelect("gtfs-route:translink:6612", bare)).toEqual({
-      place: { kind: "route", id: "99" },
+      place: { kind: "route", feed: "translink", id: "99" },
     });
     expect(resolveSelect("stop:bc-transit-victoria:60001", bare)).toBe(
       "elsewhere",
@@ -108,30 +109,50 @@ describe("?select=", () => {
   });
 
   it("writes IDs with their suffix, else refs", () => {
-    expect(selectKey({ place: { kind: "station", id: "12034" } }, ctx)).toBe(
-      "sn-00000001-waterfront",
-    );
     expect(
-      selectKey({ place: { kind: "exchange", id: "ubc-exchange" } }, ctx),
+      selectKey(
+        { place: { kind: "station", feed: "translink", id: "12034" } },
+        ctx,
+      ),
+    ).toBe("sn-00000001-waterfront");
+    expect(
+      selectKey(
+        { place: { kind: "exchange", feed: "translink", id: "ubc-exchange" } },
+        ctx,
+      ),
     ).toBe("ex-00000002-ubc-exchange");
     // Without its ID an exchange has no key: a bay's ref would reopen as the bay.
     expect(
-      selectKey({ place: { kind: "exchange", id: "ubc-exchange" } }, bare),
+      selectKey(
+        { place: { kind: "exchange", feed: "translink", id: "ubc-exchange" } },
+        bare,
+      ),
     ).toBeUndefined();
-    expect(selectKey({ place: { kind: "stop", id: "13001" } }, bare)).toBe(
-      "stop:translink:60001",
-    );
-    expect(selectKey({ place: { kind: "stop", id: "11001" } }, bare)).toBe(
-      "gtfs-stop:translink:11001",
-    );
-    expect(selectKey({ place: { kind: "route", id: "99" } }, bare)).toBe(
-      "gtfs-route:translink:6612",
-    );
+    expect(
+      selectKey(
+        { place: { kind: "stop", feed: "translink", id: "13001" } },
+        bare,
+      ),
+    ).toBe("stop:translink:60001");
+    expect(
+      selectKey(
+        { place: { kind: "stop", feed: "translink", id: "11001" } },
+        bare,
+      ),
+    ).toBe("gtfs-stop:translink:11001");
+    expect(
+      selectKey(
+        { place: { kind: "route", feed: "translink", id: "99" } },
+        bare,
+      ),
+    ).toBe("gtfs-route:translink:6612");
   });
 
   it("names a combined route by its ends' keys", () => {
     // From a station to a street stop.
-    const shared = { place: { kind: "shared" as const, id: "12034>11001" } };
+    const shared = {
+      place: { kind: "shared" as const, feed: "translink", id: "12034>11001" },
+    };
     expect(selectKey(shared, ctx)).toBe(
       "shared:sn-00000001-waterfront:gtfs-stop:translink:11001",
     );
@@ -143,7 +164,7 @@ describe("?select=", () => {
     ).toEqual(shared);
     // An exchange stands for its bays: named by its key, read back as one of them.
     const exchange = {
-      place: { kind: "shared" as const, id: "13001>12034" },
+      place: { kind: "shared" as const, feed: "translink", id: "13001>12034" },
     };
     expect(selectKey(exchange, ctx)).toBe(
       "shared:ex-00000002-ubc-exchange:sn-00000001-waterfront",

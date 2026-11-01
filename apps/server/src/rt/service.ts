@@ -283,6 +283,7 @@ export class RtService {
             apiKey: aisKey,
             cfg,
             route: cfg.route,
+            timezone: feed.timezone,
             recorder: new Recorder(
               join(opts.aisHistoryDir ?? AIS_HISTORY_DIR, feed.id),
               cfg.coverageGapS * 1000,

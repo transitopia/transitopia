@@ -430,9 +430,13 @@ export interface WalkResult {
 }
 
 /** Service date (YYYYMMDD) of a trip running at an instant: after-midnight trips belong to the day before. */
-export function tripServiceDate(trip: PreparedTrip, ms: number): ServiceDate {
-  const date = localDate(ms);
-  return (ms - serviceDayStart(date)) / 1000 < trip.trip.start - 6 * 3600 ?
+export function tripServiceDate(
+  trip: PreparedTrip,
+  ms: number,
+  tz: string,
+): ServiceDate {
+  const date = localDate(ms, tz);
+  return (ms - serviceDayStart(date, tz)) / 1000 < trip.trip.start - 6 * 3600 ?
       addDays(date, -1)
     : date;
 }
@@ -474,7 +478,10 @@ export class Predictor {
       this.cfg.bandStartHours,
       localHour(atMs, this.pp.plan.timezone),
     );
-    const skip = this.skipped?.(tripServiceDate(trip, atMs), trip.trip.id);
+    const skip = this.skipped?.(
+      tripServiceDate(trip, atMs, this.pp.plan.timezone),
+      trip.trip.id,
+    );
     const baseKey =
       skip?.size ?
         `${trip.trip.pattern}|${band}|${[...skip].sort().join(",")}`
@@ -607,7 +614,10 @@ export class Predictor {
     if (trip.route.kind !== "bus") return undefined;
     return this.paceOn(
       trip,
-      this.course(trip, serviceDayStart(serviceDate) + sec * 1000),
+      this.course(
+        trip,
+        serviceDayStart(serviceDate, this.pp.plan.timezone) + sec * 1000,
+      ),
       sec,
     );
   };
@@ -644,7 +654,7 @@ export class Predictor {
   ): number {
     const lo = trip.dep[0]!;
     const hi = trip.arr[trip.arr.length - 1]!;
-    const dayStart = serviceDayStart(serviceDate);
+    const dayStart = serviceDayStart(serviceDate, this.pp.plan.timezone);
     // The course by service-day hour (`course` is most of a pacer call's cost, and the search makes
     // dozens): a course changes only with the local hour (its band), and a service day starts on a
     // local hour (noon − 12 h), so every second of a service-day hour has the same one.

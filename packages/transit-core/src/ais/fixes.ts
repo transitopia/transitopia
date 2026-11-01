@@ -67,9 +67,12 @@ export function parseAisTime(s: string | undefined): number | undefined {
   return Number.isFinite(ms) ? ms : undefined;
 }
 
-/** Fixes that can belong to a service date's trips: 03:00 that day to 03:00 the next (local). */
-export function serviceDateWindow(serviceDate: ServiceDate): [number, number] {
-  const start = serviceDayStart(serviceDate);
+/** Fixes that can belong to a service date's trips: 03:00 that day to 03:00 the next (local, in `tz`). */
+export function serviceDateWindow(
+  serviceDate: ServiceDate,
+  tz: string,
+): [number, number] {
+  const start = serviceDayStart(serviceDate, tz);
   return [start + 3 * 3_600_000, start + 27 * 3_600_000];
 }
 

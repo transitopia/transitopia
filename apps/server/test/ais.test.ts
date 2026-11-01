@@ -72,6 +72,7 @@ const plan: ServicePlan = {
       brand: true,
       color: "#000",
       textColor: "#fff",
+      feed: "translink",
       gtfsRouteId: "1",
     },
   ],
@@ -449,6 +450,7 @@ describe("AisFeed", () => {
       const recorder = new Recorder(dir, 75_000);
       const feed = new AisFeed({
         apiKey: "k",
+        timezone: "America/Vancouver",
         cfg: {
           vessels: [{ mmsi: "316042365", name: "Burrard Chinook" }],
           boundingBox: [
@@ -526,6 +528,7 @@ describe("AisFeed", () => {
       // A restarted feed resumes the recorded fix.
       const again = new AisFeed({
         apiKey: "k",
+        timezone: "America/Vancouver",
         cfg: (feed as any).opts.cfg,
         route: "seabus",
         recorder: new Recorder(dir, 75_000),

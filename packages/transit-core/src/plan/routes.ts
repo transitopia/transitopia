@@ -106,6 +106,7 @@ export interface RouteSelection {
 export function selectRoutes(
   rows: readonly GtfsRouteRow[],
   cfg: Config<"routes">,
+  feed: string,
   dataset: string | undefined,
 ): RouteSelection {
   const routes: PlanRoute[] = [];
@@ -144,6 +145,7 @@ export function selectRoutes(
       );
     const mode = over?.mode ?? model!.mode;
     routes.push({
+      feed,
       key,
       label: over?.label ?? defaultLabel(row, key),
       kind: over?.kind ?? model!.kind,

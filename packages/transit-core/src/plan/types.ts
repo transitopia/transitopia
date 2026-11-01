@@ -10,6 +10,12 @@ export type RouteKind = "skytrain" | "shape" | "bus";
 export type RouteMode = "skytrain" | "ferry" | "rail" | "bus";
 
 export interface PlanRoute {
+  /**
+   * The feed it's from (ServicePlan.feed): route keys are unique only within a feed, so the browser
+   * names a route by both (packages/transit-map/README.md#feeds). Not published per route: the
+   * plan names its feed once, and `decodeCore` sets it.
+   */
+  feed: string;
   key: string;
   label: string;
   kind: RouteKind;

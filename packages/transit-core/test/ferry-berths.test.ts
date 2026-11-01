@@ -60,6 +60,7 @@ function makePlan(trips: PlanTrip[]): ServicePlan {
         brand: false,
         color: "#000",
         textColor: "#fff",
+        feed: "translink",
         gtfsRouteId: "1",
       },
       {
@@ -70,6 +71,7 @@ function makePlan(trips: PlanTrip[]): ServicePlan {
         brand: true,
         color: "#000",
         textColor: "#fff",
+        feed: "translink",
         gtfsRouteId: "2",
       },
     ],

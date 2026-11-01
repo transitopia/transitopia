@@ -28,14 +28,15 @@ import {
   DIM_OPACITY,
   focusColor,
   FOCUS_LAYERS_START,
-  LINES_SOURCE,
   onFocus,
   routeLineColor,
   VEHICLES_BEFORE_LAYER,
 } from "./static.ts";
+import type { FeedIds } from "./ids.ts";
 
-/** The track network, drawn only with ?debug=1. */
-export const TRACKS_SOURCE = "tracks";
+// The rail network's layers are those of the feed whose plan's tiles draw it (`FeedIds`): its
+// `tracks` source is the track network itself, drawn only with ?debug=1.
+
 const TRACK_LAYERS = [
   "tracks-yard",
   "tracks-other",
@@ -58,9 +59,8 @@ export const PICKABLE_TRACK_LAYERS = [
 ];
 /** From this zoom the line is its ribbon (true width), below it a stroke: where the two are as wide. */
 export const RIBBON_ZOOM = 15.3;
-/** Each track layer's own filter, so line visibility can be combined with it. */
+/** Each track layer's own filter (by layer id), so line visibility can be combined with it. */
 const baseFilters = new Map<string, ExpressionSpecification>();
-export const DEBUG_SOURCE = "tracks-debug";
 
 export interface PlatformsFile {
   feedVersion: string;
@@ -103,24 +103,27 @@ export async function loadPlatforms(
 /** Mark SkyTrain line pieces (feature ids in the plan's tiles) as on a combined route's stretch, or not. */
 export function setRailFocus(
   map: MlMap,
-  ids: Iterable<number>,
+  ids: FeedIds,
+  pieces: Iterable<number>,
   focus: boolean,
 ): void {
-  if (!map.getSource(LINES_SOURCE)) return;
-  for (const id of ids)
+  if (!map.getSource(ids.lines)) return;
+  for (const id of pieces)
     map.setFeatureState(
-      { source: LINES_SOURCE, sourceLayer: PLAN_TILE_LAYERS.railLines, id },
+      { source: ids.lines, sourceLayer: PLAN_TILE_LAYERS.railLines, id },
       { focus },
     );
 }
 
-/** SkyTrain's layers, drawn from the plan's tiles (none there in a region without track-level rail). */
+/** SkyTrain's layers, drawn from the plan's tiles (none there for a feed without track-level rail). */
 export function addTrackLayers(
   map: MlMap,
+  ids: FeedIds,
   plan: ServicePlan,
   theme: Theme,
 ): void {
-  if (map.getLayer("rail-centre")) return;
+  const L = ids.layer;
+  if (map.getLayer(L("rail-centre"))) return;
   const dark = theme === "dark";
   const yard = dark ? "#5b636d" : "#a9b0b8";
   const casing = dark ? "#15181c" : "#ffffff";
@@ -128,24 +131,30 @@ export function addTrackLayers(
   // through once it fades close in. Below the focused bus route (its card is open), exchanges,
   // stations and labels.
   const before =
-    map.getLayer(VEHICLES_BEFORE_LAYER) && map.getLayer(FOCUS_LAYERS_START) ?
-      FOCUS_LAYERS_START
+    (
+      map.getLayer(L(VEHICLES_BEFORE_LAYER))
+      && map.getLayer(L(FOCUS_LAYERS_START))
+    ) ?
+      L(FOCUS_LAYERS_START)
     : undefined;
   const lines = {
-    source: LINES_SOURCE,
+    source: ids.lines,
     "source-layer": PLAN_TILE_LAYERS.railLines,
   } as const;
   const segments = {
-    source: LINES_SOURCE,
+    source: ids.lines,
     "source-layer": PLAN_TILE_LAYERS.railTracks,
   } as const;
   /**
    * A line's colour (its frequency colour while routes are coloured by frequency), grey where none
    * runs (yards, track off every line).
    */
-  const ownColor = routeLineColor("line", ["coalesce", ["get", "color"], yard]);
+  const ownColor = routeLineColor(ids, "line", [
+    "coalesce",
+    ["get", "color"],
+    yard,
+  ]);
 
-  baseFilters.clear();
   const kind = (...k: string[]) =>
     ["in", ["get", "kind"], ["literal", k]] as ExpressionSpecification;
   const width = (lo: number, mid: number, hi: number) =>
@@ -205,17 +214,22 @@ export function addTrackLayers(
     ] as ExpressionSpecification;
   // Off the focused route (its card is open), lines are faded (static.ts → setFocusRoute): strokes
   // by colour, since their pieces overlap; the ribbon, one polygon per line, by opacity.
-  const lineColor = focusColor(plan.routes, theme, "line", [
+  const lineColor = focusColor(ids, plan.routes, theme, "line", [
     "coalesce",
     ["get", "color"],
     yard,
   ]);
   const dimmed = (x: number) =>
-    ["case", onFocus("line"), x, x * DIM_OPACITY] as ExpressionSpecification;
+    [
+      "case",
+      onFocus(ids, "line"),
+      x,
+      x * DIM_OPACITY,
+    ] as ExpressionSpecification;
 
   map.addLayer(
     {
-      id: "tracks-yard",
+      id: L("tracks-yard"),
       type: "line",
       ...segments,
       minzoom: 12,
@@ -228,7 +242,7 @@ export function addTrackLayers(
   // Tail tracks, spurs and track past the last platform: drawn like yard track.
   map.addLayer(
     {
-      id: "tracks-other",
+      id: L("tracks-other"),
       type: "line",
       ...lines,
       minzoom: 12,
@@ -240,7 +254,7 @@ export function addTrackLayers(
   );
   map.addLayer(
     {
-      id: "rail-casing",
+      id: L("rail-casing"),
       type: "line",
       ...lines,
       ...low,
@@ -249,14 +263,14 @@ export function addTrackLayers(
       paint: {
         "line-color": casing,
         "line-width": stroke(1, 3),
-        "line-opacity": casingOpacity(onFocus("line")),
+        "line-opacity": casingOpacity(onFocus(ids, "line")),
       },
     },
     before,
   );
   map.addLayer(
     {
-      id: "tracks-minor",
+      id: L("tracks-minor"),
       type: "line",
       ...lines,
       minzoom: 12.5,
@@ -280,7 +294,7 @@ export function addTrackLayers(
   };
   map.addLayer(
     {
-      id: "rail-centre",
+      id: L("rail-centre"),
       ...centreStroke,
       paint: { "line-color": lineColor, "line-width": stroke(1) },
     },
@@ -312,7 +326,7 @@ export function addTrackLayers(
   ] as ExpressionSpecification;
   map.addLayer(
     {
-      id: "rail-shared",
+      id: L("rail-shared"),
       ...sharedStroke,
       paint: {
         "line-color": lineColor,
@@ -324,7 +338,7 @@ export function addTrackLayers(
   );
   map.addLayer(
     {
-      id: "rail-centre-focus",
+      id: L("rail-centre-focus"),
       ...centreStroke,
       paint: {
         "line-color": ownColor,
@@ -335,7 +349,7 @@ export function addTrackLayers(
   );
   map.addLayer(
     {
-      id: "rail-shared-focus",
+      id: L("rail-shared-focus"),
       ...sharedStroke,
       paint: {
         "line-color": ownColor,
@@ -348,7 +362,7 @@ export function addTrackLayers(
   // Close in: the ribbon, one polygon per line, so it fades evenly.
   map.addLayer(
     {
-      id: "rail-ribbon",
+      id: L("rail-ribbon"),
       type: "fill",
       ...lines,
       minzoom: RIBBON_ZOOM,
@@ -370,7 +384,7 @@ export function addTrackLayers(
   );
   map.addLayer(
     {
-      id: "tracks-works",
+      id: L("tracks-works"),
       type: "line",
       ...segments,
       filter: ["has", "works"],
@@ -385,7 +399,7 @@ export function addTrackLayers(
   // The tracks themselves inside the ribbon.
   map.addLayer(
     {
-      id: "tracks-hairline",
+      id: L("tracks-hairline"),
       type: "line",
       ...lines,
       minzoom: RIBBON_ZOOM,
@@ -422,7 +436,7 @@ export function addTrackLayers(
   // Close in, the stretch's tracks in their line's colour over its faded ribbon.
   map.addLayer(
     {
-      id: "tracks-focus",
+      id: L("tracks-focus"),
       type: "line",
       ...lines,
       minzoom: RIBBON_ZOOM,
@@ -442,30 +456,32 @@ export function addTrackLayers(
     },
     before,
   );
-  for (const id of TRACK_LAYERS) {
-    const f = map.getFilter(id);
-    if (f) baseFilters.set(id, f as ExpressionSpecification);
+  for (const name of TRACK_LAYERS) {
+    const f = map.getFilter(L(name));
+    if (f) baseFilters.set(L(name), f as ExpressionSpecification);
   }
 }
 
 /** ?debug=1: the track network's nodes and segment ids, and where GTFS platforms were mapped. */
 export function addTrackDebugLayers(
   map: MlMap,
+  ids: FeedIds,
   tracks: InfraCollection,
   theme: Theme,
 ): void {
-  if (map.getSource(TRACKS_SOURCE)) return;
+  const L = ids.layer;
+  if (map.getSource(ids.tracks)) return;
   const dark = theme === "dark";
   const casing = dark ? "#15181c" : "#ffffff";
   const seg = ["==", ["get", "type"], "segment"] as ExpressionSpecification;
-  map.addSource(TRACKS_SOURCE, {
+  map.addSource(ids.tracks, {
     type: "geojson",
     data: tracks as FeatureCollection,
   });
   map.addLayer({
-    id: "tracks-nodes",
+    id: L("tracks-nodes"),
     type: "circle",
-    source: TRACKS_SOURCE,
+    source: ids.tracks,
     minzoom: 15,
     filter: [
       "all",
@@ -492,14 +508,14 @@ export function addTrackDebugLayers(
     },
   });
 
-  map.addSource(DEBUG_SOURCE, {
+  map.addSource(ids.debug, {
     type: "geojson",
     data: { type: "FeatureCollection", features: [] },
   });
   map.addLayer({
-    id: "debug-seg-labels",
+    id: L("debug-seg-labels"),
     type: "symbol",
-    source: TRACKS_SOURCE,
+    source: ids.tracks,
     minzoom: 16,
     filter: seg,
     layout: {
@@ -515,9 +531,9 @@ export function addTrackDebugLayers(
     },
   });
   map.addLayer({
-    id: "debug-platforms",
+    id: L("debug-platforms"),
     type: "symbol",
-    source: DEBUG_SOURCE,
+    source: ids.debug,
     minzoom: 15,
     layout: {
       "text-field": ["get", "label"],
@@ -536,11 +552,12 @@ export function addTrackDebugLayers(
 /** Debug overlay: where each GTFS platform was mapped onto the tracks. */
 export function setDebugPlatforms(
   map: MlMap,
+  ids: FeedIds,
   g: TrackGraph,
   plan: ServicePlan,
   platforms: PlatformsFile,
 ): void {
-  const src = map.getSource(DEBUG_SOURCE) as GeoJSONSource | undefined;
+  const src = map.getSource(ids.debug) as GeoJSONSource | undefined;
   if (!src) return;
   const features: GeoJSON.Feature[] = [];
   for (const [stopId, p] of Object.entries(platforms.platforms)) {
@@ -559,16 +576,18 @@ export function setDebugPlatforms(
   void src.setData({ type: "FeatureCollection", features });
 }
 
-/** Hide tracks of hidden lines (yards stay visible). */
+/** Hide tracks of a feed's hidden lines (`hidden`: their keys; yards stay visible). */
 export function applyTrackFilter(
   map: MlMap,
+  ids: FeedIds,
   hidden: ReadonlySet<string>,
 ): void {
   const lineVisible: ExpressionSpecification = [
     "!",
     ["in", ["get", "line"], ["literal", [...hidden]]],
   ];
-  for (const id of TRACK_LAYERS) {
+  for (const name of TRACK_LAYERS) {
+    const id = ids.layer(name);
     const base = baseFilters.get(id);
     if (map.getLayer(id) && base) map.setFilter(id, ["all", base, lineVisible]);
   }

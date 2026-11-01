@@ -57,8 +57,10 @@ export interface PublishedPlan extends Omit<
   | "corridorInfo"
   | "paths"
   | "files"
+  | "routes"
 > {
   schema: 2;
+  routes: Omit<PlanRoute, "feed">[];
   stops: PublishedStops;
   patterns: PublishedPattern[];
   files: PlanFiles;
@@ -300,8 +302,14 @@ export function publishPlan(plan: ServicePlan): PlanPublication {
   const weekWaits = routeWeekdayWaits(plan);
   const routeStopsOf = routeStops(plan);
   const speeds = routeWeekdaySpeeds(plan);
-  const withFigures = (r: PlanRoute): PlanRoute => {
-    const { weekdayWait: _w, stops: _s, weekdaySpeed: _v, ...route } = r;
+  const withFigures = (r: PlanRoute): Omit<PlanRoute, "feed"> => {
+    const {
+      feed: _f,
+      weekdayWait: _w,
+      stops: _s,
+      weekdaySpeed: _v,
+      ...route
+    } = r;
     const w = weekWaits.get(r.key);
     const s = routeStopsOf.get(r.key);
     const v = speeds.get(r.key);
@@ -447,10 +455,11 @@ function encodeTrips(
 
 /** The core as a ServicePlan without its shapes, corridors and trips (the browser adds them as they load). */
 export function decodeCore(core: PublishedPlan): ServicePlan {
-  const { schema: _schema, stops, patterns, ...rest } = core;
+  const { schema: _schema, stops, patterns, routes, ...rest } = core;
   return {
     ...rest,
     schema: 1,
+    routes: routes.map((r) => ({ ...r, feed: core.feed })),
     stops: decodeStops(stops),
     patterns: patterns.map((p) => ({
       ...p,

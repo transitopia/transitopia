@@ -80,7 +80,7 @@ import {
   type ServiceDate,
 } from "@transitopia/transit-core/time.ts";
 import type { VersionPointer } from "@transitopia/transit-core/rt/live.ts";
-import type { RegionConfig } from "./config.ts";
+import type { FeedConfig } from "./config.ts";
 
 /** Trip files arriving within this long of each other are added to the prepared plan at once (ms). */
 const TRIPS_BATCH_MS = 20;
@@ -154,19 +154,22 @@ export class PlanStore {
   readonly dataBase: string;
   /** URL prefix of the RT service, or undefined for schedules only. */
   private readonly apiBase: string | undefined;
-  private readonly config: Pick<RegionConfig, "kinematics" | "rail" | "feed">;
+  private readonly config: Pick<FeedConfig, "kinematics" | "rail" | "feed">;
+  /** The feed's time zone: its service dates (packages/transit-map/README.md#feeds). */
+  readonly tz: string;
 
   private constructor(
     manifest: FeedManifest,
     base: string,
     apiBase: string | undefined,
-    config: Pick<RegionConfig, "kinematics" | "rail" | "feed">,
+    config: Pick<FeedConfig, "kinematics" | "rail" | "feed">,
     scenario?: ScenarioManifest,
   ) {
     this.manifest = manifest;
     this.dataBase = base;
     this.apiBase = apiBase;
     this.config = config;
+    this.tz = config.feed.timezone;
     this.scenario = scenario;
   }
 
@@ -529,9 +532,9 @@ export class PlanStore {
   /** Disruptions in effect at instant t (epoch ms), from the dispatch patches of the days running then. */
   noticesAt(t: number): string[] {
     const out: string[] = [];
-    const today = localDate(t);
+    const today = localDate(t, this.tz);
     for (const date of [addDays(today, -1), today]) {
-      const sec = (t - serviceDayStart(date)) / 1000;
+      const sec = (t - serviceDayStart(date, this.tz)) / 1000;
       const patch = this.patchFor(date);
       for (const n of patch?.notices ?? [])
         if (sec >= n.from && sec <= n.to) out.push(`${n.text} (${n.source})`);
@@ -542,7 +545,7 @@ export class PlanStore {
   static async load(
     base: string,
     apiBase: string | undefined,
-    config: Pick<RegionConfig, "kinematics" | "rail" | "feed">,
+    config: Pick<FeedConfig, "kinematics" | "rail" | "feed">,
     scenario?: string,
   ): Promise<PlanStore> {
     if (scenario) {
@@ -590,8 +593,8 @@ export class PlanStore {
     const r = manifestRange(this.manifest);
     if (!r) return undefined;
     return [
-      serviceDayStart(r.start),
-      serviceDayStart(addDays(r.end, 1)) + 4 * 3600_000,
+      serviceDayStart(r.start, this.tz),
+      serviceDayStart(addDays(r.end, 1), this.tz) + 4 * 3600_000,
     ];
   }
 
@@ -786,10 +789,10 @@ export class PlanStore {
     routes?: Set<string>,
     rtCorrections?: Map<ServiceDate, ScheduleCorrections>,
   ): VehicleState[] {
-    const today = localDate(t);
+    const today = localDate(t, this.tz);
     const out: VehicleState[] = [];
     for (const date of [addDays(today, -1), today]) {
-      const sec = (t - serviceDayStart(date)) / 1000;
+      const sec = (t - serviceDayStart(date, this.tz)) / 1000;
       if (sec < 0) continue;
       // The day before: only its trips still running.
       const pp = this.planFor(date, date === today ? 0 : sec);
@@ -861,12 +864,12 @@ export function mergeCorrections(
 }
 
 /**
- * The service date shown in the UI for an instant: times before 03:00 belong to the previous
- * service day, matching how the timetable (and riders) think about late-night trips.
+ * The service date shown in the UI for an instant, in a feed's time zone: times before 03:00 belong
+ * to the previous service day, matching how the timetable (and riders) think about late-night trips.
  */
 export const SERVICE_DAY_ROLLOVER_H = 3;
-export function displayServiceDate(t: number): ServiceDate {
-  return localDate(t - SERVICE_DAY_ROLLOVER_H * 3600_000);
+export function displayServiceDate(t: number, tz: string): ServiceDate {
+  return localDate(t - SERVICE_DAY_ROLLOVER_H * 3600_000, tz);
 }
 
 /** Each plan's places file, once loaded (`PlanStore.placesFor`). */
