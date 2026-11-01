@@ -1,5 +1,6 @@
 import React from "react";
 import { creditsFor, legendsFor } from "@transitopia/shared/datasets.ts";
+import { Icon } from "../components/Icon.tsx";
 
 // Credits for exactly the data on screen (docs/DESIGN.md#attribution): each mode (and the transit engine)
 // declares what it draws with useDatasets(); the basemap is always there.
@@ -82,13 +83,36 @@ export const AttributionControl: React.FC = () => {
   } = React.useContext(AttributionContext);
   const datasets = creditsFor(ids);
   const legends = legendsFor(datasets);
+
+  // Escape closes the panel. It's caught first and marked handled, so an open card stays open
+  // (InfoCard closes on Escape).
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.preventDefault();
+      setOpen(false);
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [open, setOpen]);
+
   return (
     <div className="absolute bottom-0 right-0 z-40 max-w-full flex flex-col items-end pointer-events-none text-xs">
       {open ?
         <div
           id="attribution-details"
           className="pointer-events-auto m-2 mb-0 max-w-md max-h-[60dvh] overflow-y-auto rounded-md border border-gray-300 bg-white p-3 shadow-md dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100">
-          <h2 className="mb-1 font-semibold">About Transitopia</h2>
+          <div className="-my-3 -mr-2 flex items-center">
+            <h2 className="flex-1 font-semibold">About Transitopia</h2>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setOpen(false)}
+              className="flex h-11 w-11 flex-none items-center justify-center rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
+              <Icon icon="close" size={18} />
+            </button>
+          </div>
           <p className="my-2">
             Transitopia is a mapping project that aims to provide high-quality
             real-time public transit and micromobility maps. The source is on
