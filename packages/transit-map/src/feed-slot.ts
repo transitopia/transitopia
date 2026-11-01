@@ -1,5 +1,5 @@
 // One feed in the engine (packages/transit-map/README.md#feeds): its plans (plans.ts), real-time
-// buses (rt.ts) and AIS (ais.ts), service dates in its own time zone, and its layers on the map: its
+// buses (rt.ts) and AIS (ais.ts) with its live endpoint's poll (live.ts), service dates in its own time zone, and its layers on the map: its
 // plan's tiles and stops (static.ts), its corridors' frequency tiers (bus-frequency.ts) and its rail
 // network's track (tracks.ts). The clock, the vehicle layer, the selection and the snapshot are the
 // engine's, shared by every feed.
@@ -63,6 +63,7 @@ import {
 } from "./plans.ts";
 import { RtClient, type RtMode } from "./rt.ts";
 import { AisClient } from "./ais.ts";
+import { LivePoller } from "./live.ts";
 import type { FeedConfig } from "./config.ts";
 import { feedIds, type FeedIds } from "./layers/ids.ts";
 import {
@@ -134,6 +135,8 @@ export class FeedSlot {
   readonly store: PlanStore;
   readonly rt: RtClient;
   readonly ais: AisClient;
+  /** Its live endpoint's poll (GET /feeds/<id>/live): buses, service changes and AIS. */
+  readonly live: LivePoller;
   /** The rail network's track, where the feed runs on one, once loaded. */
   tracks: InfraCollection | undefined;
   /** The plan its layers were last drawn for: the displayed date's, with the trips loaded so far. */
@@ -149,8 +152,6 @@ export class FeedSlot {
   ferryPair: string | null | undefined;
   /** The real-time corrections last applied, per service date (for departure times). */
   lastCorrections: Map<ServiceDate, ScheduleCorrections> | undefined;
-  /** Whether the live endpoint is answering (the engine's poll), for AIS. */
-  liveFresh: () => boolean = () => false;
   /** What route colours were last set for (syncRouteColors). */
   private routeColorsFor: { pp: PreparedPlan; key: string } | undefined;
   /** SkyTrain pieces last marked as on a combined route (`syncRailFocus`), and for what. */
@@ -174,12 +175,7 @@ export class FeedSlot {
 
   static async create(
     config: FeedConfig,
-    urls: {
-      dataBase: string;
-      apiBase: string | undefined;
-      /** URL prefix of the region on the RT service (…/regions/<id>/), or undefined for schedules only. */
-      region: string | undefined;
-    },
+    urls: { dataBase: string; apiBase: string | undefined },
     scenario: string | undefined,
   ): Promise<FeedSlot> {
     const store = await PlanStore.load(
@@ -194,23 +190,32 @@ export class FeedSlot {
   private constructor(
     config: FeedConfig,
     store: PlanStore,
-    urls: { apiBase: string | undefined; region: string | undefined },
+    urls: { apiBase: string | undefined },
   ) {
     this.feed = config.feed.id;
     this.ids = feedIds(this.feed);
     this.config = config;
     this.tz = config.feed.timezone;
     this.store = store;
+    // The feed's live data and per-date files on the RT service (…/feeds/<id>/).
+    const api =
+      urls.apiBase && `${urls.apiBase}feeds/${encodeURIComponent(this.feed)}/`;
     this.rt = new RtClient(
-      {
-        data: (path) => store.dataUrl(path),
-        api: urls.apiBase,
-        region: urls.region,
-      },
+      { data: (path) => store.dataUrl(path), api: urls.apiBase, feed: api },
       config,
     );
     // SeaBus: AIS fixes anchor the timetable (packages/transit-core/DESIGN.md#seabus-ais).
-    this.ais = new AisClient(urls.region, config, () => this.liveFresh());
+    this.ais = new AisClient(api, config, () => this.live.fresh);
+    // Only a feed with live sources has a live endpoint to poll.
+    const live = config.feed.realtime || config.feed.ais;
+    this.live = new LivePoller(api && live && `${api}live`, config.rt, {
+      onResponse: (r, receivedAt) => {
+        this.rt.acceptLive(r, receivedAt);
+        this.ais.acceptLive(r);
+      },
+      onError: (error, missing) => this.rt.liveFailed(error, missing),
+      onStop: () => this.rt.liveStopped(),
+    });
     // Schedule estimates for buses stop at stops, using the same travel-time profile as live prediction.
     store.pacerFor = (pp) => this.rt.predictorFor(pp).pacer;
   }

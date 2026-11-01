@@ -1,5 +1,5 @@
 // Browser side of SeaBus AIS (packages/transit-core/DESIGN.md#seabus-ais): a service date's fixes come from its day file
-// (GET /regions/<id>/days/<YYYYMMDD>/<feed>/ais, shared by every visitor), then from the live
+// (GET /feeds/<id>/days/<YYYYMMDD>/ais, shared by every visitor), then from the feed's live
 // endpoint's trailing window while the clock is near now (acceptLive). Both are by batch time on the
 // server, so a window that starts before what the day file reached continues it; one that doesn't
 // (the tab slept) refetches the day file. Fixes become schedule corrections with the core matcher.
@@ -14,7 +14,7 @@ import {
 } from "@transitopia/transit-core/ais/fixes.ts";
 import {
   sectionOf,
-  type LiveTransitResponse,
+  type LiveResponse,
 } from "@transitopia/transit-core/rt/live.ts";
 import {
   aisCorrections,
@@ -71,10 +71,9 @@ export class AisClient {
   available: boolean;
   /** Why live AIS data is unavailable, for display. */
   error: string | undefined;
-  /** URL prefix of the region on the RT service (…/regions/<id>/), or undefined for schedules only. */
+  /** URL prefix of the feed on the RT service (…/feeds/<id>/), or undefined for schedules only. */
   private readonly base: string | undefined;
-  /** The feed whose vessels these are, and their route. */
-  private readonly feed: string;
+  /** The route of the feed's vessels. */
   private readonly route: string;
   /** The feed's time zone: its service dates. */
   private readonly tz: string;
@@ -94,7 +93,6 @@ export class AisClient {
   ) {
     this.base = base;
     const ais = config.feed.ais;
-    this.feed = config.feed.id;
     this.tz = config.feed.timezone;
     this.route = ais?.route ?? "";
     this.match = ais?.match;
@@ -189,9 +187,9 @@ export class AisClient {
   }
 
   /** The SeaBus window of a live response: new fixes for the dates loaded, and how far they reach. */
-  acceptLive(r: LiveTransitResponse): void {
+  acceptLive(r: LiveResponse): void {
     if (!this.available) return;
-    const live = sectionOf(r, `${this.feed}/ais`, "ais");
+    const live = sectionOf(r, "ais", "ais");
     if (!live) return;
     this.error = live.error;
     if (live.status === "unavailable") return;
@@ -230,7 +228,7 @@ export class AisClient {
     d.gap = false;
     try {
       // Revalidated with the ETag: an unchanged day file is a 304.
-      const res = await fetch(`${this.base}days/${date}/${this.feed}/ais`, {
+      const res = await fetch(`${this.base}days/${date}/ais`, {
         cache: "no-cache",
       });
       if (res.status === 404) {

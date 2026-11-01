@@ -179,7 +179,7 @@ In the `transitopia.org` zone:
 
   Then: eligible for cache; edge TTL "Use cache-control header if present, bypass cache if not";
   **browser TTL "Respect origin TTL"**. The server decides what's cached with `Cache-Control` on
-  each response (the live endpoint up to 10 s, coverage and service changes 30 s, a SeaBus day file
+  each response (the live endpoints up to 10 s, coverage and service changes 30 s, a SeaBus day file
   in progress 60 s, the feature resolver and bike routes an hour, closed history hours and finished
   days a day, dispatch and service changes versions a year; `/healthz` `no-store`), so a new public
   endpoint needs no change here; Cloudflare doesn't cache JSON without a rule. `/admin/` and
@@ -265,7 +265,7 @@ server doesn't poll unless `RT_POLL=1`.
    # Mac
    curl https://api.transitopia.org/healthz          # {"ok":true,…}
    curl https://api.transitopia.org/rt/status        # leader: true, budget.used24h counting up
-   curl -sI https://api.transitopia.org/regions/metro-vancouver/live/transit   # cf-cache-status: HIT within its max-age of a MISS
+   curl -sI https://api.transitopia.org/feeds/translink/live   # cf-cache-status: HIT within its max-age of a MISS
    curl -m 5 -k https://<VM IP>/healthz              # times out: only Cloudflare gets through
    ```
 

@@ -133,7 +133,7 @@ const app = createApp({
 });
 const server = serve({ fetch: app.fetch, port: env.port }, (info) => {
   log(
-    `Listening on http://localhost:${info.port} (/regions/<id>/live/transit, /networks/<id>/dispatch, /rt/*, /healthz)`,
+    `Listening on http://localhost:${info.port} (/feeds/<id>/live, /networks/<id>/live/dispatch, /rt/*, /healthz)`,
   );
   void service.start();
 });

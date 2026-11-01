@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseConfig, parseFeed } from "@transitopia/transit-core/config.ts";
-import type { LiveTransitResponse } from "@transitopia/transit-core/rt/live.ts";
+import type { LiveResponse } from "@transitopia/transit-core/rt/live.ts";
 import {
   compactSnapshot,
   encodeSnapshot,
@@ -28,14 +28,11 @@ const bus: RtVehicle = {
   lon: -123.1,
   ts: 0,
 };
-const live = (
-  fetchedAt: number,
-  vehicles: RtVehicle[],
-): LiveTransitResponse => ({
+const live = (fetchedAt: number, vehicles: RtVehicle[]): LiveResponse => ({
   schema: 1,
   nextAt: null,
   sources: {
-    "translink/vehicles": {
+    vehicles: {
       kind: "vehicles",
       encoding: "rt-snapshot/1",
       status: "ok",
@@ -56,7 +53,7 @@ describe("RtClient live span", () => {
       {
         data: (p) => p,
         api: "https://api/",
-        region: "https://api/regions/r/",
+        feed: "https://api/feeds/translink/",
       },
       config,
     );
@@ -121,7 +118,11 @@ describe("RtClient recorded hours", () => {
       }),
     );
     const client = new RtClient(
-      { data: (p) => p, api: "https://api/", region: "https://api/regions/r/" },
+      {
+        data: (p) => p,
+        api: "https://api/",
+        feed: "https://api/feeds/translink/",
+      },
       config,
     );
     client.coverageFor(day[0], day[1]);

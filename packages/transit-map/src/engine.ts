@@ -59,7 +59,7 @@ import {
 } from "./select.ts";
 import type { RtMode } from "./rt.ts";
 import { LivePoller } from "./live.ts";
-import { sectionsOfKind } from "@transitopia/transit-core/rt/live.ts";
+import { sectionOf } from "@transitopia/transit-core/rt/live.ts";
 import {
   placeChoice,
   placeLocation,
@@ -91,10 +91,8 @@ export { RATES } from "./clock.ts";
 export interface TransitEngineOptions {
   /** URL prefix of the published data (…/data/feeds/<feed>/manifest.json), ending in "/". */
   dataBase: string;
-  /** URL prefix of the RT service (…/regions/<id>/live/transit), ending in "/"; omit for schedules only. */
+  /** URL prefix of the RT service (…/feeds/<id>/live), ending in "/"; omit for schedules only. */
   apiBase?: string | undefined;
-  /** The region's id (region.json): the RT service serves its live data under /regions/<id>/. */
-  region: string;
   theme: Theme;
   /** Build a scenario's plans instead of the real network (?scenario=<name>). */
   scenario?: string | undefined;
@@ -309,7 +307,8 @@ export class TransitEngine {
   /** One per feed shown (packages/transit-map/README.md#feeds). */
   private readonly slots: readonly FeedSlot[];
   private readonly map: MlMap;
-  private readonly live: LivePoller;
+  /** Live dispatch, one poll per rail network a feed shown runs on (GET /networks/<id>/live/dispatch). */
+  private readonly dispatchPolls: readonly LivePoller[];
   private readonly vehicles: VehicleLayer;
   private readonly debug: boolean;
   /** The time zone the clock's times and dates are shown in: the first feed's. */
@@ -386,24 +385,21 @@ export class TransitEngine {
     opts: TransitEngineOptions,
   ): Promise<TransitEngine> {
     if (!opts.feeds.length) throw new Error("The engine shows no feeds");
-    const region =
-      opts.apiBase ? `${opts.apiBase}regions/${opts.region}/` : undefined;
     const slots = await Promise.all(
       opts.feeds.map((config) =>
         FeedSlot.create(
           config,
-          { dataBase: opts.dataBase, apiBase: opts.apiBase, region },
+          { dataBase: opts.dataBase, apiBase: opts.apiBase },
           opts.scenario,
         ),
       ),
     );
-    return new TransitEngine(map, slots, region, opts);
+    return new TransitEngine(map, slots, opts);
   }
 
   private constructor(
     map: MlMap,
     slots: readonly FeedSlot[],
-    region: string | undefined,
     opts: TransitEngineOptions,
   ) {
     this.map = map;
@@ -454,30 +450,31 @@ export class TransitEngine {
         ]),
       ) / 3.6;
     this.vehicles.selected = this.selected;
-    // One poll for every live source: buses, SeaBus AIS, service changes, live dispatch. Each feed
-    // takes its own sections.
-    this.live = new LivePoller(
-      region && `${region}live/transit`,
-      this.primary.config.rt,
-      {
-        onResponse: (r, receivedAt) => {
-          for (const slot of slots) {
-            slot.rt.acceptLive(r, receivedAt);
-            slot.ais.acceptLive(r);
-            slot.store.setLiveDispatch(
-              sectionsOfKind(r, "dispatch")[0]?.versions,
-            );
-          }
-        },
-        onError: (error, missing) => {
-          for (const slot of slots) slot.rt.liveFailed(error, missing);
-        },
-        onStop: () => {
-          for (const slot of slots) slot.rt.liveStopped();
-        },
-      },
+    // Each slot polls its feed's live endpoint; live dispatch is polled once per rail network, for
+    // every feed on it.
+    const byNetwork = new Map<string, FeedSlot[]>();
+    for (const slot of slots) {
+      const network = slot.config.rail?.network;
+      if (network)
+        byNetwork.set(network, [...(byNetwork.get(network) ?? []), slot]);
+    }
+    this.dispatchPolls = [...byNetwork].map(
+      ([network, on]) =>
+        new LivePoller(
+          opts.apiBase
+            && `${opts.apiBase}networks/${encodeURIComponent(network)}/live/dispatch`,
+          on[0]!.config.rt,
+          {
+            onResponse: (r) => {
+              const versions = sectionOf(r, "dispatch", "dispatch")?.versions;
+              for (const slot of on) slot.store.setLiveDispatch(versions);
+            },
+            // Without live dispatch, the published patches still apply.
+            onError: () => {},
+            onStop: () => {},
+          },
+        ),
     );
-    for (const slot of slots) slot.liveFresh = () => this.live.fresh;
     this.snapshot = this.buildSnapshot(this.clock.now());
 
     for (const slot of slots)
@@ -1493,7 +1490,7 @@ export class TransitEngine {
     const { map } = this;
     if (!visible) {
       cancelAnimationFrame(this.raf);
-      this.live.stop();
+      this.stopLive();
       this.setFollow(false);
       // Vehicles are sized for the zoom they were computed at: none are kept to be drawn, for a
       // frame, at another when shown again.
@@ -1529,6 +1526,12 @@ export class TransitEngine {
     this.raf = requestAnimationFrame(this.frame);
   }
 
+  /** Stop every live poll: each feed's and each rail network's. */
+  private stopLive(): void {
+    for (const slot of this.slots) slot.live.stop();
+    for (const poll of this.dispatchPolls) poll.stop();
+  }
+
   /** Sources the engine adds to the host's map (removed on dispose). */
   private sources(): string[] {
     return [SELECTED_PLACE_SOURCE, ...this.slots.flatMap((s) => s.ids.sources)];
@@ -1542,7 +1545,7 @@ export class TransitEngine {
     this.clearMapPadding();
     clearTimeout(this.urlTimer);
     for (const fn of this.cleanups) fn();
-    this.live.stop();
+    this.stopLive();
     this.vehicles.detach();
     removeSources(this.map, this.sources());
     this.listeners.clear();
@@ -1876,8 +1879,11 @@ export class TransitEngine {
     const scenario = this.primary.store.scenario !== undefined;
     // Scenarios are hypothetical: never mix in real bus positions.
     if (!scenario) {
-      for (const slot of this.slots) slot.rt.update(t, this.sliderRange(t));
-      this.live.update(t);
+      for (const slot of this.slots) {
+        slot.rt.update(t, this.sliderRange(t));
+        slot.live.update(t);
+      }
+      for (const poll of this.dispatchPolls) poll.update(t);
     }
     // Vehicles (and the map repaint their upload triggers) only when something they depend on
     // changed: the time (once vehicles could have moved MAX_STEP_PX), the zoom (minimum drawn

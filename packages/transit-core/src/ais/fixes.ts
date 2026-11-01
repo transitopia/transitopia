@@ -100,7 +100,7 @@ export function vehicleToFix(v: RtVehicle): AisFix {
 }
 
 /**
- * Response of GET /regions/<id>/days/<YYYYMMDD>/<feed>/ais: the fixes recorded for a service date so
+ * Response of GET /feeds/<id>/days/<YYYYMMDD>/ais: the fixes recorded for a service date so
  * far. Shared by every visitor (cached at the edge); the live endpoint's AIS section continues it.
  */
 export interface AisDayResponse {

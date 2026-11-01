@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RtService } from "../src/rt/service.ts";
 import type { CorrectionsRepo } from "../src/corrections.ts";
-import type { LiveTransitResponse } from "@transitopia/transit-core/rt/live.ts";
+import type { LiveResponse } from "@transitopia/transit-core/rt/live.ts";
 
 const RAIL = { network: "skytrain", feed: "translink" };
 /** No corrections: the dispatcher has nothing to dispatch, so its index stays empty. */
@@ -19,7 +19,7 @@ afterEach(async () => {
 });
 
 describe("live dispatch by rail network", () => {
-  it("serves a network's dispatch under /networks/<id>/, and in the live endpoint of regions showing its feed", async () => {
+  it("serves a network's dispatch under /networks/<id>/, live and as an index", async () => {
     dir = await mkdtemp(join(tmpdir(), "rt-dispatch-"));
     const service = new RtService({
       historyDir: dir,
@@ -51,10 +51,20 @@ describe("live dispatch by rail network", () => {
     expect(
       (await get("/networks/skytrain/dispatch/20260928/abc.json")).status,
     ).toBe(404);
+    const lr = await get("/networks/skytrain/live/dispatch");
+    expect(lr.headers["Cache-Control"]).toMatch(/^public, max-age=\d+$/);
+    expect(JSON.parse(String(lr.body))).toEqual({
+      schema: 1,
+      nextAt: null,
+      sources: { dispatch: { kind: "dispatch", versions: {} } },
+    });
+    expect((await get("/networks/elsewhere/live/dispatch")).status).toBe(404);
+    expect((await get("/networks/skytrain/live/nothing")).status).toBe(404);
+    // The region form, until #250 phase 4's contract: the dispatch of regions showing its feed.
     const live = async (region: string) =>
       JSON.parse(
         String((await get(`/regions/${region}/live/transit`)).body),
-      ) as LiveTransitResponse;
+      ) as LiveResponse;
     expect((await live("metro-vancouver")).sources["dispatch"]).toEqual({
       kind: "dispatch",
       versions: {},

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
 import { notModified, RtService } from "../src/rt/service.ts";
-import type { LiveTransitResponse } from "@transitopia/transit-core/rt/live.ts";
+import type { LiveResponse } from "@transitopia/transit-core/rt/live.ts";
 import { health, type AppDeps } from "../src/app.ts";
 
 const { FeedMessage } = GtfsRealtimeBindings.transit_realtime;
@@ -95,7 +95,6 @@ describe("RtService", () => {
       log: () => {},
       apiKey: "test-key",
       dispatch: false,
-      regionId: "test-region",
     });
     await service.start();
     // Let the first positions + trip-updates + alerts polls complete.
@@ -105,10 +104,7 @@ describe("RtService", () => {
     const before = upstream.mock.calls.length;
     const responses = await Promise.all(
       Array.from({ length: 100 }, () =>
-        service!.handle(
-          "/regions/test-region/live/transit",
-          new URLSearchParams(),
-        ),
+        service!.handle("/feeds/translink/live", new URLSearchParams()),
       ),
     );
     expect(upstream.mock.calls.length).toBe(before);
@@ -122,7 +118,7 @@ describe("RtService", () => {
     }
   });
 
-  it("serves every live source in one response per region, with pointers to immutable files", async () => {
+  it("serves a feed's live sources in one response, with pointers to immutable files", async () => {
     dir = await mkdtemp(join(tmpdir(), "rt-test-"));
     const upstream = vi.fn(async (url: string | URL) =>
       feedResponse(
@@ -144,29 +140,33 @@ describe("RtService", () => {
     await vi.waitFor(() => expect(latest(service!)).not.toBeNull());
 
     const get = (path: string) => service!.handle(path, new URLSearchParams());
-    const r = await get("/regions/test-region/live/transit");
+    const r = await get("/feeds/translink/live");
     expect(r.status).toBe(200);
     expect(r.headers["Access-Control-Allow-Origin"]).toBe("*");
     expect(r.headers["Cache-Control"]).toMatch(/^public, max-age=\d+$/);
     expect(String(r.body)).not.toContain("test-key");
-    const body = JSON.parse(String(r.body)) as LiveTransitResponse;
+    const body = JSON.parse(String(r.body)) as LiveResponse;
     expect(body.schema).toBe(1);
     // The next positions poll, at the latest.
     expect(body.nextAt).toBeGreaterThan(Date.now());
-    expect(body.sources["translink/vehicles"]).toMatchObject({
+    expect(body.sources["vehicles"]).toMatchObject({
       kind: "vehicles",
       status: "ok",
       encoding: "rt-snapshot/1",
     });
-    expect(body.sources["translink/ais"]).toMatchObject({
+    expect(body.sources["ais"]).toMatchObject({
       kind: "ais",
       status: "unavailable",
       data: [],
     });
-    expect(body.sources["dispatch"]).toBeUndefined();
+    expect(Object.keys(body.sources).sort()).toEqual([
+      "ais",
+      "changes",
+      "vehicles",
+    ]);
 
     // Unchanged data, the same body and ETag: a revalidation is a 304.
-    const again = await get("/regions/test-region/live/transit");
+    const again = await get("/feeds/translink/live");
     expect(again.body).toBe(r.body);
     const etag = r.headers["ETag"]!;
     expect(etag).toMatch(/^W\/"[0-9a-f]+"$/);
@@ -176,37 +176,55 @@ describe("RtService", () => {
     expect(notModified(undefined, etag)).toBe(false);
 
     // Service changes: today's and yesterday's current versions, each at an immutable URL.
-    const changes = body.sources["translink/changes"];
+    const changes = body.sources["changes"];
     if (changes?.kind !== "changes") throw new Error("no changes section");
     expect(Object.keys(changes.versions)).toHaveLength(2);
     for (const [date, { version, path }] of Object.entries(changes.versions)) {
-      expect(path).toBe(
-        `regions/test-region/days/${date}/translink/changes/${version}.json`,
-      );
+      expect(path).toBe(`feeds/translink/days/${date}/changes/${version}.json`);
       const file = await get(`/${path}`);
       expect(file.status).toBe(200);
       expect(file.headers["Cache-Control"]).toMatch(/immutable/);
       expect(JSON.parse(String(file.body)).date).toBe(date);
-      const current = await get(
-        `/regions/test-region/days/${date}/translink/changes`,
-      );
+      const current = await get(`/feeds/translink/days/${date}/changes`);
       expect(current.body).toBe(file.body);
     }
     const [date] = Object.keys(changes.versions);
     expect(
-      (
-        await get(
-          `/regions/test-region/days/${date}/translink/changes/000000000000.json`,
-        )
-      ).status,
+      (await get(`/feeds/translink/days/${date}/changes/000000000000.json`))
+        .status,
     ).toBe(404);
 
     // The SeaBus day file says why there are no fixes.
-    const ais = await get(`/regions/test-region/days/${date}/translink/ais`);
+    const ais = await get(`/feeds/translink/days/${date}/ais`);
     expect(JSON.parse(String(ais.body))).toMatchObject({
       status: "unavailable",
       fixes: [],
     });
+    expect((await get("/feeds/elsewhere/live")).status).toBe(404);
+    expect((await get("/feeds/translink/nothing")).status).toBe(404);
+    expect((await get("/feeds/translink/days/2026101/ais")).status).toBe(404);
+
+    // The region forms, until the sites before the feed endpoints are gone (#250 phase 4): each
+    // feed's sections under "<feed>/", and the same per-date files.
+    const region = JSON.parse(
+      String((await get("/regions/test-region/live/transit")).body),
+    ) as LiveResponse;
+    expect(Object.keys(region.sources).sort()).toEqual([
+      "translink/ais",
+      "translink/changes",
+      "translink/vehicles",
+    ]);
+    expect(region.sources["translink/changes"]).toEqual(changes);
+    expect(region.nextAt).toBe(body.nextAt);
+    expect(
+      (await get(`/regions/test-region/days/${date}/translink/changes`)).body,
+    ).toBe((await get(`/feeds/translink/days/${date}/changes`)).body);
+    expect(
+      (await get(`/regions/test-region/days/${date}/translink/ais`)).body,
+    ).toBe(ais.body);
+    expect(
+      (await get(`/regions/test-region/days/${date}/elsewhere/ais`)).status,
+    ).toBe(404);
     expect((await get("/regions/elsewhere/live/transit")).status).toBe(404);
     expect((await get("/regions/test-region/nothing")).status).toBe(404);
     expect(upstream.mock.calls.length).toBe(3);
@@ -254,30 +272,27 @@ describe("RtService", () => {
       log: () => {},
       apiKey: null,
       dispatch: false,
-      regionId: "test-region",
     });
     await service.start();
     const r = await service.handle(
-      "/regions/test-region/live/transit",
+      "/feeds/translink/live",
       new URLSearchParams(),
     );
-    const body = JSON.parse(String(r.body)) as LiveTransitResponse;
-    expect(body.sources["translink/vehicles"]).toMatchObject({
+    const body = JSON.parse(String(r.body)) as LiveResponse;
+    expect(body.sources["vehicles"]).toMatchObject({
       status: "unavailable",
       data: null,
       error: expect.stringMatching(/API key/),
     });
     expect(upstream).not.toHaveBeenCalled();
-    // Live dispatch is off here: no section, and its endpoints say so.
-    expect(body.sources["dispatch"]).toBeUndefined();
-    expect(
-      (
-        await service.handle(
-          "/networks/skytrain/dispatch",
-          new URLSearchParams(),
-        )
-      ).status,
-    ).toBe(404);
+    // Live dispatch is off here: its endpoints say so.
+    for (const path of [
+      "/networks/skytrain/dispatch",
+      "/networks/skytrain/live/dispatch",
+    ])
+      expect((await service.handle(path, new URLSearchParams())).status).toBe(
+        404,
+      );
     // The feed endpoints need a feed that has real time.
     const coverage = (q: Record<string, string>) =>
       service!.handle("/rt/coverage", new URLSearchParams(q));

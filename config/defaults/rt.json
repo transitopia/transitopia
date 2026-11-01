@@ -1,6 +1,6 @@
 {
-  "$comment": "How the map uses real-time data, for every region (packages/transit-core/src/config.ts → resolveRt): client polling, bus prediction and carried delays. An operator (operator.json → rt) overrides prediction, carry and detourNearM, as they depend on its buses and data; a region (config/regions/<id>/rt.json) anything, e.g. client polling. How often each feed is polled, and the thresholds that follow from it, are the feed's (feed.json → realtime). Tuned on TransLink's 99 and RapidBus (config/feeds/translink/OPEN-QUESTIONS.md #25).",
-  "$clientPollS": "The browser polls the live endpoint (GET /regions/<id>/live/transit) at most this often; it is also the endpoint's longest edge-cache time. Guess.",
+  "$comment": "How the map uses real-time data, for every feed (packages/transit-core/src/config.ts → resolveRt): client polling, bus prediction and carried delays. An operator (operator.json → rt) overrides prediction, carry and detourNearM, as they depend on its buses and data; a feed (feed.json → rt) anything, e.g. client polling. How often each feed is polled, and the thresholds that follow from it, are the feed's (feed.json → realtime). Tuned on TransLink's 99 and RapidBus (config/feeds/translink/OPEN-QUESTIONS.md #25).",
+  "$clientPollS": "The browser polls each live endpoint (GET /feeds/<id>/live, /networks/<id>/live/dispatch) at most this often; it is also the endpoint's longest edge-cache time. Guess.",
   "clientPollS": 10,
   "$clientPollMaxS": "...and at least this often, even when the server expects no new data sooner (its nextAt). Guess.",
   "clientPollMaxS": 60,

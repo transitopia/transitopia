@@ -1,6 +1,6 @@
 // The server's HTTP API (Hono):
 //
-//   /rt/*, /regions/*, /networks/*  public real-time API (rt/service.ts), CORS *, cached at the edge
+//   /rt/*, /feeds/*, /regions/*, /networks/*  public real-time API (rt/service.ts), CORS *, cached at the edge
 //   /healthz           freshness checks for monitoring (503 when data is stale)
 //   /auth/*            admin sign-in with GitHub (auth.ts)
 //   /admin/api/*       the review queue behind /admin: disruptions and observations with previews,
@@ -91,7 +91,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
   // ---- Real-time API -------------------------------------------------------------------------
   app.on(
     ["GET", "HEAD", "OPTIONS"],
-    ["/rt/*", "/regions/*", "/networks/*"],
+    ["/rt/*", "/feeds/*", "/regions/*", "/networks/*"],
     async (c) => {
       if (c.req.method === "OPTIONS")
         return c.body(null, 204, {

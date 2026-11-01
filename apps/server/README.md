@@ -16,10 +16,11 @@ The server needs its database: `DATABASE_URL`, else the local one `npm run db:up
 ## API
 
 ```
-GET /regions/<id>/live/transit      every live source for a region's transit map, one response for everyone (below)
-GET /regions/<id>/days/<YYYYMMDD>/<feed>/ais                 a feed's vessels' AIS fixes recorded for a service date so far (TransLink's SeaBus)
-GET /regions/<id>/days/<YYYYMMDD>/<feed>/changes             a feed's bus trips cancelled or skipping stops, and bus route alerts, for a service date
-GET /regions/<id>/days/<YYYYMMDD>/<feed>/changes/<v>.json    a version of them (immutable)
+GET /feeds/<id>/live                a feed's live sources, one response for everyone (below)
+GET /feeds/<id>/days/<YYYYMMDD>/ais                 its vessels' AIS fixes recorded for a service date so far (TransLink's SeaBus)
+GET /feeds/<id>/days/<YYYYMMDD>/changes             its bus trips cancelled or skipping stops, and bus route alerts, for a service date
+GET /feeds/<id>/days/<YYYYMMDD>/changes/<v>.json    a version of them (immutable)
+GET /networks/<id>/live/dispatch    a rail network's live dispatch, one response for everyone (below)
 GET /rt/history?feed=<id>&date=YYYY-MM-DD&hour=HH   a feed's recorded snapshots for one local hour (NDJSON, drawn routes only)
 GET /rt/coverage?feed=<id>&from=ms&to=ms            a feed's recorder coverage intervals
 GET /rt/status                      each feed's poller health and budget, AIS (no secrets)
@@ -32,7 +33,9 @@ GET /auth/github/login, /auth/github/callback, /auth/me; POST /auth/logout     a
 /admin/api/*                        the review queue behind /admin (admins only)
 ```
 
-`/rt/*`, `/regions/*` and `/networks/*` are public, with CORS for everyone, and cached at Cloudflare's edge, so server load doesn't grow with visitors. The server serves every region in `config/regions/*/region.json` and the one rail network (other ids are a 404), and polls every feed the regions show. Where `feed` is a parameter it's required (400 without one, 404 for a feed without real time). `/admin/api` and `/auth` allow only `ALLOWED_ORIGINS`.
+`/rt/*`, `/feeds/*`, `/networks/*` and `/regions/*` are public, with CORS for everyone, and cached at Cloudflare's edge, so server load doesn't grow with visitors. The server serves every feed a region in `config/regions/*/region.json` shows (and polls those with real time) and the one rail network (other ids are a 404).
+
+Until the sites from before the per-feed endpoints are gone (#250 phase 4's contract step), the region forms they replace still answer: `GET /regions/<id>/live/transit` (every feed of the region, each section's id prefixed `<feed>/`, plus `dispatch` where a feed runs on the rail network) and `GET /regions/<id>/days/<YYYYMMDD>/<feed>/{ais,changes[/<v>.json]}`, the same as the feed's. Where `feed` is a parameter it's required (400 without one, 404 for a feed without real time). `/admin/api` and `/auth` allow only `ALLOWED_ORIGINS`.
 
 ## Leader
 
@@ -51,18 +54,18 @@ Exactly one process polls, records, dispatches and runs jobs: the leader (`src/l
 - **AIS**: for each feed whose vessels report AIS (`feed.json` → `ais`: TransLink's SeaBus), one WebSocket to aisstream.io (which allows 3 per account) for its vessels' MMSIs, reconnecting with backoff; two days of fixes in memory, recorded every 10 s (`ais_fixes` and `var/ais-history/`). Each fix keeps the time of the batch it was recorded in, which is how the day files and the live window meet (below). Matching happens in the browser ([packages/transit-core/DESIGN.md → SeaBus AIS](../../packages/transit-core/DESIGN.md#seabus-ais)).
 - Polling needs `RT_POLL=1`, for every feed, keyless ones (BC Transit) included. Without it, keys in `.secrets` or the environment are ignored: only production polls, because the key's budget is shared.
 
-## Live endpoint
+## Live endpoints
 
-`GET /regions/<id>/live/transit` (`liveTransit()` in `src/rt/service.ts`; the format is `packages/transit-core/src/rt/live.ts`) is the one thing the transit map polls. It's the same for every visitor, so the edge shares it, and it has a section per live source, keyed by source id: `<feed>/vehicles` and `<feed>/changes` for each of the region's feeds with real time (`translink/vehicles`, `bc-transit-victoria/vehicles`), `<feed>/ais` for a feed whose vessels report AIS (`translink/ais`), and `dispatch` in the region with the rail network. Each has a `kind` so a reader takes the ones it understands.
+The transit map polls one live endpoint per feed it shows, `GET /feeds/<id>/live` (`liveFeed()` in `src/rt/service.ts`), and one per rail network those feeds run on, `GET /networks/<id>/live/dispatch` (`liveDispatch()`); the format is `packages/transit-core/src/rt/live.ts`. Each is the same for every visitor and every view showing the feed, so the edge shares it, and has a section per live source, keyed by source id: a feed's `vehicles` and `changes` where it has real time, and `ais` where its vessels report AIS (TransLink's); a network's `dispatch`. Each has a `kind` so a reader takes the ones it understands.
 
 - **Inline, in compact formats**: the latest positions poll (`vehicles`, the `/rt/history` line format, sent only while not stale) and a trailing window of AIS batches (`ais`, `encodeFixes` rows). Each data section has its own `status` (`ok`, `stale`, `unavailable`) and `error`, so a stalled AIS stream doesn't mark the buses stale.
 - **Pointers**: service changes and dispatch patches are a version per service date with the path of an immutable file, fetched only when the version changes.
-- **AIS window and day files**: the window holds the batches recorded in `feed.json` → `ais.liveWindowS` up to the latest batch with fixes (`from`, exclusive, to `to`). A date's earlier fixes come from its day file (`/days/<date>/<feed>/ais`, complete through its `to`, cached 60 s, or a day once the date is over). Both count by batch time, so a browser whose day file reached a window's `from` has every fix; if not (the tab slept), it refetches the day file.
-- **Caching**: the body holds no request time or ages, so it only changes with the data. It carries a weak `ETag`, and a matching `If-None-Match` gets a 304 (also through the proxies, which may append `-gzip` to it). `nextAt` is when the next upstream poll or AIS batch with fixes is due; `max-age` runs until then, at most `config/defaults/rt.json` → `clientPollS`, and browsers poll shortly after it (`clientPollSlackS`), but no more often than every `clientPollS` and at least every `clientPollMaxS`.
+- **AIS window and day files**: the window holds the batches recorded in `feed.json` → `ais.liveWindowS` up to the latest batch with fixes (`from`, exclusive, to `to`). A date's earlier fixes come from its day file (`/feeds/<id>/days/<date>/ais`, complete through its `to`, cached 60 s, or a day once the date is over). Both count by batch time, so a browser whose day file reached a window's `from` has every fix; if not (the tab slept), it refetches the day file.
+- **Caching**: the body holds no request time or ages, so it only changes with the data. It carries a weak `ETag`, and a matching `If-None-Match` gets a 304 (also through the proxies, which may append `-gzip` to it). `nextAt` is when the feed's next upstream poll or AIS batch with fixes is due (none for dispatch, which changes whenever a dispatch finishes); `max-age` runs until then, at most `config/defaults/rt.json` → `clientPollS`, and browsers poll shortly after it (`clientPollSlackS`), but no more often than every `clientPollS` and at least every `clientPollMaxS`.
 
 ## Live dispatch and previews
 
-`src/rt/dispatch.ts`. The leader runs the [dispatcher](../../packages/transit-core/DESIGN.md#dispatcher) for every date whose confirmed observations or disruptions change (checked every `dispatchCheckS`), in the background. Each result is a version: a patch of the runs that differ from the published build, named by a content hash of its inputs, stored in `dispatch_versions` (by `network_id`) and `var/dispatch-history/<network>/`, and kept. The live endpoint (of each region showing the network's feed) and `/networks/<id>/dispatch` advertise the current version per date; `/networks/<id>/dispatch/<date>/<version>.json` serves a patch, cacheable forever. A restart reloads them.
+`src/rt/dispatch.ts`. The leader runs the [dispatcher](../../packages/transit-core/DESIGN.md#dispatcher) for every date whose confirmed observations or disruptions change (checked every `dispatchCheckS`), in the background. Each result is a version: a patch of the runs that differ from the published build, named by a content hash of its inputs, stored in `dispatch_versions` (by `network_id`) and `var/dispatch-history/<network>/`, and kept. `/networks/<id>/live/dispatch` and `/networks/<id>/dispatch` advertise the current version per date; `/networks/<id>/dispatch/<date>/<version>.json` serves a patch, cacheable forever. A restart reloads them.
 
 A patch only fits the build it was dispatched against (`baseBuiltAt`), which is why this server also builds and publishes the transit data (the `data` job below).
 

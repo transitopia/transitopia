@@ -2,7 +2,7 @@
 //
 // Every `dispatchCheckS` it reads the confirmed corrections (from the database) and, for each service date near
 // today whose inputs changed, re-dispatches that date and publishes a new patch version. Clients
-// learn the current versions from the live endpoint (or /networks/<id>/dispatch) and fetch
+// learn the current versions from the network's live endpoint (/networks/<id>/live/dispatch, or the index at /networks/<id>/dispatch) and fetch
 // /networks/<id>/dispatch/<date>/<version>.json, which never changes. Client requests never start a dispatch.
 // Versions are kept in var/dispatch-history/<network>/<date>/<version>.json (and listed in dispatch_versions),
 // so any version can be served again (and, later, an "as known then" view).

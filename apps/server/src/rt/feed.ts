@@ -524,11 +524,11 @@ export class FeedPoller {
     return error ? { stale, error } : { stale };
   }
 
-  /** Its sections of a region's live endpoint: "<feed>/vehicles" and "<feed>/changes". */
-  async liveSections(
-    regionId: string,
-    now = Date.now(),
-  ): Promise<Record<string, LiveVehiclesSection | LiveChangesSection>> {
+  /** Its sections of the feed's live endpoint: "vehicles" and "changes". */
+  async liveSections(now = Date.now()): Promise<{
+    vehicles: LiveVehiclesSection;
+    changes: LiveChangesSection;
+  }> {
     const live = this.freshness(now);
     const vehicles: LiveVehiclesSection = {
       kind: "vehicles",
@@ -548,13 +548,10 @@ export class FeedPoller {
       const { version } = await this.changes.versioned(date);
       versions[date] = {
         version,
-        path: `regions/${regionId}/days/${date}/${this.feed.id}/changes/${version}.json`,
+        path: `feeds/${this.feed.id}/days/${date}/changes/${version}.json`,
       };
     }
-    return {
-      [`${this.feed.id}/vehicles`]: vehicles,
-      [`${this.feed.id}/changes`]: { kind: "changes", versions },
-    };
+    return { vehicles, changes: { kind: "changes", versions } };
   }
 
   /** When its next upstream poll is due, if it polls. */

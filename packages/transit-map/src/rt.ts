@@ -14,7 +14,7 @@ import {
 } from "@transitopia/transit-core/rt/types.ts";
 import {
   sectionOf,
-  type LiveTransitResponse,
+  type LiveResponse,
   type VersionPointer,
 } from "@transitopia/transit-core/rt/live.ts";
 import {
@@ -187,8 +187,8 @@ export class RtClient {
   private readonly data: (path: string) => string;
   /** URL prefix of the RT service (undefined: schedules only). */
   private readonly api: string | undefined;
-  /** URL prefix of the region on the RT service (…/regions/<id>/). */
-  private readonly region: string | undefined;
+  /** URL prefix of the feed on the RT service (…/feeds/<id>/). */
+  private readonly feedApi: string | undefined;
   private readonly config: Pick<FeedConfig, "kinematics" | "rt" | "feed">;
   /** The feed's time zone: its service dates. */
   private readonly tz: string;
@@ -202,7 +202,7 @@ export class RtClient {
     urls: {
       data: (path: string) => string;
       api: string | undefined;
-      region: string | undefined;
+      feed: string | undefined;
     },
     config: Pick<FeedConfig, "kinematics" | "rt" | "feed">,
   ) {
@@ -211,7 +211,7 @@ export class RtClient {
     this.tz = config.feed.timezone;
     this.data = urls.data;
     this.api = rt ? urls.api : undefined;
-    this.region = urls.region;
+    this.feedApi = urls.feed;
     this.config = config;
     this.cadence = rt ? cadence(rt) : NO_REALTIME;
     this.prediction = config.rt.prediction;
@@ -452,7 +452,7 @@ export class RtClient {
       void fetch(
         pointer ?
           `${this.api}${pointer.path}`
-        : `${this.region}days/${date}/${this.feed}/changes`,
+        : `${this.feedApi}days/${date}/changes`,
       )
         .then((r) => (r.ok ? (r.json() as Promise<RtDayChanges>) : undefined))
         .catch(() => undefined)
@@ -541,17 +541,12 @@ export class RtClient {
   }
 
   /** A new response from the live endpoint (live.ts): the latest snapshot and service changes versions. */
-  acceptLive(r: LiveTransitResponse, receivedAt: number): void {
+  acceptLive(r: LiveResponse, receivedAt: number): void {
     if (!this.available) return;
-    // This feed's sections (a region with several feeds has a pair per feed).
-    const v = sectionOf(r, `${this.feed}/vehicles`, "vehicles");
+    const v = sectionOf(r, "vehicles", "vehicles");
     this.liveError = v?.error;
     this.liveOk = true;
-    this.changesPointer = sectionOf(
-      r,
-      `${this.feed}/changes`,
-      "changes",
-    )?.versions;
+    this.changesPointer = sectionOf(r, "changes", "changes")?.versions;
     if (v?.status === "ok" && v.data) {
       const snapshot = expandSnapshot(v.data);
       const s: RtSnapshot = {

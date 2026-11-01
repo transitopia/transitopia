@@ -7,7 +7,7 @@ import {
   type AisDayResponse,
 } from "@transitopia/transit-core/ais/fixes.ts";
 import type { AisFix } from "@transitopia/transit-core/ais/match.ts";
-import type { LiveTransitResponse } from "@transitopia/transit-core/rt/live.ts";
+import type { LiveResponse } from "@transitopia/transit-core/rt/live.ts";
 import { preparePlan } from "@transitopia/transit-core/schedule/engine.ts";
 import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
 import kinematics from "@transitopia/config/defaults/kinematics.json";
@@ -54,15 +54,11 @@ const day = (fixes: AisFix[], to: number): AisDayResponse => ({
   complete: false,
   fixes: encodeFixes(fixes),
 });
-const live = (
-  fixes: AisFix[],
-  from: number,
-  to: number,
-): LiveTransitResponse => ({
+const live = (fixes: AisFix[], from: number, to: number): LiveResponse => ({
   schema: 1,
   nextAt: null,
   sources: {
-    "translink/ais": {
+    ais: {
       kind: "ais",
       encoding: "ais-fixes/1",
       route: "seabus",
@@ -88,11 +84,15 @@ describe("AisClient", () => {
         return new Response(JSON.stringify(next));
       }),
     );
-    const client = new AisClient("https://api/regions/r/", config, () => true);
+    const client = new AisClient(
+      "https://api/feeds/translink/",
+      config,
+      () => true,
+    );
     const state = () => (client as any).dates.get(DATE);
 
     client.pairFor(DATE, pp);
-    expect(urls).toEqual(["https://api/regions/r/days/20261014/translink/ais"]);
+    expect(urls).toEqual(["https://api/feeds/translink/days/20261014/ais"]);
     await vi.waitFor(() => expect(state().loading).toBe(false));
     expect(state().fixes).toHaveLength(1);
     expect(state().syncedTo).toBe(t0);
@@ -132,7 +132,11 @@ describe("AisClient", () => {
         return new Response(JSON.stringify(body));
       }),
     );
-    const client = new AisClient("https://api/regions/r/", config, () => fresh);
+    const client = new AisClient(
+      "https://api/feeds/translink/",
+      config,
+      () => fresh,
+    );
     const state = () => (client as any).dates.get(DATE);
     client.pairFor(DATE, pp);
     await vi.waitFor(() => expect(state().loading).toBe(false));

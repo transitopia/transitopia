@@ -1,12 +1,12 @@
-// The live endpoint, GET /regions/<id>/live/transit (apps/server/README.md#live-endpoint): one response
-// for every visitor, so Cloudflare's edge can share it, with a section per live source. Shared by
-// the server and the browser.
+// The live endpoints (apps/server/README.md#live-endpoints): GET /feeds/<id>/live, a feed's buses,
+// service changes and AIS, and GET /networks/<id>/live/dispatch, a rail network's live dispatch. Each
+// is one response for every visitor, so Cloudflare's edge can share it, with a section per live
+// source. Shared by the server and the browser.
 //
 // Small data that changes often travels inline, in the compact formats history uses (vehicles as
 // in /rt/history lines, AIS fixes as encodeFixes rows). Larger or rarely changing data is a pointer
 // per service date to an immutable file (service changes, dispatch patches), fetched only when its
-// version changes. Sections have a `kind` so readers pick the ones they understand: a second
-// agency's vehicles would be a second "vehicles" section under its own source id.
+// version changes. Sections have a `kind` so readers pick the ones they understand.
 //
 // The body only changes when the data does (no request time or ages in it), so its ETag lets an
 // unchanged poll be a 304.
@@ -35,7 +35,7 @@ export interface LiveVehiclesSection extends DataSection {
 /**
  * AIS fixes recorded in batches (packages/transit-core/DESIGN.md#seabus-ais) from `from` (exclusive) to `to`
  * (inclusive), by batch time. Everything recorded up to `to` is in these and the day files
- * (GET /regions/<id>/days/<YYYYMMDD>/<feed>/ais), so a reader whose day file reaches `from` has no gap.
+ * (GET /feeds/<id>/days/<YYYYMMDD>/ais), so a reader whose day file reaches `from` has no gap.
  */
 export interface LiveAisSection extends DataSection {
   kind: "ais";
@@ -70,20 +70,20 @@ export type LiveSection =
   | LiveChangesSection
   | LiveDispatchSection;
 
-export interface LiveTransitResponse {
+export interface LiveResponse {
   schema: typeof LIVE_SCHEMA;
   /** Epoch ms when the server next expects new data (a poll or an AIS batch), or null if it doesn't know. */
   nextAt: number | null;
   /**
-   * By source id: "<feed>/vehicles" and "<feed>/changes" for each of the region's feeds with real
-   * time (e.g. "translink/vehicles"), "<feed>/ais", "dispatch".
+   * By source id. A feed's: "vehicles" and "changes" where it has real time, "ais" where its vessels
+   * report AIS. A rail network's: "dispatch".
    */
   sources: Record<string, LiveSection>;
 }
 
 /** The section with this id, if it's of this kind. */
 export function sectionOf<K extends LiveSection["kind"]>(
-  r: LiveTransitResponse,
+  r: LiveResponse,
   id: string,
   kind: K,
 ): Extract<LiveSection, { kind: K }> | undefined {
@@ -91,15 +91,4 @@ export function sectionOf<K extends LiveSection["kind"]>(
   return s?.kind === kind ?
       (s as Extract<LiveSection, { kind: K }>)
     : undefined;
-}
-
-/** The sections of one kind, in source id order. */
-export function sectionsOfKind<K extends LiveSection["kind"]>(
-  r: LiveTransitResponse,
-  kind: K,
-): Extract<LiveSection, { kind: K }>[] {
-  return Object.keys(r.sources)
-    .sort()
-    .map((id) => r.sources[id]!)
-    .filter((s): s is Extract<LiveSection, { kind: K }> => s.kind === kind);
 }
