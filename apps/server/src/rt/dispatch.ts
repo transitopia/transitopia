@@ -4,13 +4,21 @@
 // today whose inputs changed, re-dispatches that date and publishes a new patch version. Clients
 // learn the current versions from the live endpoint (or /rt/dispatch) and fetch
 // /rt/dispatch/<date>/<version>.json, which never changes. Client requests never start a dispatch.
-// Versions are kept in var/dispatch-history/<date>/<version>.json (and listed in dispatch_versions),
+// Versions are kept in var/dispatch-history/<network>/<date>/<version>.json (and listed in dispatch_versions),
 // so any version can be served again (and, later, an "as known then" view).
 //
 // Previews (docs/DESIGN.md#corrections-and-previews): an admin can dispatch a date with a correction that isn't confirmed
 // yet. That's a version like any other, reachable by its link, but never current.
 
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rmdir,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { serverConfig } from "../config.ts";
 import {
@@ -36,6 +44,7 @@ import {
   addDays,
   localDate,
   type ServiceDate,
+  isServiceDate,
   isoToServiceDate,
 } from "@transitopia/transit-core/time.ts";
 import type { Corrections } from "../corrections.ts";
@@ -46,12 +55,36 @@ export interface LiveDispatchOptions {
   net: RailNetwork;
   /** Where confirmed corrections come from (the database: CorrectionsRepo). */
   corrections: Corrections;
+  /** Where its versions are kept (default: var/dispatch-history/<network>/). */
   historyDir?: string;
   /** Lists published versions in the database. */
   store?: Store;
   log?: (msg: string) => void;
   /** Override "now" (tests). */
   now?: () => number;
+}
+
+/**
+ * Move versions kept before they were a rail network's (var/dispatch-history/<date>/) into its
+ * directory (var/dispatch-history/<network>/<date>/), once, on a server that has some: the server
+ * keeps serving them by their version. The archive's copy in object storage is moved by hand
+ * (rclone moveto).
+ */
+export async function moveDispatchHistory(
+  network: string,
+  log: (msg: string) => void,
+  dir = DISPATCH_HISTORY_DIR,
+): Promise<void> {
+  const dates = (await readdir(dir).catch(() => [])).filter(isServiceDate);
+  if (!dates.length) return;
+  for (const d of dates) {
+    // Version by version, in case some of the date's are there already.
+    await mkdir(join(dir, network, d), { recursive: true });
+    for (const f of await readdir(join(dir, d)))
+      await rename(join(dir, d, f), join(dir, network, d, f));
+    await rmdir(join(dir, d));
+  }
+  log(`moved ${dates.length} dates of dispatch versions into ${network}/`);
 }
 
 export class LiveDispatcher {
@@ -61,6 +94,8 @@ export class LiveDispatcher {
   private readonly log: (msg: string) => void;
   private readonly now: () => number;
   private readonly contexts: DispatchContexts;
+  /** The rail network it dispatches (network.json → id). */
+  readonly network: string;
   /** Service date → current patch version (dates without inputs have none: clients use the base plan). */
   private current = new Map<ServiceDate, string>();
   /** By "<date>/<version>". */
@@ -73,9 +108,11 @@ export class LiveDispatcher {
   constructor(opts: LiveDispatchOptions) {
     this.log = opts.log ?? ((m) => console.log(`[dispatch] ${m}`));
     this.contexts = new DispatchContexts(opts.net);
+    this.network = opts.net.network;
     this.corrections = opts.corrections;
     this.store = opts.store;
-    this.historyDir = opts.historyDir ?? DISPATCH_HISTORY_DIR;
+    this.historyDir =
+      opts.historyDir ?? join(DISPATCH_HISTORY_DIR, opts.net.network);
     this.now = opts.now ?? Date.now;
   }
 
@@ -97,13 +134,17 @@ export class LiveDispatcher {
     if (this.timer) clearTimeout(this.timer);
   }
 
-  /** Current versions, for the live endpoints and /rt/dispatch. */
+  /** Current versions, for the live endpoints and /networks/<id>/dispatch. */
   pointer(): Record<string, string> {
     return Object.fromEntries(
       [...this.current].sort(([a], [b]) => a.localeCompare(b)),
     );
   }
 
+  /**
+   * The index of current versions. Paths stay under rt/dispatch/ (served as /networks/<id>/dispatch/
+   * is) while sites from before /networks/ may still read it: they fetch only paths under rt/ from the API.
+   */
   index(): DispatchIndex {
     return {
       schema: 1,
@@ -226,6 +267,7 @@ export class LiveDispatcher {
     );
     await this.store
       ?.recordDispatchVersion({
+        network: this.network,
         date: inputs.date,
         version,
         kind,

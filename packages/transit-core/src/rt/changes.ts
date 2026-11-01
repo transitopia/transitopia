@@ -11,7 +11,7 @@
 //    its alert). Those listing stops ("resuming service at Lonsdale Quay") skip just those stops;
 //  - DETOUR alerts. They name the route (and direction or trip) and the affected stops; the detour
 //    path is only in the text ("via Gilmore Ave, Lougheed Hwy, ..."), so it isn't drawn.
-// See config/regions/metro-vancouver/OPEN-QUESTIONS.md #28.
+// See config/feeds/translink/OPEN-QUESTIONS.md #28.
 
 import type { ServiceDate } from "../time.ts";
 

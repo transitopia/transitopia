@@ -1,6 +1,6 @@
 // The server's HTTP API (Hono):
 //
-//   /rt/*, /regions/*  public real-time API (rt/service.ts), CORS *, cached at the edge
+//   /rt/*, /regions/*, /networks/*  public real-time API (rt/service.ts), CORS *, cached at the edge
 //   /healthz           freshness checks for monitoring (503 when data is stale)
 //   /auth/*            admin sign-in with GitHub (auth.ts)
 //   /admin/api/*       the review queue behind /admin: disruptions and observations with previews,
@@ -89,27 +89,31 @@ export function createApp(deps: AppDeps): Hono<Env> {
   });
 
   // ---- Real-time API -------------------------------------------------------------------------
-  app.on(["GET", "HEAD", "OPTIONS"], ["/rt/*", "/regions/*"], async (c) => {
-    if (c.req.method === "OPTIONS")
-      return c.body(null, 204, {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, OPTIONS",
-      });
-    const url = new URL(c.req.url);
-    const r = await service.handle(url.pathname, url.searchParams);
-    if (
-      r.status === 200
-      && notModified(
-        c.req.header("If-None-Match"),
-        r.headers["ETag"] ?? r.headers["etag"],
+  app.on(
+    ["GET", "HEAD", "OPTIONS"],
+    ["/rt/*", "/regions/*", "/networks/*"],
+    async (c) => {
+      if (c.req.method === "OPTIONS")
+        return c.body(null, 204, {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, OPTIONS",
+        });
+      const url = new URL(c.req.url);
+      const r = await service.handle(url.pathname, url.searchParams);
+      if (
+        r.status === 200
+        && notModified(
+          c.req.header("If-None-Match"),
+          r.headers["ETag"] ?? r.headers["etag"],
+        )
       )
-    )
-      return new Response(null, { status: 304, headers: r.headers });
-    return new Response(
-      c.req.method === "HEAD" ? null : new Uint8Array(Buffer.from(r.body)),
-      { status: r.status, headers: r.headers },
-    );
-  });
+        return new Response(null, { status: 304, headers: r.headers });
+      return new Response(
+        c.req.method === "HEAD" ? null : new Uint8Array(Buffer.from(r.body)),
+        { status: r.status, headers: r.headers },
+      );
+    },
+  );
 
   // ---- Feature resolver (apps/server/README.md#feature-resolver) -------------------------------
   app.get("/features/:key", async (c) => {
@@ -419,7 +423,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
   return app;
 }
 
-/** What the disruption format requires (config/regions/metro-vancouver/disruptions/README.md). */
+/** What the disruption format requires (config/networks/skytrain/disruptions/README.md). */
 export function disruptionProblems(
   d: Disruption,
   id: string,

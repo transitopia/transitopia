@@ -1,6 +1,6 @@
 // The server's deployment settings, from environment variables (infra/.env.example lists them for
-// production). Everything that differs between environments is here; region assumptions stay in
-// config/regions/ and the server's own in config/server/.
+// production). Everything that differs between environments is here; operating assumptions stay in
+// config/ (feeds, operators, rail networks) and the server's own in config/server/.
 
 import { databaseUrl } from "@transitopia/db/connect.ts";
 import { serverConfig } from "./config.ts";

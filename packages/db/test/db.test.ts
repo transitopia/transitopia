@@ -19,8 +19,8 @@ describe.skipIf(!TEST_DATABASE_URL)("database", () => {
 
   it("migrates once, and again is a no-op", async () => {
     expect(await migrate(t.pool)).toEqual([]);
-    const r = await t.db.selectFrom("regions").selectAll().execute();
-    expect(r.map((x) => x.id)).toEqual(["metro-vancouver"]);
+    const n = await t.db.selectFrom("rail_networks").selectAll().execute();
+    expect(n.map((x) => x.id)).toEqual(["skytrain"]);
     const f = await t.db.selectFrom("feeds").select("id").execute();
     expect(f.map((x) => x.id)).toEqual(["translink"]);
   });

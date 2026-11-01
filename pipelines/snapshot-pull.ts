@@ -22,11 +22,13 @@ import {
   feedPaths,
   log,
   readFeeds,
+  readNetworks,
 } from "@transitopia/data/paths.ts";
 
 const allFeeds = await readFeeds();
 const feeds = allFeeds.filter((f) => f.realtime);
 const aisFeeds = allFeeds.filter((f) => f.ais);
+const networks = await readNetworks();
 
 const args = process.argv.slice(2);
 const opt = (name: string) => {
@@ -83,11 +85,12 @@ for (const d of dates) {
     const local = feedPaths(feed.id).aisHistory;
     rclone("copy", `${remote}/ais-history/${feed.id}/${d}`, join(local, d));
   }
-  rclone(
-    "copy",
-    `${remote}/dispatch-history/${compact}`,
-    join(DISPATCH_HISTORY_DIR, compact),
-  );
+  for (const n of networks)
+    rclone(
+      "copy",
+      `${remote}/dispatch-history/${n.id}/${compact}`,
+      join(DISPATCH_HISTORY_DIR, n.id, compact),
+    );
 }
 // The recorder's coverage index (what a local server reports at /rt/coverage), from the hours now here.
 for (const recorder of [

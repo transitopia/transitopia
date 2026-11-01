@@ -1,10 +1,10 @@
 # Central Okanagan
 
-A bus-only region, added to keep Transitopia multi-region and multi-agency before a second big city ([docs/DESIGN.md → Regions and feeds](../../docs/DESIGN.md#regions-and-feeds)). It shows BC Transit's Kelowna Regional Transit System (feed `bc-transit-kelowna`, [config/feeds/bc-transit-kelowna/](../../feeds/bc-transit-kelowna/)).
+A bus-only region, added to keep Transitopia multi-region and multi-agency before a second big city ([docs/DESIGN.md → Feeds, operators and rail networks](../../docs/DESIGN.md#feeds-operators-and-rail-networks)). It shows BC Transit's Kelowna Regional Transit System (feed `bc-transit-kelowna`, [config/feeds/bc-transit-kelowna/](../../feeds/bc-transit-kelowna/)).
 
 | Path | What |
 |---|---|
-| `region.json` | bbox (Peachland to Lake Country), time zone, the first view of `/transit`, time zone data checks, and its feed |
+| `region.json` | bbox (Peachland to Lake Country), the first view of `/transit`, and its feed (time zone data checks are the feed's) |
 | Settings | None of its own yet: vehicles and real-time use come from [config/defaults/](../../defaults/) and BC Transit's [operator.json](../../operators/bc-transit/operator.json), each with a source or "guess" and a cross-reference to [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md) |
 
 Drawn routes: every route in the feed, with the **97 Okanagan RapidBus** (Westbank Exchange to UBCO Exchange by Boucherie Mountain and Queensway exchanges) as frequent (`config/feeds/bc-transit-kelowna/routes.json`) and the rest as regular. Buses are live from BC Transit's GTFS-realtime where the server polls it, estimated from the timetable otherwise.

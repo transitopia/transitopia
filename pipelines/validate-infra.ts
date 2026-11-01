@@ -1,14 +1,14 @@
 // Validate the track graph against GTFS and the diagram checklist (packages/transit-core/DESIGN.md#validation). Exits non-zero on
 // errors; warnings are printed for review.
 //
-//   npm run validate:infra
+//   npm run validate:infra [-- --network skytrain]
 
 import { join } from "node:path";
 import {
+  networkPaths,
   readJson,
-  railNetworks,
+  railNetworksArg,
   type RailNetwork,
-  regionPaths,
 } from "@transitopia/data/paths.ts";
 import { loadGraph, loadLatestPlan } from "@transitopia/data/infra.ts";
 import { mapPlatforms } from "@transitopia/transit-core/infra/platforms.ts";
@@ -56,9 +56,9 @@ function components(g: TrackGraph): string[][] {
   return out.sort((a, b) => b.length - a.length);
 }
 
-/** One rail network (railNetworks: a feed with track-level rail, in its region). */
+/** One rail network (railNetworks: a network and a feed with track-level rail on it). */
 async function buildNetwork(net: RailNetwork) {
-  const { graph: g, overrides } = await loadGraph(net.region);
+  const { graph: g, overrides } = await loadGraph(net.network);
   const plan = await loadLatestPlan(net.feed);
   const railKeys = new Set(
     plan.routes.filter((r) => r.kind === "skytrain").map((r) => r.key),
@@ -97,7 +97,7 @@ async function buildNetwork(net: RailNetwork) {
   if (works.length) {
     const ways = [...new Set(works.map((s) => s.osmWay))];
     warn(
-      `${works.length} in-service segments are tagged construction/disused in OSM (ways ${ways.join(", ")}); see config/regions/metro-vancouver/README.md, "Braid and the OMC4 works"`,
+      `${works.length} in-service segments are tagged construction/disused in OSM (ways ${ways.join(", ")}); see config/networks/skytrain/README.md, "Braid and the OMC4 works"`,
     );
   }
 
@@ -167,7 +167,7 @@ async function buildNetwork(net: RailNetwork) {
   const checklist = await readJson<{
     items: ChecklistItem[];
     stations: { required: string[] };
-  }>(join(regionPaths(net.region).infra, "diagram-checklist.json"));
+  }>(join(networkPaths(net.network).infra, "diagram-checklist.json"));
   for (const item of checklist.items) {
     const kinds = new Set(item.kinds);
     const found = [...g.segments.values()].some(
@@ -197,7 +197,7 @@ async function buildNetwork(net: RailNetwork) {
 }
 
 async function main() {
-  for (const net of await railNetworks()) await buildNetwork(net);
+  for (const net of await railNetworksArg()) await buildNetwork(net);
 }
 
 main().catch((e) => {

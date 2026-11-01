@@ -10,7 +10,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { join } from "node:path";
 import {
   CORRECTIONS_EXPORT_DIR,
   ROOT,
@@ -62,8 +61,8 @@ export async function buildData(opts: {
   const { db, repo, env, log } = opts;
   // The server writes the places files itself, after reconciling.
   const childEnv: NodeJS.ProcessEnv = { TRANSITOPIA_SKIP_PLACES: "1" };
-  // The pipelines read a region's corrections from <dir>/<region>/ (regionPaths).
-  const n = await repo.exportFiles(join(CORRECTIONS_EXPORT_DIR, repo.regionId));
+  // The pipelines read them from a directory laid out like config/ (correctionPaths).
+  const n = await repo.exportFiles(CORRECTIONS_EXPORT_DIR);
   log(
     `exported ${n.observationSets} observation sets and ${n.disruptions} disruptions for the build`,
   );

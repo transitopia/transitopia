@@ -1,16 +1,16 @@
 // Validate built movement files (packages/transit-core/DESIGN.md#validation): continuity (no teleports), conflicts (two trains on the
 // same piece of track at once), and fleet in service over the day.
 //
-//   npm run validate:plan [-- --key 1+1101] [--step 5]
+//   npm run validate:plan [-- --key 1+1101] [--step 5] [--network skytrain]
 
 import { join } from "node:path";
 import { readdir } from "node:fs/promises";
 import {
   feedVersionFile,
-  readConfig,
+  readNetworkConfig,
   readJson,
   railFeedConfig,
-  railNetworks,
+  railNetworksArg,
   type RailNetwork,
 } from "@transitopia/data/paths.ts";
 import { loadAllPlans, loadGraph } from "@transitopia/data/infra.ts";
@@ -29,11 +29,11 @@ const arg = (name: string) => {
   return i >= 0 ? process.argv[i + 1] : undefined;
 };
 
-/** One rail network (railNetworks: a feed with track-level rail, in its region). */
+/** One rail network (railNetworks: a network and a feed with track-level rail on it). */
 async function buildNetwork(net: RailNetwork) {
-  const { graph } = await loadGraph(net.region);
+  const { graph } = await loadGraph(net.network);
   const kin = (await railFeedConfig(net)).kinematics;
-  const ops = await readConfig("operations", net.region);
+  const ops = await readNetworkConfig("operations", net.network);
   const step = Number(arg("--step") ?? 5);
   let failures = 0;
   for (const plan of await loadAllPlans(net.feed)) {
@@ -148,7 +148,7 @@ async function buildNetwork(net: RailNetwork) {
 }
 
 async function main() {
-  for (const net of await railNetworks()) await buildNetwork(net);
+  for (const net of await railNetworksArg()) await buildNetwork(net);
 }
 
 main().catch((e) => {

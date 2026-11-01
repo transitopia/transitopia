@@ -1,8 +1,8 @@
-// Shared loaders for scripts: a region's track graph (with overrides) and a feed's built service plans.
+// Shared loaders for scripts: a rail network's track graph (with overrides) and a feed's built service plans.
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { PUBLIC_DIR, readJson, readManifest, regionPaths } from "./paths.ts";
+import { PUBLIC_DIR, networkPaths, readJson, readManifest } from "./paths.ts";
 import { readPlan } from "./plans.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
 import type { InfraCollection } from "@transitopia/transit-core/infra/types.ts";
@@ -22,7 +22,7 @@ export interface TurnOverride {
 
 export interface Overrides {
   osm: { includeWays: number[]; excludeWays: number[] };
-  /** GeoJSON file (in the region's infrastructure/) of track missing from OSM, joined by coordinates. */
+  /** GeoJSON file (in the network's infrastructure/) of track missing from OSM, joined by coordinates. */
   addTrack?: string;
   turns: { add: TurnOverride[]; remove: TurnOverride[] };
   platforms: PlatformOverride[];
@@ -30,27 +30,29 @@ export interface Overrides {
   patternPlatforms?: PatternPlatformRule[];
 }
 
-export async function loadOverrides(region: string): Promise<Overrides> {
-  return readJson<Overrides>(join(regionPaths(region).infra, "overrides.json"));
+export async function loadOverrides(network: string): Promise<Overrides> {
+  return readJson<Overrides>(
+    join(networkPaths(network).infra, "overrides.json"),
+  );
 }
 
-export async function loadTracks(region: string): Promise<InfraCollection> {
+export async function loadTracks(network: string): Promise<InfraCollection> {
   return JSON.parse(
     await readFile(
-      join(regionPaths(region).infra, "tracks.generated.geojson"),
+      join(networkPaths(network).infra, "tracks.generated.geojson"),
       "utf8",
     ),
   ) as InfraCollection;
 }
 
-export async function loadGraph(region: string): Promise<{
+export async function loadGraph(network: string): Promise<{
   graph: TrackGraph;
   overrides: Overrides;
   tracks: InfraCollection;
 }> {
   const [tracks, overrides] = await Promise.all([
-    loadTracks(region),
-    loadOverrides(region),
+    loadTracks(network),
+    loadOverrides(network),
   ]);
   const graph = TrackGraph.fromCollection(tracks);
   for (const t of overrides.turns.add) graph.setTurn(t.node, t.a, t.b, true);

@@ -1,9 +1,9 @@
 // Make each plan's tiles (packages/transit-core/DESIGN.md#plan-tiles): every line the map draws for it,
-// with SkyTrain's track in a region with track-level rail (build-infra's tracks.geojson and
+// with SkyTrain's track for a feed on a rail network (build-infra's tracks.geojson and
 // lines.geojson). Tiles are named by a hash of their input, so a plan whose lines didn't change
 // reuses those it has; plan.json names them. Tiles no plan names any more are removed.
 // Input:  var/public/data/feeds/<feed>/<version dir>/plan.json and its parts,
-//         var/public/data/regions/<rail region>/infra/{tracks,lines}.geojson
+//         var/public/data/networks/<network>/infra/{tracks,lines}.geojson
 // Output: var/public/data/feeds/<feed>/lines/<hash>.pmtiles, and plan.json's `files.tiles`
 //
 //   tsx pipelines/build-plan-tiles.ts                   # every feed
@@ -19,7 +19,7 @@ import {
   readFeed,
   readFeeds,
   readJson,
-  regionDataDir,
+  networkDataDir,
 } from "@transitopia/data/paths.ts";
 import { writePlanTiles } from "@transitopia/data/plan-tiles.ts";
 import { readPlan } from "@transitopia/data/plans.ts";
@@ -27,11 +27,11 @@ import type { RailInput } from "@transitopia/transit-core/plan/tiles.ts";
 import type { InfraCollection } from "@transitopia/transit-core/infra/types.ts";
 import type { LineGeometry } from "@transitopia/transit-core/infra/line-geometry.ts";
 
-/** A feed's track-level rail, where its region has published it (build-infra). */
+/** A feed's track-level rail, where its rail network has published it (build-infra). */
 async function railOf(feed: string): Promise<RailInput | undefined> {
   const net = (await railNetworks()).find((n) => n.feed === feed);
   if (!net) return undefined;
-  const infra = join(regionDataDir(net.region), "infra");
+  const infra = join(networkDataDir(net.network), "infra");
   const tracks = join(infra, "tracks.geojson");
   const lines = join(infra, "lines.geojson");
   if (!(await exists(tracks)) || !(await exists(lines))) {

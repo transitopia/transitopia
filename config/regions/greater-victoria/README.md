@@ -1,10 +1,10 @@
 # Greater Victoria
 
-A bus-only region, added to keep Transitopia multi-region and multi-agency before a second big city ([docs/DESIGN.md → Regions and feeds](../../docs/DESIGN.md#regions-and-feeds)). It shows BC Transit's Victoria Regional Transit System (feed `bc-transit-victoria`, [config/feeds/bc-transit-victoria/](../../feeds/bc-transit-victoria/)).
+A bus-only region, added to keep Transitopia multi-region and multi-agency before a second big city ([docs/DESIGN.md → Feeds, operators and rail networks](../../docs/DESIGN.md#feeds-operators-and-rail-networks)). It shows BC Transit's Victoria Regional Transit System (feed `bc-transit-victoria`, [config/feeds/bc-transit-victoria/](../../feeds/bc-transit-victoria/)).
 
 | Path | What |
 |---|---|
-| `region.json` | bbox (Sooke to Swartz Bay), time zone, the first view of `/transit`, time zone data checks, and its feed |
+| `region.json` | bbox (Sooke to Swartz Bay), the first view of `/transit`, and its feed (time zone data checks are the feed's) |
 | Settings | None of its own yet: vehicles and real-time use come from [config/defaults/](../../defaults/) and BC Transit's [operator.json](../../operators/bc-transit/operator.json), each with a source or "guess" and a cross-reference to [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md) |
 
 Drawn routes: every route in the feed, with **95 Langford / Downtown Blink** as frequent (RapidBus; `config/feeds/bc-transit-victoria/routes.json`) and the rest as regular. Buses are live from BC Transit's GTFS-realtime where the server polls it, estimated from the timetable otherwise.

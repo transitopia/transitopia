@@ -52,12 +52,7 @@ async function store(
         : new Response("", { status: 404 });
     }),
   );
-  const s = await PlanStore.load(
-    "https://data.example/",
-    undefined,
-    "greater-victoria",
-    config,
-  );
+  const s = await PlanStore.load("https://data.example/", undefined, config);
   urls.length = 0;
   return { s, urls };
 }
@@ -67,8 +62,8 @@ describe("PlanStore data URLs", () => {
 
   it("names the build in every published file's URL", async () => {
     const { s, urls } = await store("2026-10-18T17:33:18.203Z");
-    expect(s.dataUrl("data/regions/x/infra/tracks.geojson")).toBe(
-      "https://data.example/data/regions/x/infra/tracks.geojson?v=2026-10-18T17%3A33%3A18.203Z",
+    expect(s.dataUrl("data/networks/x/infra/tracks.geojson")).toBe(
+      "https://data.example/data/networks/x/infra/tracks.geojson?v=2026-10-18T17%3A33%3A18.203Z",
     );
     vi.spyOn(console, "error").mockImplementation(() => {});
     s.planFor(serviceDate("20261021"));
@@ -232,12 +227,7 @@ describe("PlanStore loading plans by parts", () => {
           : new Response("", { status: 404 });
       }),
     );
-    const s = await PlanStore.load(
-      "https://data.example/",
-      undefined,
-      "greater-victoria",
-      config,
-    );
+    const s = await PlanStore.load("https://data.example/", undefined, config);
     return { s, urls };
   }
 

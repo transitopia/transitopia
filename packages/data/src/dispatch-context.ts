@@ -6,7 +6,7 @@ import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   PUBLIC_DIR,
-  readConfig,
+  readNetworkConfig,
   readJson,
   readManifest,
   railFeedConfig,
@@ -71,8 +71,8 @@ export class DispatchContexts {
   private loadConfigs() {
     return (this.configs ??= Promise.all([
       railFeedConfig(this.net).then((c) => c.kinematics),
-      readConfig("operations", this.net.region),
-      readConfig("dispatch", this.net.region),
+      readNetworkConfig("operations", this.net.network),
+      readNetworkConfig("dispatch", this.net.network),
     ]).then(([kin, ops, dispatch]) => ({ kin, ops, dispatch })));
   }
 
@@ -126,7 +126,7 @@ export class DispatchContexts {
     const [base, inferred, { graph, overrides }] = await Promise.all([
       this.file(path),
       this.file(path.replace(/\/([^/]+)$/, "/inferred/$1")),
-      (this.graph ??= loadGraph(this.net.region)),
+      (this.graph ??= loadGraph(this.net.network)),
     ]);
     if (base.schema !== 2) return undefined;
     let report = this.platforms.get(feed.version);

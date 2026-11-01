@@ -1,14 +1,14 @@
 {
-  "$comment": "How the map uses real-time data, for every region (packages/transit-core/src/config.ts → resolveRt): client polling, bus prediction and carried delays. An operator (operator.json → rt) overrides prediction, carry and detourNearM, as they depend on its buses and data; a region (config/regions/<id>/rt.json) anything, e.g. client polling. How often each feed is polled, and the thresholds that follow from it, are the feed's (feed.json → realtime). Tuned on TransLink's 99 and RapidBus (config/regions/metro-vancouver/OPEN-QUESTIONS.md #25).",
+  "$comment": "How the map uses real-time data, for every region (packages/transit-core/src/config.ts → resolveRt): client polling, bus prediction and carried delays. An operator (operator.json → rt) overrides prediction, carry and detourNearM, as they depend on its buses and data; a region (config/regions/<id>/rt.json) anything, e.g. client polling. How often each feed is polled, and the thresholds that follow from it, are the feed's (feed.json → realtime). Tuned on TransLink's 99 and RapidBus (config/feeds/translink/OPEN-QUESTIONS.md #25).",
   "$clientPollS": "The browser polls the live endpoint (GET /regions/<id>/live/transit) at most this often; it is also the endpoint's longest edge-cache time. Guess.",
   "clientPollS": 10,
   "$clientPollMaxS": "...and at least this often, even when the server expects no new data sooner (its nextAt). Guess.",
   "clientPollMaxS": 60,
   "$clientPollSlackS": "The browser polls this long after the server's nextAt, so the poll or AIS batch it waits for has landed. A positions poll usually answers within 1-3 s (guess).",
   "clientPollSlackS": 3,
-  "$detourNearM": "A bus off its route while a TransLink detour alert covers it counts as on detour only within this distance of a stop the alert lists (guess; long-running detours would otherwise switch off shifted-GPS handling route-wide). See config/regions/metro-vancouver/OPEN-QUESTIONS.md #28.",
+  "$detourNearM": "A bus off its route while a TransLink detour alert covers it counts as on detour only within this distance of a stop the alert lists (guess; long-running detours would otherwise switch off shifted-GPS handling route-wide). See config/feeds/translink/OPEN-QUESTIONS.md #28.",
   "detourNearM": 3000,
-  "$prediction": "Live bus prediction and learned travel-time profiles (packages/transit-core/src/rt/profile.ts, packages/transit-core/DESIGN.md#buses). Values are guesses tuned against recorded data with pipelines/eval-rt.ts unless noted; see config/regions/metro-vancouver/OPEN-QUESTIONS.md #25.",
+  "$prediction": "Live bus prediction and learned travel-time profiles (packages/transit-core/src/rt/profile.ts, packages/transit-core/DESIGN.md#buses). Values are guesses tuned against recorded data with pipelines/eval-rt.ts unless noted; see config/feeds/translink/OPEN-QUESTIONS.md #25.",
   "prediction": {
     "binM": 50,
     "$bandStartHours": "Time-of-day bands: night, AM peak, midday, PM peak, evening (local hours).",
@@ -40,7 +40,7 @@
     "$profileHistoryDays": "build:rt-profile learns from this many days of recorded history (guess: long enough for weekday and weekend patterns, short enough to follow road changes, and to build in minutes on the server).",
     "profileHistoryDays": 28
   },
-  "$carry": "Carrying RT bus delays into schedule estimates (packages/transit-core/src/rt/carry.ts). Guesses; see config/regions/metro-vancouver/OPEN-QUESTIONS.md #25.",
+  "$carry": "Carrying RT bus delays into schedule estimates (packages/transit-core/src/rt/carry.ts). Guesses; see config/feeds/translink/OPEN-QUESTIONS.md #25.",
   "carry": {
     "minLayoverS": 120,
     "maxTrips": 2

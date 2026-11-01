@@ -103,7 +103,7 @@ interface RegionState {
 }
 
 /**
- * The region the engine shows (docs/DESIGN.md#regions-and-feeds): the one in view, or while the
+ * The region the engine shows (docs/DESIGN.md#feeds-operators-and-rail-networks): the one in view, or while the
  * view is outside every region, the last one shown (at first, the default). Its engine runs only
  * zoomed in to ENGINE_MIN_ZOOM; further out, the overview shows every region.
  */

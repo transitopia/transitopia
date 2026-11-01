@@ -21,7 +21,6 @@ import {
   PUBLIC_DIR,
   feedPaths,
   readManifest,
-  regionOfFeed,
   readFeedConfig,
 } from "@transitopia/data/paths.ts";
 
@@ -87,8 +86,7 @@ async function busRouteKeys(feed: string): Promise<Map<string, string>> {
 /** A feed's prepared plans by version, loaded on demand; `forTime` picks the version for an instant. */
 export async function planLoader(feed: string) {
   const manifest = await readManifest(feed);
-  const kin = (await readFeedConfig(feed, (await regionOfFeed(feed)).id))
-    .kinematics;
+  const kin = (await readFeedConfig(feed)).kinematics;
   const cache = new Map<string, PreparedPlan>();
   return {
     kin,

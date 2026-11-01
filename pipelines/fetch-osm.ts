@@ -1,8 +1,8 @@
 // Download SkyTrain track data from OpenStreetMap via Overpass (packages/transit-core/DESIGN.md#track-graph): every
 // railway=subway way (mainline, pockets, crossovers, yards) with node geometry, the railway=switch /
 // buffer_stop nodes on them, stop positions, and platforms. Saved with a date so imports are
-// reproducible: var/raw/osm/<region>/YYYY-MM-DD.json (and latest.json), for --region <id> (default: the
-// region with track-level rail).
+// reproducible: var/raw/osm/<network>/YYYY-MM-DD.json (and latest.json), for --network <id> (default:
+// the one rail network).
 //
 // OSM data © OpenStreetMap contributors, ODbL.
 
@@ -12,15 +12,17 @@ import {
   RAW_DIR,
   log,
   railNetwork,
-  readRegion,
+  readNetwork,
 } from "@transitopia/data/paths.ts";
 
-// The region (--region <id>; default: the one with track-level rail), and its bbox in Overpass order
+// The rail network (--network <id>; default: the one there is), and its bbox in Overpass order
 // ([south, west, north, east]).
-const regionArg = process.argv.indexOf("--region");
-const REGION =
-  regionArg >= 0 ? process.argv[regionArg + 1]! : (await railNetwork()).region;
-const [west, south, east, north] = (await readRegion(REGION)).bbox;
+const networkArg = process.argv.indexOf("--network");
+const NETWORK =
+  networkArg >= 0 ?
+    process.argv[networkArg + 1]!
+  : (await railNetwork()).network;
+const [west, south, east, north] = (await readNetwork(NETWORK)).bbox;
 const BBOX = [south, west, north, east].join(",");
 const ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
@@ -53,7 +55,7 @@ out body;
 out skel qt;`;
 
 async function main() {
-  const dir = join(RAW_DIR, "osm", REGION);
+  const dir = join(RAW_DIR, "osm", NETWORK);
   await mkdir(dir, { recursive: true });
   let lastErr: unknown;
   for (const url of ENDPOINTS) {

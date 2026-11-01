@@ -1,5 +1,5 @@
 // Leader election (apps/server/README.md#leader): exactly one process per deployment polls, records and
-// dispatches; the others forward /rt/* to it.
+// dispatches, for every feed and rail network it serves; the others forward /rt/* to it.
 //
 // A session advisory lock on a dedicated connection. Postgres releases it when the session ends, so a
 // crashed leader is replaced by whichever follower retries next. The service_leader row only says
@@ -9,6 +9,9 @@
 import { hostname } from "node:os";
 import pg from "pg";
 import type { Db } from "@transitopia/db/connect.ts";
+
+/** The advisory lock's name: one per database, so one leader per deployment. */
+const LOCK = "transitopia-leader";
 
 export type LeaderState =
   { leader: true } | { leader: false; url?: string | undefined };
@@ -26,7 +29,6 @@ export class PgLeaderLock implements LeaderLock {
 
   private readonly url: string;
   private readonly db: Db;
-  private readonly regionId: string;
   /** Where followers reach this process (e.g. http://server:8787), if it becomes the leader. */
   private readonly advertiseUrl: string | undefined;
   private readonly onLost: () => void;
@@ -34,13 +36,11 @@ export class PgLeaderLock implements LeaderLock {
   constructor(opts: {
     url: string;
     db: Db;
-    regionId: string;
     advertiseUrl?: string | undefined;
     onLost: () => void;
   }) {
     this.url = opts.url;
     this.db = opts.db;
-    this.regionId = opts.regionId;
     this.advertiseUrl = opts.advertiseUrl;
     this.onLost = opts.onLost;
   }
@@ -56,20 +56,18 @@ export class PgLeaderLock implements LeaderLock {
     }
     const { rows } = await this.client.query<{ ok: boolean }>(
       "select pg_try_advisory_lock(hashtext($1)) as ok",
-      [`transitopia-leader:${this.regionId}`],
+      [LOCK],
     );
     if (!rows[0]?.ok) {
       const row = await this.db
         .selectFrom("service_leader")
         .select("url")
-        .where("region_id", "=", this.regionId)
         .executeTakeFirst();
       return { leader: false, url: row?.url ?? undefined };
     }
     this.held = true;
     const now = new Date();
     const row = {
-      region_id: this.regionId,
       instance: hostname(),
       url: this.advertiseUrl ?? null,
       pid: process.pid,
@@ -79,13 +77,12 @@ export class PgLeaderLock implements LeaderLock {
     await this.db
       .insertInto("service_leader")
       .values(row)
-      .onConflict((oc) => oc.column("region_id").doUpdateSet(row))
+      .onConflict((oc) => oc.column("singleton").doUpdateSet(row))
       .execute();
     this.heartbeat = setInterval(() => {
       void this.db
         .updateTable("service_leader")
         .set({ heartbeat_at: new Date() })
-        .where("region_id", "=", this.regionId)
         .where("pid", "=", process.pid)
         .execute()
         .catch(() => {});

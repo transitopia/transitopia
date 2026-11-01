@@ -1,21 +1,24 @@
 // Publish the track network and per-feed platform mapping for the browser (packages/transit-core/DESIGN.md#track-graph):
-//   var/public/data/regions/<rail region>/infra/tracks.geojson   segments, nodes, stop positions
-//   var/public/data/regions/<rail region>/infra/lines.geojson    line centrelines and ribbons, for drawing
+//   var/public/data/networks/<network>/infra/tracks.geojson   segments, nodes, stop positions
+//   var/public/data/networks/<network>/infra/lines.geojson    line centrelines and ribbons, for drawing
 //   var/public/data/feeds/<rail feed>/<version>/platforms.json   GTFS stop_id → track position
+// and, until the site reading data/networks/ is confirmed, a copy of infra/ under data/regions/
+// (packages/data/src/region-mirror.ts).
 //
-//   npm run build:infra
+//   npm run build:infra [-- --network skytrain]
 
 import { join } from "node:path";
 import {
   feedVersionFile,
   log,
-  regionDataDir,
+  networkDataDir,
   writeJson,
-  railNetworks,
+  railNetworksArg,
   railFeedConfig,
-  readConfig,
+  readNetworkConfig,
   type RailNetwork,
 } from "@transitopia/data/paths.ts";
+import { mirrorToRegions } from "@transitopia/data/region-mirror.ts";
 import { loadAllPlans, loadGraph } from "@transitopia/data/infra.ts";
 import { mapPlatforms } from "@transitopia/transit-core/infra/platforms.ts";
 import {
@@ -32,18 +35,16 @@ export interface PlatformsFile {
   >;
 }
 
-/** One rail network (railNetworks: a feed with track-level rail, in its region). */
+/** One rail network (railNetworks: a network and a feed with track-level rail on it). */
 async function buildNetwork(net: RailNetwork) {
-  const { graph, overrides, tracks } = await loadGraph(net.region);
-  await writeJson(
-    join(regionDataDir(net.region), "infra", "tracks.geojson"),
-    tracks,
-  );
+  const infraDir = join(networkDataDir(net.network), "infra");
+  const { graph, overrides, tracks } = await loadGraph(net.network);
+  await writeJson(join(infraDir, "tracks.geojson"), tracks);
   log(`Wrote infra/tracks.geojson (${graph.segments.size} segments)`);
   // Service track: where any feed version's trains run.
   const service: ServiceExtents = new Map();
   const kin = (await railFeedConfig(net)).kinematics;
-  const ops = await readConfig("operations", net.region);
+  const ops = await readNetworkConfig("operations", net.network);
   for (const plan of await loadAllPlans(net.feed)) {
     const railKeys = new Set(
       plan.routes.filter((r) => r.kind === "skytrain").map((r) => r.key),
@@ -85,14 +86,15 @@ async function buildNetwork(net: RailNetwork) {
     );
   }
   await writeJson(
-    join(regionDataDir(net.region), "infra", "lines.geojson"),
+    join(infraDir, "lines.geojson"),
     lineGeometry(tracks, service),
   );
   log("Wrote infra/lines.geojson");
+  await mirrorToRegions(net.feed, infraDir, "infra");
 }
 
 async function main() {
-  for (const net of await railNetworks()) await buildNetwork(net);
+  for (const net of await railNetworksArg()) await buildNetwork(net);
 }
 
 main().catch((e) => {

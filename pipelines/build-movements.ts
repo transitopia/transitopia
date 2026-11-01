@@ -3,15 +3,15 @@
 //   var/public/data/feeds/<rail feed>/<version>/movements/<services>.json
 //   var/public/data/feeds/<rail feed>/<version>/movements/index.json
 //
-//   npm run build:movements [-- --verbose] [--no-dispatch]
+//   npm run build:movements [-- --verbose] [--no-dispatch] [--network skytrain]
 //
 // Movements are dispatched (signalling-aware, packages/transit-core/DESIGN.md#dispatcher) unless --no-dispatch.
 
 import {
   feedVersionFile,
-  readConfig,
+  readNetworkConfig,
   railFeedConfig,
-  railNetworks,
+  railNetworksArg,
   type RailNetwork,
 } from "@transitopia/data/paths.ts";
 import { feedDataPath } from "@transitopia/transit-core/plan/types.ts";
@@ -19,15 +19,15 @@ import { loadAllPlans, loadGraph } from "@transitopia/data/infra.ts";
 import { buildAllMovements } from "./lib/movements.ts";
 import { mapPlatforms } from "@transitopia/transit-core/infra/platforms.ts";
 
-/** One rail network (railNetworks: a feed with track-level rail, in its region). */
+/** One rail network (railNetworks: a network and a feed with track-level rail on it). */
 async function buildNetwork(net: RailNetwork) {
-  const { graph, overrides } = await loadGraph(net.region);
+  const { graph, overrides } = await loadGraph(net.network);
   const kin = (await railFeedConfig(net)).kinematics;
-  const ops = await readConfig("operations", net.region);
+  const ops = await readNetworkConfig("operations", net.network);
   const dispatchCfg =
     process.argv.includes("--no-dispatch") ?
       undefined
-    : await readConfig("dispatch", net.region);
+    : await readNetworkConfig("dispatch", net.network);
   for (const plan of await loadAllPlans(net.feed)) {
     const railKeys = new Set(
       plan.routes.filter((r) => r.kind === "skytrain").map((r) => r.key),
@@ -55,7 +55,7 @@ async function buildNetwork(net: RailNetwork) {
 }
 
 async function main() {
-  for (const net of await railNetworks()) await buildNetwork(net);
+  for (const net of await railNetworksArg()) await buildNetwork(net);
 }
 
 main().catch((e) => {

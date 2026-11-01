@@ -1,0 +1,12 @@
+{
+  "$comment": "Rail network record (docs/DESIGN.md#feeds-operators-and-rail-networks): the SkyTrain's track (infrastructure/), how trains run on it (operations.json, dispatch.json), its disruptions and scenarios. Its dispatch patches and track are published under data/networks/skytrain/.",
+  "id": "skytrain",
+  "name": "SkyTrain",
+  "timezone": "America/Vancouver",
+  "$signalling": "How the network is signalled, which says what the dispatcher models (packages/transit-core/DESIGN.md#dispatcher): moving block (CBTC; OPEN-QUESTIONS #26).",
+  "signalling": "moving-block",
+  "$bbox": "Where its track is fetched from OpenStreetMap (npm run data:osm), [west, south, east, north]: Metro Vancouver's bbox when the track was last imported, with room for new lines.",
+  "bbox": [-123.6, 48.95, -122.45, 49.55],
+  "$feeds": "The feeds whose track-level routes (routes.json → kind \"skytrain\") run on it (config/feeds/<id>/feed.json).",
+  "feeds": ["translink"]
+}

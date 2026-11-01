@@ -1,8 +1,8 @@
 // Build the compact service plan for each archived version of each feed, and each feed's manifest.
 // Input:  var/raw/gtfs/<feed>/<version dir>/google_transit.zip, config/feeds/<feed>/{feed,routes}.json,
 //         its operator's config/operators/<id>/operator.json (the name plans record),
-//         and for a region showing the feed with SeaBus berths and lanes:
-//         config/regions/<region>/infrastructure/seabus.json + config/regions/<region>/seabus.json,
+//         and where the feed has SeaBus berths and lanes:
+//         config/feeds/<feed>/ferries/seabus.json + config/feeds/<feed>/seabus.json,
 //         and the feed's OSM roads when fetched (var/raw/osm-roads/<feed>/latest.json, fetch-osm-roads):
 //         bus shapes are matched to them and bus corridors built (packages/transit-core/DESIGN.md#bus-corridors)
 // Output: var/public/data/feeds/<feed>/<version dir>/plan.json and its parts beside it (shapes,
@@ -23,22 +23,22 @@ import { join } from "node:path";
 import { readCsv, readCsvAll, type Row } from "@transitopia/data/gtfs-zip.ts";
 import {
   OPERATORS_DIR,
-  REGIONS_DIR,
   exists,
   feedPaths,
   log,
-  readConfig,
   readFeed,
   readFeedRoutes,
   readFeeds,
   readJson,
   readOperator,
-  readRegions,
   writeJson,
 } from "@transitopia/data/paths.ts";
 import { readPlanCore, writePlan } from "@transitopia/data/plans.ts";
 import { shortId } from "@transitopia/transit-core/plan/display.ts";
-import type { FeedInfo } from "@transitopia/transit-core/config.ts";
+import {
+  parseConfig,
+  type FeedInfo,
+} from "@transitopia/transit-core/config.ts";
 import { selectRoutes } from "@transitopia/transit-core/plan/routes.ts";
 import {
   cumulativeLengths,
@@ -125,18 +125,9 @@ const STOP_OFFSET_WARN_M = 150;
  */
 const PLAN_FORMAT = 19;
 
-/** Regions showing the feed with SeaBus berths and lanes (infrastructure/seabus.json): build-schedule applies them. */
-async function ferryRegions(feed: string): Promise<string[]> {
-  const out: string[] = [];
-  for (const r of await readRegions())
-    if (
-      r.feeds.includes(feed)
-      && (await exists(
-        join(REGIONS_DIR, r.id, "infrastructure", "seabus.json"),
-      ))
-    )
-      out.push(r.id);
-  return out;
+/** Whether the feed has SeaBus berths and lanes (ferries/seabus.json): build-schedule applies them. */
+async function hasFerryBerths(feed: string): Promise<boolean> {
+  return exists(feedPaths(feed).seabus.berths);
 }
 
 const roadsFile = (feed: string) => join(feedPaths(feed).roads, "latest.json");
@@ -183,11 +174,8 @@ async function inputsHash(feed: string): Promise<string> {
     join(feedPaths(feed).dir, "routes.json"),
     join(OPERATORS_DIR, info.operator, "operator.json"),
   ];
-  for (const r of await ferryRegions(feed))
-    files.push(
-      join(REGIONS_DIR, r, "infrastructure", "seabus.json"),
-      join(REGIONS_DIR, r, "seabus.json"),
-    );
+  if (await hasFerryBerths(feed))
+    files.push(feedPaths(feed).seabus.berths, feedPaths(feed).seabus.config);
   for (const f of files) h.update(await readFile(f));
   h.update(`roads ${(await roadsStamp(feed)) ?? "none"}\n`);
   return h.digest("hex").slice(0, 16);
@@ -213,7 +201,7 @@ export async function buildPlan(
   const [info] = await readCsvAll(zipPath, "feed_info.txt");
   if (!info) throw new Error("feed_info.txt missing");
   // Service days and times are computed in TIMEZONE (packages/transit-core/src/time.ts), so every
-  // feed has to be in it until regions carry their own (docs/DESIGN.md#regions-and-feeds).
+  // feed has to be in it until the engine works out service dates per feed (docs/DESIGN.md#feeds-operators-and-rail-networks).
   for (const a of await readCsvAll(zipPath, "agency.txt"))
     if (a.agency_timezone !== feed.timezone || feed.timezone !== TIMEZONE)
       throw new Error(
@@ -572,15 +560,16 @@ export async function buildPlan(
   }
 
   // SeaBus: berth-to-berth paths along the keep-right lanes instead of the GTFS shapes.
-  for (const region of await ferryRegions(feed.id)) {
-    const infra = await readJson<FerryInfra>(
-      join(REGIONS_DIR, region, "infrastructure", "seabus.json"),
-    );
-    if (!plan.routes.some((r) => r.key === infra.route)) continue;
+  const seabus = feedPaths(feed.id).seabus;
+  const infra =
+    (await hasFerryBerths(feed.id)) ?
+      await readJson<FerryInfra>(seabus.berths)
+    : undefined;
+  if (infra && plan.routes.some((r) => r.key === infra.route)) {
     const ferry = applyFerryBerths(
       plan,
       infra,
-      await readConfig("seabus", region),
+      parseConfig("seabus", await readJson<unknown>(seabus.config)),
     );
     if (ferry.sharedBerthS > 0)
       log(

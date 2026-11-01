@@ -1,10 +1,10 @@
 # Fraser Valley
 
-A bus-only region east of Metro Vancouver, from Aldergrove to Hope ([docs/DESIGN.md → Regions and feeds](../../../docs/DESIGN.md#regions-and-feeds)). It shows BC Transit's Fraser Valley export (feed `bc-transit-fraser-valley`, [config/feeds/bc-transit-fraser-valley/](../../feeds/bc-transit-fraser-valley/)), which holds four transit systems in one GTFS and one GTFS-realtime feed (operator 13): BC Transit's open data page lists Central Fraser Valley, Chilliwack, Agassiz-Harrison and Hope under that one export, as one agency, every `route_id` ending in `-CFV`.
+A bus-only region east of Metro Vancouver, from Aldergrove to Hope ([docs/DESIGN.md → Feeds, operators and rail networks](../../../docs/DESIGN.md#feeds-operators-and-rail-networks)). It shows BC Transit's Fraser Valley export (feed `bc-transit-fraser-valley`, [config/feeds/bc-transit-fraser-valley/](../../feeds/bc-transit-fraser-valley/)), which holds four transit systems in one GTFS and one GTFS-realtime feed (operator 13): BC Transit's open data page lists Central Fraser Valley, Chilliwack, Agassiz-Harrison and Hope under that one export, as one agency, every `route_id` ending in `-CFV`.
 
 | Path | What |
 |---|---|
-| `region.json` | bbox (just east of Aldergrove to Hope and Harrison Hot Springs), time zone, the first view of `/transit`, time zone data checks, and its feed |
+| `region.json` | bbox (just east of Aldergrove to Hope and Harrison Hot Springs), the first view of `/transit`, and its feed (time zone data checks are the feed's) |
 | Settings | None of its own yet: vehicles and real-time use come from [config/defaults/](../../defaults/) and BC Transit's [operator.json](../../operators/bc-transit/operator.json), each with a source or "guess" and a cross-reference to [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md) |
 
 Drawn routes: every route in the feed (school specials 22, 24 and 26 included), each coloured by frequency. The 66 Fraser Valley Express isn't drawn in its own colour: a long route in a thick, bright line was too distracting (`config/feeds/bc-transit-fraser-valley/routes.json`). Buses are live from BC Transit's GTFS-realtime where the server polls it, estimated from the timetable otherwise.

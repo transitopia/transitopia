@@ -2,7 +2,7 @@
 // network → platform mapping → plan and overview tiles → movements → validation → the cycling map's
 // tiles and routes (from the cycling OSM file GitHub Actions publishes; packages/cycling-core/README.md#building-the-tiles:
 // neither step stops the build, and without a new file the last one is built again). OSM tracks are committed
-// (config/regions/metro-vancouver/infrastructure/), so they aren't fetched here: `npm run data:osm` re-imports
+// (config/networks/skytrain/infrastructure/), so they aren't fetched here: `npm run data:osm` re-imports
 // them. OSM roads (for bus corridors) aren't committed: they're fetched for a feed without them, or once
 // they're ROADS_MAX_AGE_DAYS old (`npm run data:roads` fetches every feed's now). A failed roads fetch
 // doesn't stop the build: plans are built with the roads already fetched, or without corridors.

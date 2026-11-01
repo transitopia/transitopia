@@ -13,6 +13,7 @@ import {
   readFeeds,
   readRegions,
 } from "@transitopia/data/paths.ts";
+import { moveDispatchHistory } from "./rt/dispatch.ts";
 import { createDb } from "@transitopia/db/connect.ts";
 import { migrate } from "@transitopia/db/migrate.ts";
 import { ensurePartitions } from "@transitopia/db/partitions.ts";
@@ -32,13 +33,13 @@ const log = (m: string) => console.log(`[server] ${m}`);
 // Every region (config/regions/*/region.json) and the feeds they show (config/feeds/*/feed.json), checked.
 const regions = await readRegions();
 const feeds = await readFeeds();
-// Track-level rail: its live dispatch, corrections and /admin support one network so far.
+// Track-level rail (config/networks/): its live dispatch, corrections and /admin support one network so far.
 const rail = await railNetwork();
 
 // Every local time (service days, recordings, dispatch dates) comes from the runtime's time zone
 // data, so refuse to start on an outdated copy rather than record and dispatch against wrong times.
-const tzProblems = regions.flatMap((r) =>
-  checkTimezoneData(r.timezoneChecks, r.timezone).map((p) => `${r.id}: ${p}`),
+const tzProblems = feeds.flatMap((f) =>
+  checkTimezoneData(f.timezoneChecks, f.timezone).map((p) => `${f.id}: ${p}`),
 );
 if (tzProblems.length) {
   console.error(
@@ -74,9 +75,10 @@ try {
   process.exit(1);
 }
 await ensurePartitions(db.db);
-await syncSources(db.db, regions, feeds);
-const store = new Store(db.db, rail.region);
-const repo = new CorrectionsRepo(db.db, rail.region);
+await syncSources(db.db, feeds);
+await moveDispatchHistory(rail.network, log);
+const store = new Store(db.db);
+const repo = new CorrectionsRepo(db.db, rail);
 // First start on a new database: bring in the committed corrections (existing ids are kept).
 const imported = await repo.importFiles();
 if (imported.observationSets || imported.disruptions)
@@ -104,7 +106,6 @@ const service = new RtService({
   leaderLock: new PgLeaderLock({
     url: env.databaseUrl,
     db: db.db,
-    regionId: rail.region,
     advertiseUrl: env.advertiseUrl,
     onLost: () => {
       console.error(
@@ -134,7 +135,7 @@ const app = createApp({
 });
 const server = serve({ fetch: app.fetch, port: env.port }, (info) => {
   log(
-    `Listening on http://localhost:${info.port} (/regions/<id>/live/transit, /rt/*, /healthz)`,
+    `Listening on http://localhost:${info.port} (/regions/<id>/live/transit, /networks/<id>/dispatch, /rt/*, /healthz)`,
   );
   void service.start();
 });

@@ -494,7 +494,6 @@ export class TransitEngine {
     const store = await PlanStore.load(
       opts.dataBase,
       opts.apiBase,
-      opts.region,
       opts.config,
       opts.scenario,
     );
