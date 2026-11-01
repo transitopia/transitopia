@@ -270,9 +270,8 @@ describe("RtService", () => {
     expect(upstream).not.toHaveBeenCalled();
     // Live dispatch is off here: no section, and its endpoints say so.
     expect(body.sources["dispatch"]).toBeUndefined();
-    expect(
-      (await service.handle("/rt/dispatch", new URLSearchParams())).status,
-    ).toBe(404);
+    for (const p of ["/rt/dispatch", "/networks/skytrain/dispatch"])
+      expect((await service.handle(p, new URLSearchParams())).status).toBe(404);
     // The feed endpoints need a feed that has real time.
     const coverage = (q: Record<string, string>) =>
       service!.handle("/rt/coverage", new URLSearchParams(q));

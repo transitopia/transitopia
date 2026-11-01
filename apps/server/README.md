@@ -1,6 +1,6 @@
 # Transitopia server
 
-The server behind `api.transitopia.org` (Node, TypeScript, [Hono](https://hono.dev)). It serves real-time data to the site for every region, and on the leader it polls each feed's GTFS-realtime within its request budget ([docs/DESIGN.md → Regions and feeds](../../docs/DESIGN.md#regions-and-feeds)), streams SeaBus AIS, records everything, re-dispatches SkyTrain when corrections change, and runs the scheduled jobs. How it fits with the rest: [docs/DESIGN.md](../../docs/DESIGN.md). Hosting and operations: [deployment/README.md](../../deployment/README.md#the-server-apitransitopiaorg).
+The server behind `api.transitopia.org` (Node, TypeScript, [Hono](https://hono.dev)). It serves real-time data to the site for every region, and on the leader it polls each feed's GTFS-realtime within its request budget ([docs/DESIGN.md → Feeds, operators and rail networks](../../docs/DESIGN.md#feeds-operators-and-rail-networks)), streams SeaBus AIS, records everything, re-dispatches SkyTrain when corrections change, and runs the scheduled jobs. How it fits with the rest: [docs/DESIGN.md](../../docs/DESIGN.md). Hosting and operations: [deployment/README.md](../../deployment/README.md#the-server-apitransitopiaorg).
 
 ```sh
 # the local PostgreSQL (infra/compose.dev.yml), once
@@ -24,15 +24,16 @@ GET /rt/history?feed=<id>&date=YYYY-MM-DD&hour=HH   a feed's recorded snapshots 
 GET /rt/coverage?feed=<id>&from=ms&to=ms            a feed's recorder coverage intervals
 GET /rt/status                      each feed's poller health and budget, AIS (no secrets)
 GET /rt/alerts                      current TransLink alerts for our rail lines, and whether each was drafted
-GET /rt/dispatch                    live dispatch: current patch version per service date
-GET /rt/dispatch/<date>/<v>.json    a patch version (immutable)
+GET /networks/<id>/dispatch                    a rail network's live dispatch: current patch version per service date
+GET /networks/<id>/dispatch/<date>/<v>.json    a patch version (immutable)
+GET /rt/dispatch[/<date>/<v>.json]             the same, while sites from before /networks/ may still ask
 GET /features/<key>[?date=YYYYMMDD]  a feature by ID or ref (below)
 GET /healthz                        data freshness: 503 when polls (or trip updates' delays), AIS, the database or a daily job are stale, or the disk is nearly full
 GET /auth/github/login, /auth/github/callback, /auth/me; POST /auth/logout     admin sign-in
 /admin/api/*                        the review queue behind /admin (admins only)
 ```
 
-`/rt/*` and `/regions/*` are public, with CORS for everyone, and cached at Cloudflare's edge, so server load doesn't grow with visitors. The server serves every region in `config/regions/*/region.json` (other ids are a 404) and polls every feed they show. Where `feed` is a parameter it's required (400 without one, 404 for a feed without real time). `/admin/api` and `/auth` allow only `ALLOWED_ORIGINS`.
+`/rt/*`, `/regions/*` and `/networks/*` are public, with CORS for everyone, and cached at Cloudflare's edge, so server load doesn't grow with visitors. The server serves every region in `config/regions/*/region.json` and the one rail network (other ids are a 404), and polls every feed the regions show. Where `feed` is a parameter it's required (400 without one, 404 for a feed without real time). `/admin/api` and `/auth` allow only `ALLOWED_ORIGINS`.
 
 ## Leader
 
@@ -62,7 +63,7 @@ Exactly one process polls, records, dispatches and runs jobs: the leader (`src/l
 
 ## Live dispatch and previews
 
-`src/rt/dispatch.ts`. The leader runs the [dispatcher](../../packages/transit-core/DESIGN.md#dispatcher) for every date whose confirmed observations or disruptions change (checked every `dispatchCheckS`), in the background. Each result is a version: a patch of the runs that differ from the published build, named by a content hash of its inputs, stored in `dispatch_versions` and `var/dispatch-history/`, and kept. The live endpoint and `/rt/dispatch` advertise the current version per date; `/rt/dispatch/<date>/<version>.json` serves a patch, cacheable forever. A restart reloads them.
+`src/rt/dispatch.ts`. The leader runs the [dispatcher](../../packages/transit-core/DESIGN.md#dispatcher) for every date whose confirmed observations or disruptions change (checked every `dispatchCheckS`), in the background. Each result is a version: a patch of the runs that differ from the published build, named by a content hash of its inputs, stored in `dispatch_versions` (by `network_id`) and `var/dispatch-history/<network>/`, and kept. The live endpoint (of each region showing the network's feed) and `/networks/<id>/dispatch` advertise the current version per date; `/networks/<id>/dispatch/<date>/<version>.json` serves a patch, cacheable forever. The index still lists them under `rt/dispatch/`, which `/rt/dispatch` serves too, while sites from before `/networks/` may still read it. A restart moves versions kept before they were a network's (`var/dispatch-history/<date>/`) into its directory. A restart reloads them.
 
 A patch only fits the build it was dispatched against (`baseBuiltAt`), which is why this server also builds and publishes the transit data (the `data` job below).
 
@@ -142,13 +143,13 @@ From the environment (`src/env.ts`; production values in `infra/.env.example`):
 | `BUILD_DATA=1`, `DATA_PUBLISH_REMOTE`, `MAPS_PUBLISH_REMOTE`, `ARCHIVE_REMOTE` | Build and publish the transit data; rclone destinations for it, the transit overview tileset and the archive |
 | `TRANSLINK_API_KEY`, `AISSTREAM_API_KEY` | Upstream keys (or `.secrets`); used only with `RT_POLL=1` |
 
-The server refuses to start on outdated time zone data (`timezoneChecks` in each `region.json`). It upserts the `regions`, `operators` and `feeds` tables from the files when it starts (`src/sources.ts`; the import and statistics tools do too, since rows of a feed reference it). Its own settings, the same for every region, are in [config/server/](../../config/server/): `server.json` (default port, live dispatch) and `recording.json` (retention, statistics, the daily data build); reconciliation's distances are in [config/features/reconcile.json](../../config/features/reconcile.json).
+The server refuses to start on outdated time zone data (`timezoneChecks` in each `feed.json`). It upserts the `operators`, `feeds` and `rail_networks` tables from the files when it starts (`src/sources.ts`; the import and statistics tools do too, since rows of a feed or network reference it). Its own settings, the same for every feed, are in [config/server/](../../config/server/): `server.json` (default port, live dispatch) and `recording.json` (retention, statistics, the daily data build); reconciliation's distances are in [config/features/reconcile.json](../../config/features/reconcile.json).
 
 ## Command-line tools
 
 - `npm run db:import-history`: import `var/rt-history/<feed>/`, `var/{ais,dispatch}-history` into the database (idempotent: a poll counts as imported once its positions or fixes are there, so it fills in a restored developer snapshot, which has the polls without them).
 - `npm run stats -- <YYYYMMDD> [--feed <id>]`: recompute a date's observed stop times and statistics (every feed with real time, or one).
-- `npm run corrections -- export <dir> | import [<dir>] | pull`: move corrections between the database and the file format.
+- `npm run corrections -- export <dir> | import [<dir>] | pull`: move the rail network's corrections between the database and the file format, in a directory laid out like `config/` (its feed's `feeds/<feed>/observations/`, its `networks/<network>/disruptions/`).
 - `npm run features -- pull | places | reconcile | show | move | detach | retire`: the feature registry ([above](#feature-reconciliation)). `places` pulls production's registry first when the database has none.
 
 Tests (`test/`) use a scratch database when `TEST_DATABASE_URL` is set.

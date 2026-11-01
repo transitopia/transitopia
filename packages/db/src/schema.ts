@@ -18,11 +18,12 @@ type DateString = string;
 type Json<T> = ColumnType<T, string, string>;
 
 export interface Database {
-  regions: { id: string; name: string; timezone: string };
   operators: { id: string; name: string };
   feeds: { id: string; name: string; operator_id: string; timezone: string };
+  rail_networks: { id: string; name: string; timezone: string };
+  /** At most one row: the deployment's leader. */
   service_leader: {
-    region_id: string;
+    singleton: ColumnType<true, true | undefined, true>;
     instance: string;
     url: string | null;
     pid: number | null;
@@ -104,7 +105,7 @@ export interface Database {
   };
   observation_sets: {
     id: string;
-    region_id: string;
+    feed_id: string;
     state: ReviewState;
     title: string;
     body: Json<unknown>;
@@ -117,7 +118,7 @@ export interface Database {
   };
   disruptions: {
     id: string;
-    region_id: string;
+    network_id: string;
     state: ReviewState;
     body: Json<unknown>;
     dates: DateString[];
@@ -129,7 +130,7 @@ export interface Database {
     reviewed_at: Timestamp | null;
   };
   dispatch_versions: {
-    region_id: string;
+    network_id: string;
     service_date: DateString;
     version: string;
     kind: "live" | "preview";

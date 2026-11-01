@@ -391,7 +391,7 @@ export interface FeedManifestEntry {
   movements?: string;
 }
 
-/** One feed's built versions: data/feeds/<feed>/manifest.json (docs/DESIGN.md#regions-and-feeds). */
+/** One feed's built versions: data/feeds/<feed>/manifest.json (docs/DESIGN.md#feeds-operators-and-rail-networks). */
 export interface FeedManifest {
   schema: 1;
   generatedAt: string;
@@ -421,12 +421,12 @@ export function feedDataPath(
   return parts.join("/");
 }
 
-/** Where a region's published files live (infra, observations, dispatch, scenarios), relative to the data root. */
-export function regionDataPath(region: string, file?: string): string {
+/** Where a rail network's published files live (infra, dispatch, scenarios), relative to the data root. */
+export function networkDataPath(network: string, file?: string): string {
   return [
     "data",
-    "regions",
-    region,
+    "networks",
+    network,
     ...(file === undefined ? [] : [file]),
   ].join("/");
 }

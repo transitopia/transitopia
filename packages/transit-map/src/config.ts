@@ -9,12 +9,14 @@ export interface RegionConfig {
   rt: Config<"rt">;
   /**
    * The feed the region shows (region.json → feeds). A region can list several, but the engine
-   * draws one per region for now (docs/DESIGN.md#regions-and-feeds).
+   * draws one per region for now (docs/DESIGN.md#feeds-operators-and-rail-networks).
    */
   feed: FeedInfo;
   /**
-   * Track-level rail (run inference settings), in a region that has it: then the engine loads the
-   * region's tracks, movements, dispatch patches and observations. Absent: timetables and real time only.
+   * Track-level rail, where the feed runs on a rail network (config/networks/<id>/network.json →
+   * feeds): the network's id and its run inference settings. Then the engine loads the network's
+   * tracks and dispatch patches and the feed's movements and observations. Absent: timetables and
+   * real time only.
    */
-  operations?: Config<"operations"> | undefined;
+  rail?: { network: string; operations: Config<"operations"> } | undefined;
 }

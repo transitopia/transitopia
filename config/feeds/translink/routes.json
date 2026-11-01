@@ -11,7 +11,7 @@
       "mode": "skytrain",
       "kinematics": {
         "length": 80,
-        "$comment": "guess: mix of 4/6-car Mk I, 4-car Mk III and 5-car Mk V (~85 m, 12 sets in service Sep 2026; CPTDB). OPEN-QUESTIONS #9"
+        "$comment": "guess: mix of 4/6-car Mk I, 4-car Mk III and 5-car Mk V (~85 m, 12 sets in service Sep 2026; CPTDB). config/networks/skytrain/OPEN-QUESTIONS.md #9"
       }
     },
     {
@@ -24,7 +24,7 @@
       "mode": "skytrain",
       "kinematics": {
         "length": 68,
-        "$comment": "guess: 4-car Mk II (Millennium runs Mk II only, 2 or 4 cars; CPTDB). OPEN-QUESTIONS #9"
+        "$comment": "guess: 4-car Mk II (Millennium runs Mk II only, 2 or 4 cars; CPTDB). config/networks/skytrain/OPEN-QUESTIONS.md #9"
       }
     },
     {
@@ -38,7 +38,7 @@
       "kinematics": {
         "length": 41,
         "decel": 1.3,
-        "$comment": "2-car Hyundai Rotem EMU, the only Canada Line stock (CPTDB). OPEN-QUESTIONS #9"
+        "$comment": "2-car Hyundai Rotem EMU, the only Canada Line stock (CPTDB). config/networks/skytrain/OPEN-QUESTIONS.md #9"
       }
     },
     {

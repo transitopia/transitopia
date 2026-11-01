@@ -42,7 +42,7 @@ const OBSERVATION_TEMPLATE: ObservationFile = {
   ],
 };
 
-/** Write a new disruption or observation set (see the formats in config/regions/metro-vancouver/*\/README.md). */
+/** Write a new disruption or observation set (see the formats in config/feeds/translink/observations/README.md and config/networks/skytrain/disruptions/README.md). */
 export function NewCorrection() {
   const [kind, setKind] = React.useState<
     "disruption" | "observations" | undefined

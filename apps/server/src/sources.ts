@@ -1,29 +1,18 @@
-// The regions, operators and feeds tables follow config/regions/*/region.json,
-// config/operators/*/operator.json and config/feeds/*/feed.json (docs/DESIGN.md#regions-and-feeds):
-// rows of a feed reference it, and a feed its operator, so anything that writes them (the server,
-// the import, statistics and features tools) syncs these first.
+// The operators, feeds and rail_networks tables follow config/operators/*/operator.json,
+// config/feeds/*/feed.json and config/networks/*/network.json
+// (docs/DESIGN.md#feeds-operators-and-rail-networks): rows of a feed or network reference it, and a
+// feed its operator, so anything that writes them (the server, the import, statistics and features
+// tools) syncs these first.
 
 import type { Db } from "@transitopia/db/connect.ts";
-import type { FeedInfo, RegionInfo } from "@transitopia/transit-core/config.ts";
+import type { FeedInfo } from "@transitopia/transit-core/config.ts";
 import {
   readFeeds,
+  readNetworks,
   readOperators,
-  readRegions,
 } from "@transitopia/data/paths.ts";
 
-export async function syncSources(
-  db: Db,
-  regions?: RegionInfo[],
-  feeds?: FeedInfo[],
-): Promise<void> {
-  for (const r of regions ?? (await readRegions())) {
-    const row = { name: r.name, timezone: r.timezone };
-    await db
-      .insertInto("regions")
-      .values({ id: r.id, ...row })
-      .onConflict((oc) => oc.column("id").doUpdateSet(row))
-      .execute();
-  }
+export async function syncSources(db: Db, feeds?: FeedInfo[]): Promise<void> {
   for (const o of await readOperators())
     await db
       .insertInto("operators")
@@ -39,6 +28,14 @@ export async function syncSources(
     await db
       .insertInto("feeds")
       .values({ id: f.id, ...row })
+      .onConflict((oc) => oc.column("id").doUpdateSet(row))
+      .execute();
+  }
+  for (const n of await readNetworks()) {
+    const row = { name: n.name, timezone: n.timezone };
+    await db
+      .insertInto("rail_networks")
+      .values({ id: n.id, ...row })
       .onConflict((oc) => oc.column("id").doUpdateSet(row))
       .execute();
   }

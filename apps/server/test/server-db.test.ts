@@ -35,7 +35,7 @@ import {
 } from "@transitopia/shared/admin-api.ts";
 
 const { FeedMessage } = GtfsRealtimeBindings.transit_realtime;
-const REGION = "metro-vancouver";
+const RAIL = { network: "skytrain", feed: "translink" };
 
 function positionsFeed(): Uint8Array {
   const now = Math.floor(Date.now() / 1000);
@@ -106,7 +106,7 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
       apiKey: "test-key",
       aisApiKey: null,
       dispatch: false,
-      store: new Store(t.db, REGION),
+      store: new Store(t.db),
       leaderLock: lock,
     });
     services.push(s);
@@ -241,14 +241,12 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
     const a = new PgLeaderLock({
       url: t.url,
       db: t.db,
-      regionId: REGION,
       advertiseUrl: "http://a:8787",
       onLost,
     });
     const b = new PgLeaderLock({
       url: t.url,
       db: t.db,
-      regionId: REGION,
       advertiseUrl: "http://b:8787",
       onLost,
     });
@@ -265,7 +263,7 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
   });
 
   it("keeps a person's decision over an alert's draft, and applies only confirmed corrections", async () => {
-    const repo = new CorrectionsRepo(t.db, REGION);
+    const repo = new CorrectionsRepo(t.db, RAIL);
     const draft: Disruption = {
       id: "alert-1",
       source: "TransLink alert",
@@ -319,7 +317,7 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
       dispatch: false,
     });
     services.push(service);
-    const repo = new CorrectionsRepo(t.db, REGION);
+    const repo = new CorrectionsRepo(t.db, RAIL);
     const app = createApp({
       service,
       auth: new Auth(t.db, env),

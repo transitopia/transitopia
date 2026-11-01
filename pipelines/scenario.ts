@@ -1,10 +1,10 @@
 // Build a scenario (packages/transit-core/DESIGN.md#scenarios): alternate track and/or service defined in
-// config/regions/<region>/scenarios/<name>/scenario.json (a region with track-level rail), run through the same pipeline as the base network:
+// config/networks/<network>/scenarios/<name>/scenario.json, run through the same pipeline as the base network:
 // compose tracks → modify service → map platforms → infer runs → movements. Output:
-//   var/public/data/regions/<region>/scenarios/<name>/{manifest.json, plan.json and its parts, lines/ (its tiles), tracks.geojson, movements/}
+//   var/public/data/networks/<network>/scenarios/<name>/{manifest.json, plan.json and its parts, lines/ (its tiles), tracks.geojson, movements/}
 // View with ?scenario=<name>.
 //
-//   npm run scenario -- <name>
+//   npm run scenario -- <name> [--network skytrain]
 
 import {
   lineGeometry,
@@ -15,13 +15,13 @@ import { join } from "node:path";
 import {
   PUBLIC_DIR,
   log,
-  readConfig,
+  readNetworkConfig,
   readJson,
   writeJson,
   railFeedConfig,
   exists,
-  railNetworks,
-  regionPaths,
+  networkPaths,
+  railNetworksArg,
   type RailNetwork,
 } from "@transitopia/data/paths.ts";
 import {
@@ -30,7 +30,7 @@ import {
   loadTracks,
 } from "@transitopia/data/infra.ts";
 import { buildAllMovements } from "./lib/movements.ts";
-import { regionDataPath } from "@transitopia/transit-core/plan/types.ts";
+import { networkDataPath } from "@transitopia/transit-core/plan/types.ts";
 import { writePlan } from "@transitopia/data/plans.ts";
 import { writePlanTiles } from "@transitopia/data/plan-tiles.ts";
 import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
@@ -51,32 +51,33 @@ async function main() {
     throw new Error(
       "Usage: npm run scenario -- <name> (lowercase, digits, dashes)",
     );
-  // The rail network whose region has the scenario.
+  // The rail network that has the scenario.
   let net: RailNetwork | undefined;
-  for (const n of await railNetworks())
+  for (const n of await railNetworksArg())
     if (
-      await exists(join(regionPaths(n.region).scenarios, name, "scenario.json"))
+      await exists(
+        join(networkPaths(n.network).scenarios, name, "scenario.json"),
+      )
     )
       net = n;
-  if (!net)
-    throw new Error(`No region with track-level rail has scenario ${name}`);
-  const dir = join(regionPaths(net.region).scenarios, name);
+  if (!net) throw new Error(`No rail network has scenario ${name}`);
+  const dir = join(networkPaths(net.network).scenarios, name);
   const spec = await readJson<ScenarioSpec>(join(dir, "scenario.json"));
   const kin = (await railFeedConfig(net)).kinematics;
-  const ops = await readConfig("operations", net.region);
-  const overrides = await loadOverrides(net.region);
-  const rel = regionDataPath(net.region, `scenarios/${name}`);
+  const ops = await readNetworkConfig("operations", net.network);
+  const overrides = await loadOverrides(net.network);
+  const rel = networkDataPath(net.network, `scenarios/${name}`);
   const out = join(PUBLIC_DIR, rel);
 
   // 1. Tracks.
-  let tracks = await loadTracks(net.region);
+  let tracks = await loadTracks(net.network);
   const infra = spec.infrastructure;
   if (infra) {
     const future =
       infra.includeFuture ?
         (JSON.parse(
           await readFile(
-            join(regionPaths(net.region).infra, "future.generated.geojson"),
+            join(networkPaths(net.network).infra, "future.generated.geojson"),
             "utf8",
           ),
         ) as InfraCollection)
@@ -141,7 +142,7 @@ async function main() {
   );
 
   // 4. Movements.
-  const dispatchCfg = await readConfig("dispatch", net.region);
+  const dispatchCfg = await readNetworkConfig("dispatch", net.network);
   const { index } = await buildAllMovements({
     plan,
     graph,

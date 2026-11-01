@@ -22,7 +22,6 @@ import {
   log,
   readFeed,
   readFeeds,
-  regionOfFeed,
   writeAtomic,
   readFeedConfig,
 } from "@transitopia/data/paths.ts";
@@ -31,9 +30,7 @@ import { eachRecordedHour, planLoader } from "./lib/rt-history.ts";
 import { addDays, localDate } from "@transitopia/transit-core/time.ts";
 
 async function buildFeed(feed: FeedInfo): Promise<void> {
-  const rtConfig = (
-    await readFeedConfig(feed.id, (await regionOfFeed(feed.id)).id)
-  ).rt;
+  const rtConfig = (await readFeedConfig(feed.id)).rt;
   const cfg: PredictionConfig = rtConfig.prediction;
   const since = addDays(
     localDate(Date.now()),

@@ -1,16 +1,18 @@
-// The regions /transit can show, found in config/ (docs/DESIGN.md#regions-and-feeds), each with its
-// feed and that feed's settings resolved from the defaults, its operator and the region
-// (packages/transit-core/src/config.ts), checked as the transit chunk loads. Adding a region is data
-// only. The map shows one region at a time: the one in view (TransitMap.tsx).
+// The regions /transit can show, found in config/ (docs/DESIGN.md#feeds-operators-and-rail-networks),
+// each with its feed, that feed's settings resolved from the defaults and its operator
+// (packages/transit-core/src/config.ts), and the rail network it runs on, if any; checked as the
+// transit chunk loads. Adding a region is data only. The map shows one region at a time: the one in
+// view (TransitMap.tsx).
 
 import {
   parseConfig,
   parseFeed,
+  parseNetwork,
   parseOperator,
   parseRegion,
-  parseRegionRt,
   resolveKinematics,
   resolveRt,
+  type NetworkInfo,
   type RegionInfo,
 } from "@transitopia/transit-core/config.ts";
 import type { RegionConfig } from "@transitopia/transit-map/engine.ts";
@@ -25,8 +27,8 @@ const regionFiles: Files = import.meta.glob(
   "../../../../config/regions/*/region.json",
   { eager: true, import: "default" },
 );
-const regionSettings: Files = import.meta.glob(
-  "../../../../config/regions/*/{rt,operations}.json",
+const networkFiles: Files = import.meta.glob(
+  "../../../../config/networks/*/{network,operations}.json",
   { eager: true, import: "default" },
 );
 const feedFiles: Files = import.meta.glob(
@@ -74,8 +76,7 @@ function siteRegion(info: RegionInfo): SiteRegion {
   const op = parseOperator(
     file(operatorFiles, "operators", feed.operator, "operator"),
   );
-  const rt = file(regionSettings, "regions", info.id, "rt");
-  const operations = file(regionSettings, "regions", info.id, "operations");
+  const net = NETWORKS.find((n) => n.feeds.includes(feedId));
   return {
     info,
     config: {
@@ -86,18 +87,26 @@ function siteRegion(info: RegionInfo): SiteRegion {
         feed,
         routes.routes,
       ),
-      rt: resolveRt(
-        defaultsFile("rt"),
-        op,
-        feed,
-        rt === undefined ? undefined : parseRegionRt(rt),
-      ),
-      ...(operations === undefined ?
-        {}
-      : { operations: parseConfig("operations", operations) }),
+      rt: resolveRt(defaultsFile("rt"), op, feed),
+      ...(net ?
+        {
+          rail: {
+            network: net.id,
+            operations: parseConfig(
+              "operations",
+              file(networkFiles, "networks", net.id, "operations"),
+            ),
+          },
+        }
+      : {}),
     },
   };
 }
+
+/** Every rail network (config/networks/*). */
+const NETWORKS: readonly NetworkInfo[] = Object.entries(networkFiles)
+  .filter(([path]) => path.endsWith("/network.json"))
+  .map(([, json]) => parseNetwork(json));
 
 /** Every region: the default first, then by name. */
 export const REGIONS: readonly SiteRegion[] = Object.values(regionFiles)
@@ -114,16 +123,13 @@ export const DEFAULT_REGION: SiteRegion =
   REGIONS.find((r) => r.info.id === DEFAULT_REGION_ID) ?? REGIONS[0]!;
 
 /**
- * The region with track-level rail (operations config), whose corrections /admin reviews: the
- * server's live dispatcher and corrections support one so far.
+ * The rail network whose corrections /admin reviews: the server's live dispatcher and corrections
+ * support one so far.
  */
-export function railRegion(): SiteRegion {
-  const rail = REGIONS.filter((r) => r.config.operations);
-  if (rail.length !== 1)
-    throw new Error(
-      `Expected one region with track-level rail, found ${rail.length}`,
-    );
-  return rail[0]!;
+export function railNetwork(): NetworkInfo {
+  if (NETWORKS.length !== 1)
+    throw new Error(`Expected one rail network, found ${NETWORKS.length}`);
+  return NETWORKS[0]!;
 }
 
 /** [[west, south], [east, north]] for MapLibre. */

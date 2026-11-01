@@ -5,9 +5,9 @@ import {
   CONFIG_SCHEMAS,
   parseConfig,
   parseFeed,
+  parseNetwork,
   parseOperator,
   parseRegion,
-  parseRegionRt,
   realtimeUrl,
   resolveKinematics,
   resolveRt,
@@ -18,6 +18,7 @@ import { DATASETS, realtimeOf } from "@transitopia/shared/datasets.ts";
 
 const CONFIG = join(import.meta.dirname, "../../../config");
 const REGIONS = join(CONFIG, "regions");
+const NETWORKS = join(CONFIG, "networks");
 const FEEDS = join(CONFIG, "feeds");
 const OPERATORS = join(CONFIG, "operators");
 const DEFAULTS = join(CONFIG, "defaults");
@@ -28,14 +29,14 @@ const dirs = (root: string) =>
     .map((d) => d.name);
 const readJson = (path: string): unknown =>
   JSON.parse(readFileSync(path, "utf8"));
-/** Each region's settings files (all but region.json). */
-const settingsFiles = dirs(REGIONS).flatMap((region) =>
-  readdirSync(join(REGIONS, region))
-    .filter((f) => f.endsWith(".json") && f !== "region.json")
-    .map((f) => ({ region, name: f.replace(/\.json$/, "") })),
+/** Each rail network's settings files (all but network.json). */
+const settingsFiles = dirs(NETWORKS).flatMap((network) =>
+  readdirSync(join(NETWORKS, network))
+    .filter((f) => f.endsWith(".json") && f !== "network.json")
+    .map((f) => ({ network, name: f.replace(/\.json$/, "") })),
 );
 const load = (name: string) =>
-  readJson(join(REGIONS, "metro-vancouver", `${name}.json`)) as Record<
+  readJson(join(NETWORKS, "skytrain", `${name}.json`)) as Record<
     string,
     unknown
   >;
@@ -46,7 +47,7 @@ const operator = (id: string) =>
 
 describe("config files", () => {
   it("finds the committed settings files", () => {
-    expect(settingsFiles.length).toBeGreaterThanOrEqual(3);
+    expect(settingsFiles.length).toBeGreaterThanOrEqual(2);
   });
 
   for (const name of ["server", "recording"] as const)
@@ -62,15 +63,18 @@ describe("config files", () => {
     ).not.toThrow();
   });
 
-  for (const { region, name } of settingsFiles)
-    it(`regions/${region}/${name}.json matches its schema`, () => {
-      const json = readJson(join(REGIONS, region, `${name}.json`));
-      if (name === "rt") expect(() => parseRegionRt(json)).not.toThrow();
-      else {
-        expect(Object.keys(CONFIG_SCHEMAS)).toContain(name);
-        expect(() => parseConfig(name as ConfigName, json)).not.toThrow();
-      }
+  for (const { network, name } of settingsFiles)
+    it(`networks/${network}/${name}.json matches its schema`, () => {
+      const json = readJson(join(NETWORKS, network, `${name}.json`));
+      expect(Object.keys(CONFIG_SCHEMAS)).toContain(name);
+      expect(() => parseConfig(name as ConfigName, json)).not.toThrow();
     });
+
+  it("feeds/translink/seabus.json matches its schema", () => {
+    expect(() =>
+      parseConfig("seabus", readJson(join(FEEDS, "translink", "seabus.json"))),
+    ).not.toThrow();
+  });
 
   for (const id of dirs(OPERATORS))
     it(`operators/${id}: its id is its directory`, () => {
@@ -86,20 +90,17 @@ describe("config files", () => {
   it("rejects a misspelled setting in any layer, naming where", () => {
     const op = operator("translink");
     expect(() =>
-      resolveRt(defaults("rt"), op, {}, { clientPollSecs: 5 } as never),
+      resolveRt(defaults("rt"), op, {
+        rt: { clientPollSecs: 5 },
+      } as never),
     ).toThrow(/Bad config rt\.json: .*clientPollSecs/s);
-    expect(() => parseRegionRt({ clientPollSecs: 5 })).toThrow(
-      /Bad region rt\.json: .*clientPollSecs/,
-    );
     expect(() =>
       parseOperator({ id: "x", name: "X", rt: { carry: { maxTrip: 1 } } }),
     ).toThrow(/rt\.carry/);
-    // A region's rt.json is about the place: prediction settings are its feeds'.
-    expect(() => parseRegionRt({ prediction: { binM: 25 } })).toThrow(
-      /Bad region rt\.json: .*prediction/s,
-    );
-    // ...and the server's own settings are config/server/'s.
-    expect(() => parseRegionRt({ serverPort: 8787 })).toThrow(/serverPort/);
+    // The server's own settings are config/server/'s.
+    expect(() =>
+      parseOperator({ id: "x", name: "X", rt: { serverPort: 8787 } }),
+    ).toThrow(/serverPort/);
   });
 
   it("rejects a setting of the wrong type", () => {
@@ -134,7 +135,7 @@ describe("config files", () => {
     ).toThrow(/routes\.0\.kinematics/);
   });
 
-  it("lays operator, feed, route and region settings over the defaults", () => {
+  it("lays operator, feed and route settings over the defaults", () => {
     const routes = parseConfig(
       "routes",
       readJson(join(FEEDS, "translink", "routes.json")),
@@ -162,13 +163,10 @@ describe("config files", () => {
         [],
       ).modes["bus"]!.length,
     ).toBe(12);
-    // Then the region's; nested settings merge.
-    const rt = resolveRt(
-      defaults("rt"),
-      operator("translink"),
-      { rt: { prediction: { binM: 25 } } },
-      { clientPollS: 5 },
-    );
+    // Nested settings merge.
+    const rt = resolveRt(defaults("rt"), operator("translink"), {
+      rt: { clientPollS: 5, prediction: { binM: 25 } },
+    });
     expect(rt.clientPollS).toBe(5);
     expect(rt.prediction.binM).toBe(25);
     expect(rt.prediction.stopZoneM).toBe(
@@ -180,10 +178,14 @@ describe("config files", () => {
 const translink = () =>
   readJson(join(FEEDS, "translink/feed.json")) as Record<string, unknown>;
 
-describe("regions and feeds", () => {
+describe("regions, feeds and rail networks", () => {
   const regions = dirs(REGIONS).map((id) => ({
     id,
     region: parseRegion(readJson(join(REGIONS, id, "region.json"))),
+  }));
+  const networks = dirs(NETWORKS).map((id) => ({
+    id,
+    network: parseNetwork(readJson(join(NETWORKS, id, "network.json"))),
   }));
   const feeds = dirs(FEEDS).map((id) => ({
     id,
@@ -193,6 +195,7 @@ describe("regions and feeds", () => {
   it("finds them", () => {
     expect(regions.map((r) => r.id)).toContain("metro-vancouver");
     expect(feeds.map((f) => f.id)).toContain("translink");
+    expect(networks.map((n) => n.id)).toContain("skytrain");
   });
 
   for (const { id, feed } of feeds)
@@ -203,14 +206,28 @@ describe("regions and feeds", () => {
       ).not.toThrow();
     });
 
+  for (const { id, network } of networks)
+    it(`networks/${id}: its id is its directory, and its feeds exist in its time zone with track-level routes`, () => {
+      expect(network.id).toBe(id);
+      for (const f of network.feeds) {
+        const feed = feeds.find((x) => x.id === f)?.feed;
+        expect(feed, f).toBeDefined();
+        expect(feed!.timezone).toBe(network.timezone);
+        const routes = parseConfig(
+          "routes",
+          readJson(join(FEEDS, f, "routes.json")),
+        ).routes;
+        expect(routes.some((r) => r.kind === "skytrain")).toBe(true);
+      }
+    });
+
   for (const { id, region } of regions)
-    it(`regions/${id}: its id is its directory, and its feeds exist in its time zone and resolve`, () => {
+    it(`regions/${id}: its id is its directory, and its feeds exist and resolve`, () => {
       expect(region.id).toBe(id);
       for (const f of region.feeds) {
         const feed = feeds.find((x) => x.id === f)?.feed;
         expect(feed, f).toBeDefined();
-        expect(feed!.timezone).toBe(region.timezone);
-        // Every layer together: the defaults, the operator, the feed, the routes and the region.
+        // Every layer together: the defaults, the operator, the feed and the routes.
         const op = operator(feed!.operator);
         const routes = parseConfig(
           "routes",
@@ -219,13 +236,7 @@ describe("regions and feeds", () => {
         expect(() =>
           resolveKinematics(defaults("kinematics"), op, feed!, routes),
         ).not.toThrow();
-        const regionRt =
-          settingsFiles.some((x) => x.region === id && x.name === "rt") ?
-            parseRegionRt(readJson(join(REGIONS, id, "rt.json")))
-          : undefined;
-        expect(() =>
-          resolveRt(defaults("rt"), op, feed!, regionRt),
-        ).not.toThrow();
+        expect(() => resolveRt(defaults("rt"), op, feed!)).not.toThrow();
       }
     });
 

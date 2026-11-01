@@ -3,14 +3,11 @@
 //
 //   npx tsx pipelines/eval-ais.ts [YYYYMMDD] [--feed translink]     # default: today's service date
 
-import { join } from "node:path";
 import {
   feedPaths,
   readFeed,
   readFeedConfig,
   readJson,
-  regionOfFeed,
-  regionPaths,
 } from "@transitopia/data/paths.ts";
 import { loadLatestPlan } from "@transitopia/data/infra.ts";
 import { Recorder } from "@transitopia/server/rt/recorder.ts";
@@ -31,14 +28,11 @@ import {
 
 const feedArg = process.argv.indexOf("--feed");
 const FEED = feedArg >= 0 ? process.argv[feedArg + 1]! : "translink";
-const REGION = (await regionOfFeed(FEED)).id;
-const kin = (await readFeedConfig(FEED, REGION)).kinematics;
+const kin = (await readFeedConfig(FEED)).kinematics;
 const ais = (await readFeed(FEED)).ais;
 if (!ais)
   throw new Error(`Feed ${FEED} has no vessels with AIS (feed.json → ais)`);
-const infra = await readJson<any>(
-  join(regionPaths(REGION).infra, "seabus.json"),
-);
+const infra = await readJson<any>(feedPaths(FEED).seabus.berths);
 const cfg: AisMatchConfig = ais.match;
 const names = new Map(ais.vessels.map((v) => [v.mmsi, v.name]));
 

@@ -11,21 +11,21 @@ import {
 import {
   parseConfig,
   parseFeed,
+  parseNetwork,
   parseOperator,
   parseRegion,
-  parseRegionRt,
   resolveKinematics,
   resolveRt,
   type Config,
-  type ConfigName,
   type FeedInfo,
+  type NetworkInfo,
   type OperatorInfo,
   type RegionInfo,
 } from "@transitopia/transit-core/config.ts";
 import { cyclingDataPath } from "@transitopia/cycling-core/published.ts";
 import {
   feedDataPath,
-  regionDataPath,
+  networkDataPath,
   type FeedManifest,
 } from "@transitopia/transit-core/plan/types.ts";
 
@@ -36,38 +36,50 @@ export const ROOT = join(
   "..",
 );
 
-// Committed, curated inputs (config/, docs/DESIGN.md#regions-and-feeds): global defaults, operators,
-// the feeds they run (feed.json, routes.json) and regions (region.json and settings, infrastructure,
-// scenarios, corrections).
+// Committed, curated inputs (config/, docs/DESIGN.md#feeds-operators-and-rail-networks): global
+// defaults, operators, the feeds they run (feed.json, routes.json, SeaBus berths, observations), rail
+// networks (network.json and settings, infrastructure, scenarios, disruptions) and regions (region.json).
 export const CONFIG_ROOT = join(ROOT, "config");
 export const DEFAULTS_DIR = join(CONFIG_ROOT, "defaults");
 export const OPERATORS_DIR = join(CONFIG_ROOT, "operators");
 export const FEEDS_DIR = join(CONFIG_ROOT, "feeds");
+export const NETWORKS_DIR = join(CONFIG_ROOT, "networks");
 export const REGIONS_DIR = join(CONFIG_ROOT, "regions");
 /** config/cycling/cycling.json: the cycling map's area and classification (readCyclingConfig). */
 export const CYCLING_CONFIG_DIR = join(CONFIG_ROOT, "cycling");
 
 // Corrections: the committed files, or on the server an export of the confirmed ones from its
-// database (TRANSITOPIA_CORRECTIONS_DIR, with <region>/observations/ and <region>/disruptions/ inside).
+// database (TRANSITOPIA_CORRECTIONS_DIR, laid out like config/: correctionPaths).
 const CORRECTIONS_DIR = process.env.TRANSITOPIA_CORRECTIONS_DIR;
 
-/** Where a region's curated files are (config/regions/<region>/). */
-export function regionPaths(region: string): {
+/** Where a rail network's curated files are (config/networks/<network>/). */
+export function networkPaths(network: string): {
   dir: string;
-  /** Track infrastructure (tracks.generated.geojson, overrides.json, …), where the region has track-level rail. */
+  /** Track infrastructure (tracks.generated.geojson, overrides.json, …). */
   infra: string;
   scenarios: string;
-  observations: string;
-  disruptions: string;
 } {
-  const dir = join(REGIONS_DIR, region);
-  const corrections = CORRECTIONS_DIR ? join(CORRECTIONS_DIR, region) : dir;
+  const dir = join(NETWORKS_DIR, network);
   return {
     dir,
     infra: join(dir, "infrastructure"),
     scenarios: join(dir, "scenarios"),
-    observations: join(corrections, "observations"),
-    disruptions: join(corrections, "disruptions"),
+  };
+}
+
+/**
+ * Where a rail network's corrections are as files, under a directory laid out like config/: its
+ * feed's observations (feeds/<feed>/observations/) and its disruptions (networks/<id>/disruptions/).
+ * By default the committed files, or on the server the export the pipelines read
+ * (TRANSITOPIA_CORRECTIONS_DIR).
+ */
+export function correctionPaths(
+  net: RailNetwork,
+  root: string = CORRECTIONS_DIR ?? CONFIG_ROOT,
+): { observations: string; disruptions: string } {
+  return {
+    observations: join(root, "feeds", net.feed, "observations"),
+    disruptions: join(root, "networks", net.network, "disruptions"),
   };
 }
 
@@ -112,8 +124,10 @@ export function cyclingPaths(area: string): {
 
 /** Where a feed's files are, on disk. */
 export function feedPaths(feed: string): {
-  /** config/feeds/<feed>: feed.json, routes.json. */
+  /** config/feeds/<feed>: feed.json, routes.json, and where it has them observations/ and the SeaBus's files. */
   dir: string;
+  /** SeaBus berths and crossing lanes (ferries/seabus.json), used instead of the GTFS shapes, and the default berth pair (seabus.json). */
+  seabus: { berths: string; config: string };
   /** Archived GTFS zips, one directory per version. */
   raw: string;
   /** Published: manifest.json, and <version dir>/{plan.json, movements/, platforms.json, rt-profile.<band>.bin}. */
@@ -128,6 +142,10 @@ export function feedPaths(feed: string): {
 } {
   return {
     dir: join(FEEDS_DIR, feed),
+    seabus: {
+      berths: join(FEEDS_DIR, feed, "ferries", "seabus.json"),
+      config: join(FEEDS_DIR, feed, "seabus.json"),
+    },
     raw: join(GTFS_RAW_DIR, feed),
     out: join(PUBLIC_DIR, feedDataPath(feed)),
     manifest: join(PUBLIC_DIR, feedDataPath(feed, undefined, "manifest.json")),
@@ -146,9 +164,9 @@ export function feedVersionFile(
   return join(PUBLIC_DIR, feedDataPath(feed, feedVersion, file));
 }
 
-/** Where a region's published files are, on disk: var/public/data/regions/<region>/. */
-export function regionDataDir(region: string): string {
-  return join(PUBLIC_DIR, regionDataPath(region));
+/** Where a rail network's published files are, on disk: var/public/data/networks/<network>/. */
+export function networkDataDir(network: string): string {
+  return join(PUBLIC_DIR, networkDataPath(network));
 }
 
 export async function readJson<T>(path: string): Promise<T> {
@@ -185,11 +203,16 @@ export async function readFeeds(): Promise<FeedInfo[]> {
   return Promise.all(ids.map(readFeed));
 }
 
-/** The first region showing a feed: whose config (kinematics, prediction) goes with it in scripts. */
-export async function regionOfFeed(feed: string): Promise<RegionInfo> {
-  const region = (await readRegions()).find((r) => r.feeds.includes(feed));
-  if (!region) throw new Error(`No region shows feed ${feed}`);
-  return region;
+/** A rail network's network.json, checked. */
+export async function readNetwork(id: string): Promise<NetworkInfo> {
+  return parseNetwork(
+    await readJson<unknown>(join(NETWORKS_DIR, id, "network.json")),
+  );
+}
+
+/** Every rail network (config/networks/*), checked. */
+export async function readNetworks(): Promise<NetworkInfo[]> {
+  return Promise.all((await subdirs(NETWORKS_DIR)).map(readNetwork));
 }
 
 /** A feed's published manifest (its built versions); empty when nothing is built yet. */
@@ -209,24 +232,17 @@ export async function readFeedRoutes(feed: string): Promise<Config<"routes">> {
 }
 
 /**
- * A region's settings file (config/regions/<region>/<name>.json: dispatch, operations, seabus), checked against its schema (packages/transit-core/src/config.ts). Vehicle and real-time
- * settings come in layers: readFeedConfig.
+ * A rail network's settings file (config/networks/<network>/<name>.json: dispatch, operations),
+ * checked against its schema (packages/transit-core/src/config.ts). Vehicle settings come in
+ * layers: readFeedConfig.
  */
-export async function readConfig<
-  N extends Exclude<
-    ConfigName,
-    | "kinematics"
-    | "rt"
-    | "routes"
-    | "recording"
-    | "server"
-    | "reconcile"
-    | "cycling"
-  >,
->(name: N, region: string): Promise<Config<N>> {
+export async function readNetworkConfig<N extends "dispatch" | "operations">(
+  name: N,
+  network: string,
+): Promise<Config<N>> {
   return parseConfig(
     name,
-    await readJson<unknown>(join(REGIONS_DIR, region, `${name}.json`)),
+    await readJson<unknown>(join(NETWORKS_DIR, network, `${name}.json`)),
   );
 }
 
@@ -239,30 +255,45 @@ export async function readCyclingConfig(): Promise<Config<"cycling">> {
 }
 
 /**
- * A feed with track-level rail (routes of kind "skytrain", e.g. TransLink's SkyTrain), and the region
- * whose track network it runs on (the one showing it with infrastructure/tracks.generated.geojson):
- * what the rail pipelines, run inference and the dispatcher work on (docs/DESIGN.md#regions-and-feeds).
+ * A rail network (config/networks/<network>/) and a feed whose track-level routes (kind "skytrain",
+ * e.g. TransLink's SkyTrain) run on it (network.json → feeds): what the rail pipelines, run inference
+ * and the dispatcher work on (docs/DESIGN.md#feeds-operators-and-rail-networks).
  */
 export interface RailNetwork {
+  network: string;
   feed: string;
-  region: string;
 }
 
-/** Every rail network, by region then feed. */
+/** Every rail network with each feed on it, by network then feed. */
 export async function railNetworks(): Promise<RailNetwork[]> {
   const out: RailNetwork[] = [];
-  for (const r of await readRegions()) {
-    if (
-      !(await exists(join(regionPaths(r.id).infra, "tracks.generated.geojson")))
-    )
-      continue;
-    for (const feed of r.feeds)
+  for (const n of await readNetworks())
+    for (const feed of n.feeds) {
       if (
-        (await readFeedRoutes(feed)).routes.some((x) => x.kind === "skytrain")
+        !(await readFeedRoutes(feed)).routes.some((x) => x.kind === "skytrain")
       )
-        out.push({ feed, region: r.id });
-  }
+        throw new Error(
+          `Network ${n.id} lists feed ${feed}, which has no track-level routes (routes.json → kind "skytrain")`,
+        );
+      out.push({ network: n.id, feed });
+    }
   return out;
+}
+
+/** The rail networks given by `--network <id>` (as many times as wanted), or every one. */
+export async function railNetworksArg(
+  argv: readonly string[] = process.argv,
+): Promise<RailNetwork[]> {
+  const ids = argv.flatMap((a, i) =>
+    a === "--network" && argv[i + 1] ? [argv[i + 1]!] : [],
+  );
+  const all = await railNetworks();
+  for (const id of ids)
+    if (!all.some((n) => n.network === id))
+      throw new Error(
+        `No rail network ${id} (config/networks/: ${[...new Set(all.map((n) => n.network))].join(", ")})`,
+      );
+  return ids.length ? all.filter((n) => ids.includes(n.network)) : all;
 }
 
 /**
@@ -273,16 +304,16 @@ export async function railNetwork(): Promise<RailNetwork> {
   const nets = await railNetworks();
   if (nets.length !== 1)
     throw new Error(
-      `Expected exactly one region with track-level rail, found ${nets.length} (${nets.map((n) => `${n.feed} in ${n.region}`).join(", ") || "none"}): the server's live dispatcher, corrections and /admin support one so far`,
+      `Expected exactly one rail network with one feed, found ${nets.length} (${nets.map((n) => `${n.feed} on ${n.network}`).join(", ") || "none"}): the server's live dispatcher, corrections and /admin support one so far`,
     );
   return nets[0]!;
 }
 
-/** A rail network's settings (its feed's, in its region). */
+/** A rail network's vehicle settings (its feed's). */
 export function railFeedConfig(
   net: RailNetwork,
 ): ReturnType<typeof readFeedConfig> {
-  return readFeedConfig(net.feed, net.region);
+  return readFeedConfig(net.feed);
 }
 
 /** An operator's operator.json, checked. */
@@ -298,16 +329,14 @@ export async function readOperators(): Promise<OperatorInfo[]> {
 }
 
 /**
- * A feed's vehicle and real-time settings as a region shows it: config/defaults/, then its
- * operator's overrides, its own, its routes' (kinematics) and the region's (rt.json, where it has one).
+ * A feed's vehicle and real-time settings: config/defaults/, then its operator's overrides, its own
+ * and its routes' (kinematics).
  */
 export async function readFeedConfig(
   feed: string,
-  region: string,
 ): Promise<{ kinematics: Config<"kinematics">; rt: Config<"rt"> }> {
   const info = await readFeed(feed);
   const op = await readOperator(info.operator);
-  const regionRt = join(REGIONS_DIR, region, "rt.json");
   return {
     kinematics: resolveKinematics(
       await readJson<unknown>(join(DEFAULTS_DIR, "kinematics.json")),
@@ -319,9 +348,6 @@ export async function readFeedConfig(
       await readJson<unknown>(join(DEFAULTS_DIR, "rt.json")),
       op,
       info,
-      (await exists(regionRt)) ?
-        parseRegionRt(await readJson<unknown>(regionRt))
-      : undefined,
     ),
   };
 }

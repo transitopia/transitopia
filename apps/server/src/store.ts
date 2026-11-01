@@ -1,6 +1,6 @@
 // What the leader records in PostgreSQL (docs/DESIGN.md#where-data-lives): upstream requests (the budget ledger),
 // raw positions (per feed) and AIS fixes for every route, service changes and alerts (per feed), and
-// dispatch versions (per region).
+// dispatch versions (per rail network).
 // The hourly NDJSON files (recorder.ts) are written alongside; both expire after the retention period.
 
 import { type ServiceDate } from "@transitopia/transit-core/time.ts";
@@ -42,12 +42,9 @@ const CHUNK = 2000;
 
 export class Store {
   readonly db: Db;
-  /** The rail region: AIS fixes and dispatch versions are its. */
-  readonly regionId: string;
 
-  constructor(db: Db, regionId: string) {
+  constructor(db: Db) {
     this.db = db;
-    this.regionId = regionId;
   }
 
   /** A provider's requests (a feed's id) in the 24 hours before `now`, oldest first, for the in-memory ledger. */
@@ -272,6 +269,7 @@ export class Store {
   }
 
   async recordDispatchVersion(v: {
+    network: string;
     date: ServiceDate;
     version: string;
     kind: "live" | "preview";
@@ -281,7 +279,7 @@ export class Store {
     await this.db
       .insertInto("dispatch_versions")
       .values({
-        region_id: this.regionId,
+        network_id: v.network,
         service_date: isoDate(v.date),
         version: v.version,
         kind: v.kind,

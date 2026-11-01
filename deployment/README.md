@@ -63,8 +63,8 @@ avoid that ([#8](https://github.com/transitopia/transitopia/issues/8)).
 ### Transit data (data.transitopia.org)
 
 `/transit` reads its published data (each feed's `data/feeds/<feed>/manifest.json`, plans, movements,
-and each region's `data/regions/<id>/` track network and dispatch patches;
-[docs/DESIGN.md → Regions and feeds](../docs/DESIGN.md#regions-and-feeds)) from `https://data.transitopia.org/`.
+each feed's observations, and each rail network's `data/networks/<id>/` track and dispatch patches;
+[docs/DESIGN.md → Feeds, operators and rail networks](../docs/DESIGN.md#feeds-operators-and-rail-networks)) from `https://data.transitopia.org/`.
 Uploads copy, never sync, so files a build no longer writes stay until deleted by hand. The server builds it daily (its `data` job, at
 `dataBuildAt` in `config/server/recording.json`) and uploads it to the R2 bucket
 `transitopia-data`, so its live dispatch patches fit the published plans.

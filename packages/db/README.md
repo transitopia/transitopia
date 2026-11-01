@@ -16,8 +16,8 @@ PostgreSQL (18, with PostGIS) for the Transitopia server: SQL migrations, [Kysel
 
 | Table | What | Kept |
 |---|---|---|
-| `regions`, `operators`, `feeds` | Region, operator and feed records, upserted from `config/regions/*/region.json`, `config/operators/*/operator.json` and `config/feeds/*/feed.json` when the server starts (a feed references its operator) ([docs/DESIGN.md → Regions and feeds](../../docs/DESIGN.md#regions-and-feeds)). What comes from a feed is keyed by `feed_id` (polls, positions, trip changes, alerts, GTFS feeds, observed stop times, statistics); AIS fixes too; corrections and dispatch versions by `region_id`. | |
-| `service_leader` | Where followers forward `/rt/*`. Leadership itself is a session advisory lock. | |
+| `operators`, `feeds`, `rail_networks` | Operator, feed and rail network records, upserted from `config/operators/*/operator.json`, `config/feeds/*/feed.json` and `config/networks/*/network.json` when the server starts (a feed references its operator) ([docs/DESIGN.md → Feeds, operators and rail networks](../../docs/DESIGN.md#feeds-operators-and-rail-networks)). What comes from a feed is keyed by `feed_id` (polls, positions, trip changes, alerts, GTFS feeds, observed stop times, statistics, observation sets); AIS fixes too; disruptions and dispatch versions by `network_id`. Nothing is a region's. | |
+| `service_leader` | Where followers forward `/rt/*`: at most one row, the deployment's leader. Leadership itself is a session advisory lock. | |
 | `upstream_requests` | Every upstream request, successful or not, by `provider` (the feed id): each feed's daily cap is enforced against it, so restarts and retries count | |
 | `rt_polls` | One row per poll or AIS batch: the coverage record | |
 | `rt_positions` | Raw vehicle positions from every poll, for every route (partitioned by day) | 60 days |

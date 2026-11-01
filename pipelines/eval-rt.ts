@@ -39,12 +39,7 @@ import {
   planLoader,
   type RecordedHour,
 } from "./lib/rt-history.ts";
-import {
-  log,
-  readFeed,
-  regionOfFeed,
-  readFeedConfig,
-} from "@transitopia/data/paths.ts";
+import { log, readFeed, readFeedConfig } from "@transitopia/data/paths.ts";
 import { cadence, pollIntervalS } from "@transitopia/transit-core/rt/budget.ts";
 import type { RtSnapshot } from "@transitopia/transit-core/rt/types.ts";
 
@@ -59,7 +54,7 @@ const feedRt =
   ?? (() => {
     throw new Error(`Feed ${FEED} has no real-time data`);
   })();
-const rtConfig = (await readFeedConfig(FEED, (await regionOfFeed(FEED)).id)).rt;
+const rtConfig = (await readFeedConfig(FEED)).rt;
 const CADENCE = cadence(feedRt);
 /** An hour counts as complete when its snapshots span at least this long (two 300 s polls short of an hour). */
 const COMPLETE_HOUR_SPAN_MS = 50 * 60_000;

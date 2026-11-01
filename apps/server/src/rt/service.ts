@@ -14,13 +14,15 @@
 //   GET /rt/coverage?feed=<id>&from=ms&to=ms           a feed's recorder coverage intervals
 //   GET /rt/status                      the pollers' health (no secrets)
 //   GET /rt/alerts                      current alerts for our rail lines (and whether drafted)
-//   GET /rt/dispatch                    live dispatch: current patch per service date (index)
-//   GET /rt/dispatch/<date>/<v>.json    a patch version (immutable)
+//   GET /networks/<id>/dispatch                    a rail network's live dispatch: current patch per service date (index)
+//   GET /networks/<id>/dispatch/<date>/<v>.json    a patch version (immutable)
+//   GET /rt/dispatch[/<date>/<v>.json]             the same for the one rail network, while sites from before
+//                                                  /networks/ may still ask (docs/DESIGN.md#feeds-operators-and-rail-networks)
 //
 // `feed` is required where it's a parameter. Client requests never trigger upstream
 // calls: each feed's rate is fixed by its poll schedule within its daily cap
 // (packages/transit-core/src/rt/budget.ts). Only one process polls and records (the "leader",
-// leader.ts); the others forward /rt/* and /regions/* to it and take over when it goes away. Every
+// leader.ts); the others forward /rt/*, /regions/* and /networks/* to it and take over when it goes away. Every
 // route's vehicles are recorded (files and database); clients only ever see the routes we draw.
 
 import { join } from "node:path";
@@ -168,8 +170,9 @@ export interface RtServiceOptions {
   /** Called when this process becomes the leader (e.g. to start the scheduled jobs). */
   onLead?: (() => void) | undefined;
   /**
-   * The rail network (packages/data/src/paths.ts → railNetwork): its region's live endpoint carries
-   * live dispatch, and its feed's alerts become disruption drafts. Without one, neither runs.
+   * The rail network (packages/data/src/paths.ts → railNetwork): the live endpoint of each region
+   * showing its feed carries its live dispatch, and its feed's alerts become disruption drafts.
+   * Without one, neither runs.
    */
   rail?: RailNetwork | undefined;
   /** When `regions` isn't given, serve one region of this id showing `feeds` (tests). */
@@ -244,7 +247,7 @@ export class RtService {
           record: this.record,
           store: opts.store,
           log: this.log,
-          // Drafts from the rail region's feeds' alerts for its lines.
+          // Drafts from the rail feed's alerts for its lines.
           ...(railFeeds.has(feed.id) ?
             {
               onAlerts: (alerts: DecodedAlert[], rail: Map<string, string>) =>
@@ -314,7 +317,7 @@ export class RtService {
     return this.isLeader;
   }
 
-  /** The rail region's lines' alerts: drafts of the ones we can model (packages/transit-core/DESIGN.md#disruptions-and-alerts). */
+  /** The rail network's lines' alerts: drafts of the ones we can model (packages/transit-core/DESIGN.md#disruptions-and-alerts). */
   private async railAlerts(
     decoded: DecodedAlert[],
     railKeyById: Map<string, string>,
@@ -481,13 +484,11 @@ export class RtService {
       const next = a.stream?.nextBatchAt();
       if (next !== undefined) due.push(next);
     }
-    if (region.id === this.rail?.region) {
-      if (this.dispatcher)
-        r.sources["dispatch"] = {
-          kind: "dispatch",
-          versions: this.dispatcher.index().byDate,
-        };
-    }
+    if (this.rail && region.feeds.includes(this.rail.feed) && this.dispatcher)
+      r.sources["dispatch"] = {
+        kind: "dispatch",
+        versions: this.dispatcher.index().byDate,
+      };
     if (due.length) r.nextAt = Math.min(...due);
     return r;
   }
@@ -612,8 +613,13 @@ export class RtService {
     if (this.leaderUrl) return this.forward(pathname, params);
     const inRegion = /^\/regions\/([^/]+)(\/.*)$/.exec(pathname);
     if (inRegion) return this.handleRegion(inRegion[1]!, inRegion[2]!);
+    const inNetwork = /^\/networks\/([^/]+)\/dispatch(\/.*)?$/.exec(pathname);
+    if (inNetwork)
+      return inNetwork[1] === this.rail?.network ?
+          this.handleDispatch(inNetwork[2] ?? "")
+        : json(404, { error: "No such rail network" });
     if (pathname.startsWith("/rt/dispatch"))
-      return this.handleDispatch(pathname);
+      return this.handleDispatch(pathname.slice("/rt/dispatch".length));
     // A feed's poller, for the endpoints that take `feed=<id>`.
     const feedParam = params.get("feed");
     const poller = feedParam ? this.pollers.get(feedParam) : undefined;
@@ -684,14 +690,14 @@ export class RtService {
     };
   }
 
-  /** Live dispatch: the index of current versions, or one immutable patch version. */
-  private async handleDispatch(pathname: string): Promise<HttpResult> {
+  /** Live dispatch: the index of current versions (`rest` empty), or one immutable patch version (`/<date>/<v>.json`). */
+  private async handleDispatch(rest: string): Promise<HttpResult> {
     if (!this.dispatcher) return json(404, { error: "Live dispatch is off" });
-    if (pathname === "/rt/dispatch" || pathname === "/rt/dispatch/")
+    if (rest === "" || rest === "/")
       return json(200, this.dispatcher.index(), {
         "Cache-Control": "public, max-age=10",
       });
-    const m = /^\/rt\/dispatch\/(\d{8})\/([0-9a-z]+)\.json$/.exec(pathname);
+    const m = /^\/(\d{8})\/([0-9a-z]+)\.json$/.exec(rest);
     const patch =
       m && isServiceDate(m[1]!) ?
         await this.dispatcher.patch(m[1], m[2]!)

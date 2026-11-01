@@ -10,8 +10,8 @@
 //   var/raw/gtfs/<feed>/<version>/                 → gtfs_feeds (without archive keys; the data job uploads them)
 // and:
 //   var/ais-history/<feed>/<date>/<HH>.ndjson[.gz] → rt_polls + ais_fixes, for each feed with vessels
-//   var/dispatch-history/<date>/<v>.json    → dispatch_versions
-//   config/regions/metro-vancouver/{observations,disruptions} → corrections (as on every start)
+//   var/dispatch-history/<network>/<date>/<v>.json    → dispatch_versions
+//   config/feeds/<feed>/observations, config/networks/<network>/disruptions → corrections (as on every start)
 //
 // The files themselves stay where they are: the server keeps serving /rt/history, service changes and
 // dispatch versions from them. Alerts (alerts.ndjson, and the bus alerts inside changes/) aren't
@@ -56,7 +56,7 @@ const { db, pool } = createDb(databaseUrl());
 await migrate(pool, log);
 await syncSources(db);
 const rail = await railNetwork();
-const store = new Store(db, rail.region);
+const store = new Store(db);
 
 /** Our route key → GTFS route_id, from a feed's built plans (the newest version wins). */
 async function routeIds(feed: string): Promise<Map<string, string>> {
@@ -282,7 +282,7 @@ for (const feed of (await readFeeds()).filter((f) => f.ais)) {
 }
 
 // Dispatch versions.
-const dispatchDir = join(varDir, "dispatch-history");
+const dispatchDir = join(varDir, "dispatch-history", rail.network);
 let versions = 0;
 if (existsSync(dispatchDir))
   for (const date of (await readdir(dispatchDir)).filter(isServiceDate))
@@ -291,6 +291,7 @@ if (existsSync(dispatchDir))
     )) {
       const patch = await readJson<DispatchPatch>(join(dispatchDir, date, f));
       await store.recordDispatchVersion({
+        network: rail.network,
         date,
         version: f.replace(/\.json$/, ""),
         kind: "live",
@@ -300,7 +301,7 @@ if (existsSync(dispatchDir))
     }
 log(`dispatch versions: ${versions}`);
 
-const n = await new CorrectionsRepo(db, rail.region).importFiles();
+const n = await new CorrectionsRepo(db, rail).importFiles();
 log(
   `corrections: ${n.observationSets} observation sets and ${n.disruptions} disruptions`,
 );

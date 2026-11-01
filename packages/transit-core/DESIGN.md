@@ -1,10 +1,10 @@
 # Transit engine: design
 
-How Transitopia turns timetables, OpenStreetMap track and real-time data into the vehicles on `/transit`. The code is in `packages/transit-core/src/` (DOM-free, shared by the pipelines, the server, tests and the browser); the parts that run in the browser are in [packages/transit-map](../transit-map/README.md), and the server's side in [apps/server](../../apps/server/README.md). Region-specific facts and assumptions are in [config/regions/metro-vancouver/README.md](../../regions/metro-vancouver/README.md) and its [OPEN-QUESTIONS.md](../../regions/metro-vancouver/OPEN-QUESTIONS.md) (cited below as "OPEN-QUESTIONS #N").
+How Transitopia turns timetables, OpenStreetMap track and real-time data into the vehicles on `/transit`. The code is in `packages/transit-core/src/` (DOM-free, shared by the pipelines, the server, tests and the browser); the parts that run in the browser are in [packages/transit-map](../transit-map/README.md), and the server's side in [apps/server](../../apps/server/README.md). Facts and assumptions about how things run are in the SkyTrain's [config/networks/skytrain/README.md](../../config/networks/skytrain/README.md) and TransLink's [config/feeds/translink/README.md](../../config/feeds/translink/README.md), each with its OPEN-QUESTIONS.md ([SkyTrain](../../config/networks/skytrain/OPEN-QUESTIONS.md), [TransLink](../../config/feeds/translink/OPEN-QUESTIONS.md); cited below as "OPEN-QUESTIONS #N", numbered across both).
 
 ## Overview
 
-The engine animates, on a to-scale vector map of Metro Vancouver (and BC Transit's buses in Greater Victoria, Kelowna and the Fraser Valley: [docs/DESIGN.md → Regions and feeds](../../docs/DESIGN.md#regions-and-feeds)):
+The engine animates, on a to-scale vector map of Metro Vancouver (and BC Transit's buses in Greater Victoria, Kelowna and the Fraser Valley: [docs/DESIGN.md → Feeds, operators and rail networks](../../docs/DESIGN.md#feeds-operators-and-rail-networks)):
 
 - **SkyTrain** (Expo, Millennium and Canada Lines): every train on the correct track, through switches, pocket tracks and turnbacks, and moving to and from the operations and maintenance centres (OMCs) and yards as trains enter and leave service. Positions are **inferred from the schedule**, refined by corrections and dispatched through a signalling simulation.
 - **SeaBus** and **West Coast Express**: from the schedule along simpler geometry. SeaBus is anchored by live AIS.
@@ -89,7 +89,7 @@ The diagram labels the OMC leads ("To OMC" between Edmonds and 22nd Street, and 
 
 ## Track graph
 
-The heart of the engine. It lives as versioned data in `config/regions/metro-vancouver/infrastructure/`, not in code (`src/infra/`).
+The heart of the engine. It lives as versioned data in `config/networks/skytrain/infrastructure/`, not in code (`src/infra/`).
 
 **Entities**
 
@@ -100,7 +100,7 @@ The heart of the engine. It lives as versioned data in `config/regions/metro-van
 
 **Sourcing**
 
-1. `pipelines/fetch-osm.ts` runs an Overpass query for `railway=subway` ways and `railway=switch` nodes in the region's bbox, into `var/raw/osm/`.
+1. `pipelines/fetch-osm.ts` runs an Overpass query for `railway=subway` ways and `railway=switch` nodes in the rail network's bbox (`network.json` → `bbox`), into `var/raw/osm/<network>/`.
 2. `pipelines/import-osm.ts` converts it into our format (`src/infra/network.ts` builds the topology, the same code scenarios use) and writes `tracks.generated.geojson`. Track with a future `opening_date` (e.g. the Broadway Extension) goes to `future.generated.geojson`, for scenarios only.
 3. **Hand fixes** live in `overrides.json`: switch pairings OSM doesn't encode, excluded ways (e.g. track closed for works), `addTrack` (GeoJSON track missing from OSM), platform pins and role-based `patternPlatforms` rules (pins for trips that terminate at versus pass through a station, for temporary operations such as the OMC4 works at Braid). They refer to OSM ids and coordinates, never to generated segment ids, so OSM can be re-pulled without losing them.
 4. `npm run validate:infra` checks the result ([Validation](#validation)).
@@ -114,7 +114,7 @@ The heart of the engine. It lives as versioned data in `config/regions/metro-van
 `pipelines/fetch-gtfs.ts` and `pipelines/build-schedule.ts`; types in `src/plan/types.ts`.
 
 - **Feed discovery**, for each feed (`config/feeds/<feed>/feed.json` → `static.url`): fetch the latest zip and read `feed_info.txt` (`feed_version`, `feed_start_date`, `feed_end_date`). A new version is archived to `var/raw/gtfs/<feed>/<version dir>/` and built, unless it has the same timetable as the newest archived version for every date it covers: the same files, or the same minus the dates that have passed (BC Transit re-exports daily); the manifest keeps picking the archived one (newest covering the date). Previously built versions are kept. The server does this daily and archives every version.
-- **Rebuilds**: a plan records a hash of what built it besides its feed (`inputs`: `PLAN_FORMAT` in `build-schedule` and the files it reads: the feed's `feed.json` and `routes.json`, and SeaBus berths where a region showing it has them), and the build redoes any plan whose hash differs, so editing `routes.json` or changing the plan's format reaches plans already built (on the server too, whose daily build otherwise only builds new feeds). Bump `PLAN_FORMAT` whenever the script writes something different from the same feed and config.
+- **Rebuilds**: a plan records a hash of what built it besides its feed (`inputs`: `PLAN_FORMAT` in `build-schedule` and the files it reads: the feed's `feed.json` and `routes.json`, and SeaBus berths where the feed has them), and the build redoes any plan whose hash differs, so editing `routes.json` or changing the plan's format reaches plans already built (on the server too, whose daily build otherwise only builds new feeds). Bump `PLAN_FORMAT` whenever the script writes something different from the same feed and config.
 - **Manifest**: each feed's `var/public/data/feeds/<feed>/manifest.json` lists its versions with their validity ranges. `feedForDate(date)` picks the newest feed whose range covers the date, which handles current and future timetables, including a newer feed superseding the tail of an older one. The date picker is bounded by the union of the ranges.
 - **Routes**: every route in the feed, with the overrides and exclusions in its `config/feeds/<feed>/routes.json`, matched **by name** ([below](#routes)). Route colours, names and categories are baked into the plan.
 - **Normalize** into a compact service plan per feed version: trips (route, direction, headsign, service_id, block_id, shape_id, and `(stop_id, arr, dep)` in seconds since service-day start), stops with platform→parent mapping, simplified shapes, calendar and calendar_dates. Bus shapes lose vertices placed on a stop just off the road (`removeStopSpurs` in `src/geo.ts`): BC Transit's sparse shapes have one at each curbside stop, which drew as a bump or a spur to the curb. SeaBus shapes are replaced by berth-to-berth lanes ([below](#seabus-and-west-coast-express)).
@@ -159,7 +159,7 @@ Every line the map draws for a plan is in vector tiles of its own (`src/plan/til
 |---|---|---|
 | `corridors-overview` | Bus corridors with divided roads merged; feature id: its index in the plan | 10–13 |
 | `corridors` | Bus corridors, each carriageway its own | 14 |
-| `routes` | Routes along their shapes: buses without corridors (in frequent, limited and empty sections), SeaBus (every berth pair, tagged `berthPair`), WCE, and SkyTrain where the region has no track; with `route`, `kind`, `mode`, `color` | 10–14 |
+| `routes` | Routes along their shapes: buses without corridors (in frequent, limited and empty sections), SeaBus (every berth pair, tagged `berthPair`), WCE, and SkyTrain where its rail network has no track; with `route`, `kind`, `mode`, `color` | 10–14 |
 | `rail-lines` | SkyTrain's centrelines, stripes, ribbons and tracks (`infra/lines.geojson`, [Track graph](#track-graph)), in its line's `color` | 10–14 |
 | `rail-tracks` | Track segments drawn on their own: yards, and track under works | 10–14 |
 
@@ -219,9 +219,9 @@ How far apart a route's stops are and how fast it's timetabled (`src/schedule/st
 
 ## Run inference
 
-`src/movement/build.ts`, run by `npm run build:movements`. This is where the "best guess" lives, so it's explicit, configurable (`config/regions/metro-vancouver/operations.json`) and replaceable. For each SkyTrain line and each distinct service-day pattern:
+`src/movement/build.ts`, run by `npm run build:movements`. This is where the "best guess" lives, so it's explicit, configurable (`config/networks/skytrain/operations.json`) and replaceable. For each SkyTrain line and each distinct service-day pattern:
 
-1. **Chain trips into runs.** The GTFS block successor is used only when it starts where the last trip ended (blocks aren't physical trains: [region README](../../regions/metro-vancouver/README.md#gtfs-blocks)), and only when no earlier departure from the same platform track is still unserved: the train would stand on that platform in the way of whichever train runs it (at Production Way–University this sent a yard pull-out into an occupied berth). Otherwise trips are chained first-in-first-out to the earliest feasible departure: same line, the arrival platform can reach the departure platform through a legal turnback in the track graph, and the layover is at least the terminus's minimum.
+1. **Chain trips into runs.** The GTFS block successor is used only when it starts where the last trip ended (blocks aren't physical trains: [SkyTrain README](../../config/networks/skytrain/README.md#gtfs-blocks)), and only when no earlier departure from the same platform track is still unserved: the train would stand on that platform in the way of whichever train runs it (at Production Way–University this sent a yard pull-out into an occupied berth). Otherwise trips are chained first-in-first-out to the earliest feasible departure: same line, the arrival platform can reach the departure platform through a legal turnback in the track graph, and the layover is at least the terminus's minimum.
 2. **Turnbacks** choose, by cost, between the GTFS departure platform (via tail, pocket or main-line reversals) and reversing in place. In-place turnbacks get stub berths by occupancy, pulled up to the buffer (but not beyond `turnback.maxPullUpM`). Turnbacks run at their own speed (`turnback.speedFactor`).
 3. **Pull-outs and pull-ins.** A run's first trip gets a pull-out from the nearest reachable yard by track distance, timed to arrive before its first departure; its last trip gets a pull-in. Every run starts and ends in a yard: overnight layup on the line, which really happens near King George and along the Millennium Line ([region README](../../regions/metro-vancouver/README.md#yards-and-overnight-layup)), isn't modelled. They keep to the normal direction of traffic where they can (`yard.againstTrafficPenalty`). When the matcher needs a new train mid-day it pulls one from a yard, and when service thins it sends one back: these are the trains the map shows entering and leaving service.
 4. **Surplus trains at stub termini** (that would wait longer than `turnback.stubMaxLayoverS`, or when every dead-ended berth is taken) return to the yard instead of queueing, as operators run them empty between scheduled trains. Timing these pull-ins into gaps between scheduled trains was tried and made no measurable difference.
@@ -241,7 +241,7 @@ Output: **runs**, each an ordered list of movements (revenue trips and empty mov
 ## SeaBus and West Coast Express
 
 - **Schedule-based**, interpolated along their paths with easing between stops. Vessels and trainsets are chained by `block_id`, which follows one vessel per block for SeaBus (2 vessels in service, 3 at weekday peaks, 1 late evening). Out-of-service vessels are hidden. WCE trainsets are shown only while in service (OPEN-QUESTIONS #15).
-- **SeaBus lanes**: vessels run berth to berth along keep-right lanes traced from AIS instead of the GTFS shapes (a straight line between the terminals). `src/plan/ferry-berths.ts`, applied by `build-schedule`, runs every vessel between the same pair of berths (west–west or east–east), keeping pattern ids unchanged because movement files reference them. Berths and lanes are in `config/regions/metro-vancouver/infrastructure/seabus.json`, the default pair in `config/regions/metro-vancouver/seabus.json`. The plan carries every pair's paths, and [AIS](#seabus-ais) picks the day's pair.
+- **SeaBus lanes**: vessels run berth to berth along keep-right lanes traced from AIS instead of the GTFS shapes (a straight line between the terminals). `src/plan/ferry-berths.ts`, applied by `build-schedule`, runs every vessel between the same pair of berths (west–west or east–east), keeping pattern ids unchanged because movement files reference them. Berths and lanes are in `config/feeds/translink/ferries/seabus.json`, the default pair in `config/feeds/translink/seabus.json`. The plan carries every pair's paths, and [AIS](#seabus-ais) picks the day's pair.
 - Live AIS fixes anchor the SeaBus timetable ([SeaBus AIS](#seabus-ais)).
 
 ## Buses
@@ -292,7 +292,7 @@ movement plan (schedule-inferred, dispatched)
       └─ + observations and disruptions (optional, time-stamped, each with a source)
 ```
 
-Observations (`src/corrections/types.ts`) reference **service date + GTFS trip_id**, or **stop + time**, never inferred run ids, which change between builds. Kinds: a sighting at a platform (optionally with a consist), a delay, a cancellation, a consist, a position, and parked trains. The file format and validation rules are in `config/regions/metro-vancouver/observations/README.md` (`src/corrections/validate.ts`). Where they're stored and reviewed is in [docs/DESIGN.md → Corrections and previews](../../docs/DESIGN.md#corrections-and-previews).
+Observations (`src/corrections/types.ts`) reference **service date + GTFS trip_id**, or **stop + time**, never inferred run ids, which change between builds. Kinds: a sighting at a platform (optionally with a consist), a delay, a cancellation, a consist, a position, and parked trains. The file format and validation rules are in `config/feeds/translink/observations/README.md` (`src/corrections/validate.ts`). Where they're stored and reviewed is in [docs/DESIGN.md → Corrections and previews](../../docs/DESIGN.md#corrections-and-previews).
 
 - **SkyTrain** observations go through the [dispatcher](#dispatcher): `railInputs()` (`src/corrections/reconcile.ts`) matches them to runs as anchors (a stop at a time), cancellations, consists and parked trains, and the date is re-dispatched centrally, so corrected trains stay consistent with signalling and the trains around them. The result is a patch per date. Browsers never reconcile rail observations.
 - **Timetable vehicles** (SeaBus, WCE, buses without real-time data) use a simpler reconciler, `reconcileScheduled()`, in the browser: a sighting shifts its trip (linearly between several sightings), and the terminal layover stretches to the next trip's corrected departure. A consist or vessel name applies to the whole GTFS block.
@@ -302,13 +302,13 @@ Observations (`src/corrections/types.ts`) reference **service date + GTFS trip_i
 
 ## Scenarios
 
-A scenario is a directory in `config/regions/metro-vancouver/scenarios/<name>/` (format in its README; `src/scenario/`):
+A scenario is a directory in `config/networks/skytrain/scenarios/<name>/` (format in its README; `src/scenario/`):
 
 - `infrastructure.json`: a diff against the base graph: future OSM track, custom GeoJSON track, removals. `composeNetwork` rebuilds base + future + custom track by shared coordinates, with the same code as the OSM import.
 - `service.json`: either the base GTFS or service operations (e.g. `extend` a line) that produce a modified plan without mutating the base (it's `structuredClone`d).
 - optional config overrides for kinematics, fleet caps and turnback times.
 
-`npm run scenario -- <name>` runs the whole pipeline (apply the diff → validate → generate trips → infer runs → route → dispatch) and writes `var/public/data/regions/metro-vancouver/scenarios/<name>/` (gitignored); `?scenario=<name>` shows it. Buses in scenarios are schedule-only. There's no editing UI, and recomputes stay central: browsers don't run the pipeline. The demo is `broadway-subway`.
+`npm run scenario -- <name>` runs the whole pipeline (apply the diff → validate → generate trips → infer runs → route → dispatch) and writes `var/public/data/networks/skytrain/scenarios/<name>/` (gitignored); `?scenario=<name>` shows it. Buses in scenarios are schedule-only. There's no editing UI, and recomputes stay central: browsers don't run the pipeline. The demo is `broadway-subway`.
 
 ## Disruptions and alerts
 
@@ -320,7 +320,7 @@ A scenario is a directory in `config/regions/metro-vancouver/scenarios/<name>/` 
 
 1. **Record alerts.** The leader polls `gtfsalerts` within the budget and records SkyTrain, SeaBus and WCE alerts with when each was first and last seen.
 2. **Draft** (`src/disruption/alerts.ts`): "single-track(ing) … between X Station and/& Y Station" (within one sentence, e.g. "single track service will be in effect between"), "board all trains from Platform N (at both stations)" and "X Station - Y Station - N minutes" become a draft disruption, pre-filling the open platform when the alert names it. Other alerts (elevators, fares, the Braid arrangement, LIM rail replacement) are listed as unparsed in `/admin`. The leader restores the last recorded alert set (the end of `alerts.ndjson`) when it starts, so that list isn't empty until the first alerts poll.
-3. **Confirm**: a person confirms the draft, because alerts don't say which track stays open. Manual disruptions use the same format (`config/regions/metro-vancouver/disruptions/README.md`).
+3. **Confirm**: a person confirms the draft, because alerts don't say which track stays open. Manual disruptions use the same format (`config/networks/skytrain/disruptions/README.md`).
 4. **Apply** (`src/disruption/apply.ts`): for `singleTrack`, follow the track through the kept platform, pin the section's intermediate stops to it, close the other track between the two stations (their own platform tracks stay open, so trains can reach the crossovers) and move the period's trips onto cloned patterns routed with the closure. `headway` cancels trips closer together than `minS` per direction. When single-tracking comes without a headway, through service is thinned to `dispatch.singleTrackHeadwayS`, standing in for the short-turns operators add. The date is then re-inferred (turnbacks and yard moves in the period route around the closure too) and [dispatched](#dispatcher); single-track working falls out of the section rules. Because runs and patterns change, the patch carries the whole day's plan, plus notices the site shows ("Service change" badge, and on the affected trains).
 
 Canada Line on 2026-09-28 (a weekday): 66 of 603 trips late by ≥ 30 s (p95 177 s), and no use of the closed track in the period. At full evening service a single-tracked Expo section gridlocks unless thinned (`singleTrackHeadwayS`, a guess).
@@ -340,7 +340,7 @@ inputs = { closures, serviceChanges, anchors }      // all optional, each with a
 - **Central only:** it runs at build time (base plans, scenarios, dates with corrections: `build:movements`, `build:dispatch`) and in the server (live). Browsers never dispatch; they download results, so every visitor sees the same plan. Client requests never trigger a dispatch; only new inputs and the build do. A patch only fits the build it was dispatched against (`baseBuiltAt`).
 - **Playback stays pure:** positions = f(plan, dispatch result, t). The dispatcher steps through time internally; the ban on frame-stepped state applies to playback.
 
-**Signalling model.** SkyTrain uses moving-block CBTC (believed to be Thales SelTrac on all three lines; OPEN-QUESTIONS #26). Parameters are in `config/regions/metro-vancouver/dispatch.json`, all guesses.
+**Signalling model.** SkyTrain uses moving-block CBTC (believed to be Thales SelTrac on all three lines; OPEN-QUESTIONS #26). Parameters are in `config/networks/skytrain/dispatch.json`, all guesses.
 
 - **Moving block:** a train's movement authority ends a safety margin behind the rear of the train ahead on its path, and the train brakes to stop short of it. Following trains close up and queue naturally.
 - **Sections** come from revenue use: track trains in service run both ways (single track, stub platforms), plus crossovers, tails, pockets, sidings and leads. A train may enter one only when its route through to the next place it can clear is free and not reserved by an opposing train. This prevents head-on meetings: a train never enters a single-track section it can't leave. Elsewhere, an empty move running against the normal direction of traffic reserves the pieces it runs "wrong road", and other trains treat that reservation as a stop.
