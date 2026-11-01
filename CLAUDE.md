@@ -115,9 +115,9 @@ npm run lint             # oxlint --type-aware, repo-wide; warnings fail it (and
 npm run format           # prettier (format-check in CI)
 npm run build            # build every workspace that has a build
 npm run data:gtfs        # fetch every feed's latest GTFS + build plans and manifests [-- --feed <id>]
-npm run data             # fetch-gtfs, fetch-osm, import-osm, build-schedule, build-infra, build-movements, …
+npm run data             # transit + cycling: fetch-gtfs, build-schedule, build-infra, build-movements, …, build-cycling [transit|cycling|basemap …]
 npm run tiles -- --region bc # the site's basemap, var/public/tiles/protomaps-bc.pmtiles (~2 GB) + fonts/sprites
-npm run data:osm         # fetch OSM tracks + import → config/regions/<rail region>/infrastructure/*.generated.geojson
+npm run data:osm         # fetch OSM tracks + import → config/regions/<rail region>/infrastructure/*.generated.geojson (committed; then npm run data transit)
 npm run data:roads       # fetch OSM roads per feed → var/raw/osm-roads/<feed>/ (build-schedule then matches bus shapes and builds corridors)
 npm run data:cycling     # the published cycling OSM file (~20 MB, from data.transitopia.org) + the cycling tiles → var/public/tiles/transitopia-cycling-british-columbia.pmtiles (tippecanoe)
 npm run extract:cycling-osm # what data:cycling fetches, made locally: BC's Geofabrik extract (~1.3 GB) filtered by osmium → var/raw/osm-cycling/british-columbia/ (osmium-tool, ~2.5 GB RAM; GitHub Actions runs it daily)

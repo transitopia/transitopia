@@ -4,7 +4,7 @@
 
 Transitopia is a mapping project that aims to provide high-quality **public transit**, **cycling**, and **pedestrian** infrastructure maps. The goal is to promote best practices and celebrate high quality infrastructure, while calling attention to unsafe and low-quality infrastructure.
 
-**Current status** (Oct 2026): The first release of **our real-time transit map is in beta** for Metro Vancouver, showing only Translink's "Fast & Frequent" network. Also available is the **cycling / micromobility map** for all of British Columbia.
+**Current status** (Oct 2026): We are now showing a **real-time transit map of Metro Vancouver, Kelowna, and Victoria**. Also available is the **cycling / micromobility map** for all of British Columbia.
 
 Online at: **[www.transitopia.org](https://www.transitopia.org/)**.
 
@@ -29,43 +29,66 @@ How it all fits together is in [docs/DESIGN.md](docs/DESIGN.md), with each part'
 
 ## How to run Transitopia locally
 
-You need Node.js 26+. Clone this repo, then run `npm install` at its root.
+There are a couple of ways to run Transitopia locally. In any case, you'll need Node.js 26+.
 
-1. Build the basemap (a British Columbia extract of the [Protomaps](https://protomaps.com/) daily build, about 2 GB, plus its fonts and icons):
+### The easy way: use the Transitopia.org API and data servers
 
-   ```sh
-   npm run tiles -- --region bc
+If you just want to get Transitopia running locally and try changing the UI, you don't need to run the database, set up the transit data server, or build the maps locally; you can get all those from the Transitopia production site.
+
+Just:
+1. Clone this repo.
+2. Run `npm install` from this repo's root.
+3. Download the basemap's fonts and icons (a few MB): `npm run tiles -- --assets-only`
+4. Run the `web` app:
+
+   ```
+   VITE_BASEMAP_TILES=https://map-tiles.transitopia.org/protomaps-bc.json \
+   VITE_TRANSIT_OVERVIEW_TILES_CDN=https://map-tiles.transitopia.org/ \
+   VITE_TRANSIT_DATA=https://data.transitopia.org/ \
+   VITE_TRANSIT_API=https://api.transitopia.org/ \
+   npm run dev
    ```
 
-2. For the cycling map, build its tiles (the cycling paths, bike parking, etc.) with `npm run data:cycling` (needs tippecanoe: `brew install tippecanoe`). It downloads the cycling data we extract from OpenStreetMap each day (about 20 MB) and writes `var/public/data/cycling/british-columbia/`. See [packages/cycling-core](./packages/cycling-core/README.md).
-3. For the transit map, build the timetable and train data:
+5. View the site at http://localhost:5173/
+
+### The hard way: build and run everything yourself
+
+If you want to try changing any of the datasets used (IDs, map, transit data, etc.), you'll need to do the full setup locally.
+
+1. Clone this repo.
+2. Run `npm install` from this repo's root.
+3. Start the database server: `npm run db:up` (needs Docker).
+4. Install [tippecanoe](https://github.com/felt/tippecanoe) 2.17 or later (`brew install tippecanoe`), which builds the transit and cycling map tiles.
+5. Build the data:
 
    ```sh
-   npm run data:gtfs       # fetch the latest GTFS feed and build the timetable data
-   npm run build:infra     # publish the track network and platform mapping
-   npm run build:movements # infer train runs and dispatch them, per day type
-   npm run db:up            # the local database (Docker), for the server and feature IDs
-   npm run features -- pull # production's feature IDs, for links (?select=)
+   npm run data basemap transit cycling
    ```
 
-4. Run the development server with `npm run dev`, then go to http://localhost:5173/ in your browser.
+   - `basemap`: a British Columbia extract of the [Protomaps](https://protomaps.com/) daily build (about a 2 GB download), plus its fonts and icons. Skipped once it exists.
+   - `transit`: fetches the latest GTFS feeds and the roads buses use, then builds the timetables, the track network, the route tiles, and the dispatched train runs.
+   - `cycling`: downloads the cycling data we extract from OpenStreetMap each day (about 20 MB) and builds its tiles. See [packages/cycling-core](./packages/cycling-core/README.md).
 
-Downloads and build output go to `var/` (gitignored). The track network itself is committed (`config/regions/metro-vancouver/infrastructure/`), and `npm run data:osm` re-imports it from OpenStreetMap.
+   Name only the ones you need; later, `npm run data` (transit and cycling) brings them up to date. The individual steps are in [pipelines/README.md](pipelines/README.md).
+6. Run the server with `RT_FORWARD_TO=https://api.transitopia.org npm run server`
+   - This will run everything locally except polling the real-time vehicle position APIs from transit agencies, which will still happen on Transitopia's API server (`api.transitopia.org`).
+   - If you want your local server to fetch the live vehicle positions directly, then:
+      1. Optional: create a file called `.secrets` and set any API keys you have there: `AISSTREAM_API_KEY=...`, `TRANSLINK_API_KEY=...`, etc. (BC Transit does not need an API key.)
+      2. Run the server with `RT_POLL=1 npm run server`
+7. In another tab/terminal, start the web frontend with `npm run dev`.
+8. Go to http://localhost:5173/ in your browser.
 
-The site reads real-time data from the local server: start the database with `npm run db:up`, then `npm run server` alongside `npm run dev`. Without a server running it shows transit schedules only (*estimated* positions). A local server doesn't poll TransLink or aisstream.io (even with API keys) unless started with `RT_POLL=1`: TransLink allows 1,000 requests a day per key, and the production server spends them (see [docs/DESIGN.md → Upstream request budget](docs/DESIGN.md#upstream-request-budget)). To see live data locally, start it with `RT_FORWARD_TO=https://api.transitopia.org`, or point the site straight at production with `VITE_TRANSIT_DATA=https://data.transitopia.org/ VITE_TRANSIT_API=https://api.transitopia.org/ npm run dev`. Set both: live positions also depend on published data, such as the bus travel-time profiles (`rt-profile.json`) production rebuilds nightly, so with only the API pointed at production the buses won't match transitopia.org.
+Downloads and build output go to `var/` (gitignored). The track network itself is committed (`config/regions/metro-vancouver/infrastructure/`), and `npm run data:osm` re-imports it from OpenStreetMap (then `npm run data transit` rebuilds on it).
 
 ## Credits
 
 Transitopia is a project by [Braden MacDonald](https://www.bradenmacdonald.com) ([@bradenmacdonald](https://github.com/bradenmacdonald) on GitHub).
 
-All source code is open source and all data is open data, but the licenses vary.
 
-The primary source of map data is [OpenStreetMap](https://www.openstreetmap.org/). The basemap is built from the [Protomaps](https://protomaps.com/) daily build of OpenStreetMap, styled with [Protomaps basemaps](https://github.com/protomaps/basemaps) in light and dark flavours. Custom vector map tiles are generated using [planetiler](https://github.com/onthegomap/planetiler) - see the `map-layers` folder.
+The primary source of map data is [OpenStreetMap](https://www.openstreetmap.org/). The basemap is built from the [Protomaps](https://protomaps.com/) daily build of OpenStreetMap, styled with [Protomaps basemaps](https://github.com/protomaps/basemaps) in light and dark flavours. Custom vector tiles are built with [tippecanoe](https://github.com/felt/tippecanoe).
 
 The map is rendered using [MapLibre GL](https://maplibre.org/).
 
 Map vector tile data is stored in the [PMTiles](https://github.com/protomaps/PMTiles) format.
 
-Transit data sources:
-* [TransLink GTFS static and GTFS Realtime](https://www.translink.ca/about-us/doing-business-with-translink/app-developer-resources/gtfs/gtfs-realtime). Some of the data used in this product or service is provided by permission of TransLink. TransLink assumes no responsibility for the accuracy or currency of the Data used in this product or service. This is not an official TransLink product, and train positions are estimates.
-* [AIS Stream](https://aisstream.io/) provides marine vessel movements.
+Transit data sources: press the (i) button on the bottom right of the website at [www.transitopia.org](https://www.transitopia.org) to read a list of the data sources used for the map shown, or refer to [`DATA-LICENSES.md`](./DATA-LICENSES.md) for a complete list.

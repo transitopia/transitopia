@@ -4,7 +4,7 @@ Build-time data pipelines, validators and tools, run from the repo root (`npm ru
 
 ## Building the transit data
 
-`npm run data` runs every step in order. The steps:
+`npm run data` runs every step in order: the transit steps, then the cycling ones. Name targets to run only some (`npm run data transit`, `cycling`, `basemap`); `basemap` (`npm run tiles -- --region bc`) runs only when named, so the server's data build never fetches it. The steps:
 
 | Command | Script | What |
 |---|---|---|
