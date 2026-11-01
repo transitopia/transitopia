@@ -176,20 +176,22 @@ export function groupBays(
 
 /**
  * The drawn bus routes passengers can board at each of the plan's stops (by stop index), and the
- * stops rail and ferry trips call at (`nonBus`).
+ * stops rail and ferry trips call at (`nonBus`). Only patterns with trips count; without `trips`,
+ * every pattern does (a published plan's patterns all have trips, which the browser loads later).
  */
 export function busStopRoutes(
-  plan: Pick<ServicePlan, "routes" | "patterns" | "trips" | "stops">,
+  plan: Pick<ServicePlan, "routes" | "patterns" | "stops">
+    & Partial<Pick<ServicePlan, "trips">>,
 ): Map<number, Set<string>> & { nonBus: Set<number> } {
   const busRoutes = new Set(
     plan.routes.filter((r) => r.kind === "bus").map((r) => r.key),
   );
-  const used = new Set(plan.trips.map((t) => t.pattern));
+  const used = plan.trips && new Set(plan.trips.map((t) => t.pattern));
   const out = Object.assign(new Map<number, Set<string>>(), {
     nonBus: new Set<number>(),
   });
   for (const p of plan.patterns) {
-    if (!used.has(p.id)) continue;
+    if (used && !used.has(p.id)) continue;
     if (!busRoutes.has(p.route)) {
       for (const si of p.stops) out.nonBus.add(si);
       continue;

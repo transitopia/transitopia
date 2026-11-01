@@ -19,13 +19,14 @@ import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
  * Ids are the features' IDs.
  */
 export function hubsFromPlaces(
-  plan: Pick<
-    ServicePlan,
-    "routes" | "patterns" | "trips" | "stops" | "stations"
-  >,
+  plan: Pick<ServicePlan, "routes" | "patterns" | "stops" | "stations">,
   places: PlacesFile,
 ): BusHub[] {
-  const served = busStopRoutes(plan);
+  // From every pattern, not the trips loaded so far: the hubs are worked out once per plan and
+  // places file (`hubsOf`), and a places file in before the first trips would leave every exchange
+  // out until the page was reloaded.
+  const { routes, patterns, stops } = plan;
+  const served = busStopRoutes({ routes, patterns, stops });
   const indexOf = new Map(plan.stops.map((s, i) => [s.id, i]));
   const stationOf = new Map<string, string>();
   for (const [planId, key] of Object.entries(places.stations)) {
