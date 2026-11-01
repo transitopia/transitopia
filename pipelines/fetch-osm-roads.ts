@@ -1,7 +1,9 @@
 // Download the roads a feed's buses can use from OpenStreetMap via Overpass, for matching bus shapes
 // to streets in build-schedule (packages/transit-core/DESIGN.md#bus-corridors): every public road
 // class, busways, service roads open to buses, and service roads near bus stops (exchange loops are
-// often plain service roads). The area is the bbox of the regions showing the feed. Saved with a date
+// often plain service roads). The area is the bbox of the regions showing the feed and of the feed's
+// stops in its newest archived GTFS (a route can run past its region: the Fraser Valley's 66 to
+// Lougheed Station). Saved with a date
 // so builds are reproducible: var/raw/osm-roads/<feed>/YYYY-MM-DD.json (and latest.json).
 //
 //   tsx pipelines/fetch-osm-roads.ts [--feed <id>]   (default: every feed)
@@ -21,6 +23,8 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
+import { archivedFeeds } from "@transitopia/data/gtfs-day.ts";
+import { readCsv } from "@transitopia/data/gtfs-zip.ts";
 import {
   feedPaths,
   log,
@@ -70,7 +74,7 @@ node(w.ways);
 out skel qt;`;
 }
 
-async function fetchFeed(feed: string, bbox: [number, number, number, number]) {
+async function fetchFeed(feed: string, bbox: BBox) {
   const [west, south, east, north] = bbox;
   const q = query([south, west, north, east].join(","));
   const dir = feedPaths(feed).roads;
@@ -129,6 +133,30 @@ async function fresh(feed: string): Promise<boolean> {
   }
 }
 
+type BBox = [number, number, number, number];
+
+/** The bbox of the stops in the feed's newest archived GTFS, if it has one. */
+async function stopsBbox(feed: string): Promise<BBox | undefined> {
+  const [newest] = await archivedFeeds(feed);
+  if (!newest) return undefined;
+  let b: BBox | undefined;
+  for await (const s of readCsv(newest.path, "stops.txt")) {
+    const lon = Number(s.stop_lon);
+    const lat = Number(s.stop_lat);
+    if (!s.stop_lon || !s.stop_lat || !Number.isFinite(lon + lat)) continue;
+    b =
+      b ?
+        [
+          Math.min(b[0], lon),
+          Math.min(b[1], lat),
+          Math.max(b[2], lon),
+          Math.max(b[3], lat),
+        ]
+      : [lon, lat, lon, lat];
+  }
+  return b;
+}
+
 const regions = await readRegions();
 for (const feed of await readFeeds()) {
   if (only && feed.id !== only) continue;
@@ -138,11 +166,14 @@ for (const feed of await readFeeds()) {
   }
   const shown = regions.filter((r) => r.feeds.includes(feed.id));
   if (!shown.length) continue;
-  const bbox: [number, number, number, number] = [
-    Math.min(...shown.map((r) => r.bbox[0])),
-    Math.min(...shown.map((r) => r.bbox[1])),
-    Math.max(...shown.map((r) => r.bbox[2])),
-    Math.max(...shown.map((r) => r.bbox[3])),
+  const boxes: BBox[] = shown.map((r) => r.bbox);
+  const stops = await stopsBbox(feed.id);
+  if (stops) boxes.push(stops);
+  const bbox: BBox = [
+    Math.min(...boxes.map((b) => b[0])),
+    Math.min(...boxes.map((b) => b[1])),
+    Math.max(...boxes.map((b) => b[2])),
+    Math.max(...boxes.map((b) => b[3])),
   ];
   await fetchFeed(feed.id, bbox);
 }
