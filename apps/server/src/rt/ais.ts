@@ -44,6 +44,8 @@ export interface AisFeedOptions {
   apiKey: string;
   cfg: AisConfig;
   route: string;
+  /** The feed's time zone: its service dates. */
+  timezone: string;
   recorder: Recorder;
   record?: boolean;
   log?: (msg: string) => void;
@@ -86,10 +88,11 @@ export class AisFeed {
     this.running = true;
     await this.opts.recorder.init();
     // Resume today's and yesterday's fixes from disk after a restart.
-    const today = localDate(Date.now());
+    const { recorder, timezone } = this.opts;
+    const today = localDate(Date.now(), timezone);
     const resumed = dedupe([
-      ...(await readRecordedFixes(this.opts.recorder, addDays(today, -1))),
-      ...(await readRecordedFixes(this.opts.recorder, today)),
+      ...(await readRecordedFixes(recorder, addDays(today, -1), timezone)),
+      ...(await readRecordedFixes(recorder, today, timezone)),
     ]);
     // Recorded before this process: older than any live window.
     this.fixes = resumed.map((f) => ({ ...f, at: 0 }));
@@ -128,7 +131,11 @@ export class AisFeed {
   private async pastFixes(serviceDate: ServiceDate): Promise<AisFix[]> {
     let cached = this.past.get(serviceDate);
     if (!cached) {
-      cached = await readRecordedFixes(this.opts.recorder, serviceDate);
+      cached = await readRecordedFixes(
+        this.opts.recorder,
+        serviceDate,
+        this.opts.timezone,
+      );
       this.past.set(serviceDate, cached);
       while (this.past.size > PAST_DATES_CACHED)
         this.past.delete(this.past.keys().next().value!);
@@ -144,7 +151,7 @@ export class AisFeed {
     serviceDate: ServiceDate,
     now = Date.now(),
   ): Promise<{ fixes: AisFix[]; to: number; complete: boolean }> {
-    const [from, to] = serviceDateWindow(serviceDate);
+    const [from, to] = serviceDateWindow(serviceDate, this.opts.timezone);
     const complete =
       now > to + COMPLETE_AFTER_BATCHES * this.opts.cfg.batchS * 1000;
     if (from < now - MEMORY_MS)
@@ -282,8 +289,9 @@ function strip({ at: _, ...f }: HeldFix): AisFix {
 export async function readRecordedFixes(
   recorder: Recorder,
   serviceDate: ServiceDate,
+  tz: string,
 ): Promise<AisFix[]> {
-  const [from, to] = serviceDateWindow(serviceDate);
+  const [from, to] = serviceDateWindow(serviceDate, tz);
   const dates = [...new Set([hourKey(from).date, hourKey(to).date])];
   const out: AisFix[] = [];
   for (const date of dates) {

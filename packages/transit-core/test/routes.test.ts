@@ -35,7 +35,12 @@ const cfg = (json: unknown) => parseConfig("routes", json);
 
 describe("selectRoutes", () => {
   it("draws every route by default, modelled from its route_type", () => {
-    const { routes, skipped } = selectRoutes(ROWS, cfg({ routes: [] }), "ds");
+    const { routes, skipped } = selectRoutes(
+      ROWS,
+      cfg({ routes: [] }),
+      "translink",
+      "ds",
+    );
     expect(routes.map((r) => [r.key, r.label, r.kind, r.brand])).toEqual([
       ["expo-line", "Expo Line", "shape", true],
       ["seabus", "SeaBus", "shape", true],
@@ -81,6 +86,7 @@ describe("selectRoutes", () => {
         ],
         exclude: [{ match: { route_short_name: "N17" } }],
       }),
+      "translink",
       undefined,
     );
     expect(routes.map((r) => r.key)).toEqual([
@@ -107,6 +113,7 @@ describe("selectRoutes", () => {
       selectRoutes(
         [row("a", "5", "Robson"), row("b", "5", "Robson")],
         cfg({ routes: [{ key: "5", match: { route_short_name: "5" } }] }),
+        "translink",
         undefined,
       ),
     ).toThrow(/matches more than one/);
@@ -114,6 +121,7 @@ describe("selectRoutes", () => {
       selectRoutes(
         [row("a", "005", "Robson"), row("b", "5", "Davie")],
         cfg({ routes: [] }),
+        "translink",
         undefined,
       ),
     ).toThrow(/Two routes have the key 5/);

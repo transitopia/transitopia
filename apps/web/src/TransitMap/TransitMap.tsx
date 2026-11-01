@@ -149,7 +149,9 @@ function useRegion(map: MapType | undefined): RegionState {
 const OVERVIEW_SOURCE = "transitopia-transit-overview";
 
 /** What the overview draws: every region's feed. */
-const OVERVIEW_DATASETS = REGIONS.map((r) => r.config.feed.dataset);
+const OVERVIEW_DATASETS = REGIONS.flatMap((r) =>
+  r.feeds.map((f) => f.feed.dataset),
+);
 
 /**
  * Every region's routes zoomed out (packages/transit-core/DESIGN.md#overview-tiles), below the zoom
@@ -246,7 +248,7 @@ export default function TransitMap() {
     let cancelled = false;
     let created: TransitEngine | undefined;
     const params = new URLSearchParams(location.search);
-    const { select: _s, ...time } = readUrl();
+    const { select: _s, ...time } = readUrl(region.feeds[0]!.feed.timezone);
     // A key carried for this region is used once its engine starts; one for another region (the
     // user panned elsewhere first) is dropped.
     const select =
@@ -264,8 +266,7 @@ export default function TransitMap() {
       theme: themeRef.current,
       scenario: params.get("scenario") ?? undefined,
       debug: params.has("debug"),
-      dataset: region.config.feed.dataset,
-      config: region.config,
+      feeds: region.feeds,
       onRebuilt: () => setBuild((b) => b + 1),
       ...(switched ?
         { initial: { ...time, ...(select ? { select } : {}) } }

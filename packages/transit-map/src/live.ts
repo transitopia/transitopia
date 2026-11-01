@@ -8,7 +8,7 @@ import {
   LIVE_SCHEMA,
   type LiveTransitResponse,
 } from "@transitopia/transit-core/rt/live.ts";
-import type { RegionConfig } from "./config.ts";
+import type { FeedConfig } from "./config.ts";
 
 /** Live mode applies when the clock is within this of wall-clock time. */
 export const LIVE_WINDOW_MS = 10 * 60_000;
@@ -29,13 +29,13 @@ export class LivePoller {
   /** Epoch ms of the last successful poll, changed or not. */
   lastOkAt = 0;
   private readonly url: string | undefined;
-  private readonly cfg: RegionConfig["rt"];
+  private readonly cfg: FeedConfig["rt"];
   private readonly handlers: LiveHandlers;
 
   /** @param url the live endpoint, or undefined for schedules only. */
   constructor(
     url: string | undefined,
-    cfg: RegionConfig["rt"],
+    cfg: FeedConfig["rt"],
     handlers: LiveHandlers,
   ) {
     this.url = url;

@@ -7,7 +7,7 @@ import type { Map as MlMap } from "maplibre-gl";
 import type { VehicleState } from "@transitopia/transit-core/schedule/engine.ts";
 import type { KinematicsConfig } from "@transitopia/transit-core/movement/kinematics.ts";
 import { GlPolygonLayer, VERTEX_BYTES } from "./gl-polygons.ts";
-import { DIM_OPACITY, VEHICLES_BEFORE_LAYER } from "./static.ts";
+import { DIM_OPACITY } from "./static.ts";
 import {
   EARTH_CIRCUMFERENCE,
   distToPolyline,
@@ -40,13 +40,15 @@ const PICK_TOLERANCE_PX = 5;
 
 export class VehicleLayer {
   private layer = new GlPolygonLayer(LAYER_ID);
-  private colors = new Map<string, [number, number, number]>();
+  /** Per feed, per route key: its colour. */
+  private colors = new Map<string, Map<string, [number, number, number]>>();
   private hits: (
     | { v: VehicleState; poly: Float64Array }
     | { v: VehicleState; line: Float64Array; hw: number }
   )[] = [];
   private mercPerPx = 0;
-  selectedId: string | undefined;
+  /** The selected vehicle (src/keys.ts → vehicleId: its feed and id). */
+  selected: { feed: string; id: string } | undefined;
   /**
    * Whether a vehicle is on what the open card focuses on (a route, or a combined route's stretch):
    * the rest are dimmed (static.ts → setFocus). Undefined when nothing is focused.
@@ -61,12 +63,9 @@ export class VehicleLayer {
     this.sizing = sizing;
   }
 
-  /** Add (or re-add after a style change) beneath the station labels. */
-  attach(): void {
-    const before =
-      this.map.getLayer(VEHICLES_BEFORE_LAYER) ?
-        VEHICLES_BEFORE_LAYER
-      : undefined;
+  /** Add (or re-add after a style change) beneath the layer `before` (the station labels). */
+  attach(before: string | undefined): void {
+    if (before !== undefined && !this.map.getLayer(before)) before = undefined;
     // setStyle keeps custom layers, but the route/track layers are re-added above them: move it back.
     if (this.map.getLayer(LAYER_ID)) this.map.moveLayer(LAYER_ID, before);
     else this.map.addLayer(this.layer, before);
@@ -76,8 +75,15 @@ export class VehicleLayer {
     if (this.map.getLayer(LAYER_ID)) this.map.removeLayer(LAYER_ID);
   }
 
-  setRouteColors(routes: { key: string; color: string }[]): void {
-    for (const r of routes) this.colors.set(r.key, hexToRgb(r.color));
+  setRouteColors(feed: string, routes: { key: string; color: string }[]): void {
+    let colors = this.colors.get(feed);
+    if (!colors) this.colors.set(feed, (colors = new Map()));
+    for (const r of routes) colors.set(r.key, hexToRgb(r.color));
+  }
+
+  private isSelected(v: VehicleState): boolean {
+    const s = this.selected;
+    return s !== undefined && v.id === s.id && v.feed === s.feed;
   }
 
   update(vehicles: VehicleState[], dark: boolean): void {
@@ -93,10 +99,9 @@ export class VehicleLayer {
 
     // Selected vehicle last, so it draws on top.
     const ordered =
-      this.selectedId ?
+      this.selected ?
         [...vehicles].sort(
-          (a, b) =>
-            Number(a.id === this.selectedId) - Number(b.id === this.selectedId),
+          (a, b) => Number(this.isSelected(a)) - Number(this.isSelected(b)),
         )
       : vehicles;
 
@@ -135,9 +140,9 @@ export class VehicleLayer {
       }
     };
     for (const v of ordered) {
-      const rgb = this.colors.get(v.routeKey) ?? [110, 110, 110];
+      const rgb = this.colors.get(v.feed)?.get(v.routeKey) ?? [110, 110, 110];
       const estimated = v.provenance === "estimated";
-      const selected = v.id === this.selectedId;
+      const selected = this.isSelected(v);
       dim = !this.focus || this.focus(v) ? 1 : DIM_OPACITY;
       const fill: RGBA =
         estimated ?

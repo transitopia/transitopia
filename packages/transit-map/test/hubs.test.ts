@@ -20,6 +20,7 @@ const plan = {
       brand: false,
       color: "#000",
       textColor: "#fff",
+      feed: "translink",
       gtfsRouteId: "6612",
     },
   ],

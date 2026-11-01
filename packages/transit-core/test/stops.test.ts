@@ -22,6 +22,7 @@ const route = (key: string, mode: PlanRoute["mode"] = "bus"): PlanRoute => ({
   brand: mode !== "bus",
   color: "#666666",
   textColor: "#ffffff",
+  feed: "translink",
   gtfsRouteId: key,
 });
 

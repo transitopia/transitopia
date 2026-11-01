@@ -35,7 +35,7 @@ import {
   serviceDayStart,
   type ServiceDate,
 } from "@transitopia/transit-core/time.ts";
-import type { RegionConfig } from "./config.ts";
+import type { FeedConfig } from "./config.ts";
 
 const MAX_DATES = 4;
 
@@ -76,6 +76,8 @@ export class AisClient {
   /** The feed whose vessels these are, and their route. */
   private readonly feed: string;
   private readonly route: string;
+  /** The feed's time zone: its service dates. */
+  private readonly tz: string;
   private readonly match: AisMatchConfig | undefined;
   private readonly glide: GlideConfig | undefined;
   /** Vessel names by MMSI. */
@@ -87,12 +89,13 @@ export class AisClient {
 
   constructor(
     base: string | undefined,
-    config: Pick<RegionConfig, "rt" | "feed">,
+    config: Pick<FeedConfig, "rt" | "feed">,
     liveFresh: () => boolean,
   ) {
     this.base = base;
     const ais = config.feed.ais;
     this.feed = config.feed.id;
+    this.tz = config.feed.timezone;
     this.route = ais?.route ?? "";
     this.match = ais?.match;
     this.glide = ais?.glide;
@@ -117,7 +120,7 @@ export class AisClient {
     const day = this.dayFor(date, pp);
     if (!day) return undefined;
     const glide = this.dates.get(date)?.memo?.glide;
-    const sec = (t - serviceDayStart(date)) / 1000;
+    const sec = (t - serviceDayStart(date, this.tz)) / 1000;
     return glide && sec >= glide.from && sec <= glide.until ?
         glide.corrections
       : day.corrections;
@@ -163,7 +166,7 @@ export class AisClient {
       let glide: (Glide & { from: number }) | undefined;
       if (prev && d.arrivedAt !== undefined) {
         // Glide from what was on screen when the fixes arrived (mid-glide, if one was running).
-        const k = (d.arrivedAt - serviceDayStart(date)) / 1000;
+        const k = (d.arrivedAt - serviceDayStart(date, this.tz)) / 1000;
         const shown =
           prev.glide && k >= prev.glide.from && k <= prev.glide.until ?
             prev.glide.corrections
@@ -195,7 +198,7 @@ export class AisClient {
     const fixes = this.named(decodeFixes(live.data));
     for (const [date, d] of this.dates) {
       if (d.complete || d.fetchedAt === 0) continue;
-      const [from, to] = serviceDateWindow(date);
+      const [from, to] = serviceDateWindow(date, this.tz);
       this.add(
         d,
         fixes.filter((f) => f.ts >= from && f.ts < to),

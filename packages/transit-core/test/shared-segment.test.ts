@@ -60,6 +60,7 @@ const plan: ServicePlan = {
     brand: false,
     color: "#000",
     textColor: "#fff",
+    feed: "translink",
     gtfsRouteId: key,
   })),
   stops: ids.map((id, i) => ({ id, name: id, lon: -123 + i * 0.001, lat: 49 })),

@@ -118,7 +118,7 @@ function stepRate(engine: TransitEngine, faster: boolean): void {
 
 /** "Live · Wed 7 Oct · Weekday", or (amber) "Paused · Tue 6 Oct", "Replaying at 10× · …", "Projected at 60× · …". */
 function subLine(snap: TransitSnapshot, withService: boolean): string {
-  const date = shortDate(localDate(snap.t));
+  const date = shortDate(localDate(snap.t, snap.timezone));
   if (snap.live)
     return `Live · ${date}${withService ? ` · ${snap.serviceLabel}` : ""}`;
   const state =
@@ -212,14 +212,14 @@ const TimePill: React.FC<Props & { onOpen: () => void }> = ({
         onClick={onOpen}
         aria-label={
           snap.live ?
-            `Time: ${clockTime(snap.t).slice(0, 5)}, live. Open time controls`
+            `Time: ${clockTime(snap.t, snap.timezone).slice(0, 5)}, live. Open time controls`
           : `Not live: showing ${when}${snap.playing ? "" : ", paused"}. Open time controls`
         }
         className="flex h-full items-center gap-2">
         {snap.live ?
           <>
             <span className="text-[17px] font-extrabold tabular-nums">
-              {clockTime(snap.t).slice(0, 5)}
+              {clockTime(snap.t, snap.timezone).slice(0, 5)}
             </span>
             <span className="flex items-center gap-1.5 text-[13px] font-bold text-(--mark-live-fg)">
               <TimeMark mark="live" />
@@ -252,7 +252,7 @@ const TimeText: React.FC<{ snap: TransitSnapshot; sub: string }> = ({
   snap,
   sub,
 }) => {
-  const time = clockTime(snap.t);
+  const time = clockTime(snap.t, snap.timezone);
   return (
     <div className="flex min-w-30 flex-1 flex-col">
       <span className="text-[22px] leading-none font-extrabold tracking-tight tabular-nums sm:text-[26px]">

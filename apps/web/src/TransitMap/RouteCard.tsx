@@ -114,7 +114,7 @@ const RouteCardBody: React.FC<{
         </Footer>
       }>
       <NextHour next={place.nextHour} />
-      <DayStrip snap={snap} days={engine.routeDays(route.key)} />
+      <DayStrip snap={snap} days={engine.routeDays(route)} />
       <Stops snap={snap} place={place} />
     </InfoCard>
   );
@@ -169,8 +169,8 @@ const Stops: React.FC<{ snap: TransitSnapshot; place: RouteSnapshot }> = ({
         }
         value={
           speed !== undefined ?
-            `${Math.round(speed)} km/h at ${clockMinutes(snap.t)}`
-          : `No trips at ${clockMinutes(snap.t)}`
+            `${Math.round(speed)} km/h at ${clockMinutes(snap.t, snap.timezone)}`
+          : `No trips at ${clockMinutes(snap.t, snap.timezone)}`
         }
         muted={speed === undefined}
       />
@@ -210,7 +210,10 @@ const SharedCardBody: React.FC<{
         label: r.mode === "bus" ? r.key : r.label,
         color: colors(r),
         onSelect: () =>
-          engine.open({ place: { kind: "route", id: r.key } }, title),
+          engine.open(
+            { place: { kind: "route", feed: r.feed, id: r.key } },
+            title,
+          ),
         action: `View route: ${r.label}`,
       }))}
       actions={cardActions(engine, `${title} · Transitopia`)}
@@ -345,9 +348,10 @@ const DayStrip: React.FC<{ snap: TransitSnapshot; days: RouteDay[] }> = ({
   const day = days[Math.min(dayIndex, days.length - 1)];
   const today = dayIndex === 0;
   // The shown hour, in service hours (after midnight is 24+).
-  const shownDate = localDate(snap.t);
+  const shownDate = localDate(snap.t, snap.timezone);
   const hourNow =
-    toWallTime(snap.t).hour + (shownDate !== snap.serviceDate ? 24 : 0);
+    toWallTime(snap.t, snap.timezone).hour
+    + (shownDate !== snap.serviceDate ? 24 : 0);
   const nowIndex = today ? DAY_HOURS.indexOf(hourNow) : -1;
   if (!day) return null;
   return (

@@ -65,7 +65,7 @@ export function railInputs(
   observations: Observation[],
   serviceDate: ServiceDate,
 ): RailInputs {
-  const dayStart = serviceDayStart(serviceDate);
+  const dayStart = serviceDayStart(serviceDate, pp.plan.timezone);
   const toSec = (iso: string) => (Date.parse(iso) - dayStart) / 1000;
   const runOfTrip = new Map<string, string>();
   for (const r of file.runs)
@@ -265,7 +265,7 @@ export function reconcileScheduled(
   observations: Observation[],
   serviceDate: ServiceDate,
 ): ScheduledCorrections {
-  const dayStart = serviceDayStart(serviceDate);
+  const dayStart = serviceDayStart(serviceDate, pp.plan.timezone);
   const toSec = (iso: string) => (Date.parse(iso) - dayStart) / 1000;
   const isoDate = `${serviceDate.slice(0, 4)}-${serviceDate.slice(4, 6)}-${serviceDate.slice(6, 8)}`;
   const out: ScheduledCorrections = {

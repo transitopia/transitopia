@@ -93,6 +93,7 @@ function fixture(): ServicePlan {
         brand: true,
         color: "#0033a0",
         textColor: "#fff",
+        feed: "translink",
         gtfsRouteId: "1",
       },
       {
@@ -103,6 +104,7 @@ function fixture(): ServicePlan {
         brand: false,
         color: "#666",
         textColor: "#fff",
+        feed: "translink",
         gtfsRouteId: "9",
       },
     ],

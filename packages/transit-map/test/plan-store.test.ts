@@ -152,6 +152,7 @@ describe("PlanStore loading plans by parts", () => {
         brand: false,
         color: "#0a0",
         textColor: "#fff",
+        feed: "bc-transit-victoria",
         gtfsRouteId: "95",
       },
     ],

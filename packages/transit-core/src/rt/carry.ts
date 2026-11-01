@@ -42,8 +42,8 @@ export interface CarryConfig {
   maxTrips: number;
 }
 
-const hhmm = (ms: number) => {
-  const w = toWallTime(ms);
+const hhmm = (ms: number, tz: string) => {
+  const w = toWallTime(ms, tz);
   return `${String(w.hour).padStart(2, "0")}:${String(w.minute).padStart(2, "0")}`;
 };
 
@@ -75,7 +75,7 @@ export function delayCorrections(
         }),
       );
     const mins = Math.round(d.delay / 60);
-    const label = `GTFS-RT delay (${mins === 0 ? "on time" : `${mins > 0 ? "+" : ""}${mins} min`} at ${hhmm(d.fixTs)})`;
+    const label = `GTFS-RT delay (${mins === 0 ? "on time" : `${mins > 0 ? "+" : ""}${mins} min`} at ${hhmm(d.fixTs, pp.plan.timezone)})`;
     corr.trips.set(d.tripId, {
       anchors: [{ sched: d.schedSec, shift: d.delay }],
       observed: [],

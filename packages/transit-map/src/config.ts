@@ -1,17 +1,14 @@
-// The region config the engine runs with (packages/transit-core/src/config.ts). The host passes it
-// in (TransitEngineOptions.config), checked with parseConfig and parseFeed: the engine knows no
-// region of its own.
+// A feed's config, as the engine runs it (packages/transit-core/src/config.ts). The host passes one
+// per feed (TransitEngineOptions.feeds), checked with parseConfig, parseFeed and parseNetwork: the
+// engine knows no feed of its own.
 
 import type { Config, FeedInfo } from "@transitopia/transit-core/config.ts";
 
-export interface RegionConfig {
+export interface FeedConfig {
+  feed: FeedInfo;
+  /** Its vehicles' settings, resolved from the defaults, its operator, the feed and its routes. */
   kinematics: Config<"kinematics">;
   rt: Config<"rt">;
-  /**
-   * The feed the region shows (region.json → feeds). A region can list several, but the engine
-   * draws one per region for now (docs/DESIGN.md#feeds-operators-and-rail-networks).
-   */
-  feed: FeedInfo;
   /**
    * Track-level rail, where the feed runs on a rail network (config/networks/<id>/network.json →
    * feeds): the network's id and its run inference settings. Then the engine loads the network's

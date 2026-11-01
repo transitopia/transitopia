@@ -6,6 +6,7 @@ import type {
 import type { Map as MlMap } from "maplibre-gl";
 import { saveBrandColors } from "@transitopia/transit-map/overview.ts";
 import { loadPref } from "@transitopia/transit-map/prefs.ts";
+import { routeId } from "@transitopia/transit-map/keys.ts";
 import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
 import type { RouteGroup } from "@transitopia/transit-core/plan/route-groups.ts";
 
@@ -66,7 +67,7 @@ const BAND_HEIGHTS = ["h-[5px]", "h-[4px]", "h-[2px]", "h-[1.5px]"];
 function windowText(snap: TransitSnapshot): string {
   if (snap.busFrequency === "now") {
     const [from, to] = snap.busFrequencyHour;
-    return `Next hour ${clockMinutes(from)}–${clockMinutes(to)}:`;
+    return `Next hour ${clockMinutes(from, snap.timezone)}–${clockMinutes(to, snap.timezone)}:`;
   }
   const hh = (h: number) => `${String(h % 24).padStart(2, "0")}:00`;
   return `Typical weekday, ${hh(DAY_WINDOW.fromH)}–${hh(DAY_WINDOW.toH)} (median):`;
@@ -183,7 +184,7 @@ export const TransitLayers: React.FC<{
       {GROUPS.map((g) => {
         // Groups without routes (no rail in Victoria) are greyed out.
         const routes = snap.routes.filter((r) =>
-          snap.groups.get(r.key)?.includes(g.id),
+          snap.groups.get(routeId(r))?.includes(g.id),
         );
         return (
           <SwitchRow

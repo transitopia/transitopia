@@ -110,6 +110,7 @@ const plan = (route: string) => ({
       brand: false,
       color: "#000",
       textColor: "#fff",
+      feed: "translink",
       gtfsRouteId: route,
     },
   ],

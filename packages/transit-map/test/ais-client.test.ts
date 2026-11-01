@@ -41,7 +41,7 @@ const pp = preparePlan(
   parseConfig("kinematics", { ...kinematics, routes: {} }),
 );
 const DATE = serviceDate("20261014");
-const [start] = serviceDateWindow(DATE);
+const [start] = serviceDateWindow(DATE, "America/Vancouver");
 const fix = (ts: number): AisFix => ({
   mmsi: "316042365",
   ts,

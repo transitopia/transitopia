@@ -7,124 +7,49 @@ import { LngLat, type Map as MlMap } from "maplibre-gl";
 import type { Theme } from "@transitopia/map-style/basemap.ts";
 import { CardTrail } from "@transitopia/shared/card-trail.ts";
 import { realtimeOf } from "@transitopia/shared/datasets.ts";
-import { bandIndex, FREQUENCY_BANDS } from "@transitopia/shared/frequency.ts";
-import { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
-import type { InfraCollection } from "@transitopia/transit-core/infra/types.ts";
-import {
-  addDays,
-  localDate,
-  serviceDayStart,
-  type ServiceDate,
-} from "@transitopia/transit-core/time.ts";
-import {
-  makeServiceDescriber,
-  type ServiceDayInfo,
-} from "@transitopia/transit-core/gtfs/describe.ts";
-import {
-  feedForDate,
-  patternStarts,
-  type PlanRoute,
-} from "@transitopia/transit-core/plan/types.ts";
+import type { ServiceDate } from "@transitopia/transit-core/time.ts";
+import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
 import {
   firstBoarding,
   placeName,
   shortId,
 } from "@transitopia/transit-core/plan/display.ts";
-import type {
-  PreparedPlan,
-  ScheduleCorrections,
-  VehicleState,
-} from "@transitopia/transit-core/schedule/engine.ts";
+import type { VehicleState } from "@transitopia/transit-core/schedule/engine.ts";
 import type { Departure } from "@transitopia/transit-core/schedule/departures.ts";
-import {
-  onSegment,
-  segmentSteps,
-  segmentHourly,
-  segmentLines,
-  segmentRanges,
-  segmentStarts,
-  segmentStops,
-  sharedSegment,
-  startOffsets,
-  type SharedSegment,
-} from "@transitopia/transit-core/schedule/shared-segment.ts";
+import { segmentLines } from "@transitopia/transit-core/schedule/shared-segment.ts";
 import type { LonLat } from "@transitopia/transit-core/geo.ts";
 import {
   DAY_HOURS,
-  dayTypes,
-  hourlyFrequency,
-  regularWeekdays,
-  routeFrequency,
-  routeStarts,
-  routeWeekdayWait,
   type Frequency,
   type FrequencyWindow,
 } from "@transitopia/transit-core/schedule/frequency.ts";
 import {
   ROUTE_GROUPS,
-  routeGroups,
   type RouteGroup,
 } from "@transitopia/transit-core/plan/route-groups.ts";
 import { Clock } from "./clock.ts";
+import { SERVICE_DAY_ROLLOVER_H, displayServiceDate, hubsOf } from "./plans.ts";
 import {
-  PlanStore,
-  SERVICE_DAY_ROLLOVER_H,
-  displayServiceDate,
-  hubsOf,
-  placeOfStop,
-  mergeCorrections,
-} from "./plans.ts";
-import {
-  BUS_STOPS_SOURCE,
-  BUS_TICKS_SOURCE,
-  EXCHANGES_SOURCE,
-  LINES_SOURCE,
+  PLACE_LAYERS,
+  SEGMENT_FOCUS,
   SELECTED_PLACE_RADIUS_PX,
   SELECTED_PLACE_SOURCE,
-  STATIONS_SOURCE,
-  VEHICLES_BEFORE_LAYER,
-  addStaticLayers,
-  applyRouteFilter,
   applyStopsVisibility,
-  fadeColor,
+  VEHICLES_BEFORE_LAYER,
   removeSources,
-  setFerryPair,
   setFocus,
-  setRouteColors,
   setSelectedPlace,
 } from "./layers/static.ts";
 import { applyBrandColors } from "./overview.ts";
 import { VehicleLayer } from "./layers/vehicles.ts";
 import { metresPerPixel } from "./layers/vehicle-geometry.ts";
-import {
-  BusFrequencyLayer,
-  nowWindowStart,
-  type Focus,
-} from "./layers/bus-frequency.ts";
-import {
-  DEBUG_SOURCE,
-  TRACKS_SOURCE,
-  addTrackDebugLayers,
-  addTrackLayers,
-  applyTrackFilter,
-  loadPlatforms,
-  loadTracks,
-  PICKABLE_TRACK_LAYERS,
-  setDebugPlatforms,
-  setRailFocus,
-} from "./layers/tracks.ts";
+import { nowWindowStart, type Focus } from "./layers/bus-frequency.ts";
+import { PICKABLE_TRACK_LAYERS } from "./layers/tracks.ts";
 import {
   brandedRoutes,
   PLAN_TILE_LAYERS,
 } from "@transitopia/transit-core/plan/tiles.ts";
-import {
-  readUrl,
-  sharedEnds,
-  writeUrl,
-  type Place,
-  type UrlState,
-} from "./url.ts";
-import type { BusHub } from "@transitopia/transit-core/plan/exchanges.ts";
+import { readUrl, writeUrl, type Place, type UrlState } from "./url.ts";
 import {
   resolveSelect,
   selectKey,
@@ -132,8 +57,7 @@ import {
   vehicleOfKey,
   type SelectContext,
 } from "./select.ts";
-import { RtClient, type RtMode } from "./rt.ts";
-import { AisClient } from "./ais.ts";
+import type { RtMode } from "./rt.ts";
 import { LivePoller } from "./live.ts";
 import { sectionsOfKind } from "@transitopia/transit-core/rt/live.ts";
 import {
@@ -145,15 +69,23 @@ import {
   type PlaceGroup,
   type PlaceSnapshot,
   type RouteSnapshot,
-  type SegmentContext,
   type SharedSnapshot,
 } from "./places.ts";
 import { loadPref, savePref } from "./prefs.ts";
-import type { RegionConfig } from "./config.ts";
+import type { FeedConfig } from "./config.ts";
+import {
+  FeedSlot,
+  type FeedVehicles,
+  type RouteDay,
+  type SegmentInfo,
+} from "./feed-slot.ts";
+import { feedKey, routeId, splitFeedKey, vehicleId } from "./keys.ts";
 
 export type { Theme };
 export type { RtMode };
-export type { RegionConfig };
+export type { FeedConfig };
+export type { RouteDay };
+export { routeId, vehicleId };
 export { RATES } from "./clock.ts";
 
 export interface TransitEngineOptions {
@@ -161,10 +93,7 @@ export interface TransitEngineOptions {
   dataBase: string;
   /** URL prefix of the RT service (…/regions/<id>/live/transit), ending in "/"; omit for schedules only. */
   apiBase?: string | undefined;
-  /**
-   * The region's id (region.json): the RT service serves its live data under /regions/<id>/, and
-   * its published files (tracks, dispatch, observations, scenarios) are under data/regions/<id>/.
-   */
+  /** The region's id (region.json): the RT service serves its live data under /regions/<id>/. */
   region: string;
   theme: Theme;
   /** Build a scenario's plans instead of the real network (?scenario=<name>). */
@@ -173,10 +102,12 @@ export interface TransitEngineOptions {
   debug?: boolean | undefined;
   /** Initial time, rate and selection; defaults to the current URL. */
   initial?: UrlState | undefined;
-  /** Dataset registry id for routes whose plan doesn't name one (plans built before PlanRoute.dataset). */
-  dataset?: string | undefined;
-  /** The region's config and feed (kinematics, real time, and rail and SeaBus where it has them), checked. */
-  config: RegionConfig;
+  /**
+   * The feeds shown, each with its config (kinematics, real time, and rail and SeaBus where it has
+   * them), checked: one slot each (packages/transit-map/README.md#feeds). The first one's time zone
+   * is the clock's.
+   */
+  feeds: readonly FeedConfig[];
   /**
    * Called once when the published data has been rebuilt since the engine started and its files
    * can no longer be loaded (`PlanStore.rebuilt`): the host disposes of the engine and makes a new
@@ -186,6 +117,7 @@ export interface TransitEngineOptions {
 }
 
 export interface SelectedVehicle {
+  /** Its id across feeds (`vehicleId`). */
   id: string;
   /** Undefined when the vehicle isn't in service at the shown time. */
   vehicle: VehicleState | undefined;
@@ -213,39 +145,14 @@ export type {
 /** A card to open: a vehicle's, or a place's (station, exchange, stop or route line). */
 export type CardTarget = { vehicle: string } | { place: Place };
 
-/** A kind of day in the shown feed, with how often the route runs in each hour (DAY_HOURS). */
-export interface RouteDay {
-  date: ServiceDate;
-  label: string;
-  hours: (Frequency | undefined)[];
-}
-
-/** A combined route in a prepared plan (`segmentInfo`). */
-interface SegmentInfo extends SegmentContext {
-  segment: SharedSegment | undefined;
-  /** Its stops (plan indices) and their ids, for the map's focus. */
-  stops: Set<number>;
-  stopIds: string[];
-  /** The corridors it runs along, once its patterns' paths are in. */
-  corridors:
-    | { detailed: ReadonlySet<number>; overview: ReadonlySet<number> }
-    | undefined;
-  /** SkyTrain's line pieces (their feature ids in the plan's tiles) it runs along, once they're in. */
-  rail: ReadonlySet<number> | undefined;
-  /** The hubs (`hubsOf`) its places were worked out with. */
-  hubs: BusHub[];
-  /** Its `sharedDays`, by the date they're from. */
-  days: Record<string, RouteDay[]>;
-}
-
-const NO_IDS: ReadonlySet<number> = new Set();
-
 export { DAY_HOURS };
 export type { Frequency };
 
 export interface TransitSnapshot {
   /** Shown instant, epoch ms (updated a few times a second while playing). */
   t: number;
+  /** The time zone times are shown in (the first feed's, TransitEngineOptions.feeds). */
+  timezone: string;
   /** Displayed service date (YYYYMMDD) and its description ("Weekday", "Sunday/holiday", …). */
   serviceDate: ServiceDate;
   serviceLabel: string;
@@ -263,12 +170,13 @@ export interface TransitSnapshot {
   notices: string[];
   /** Service dates shown with a preview dispatch (unconfirmed corrections; ?preview=). */
   preview: string[];
+  /** Every feed's routes. */
   routes: PlanRoute[];
-  /** Each route's groups (the layers panel's switches, `routeGroups`), by route key. */
+  /** Each route's groups (the layers panel's switches, `routeGroups`), by `routeId`. */
   groups: ReadonlyMap<string, readonly RouteGroup[]>;
   /** Groups switched off: their routes are hidden unless another of their groups is on. */
   hiddenGroups: ReadonlySet<RouteGroup>;
-  /** Routes not drawn: those whose every group is hidden. */
+  /** Routes not drawn (`routeId`s): those whose every group is hidden. */
   hidden: ReadonlySet<string>;
   /** Routes with their own colour are drawn in it; otherwise every route is coloured by frequency. */
   showBrandColors: boolean;
@@ -276,10 +184,10 @@ export interface TransitSnapshot {
   showStops: boolean;
   /** Only vehicles with real positions are drawn (estimates hidden). */
   liveOnly: boolean;
-  /** The shown plan draws bus corridors (packages/transit-map/README.md#bus-corridors). */
+  /** A shown plan draws bus corridors (packages/transit-map/README.md#bus-corridors). */
   corridors: boolean;
   /**
-   * The map draws the shown plan's lines: its tiles in view have loaded. Until then a host can keep
+   * The map draws the shown plans' lines: their tiles in view have loaded. Until then a host can keep
    * drawing something in their place (the site's overview tiles).
    */
   linesReady: boolean;
@@ -300,8 +208,8 @@ export interface TransitSnapshot {
   datasets: string[];
   scenario: { name: string; description: string } | undefined;
   /**
-   * A `?select=` key this region's plan doesn't have (another region's feature, or one only the
-   * resolver knows): the host can look it up (GET /features/<key>) and move the map there.
+   * A `?select=` key no feed shown has (another region's feature, or one only the resolver knows):
+   * the host can look it up (GET /features/<key>) and move the map there.
    */
   elsewhere: string | undefined;
 }
@@ -364,17 +272,6 @@ const FREQUENCY_INTERVAL_MS = 250;
  * second, and recomputing every vehicle every frame kept the main thread busy for nothing.
  */
 const MAX_STEP_PX = 0.5;
-/** Sources the engine adds to the host's map (removed on dispose). */
-const SOURCES = [
-  LINES_SOURCE,
-  SELECTED_PLACE_SOURCE,
-  STATIONS_SOURCE,
-  EXCHANGES_SOURCE,
-  BUS_STOPS_SOURCE,
-  BUS_TICKS_SOURCE,
-  TRACKS_SOURCE,
-  DEBUG_SOURCE,
-];
 /** A tapped place is brought into view after this long, once its card is up and measured. */
 const REVEAL_DELAY_MS = 150;
 /** Tap tolerance around stations and stops (px). */
@@ -383,58 +280,65 @@ const PLACE_PICK_PX = 8;
 const MAX_PICK_CHOICES = 8;
 /** Station and exchange names: a tap menu offers the place wherever its name is tapped. */
 const NAME_LAYERS = new Set(["stations-label", "exchanges-label"]);
+/** Route lines a tap can pick a route from (bus, ferry and rail lines, and SkyTrain track). */
+const ROUTE_LAYERS = [
+  "routes-bus",
+  "routes-bus-limited",
+  "corridors-brand",
+  "corridors-overview-brand",
+  // Regular routes, drawn as the corridors they share (packages/transit-map/README.md#bus-corridors).
+  "corridors",
+  "corridors-overview",
+  "corridors-idle",
+  "corridors-overview-idle",
+  "routes-shape",
+  "routes-shape-inactive",
+  "routes-skytrain",
+  ...PICKABLE_TRACK_LAYERS,
+];
+/**
+ * The focus another feed's layers get while a feed's route is focused (bus-frequency.ts): no route
+ * has this key, so all of theirs are dimmed.
+ */
+const ELSEWHERE: Focus = { route: SEGMENT_FOCUS };
 const SLIDER_START_S = SERVICE_DAY_ROLLOVER_H * 3600;
 const SLIDER_END_S = (24 + SERVICE_DAY_ROLLOVER_H) * 3600;
 
 export class TransitEngine {
   readonly clock: Clock;
-  readonly store: PlanStore;
+  /** One per feed shown (packages/transit-map/README.md#feeds). */
+  private readonly slots: readonly FeedSlot[];
   private readonly map: MlMap;
-  private readonly rt: RtClient;
-  private readonly ais: AisClient;
   private readonly live: LivePoller;
   private readonly vehicles: VehicleLayer;
   private readonly debug: boolean;
-  private readonly defaultDataset: string | undefined;
+  /** The time zone the clock's times and dates are shown in: the first feed's. */
+  private readonly tz: string;
   private theme: Theme;
   private hiddenGroups: Set<RouteGroup>;
-  /** The shown feed's routes whose every group is hidden (`hiddenGroups`). */
+  /** Every feed's routes whose every group is hidden (`routeId`s, from each slot's `hidden`). */
   private hidden: ReadonlySet<string> = new Set();
+  /** Every feed's route groups, by `routeId`, and the slots' maps they were merged from. */
+  private groups:
+    | {
+        from: readonly ReadonlyMap<string, readonly RouteGroup[]>[];
+        merged: ReadonlyMap<string, readonly RouteGroup[]>;
+      }
+    | undefined;
   private showBrandColors: boolean;
   private showStops: boolean;
   private liveOnly: boolean;
   private busFrequency: FrequencyWindow;
-  private frequencyLayer: BusFrequencyLayer | undefined;
-  private selectedId: string | undefined;
-  /** The selected vehicle's route, once seen: computed even while its route is hidden. */
+  /** The selected vehicle: its feed and id. */
+  private selected: { feed: string; id: string } | undefined;
+  /** The selected vehicle's route (`routeId`), once seen: computed even while its route is hidden. */
   private selectedRoute: string | undefined;
   private place: Place | undefined;
   private pick: PickMenu | undefined;
   /** When something was selected: bring it into view once its card is up (performance.now()). */
   private revealAt: number | undefined;
-  /** Per feed and route: its day types and hourly frequencies (they don't change with the time). */
-  private routeDayCache = new WeakMap<PreparedPlan, Map<string, RouteDay[]>>();
-  /** Per feed and combined route (`Place` id): what its card and the map's focus need (`segmentInfo`). */
-  private segmentCache = new WeakMap<PreparedPlan, Map<string, SegmentInfo>>();
-  /** SkyTrain pieces last marked as on a combined route (`syncRailFocus`), and for what. */
-  private railFocused: ReadonlySet<number> = NO_IDS;
-  private railFocusFor: ReadonlySet<number> | undefined;
-  /** Per feed and route: its weekday figure, where the plan hasn't it (dayWait). */
-  private dayWaitCache = new WeakMap<
-    PreparedPlan,
-    Map<string, number | undefined>
-  >();
-  /** Per feed: each route's groups (`routeGroups`). */
-  private groupsCache = new WeakMap<
-    PreparedPlan["plan"],
-    ReadonlyMap<string, readonly RouteGroup[]>
-  >();
-  /** What route colours were last set for (syncRouteColors). */
-  private routeColorsFor: { pp: PreparedPlan; key: string } | undefined;
   /** The time bus frequencies are shown for (FREQUENCY_INTERVAL_MS), and when it was set (performance.now()). */
   private frequencyAt: { t: number; at: number } | undefined;
-  /** The real-time corrections last applied, per service date (for departure times). */
-  private lastCorrections: Map<ServiceDate, ScheduleCorrections> | undefined;
   private following = false;
   /** When the ease that starts (or re-aims) follow ends (performance.now()). */
   private followEaseEnds = 0;
@@ -444,30 +348,20 @@ export class TransitEngine {
   private clearPaddingPending = false;
   /** Screen edges covered by the host's chrome (cards, time bar), px: follow keeps clear of them. */
   private viewPadding = { top: 0, right: 0, bottom: 0, left: 0 };
-  private tracks: InfraCollection | undefined;
-  private shownFeed: PreparedPlan | undefined;
-  /** The plan tiles in view have loaded since the lines' source was (re)added (`linesReady`). */
-  private linesReady = false;
   /** Whether the engine is shown (`setVisible`). */
   private visible = true;
   /** Layers hidden by `setVisible(false)`, to show again. */
   private hiddenLayers: string[] = [];
-  /** The stations' and exchanges' grouping the static layers were drawn with (hubsOf). */
-  private shownHubs: BusHub[] | undefined;
-  /** The feed the engine shows (its vehicles' `rt` refs are in it). */
-  private readonly feed: string;
-  /** A `?select=` key waiting for the plan and its places file. */
+  /** A `?select=` key waiting for the plans and their places files. */
   private pendingSelect: string | undefined;
-  /** A `?select=` key this plan doesn't have (TransitSnapshot.elsewhere). */
+  /** A `?select=` key no feed shown has (TransitSnapshot.elsewhere). */
   private elsewhere: string | undefined;
   /** False from a style swap until 'style.load': our layers are gone until then. */
   private styleReady = true;
-  /** The SeaBus berth pair last applied to the map (re-applied after the style reloads). */
-  private ferryPair: string | null | undefined;
+  /** Every feed's vehicles at the time last computed. */
   private lastVehicles: VehicleState[] = [];
   /** Cards `open()` came through, for the back strip. */
   private readonly trail = new CardTrail<CardTarget>();
-  private describers = new Map<string, (d: ServiceDate) => ServiceDayInfo>();
   private snapshot: TransitSnapshot;
   private listeners = new Set<() => void>();
   private lastPublish = 0;
@@ -491,43 +385,50 @@ export class TransitEngine {
     map: MlMap,
     opts: TransitEngineOptions,
   ): Promise<TransitEngine> {
-    const store = await PlanStore.load(
-      opts.dataBase,
-      opts.apiBase,
-      opts.config,
-      opts.scenario,
+    if (!opts.feeds.length) throw new Error("The engine shows no feeds");
+    const region =
+      opts.apiBase ? `${opts.apiBase}regions/${opts.region}/` : undefined;
+    const slots = await Promise.all(
+      opts.feeds.map((config) =>
+        FeedSlot.create(
+          config,
+          { dataBase: opts.dataBase, apiBase: opts.apiBase, region },
+          opts.scenario,
+        ),
+      ),
     );
-    return new TransitEngine(map, store, opts);
+    return new TransitEngine(map, slots, region, opts);
   }
 
   private constructor(
     map: MlMap,
-    store: PlanStore,
+    slots: readonly FeedSlot[],
+    region: string | undefined,
     opts: TransitEngineOptions,
   ) {
     this.map = map;
-    this.store = store;
+    this.slots = slots;
+    this.tz = this.primary.tz;
     this.theme = opts.theme;
     this.debug = opts.debug ?? false;
-    this.defaultDataset = opts.dataset;
-    const range = store.range();
+    const range = this.range();
     if (!range)
       throw new Error(
         'The timetable manifest lists no feeds. Run "npm run data".',
       );
 
-    const url = opts.initial ?? readUrl();
-    if (url.preview) store.setPreview(url.preview);
+    const url = opts.initial ?? readUrl(this.tz);
+    if (url.preview)
+      for (const slot of slots) slot.store.setPreview(url.preview);
     this.clock = new Clock(url.t ?? Date.now());
     this.clock.setBounds(range[0], range[1]);
     if (url.t === undefined && (Date.now() < range[0] || Date.now() > range[1]))
       this.clock.seek(range[0] + 8 * 3600_000);
     if (url.rate !== undefined) this.clock.setRate(url.rate);
     if (url.paused) this.clock.pause();
-    this.feed = opts.config.feed.id;
     // A vehicle is selected at once; a place once its plan (and places file) is in.
-    this.selectedId = url.select && vehicleOfKey(url.select, this.feed);
-    if (this.selectedId === undefined) this.pendingSelect = url.select;
+    this.selected = url.select ? this.vehicleOf(url.select) : undefined;
+    if (this.selected === undefined) this.pendingSelect = url.select;
     this.hiddenGroups = new Set(
       loadPref<string[]>("hiddenGroups", []).filter((g): g is RouteGroup =>
         ROUTE_GROUPS.includes(g as RouteGroup),
@@ -540,61 +441,54 @@ export class TransitEngine {
     this.busFrequency =
       loadPref<string>("busFrequency", "now") === "day" ? "day" : "now";
 
-    this.vehicles = new VehicleLayer(map, opts.config.kinematics.sizing);
-    const { modes, routes } = opts.config.kinematics;
+    // Vehicles are sized for the first feed's kinematics, and recomputed for the fastest of any.
+    this.vehicles = new VehicleLayer(
+      map,
+      this.primary.config.kinematics.sizing,
+    );
     this.maxSpeedMps =
       Math.max(
-        ...Object.values(modes).map((k) => k.maxSpeed),
-        ...Object.values(routes).map((k) => k.maxSpeed ?? 0),
+        ...slots.flatMap(({ config: { kinematics } }) => [
+          ...Object.values(kinematics.modes).map((k) => k.maxSpeed),
+          ...Object.values(kinematics.routes).map((k) => k.maxSpeed ?? 0),
+        ]),
       ) / 3.6;
-    this.vehicles.selectedId = this.selectedId;
-    const regionBase =
-      opts.apiBase ? `${opts.apiBase}regions/${opts.region}/` : undefined;
-    this.rt = new RtClient(
-      {
-        data: (path) => store.dataUrl(path),
-        api: opts.apiBase,
-        region: regionBase,
-      },
-      opts.config,
-    );
-    // One poll for every live source: buses, SeaBus AIS, service changes, live dispatch.
+    this.vehicles.selected = this.selected;
+    // One poll for every live source: buses, SeaBus AIS, service changes, live dispatch. Each feed
+    // takes its own sections.
     this.live = new LivePoller(
-      regionBase && `${regionBase}live/transit`,
-      opts.config.rt,
+      region && `${region}live/transit`,
+      this.primary.config.rt,
       {
         onResponse: (r, receivedAt) => {
-          this.rt.acceptLive(r, receivedAt);
-          this.ais.acceptLive(r);
-          store.setLiveDispatch(sectionsOfKind(r, "dispatch")[0]?.versions);
+          for (const slot of slots) {
+            slot.rt.acceptLive(r, receivedAt);
+            slot.ais.acceptLive(r);
+            slot.store.setLiveDispatch(
+              sectionsOfKind(r, "dispatch")[0]?.versions,
+            );
+          }
         },
-        onError: (error, missing) => this.rt.liveFailed(error, missing),
-        onStop: () => this.rt.liveStopped(),
+        onError: (error, missing) => {
+          for (const slot of slots) slot.rt.liveFailed(error, missing);
+        },
+        onStop: () => {
+          for (const slot of slots) slot.rt.liveStopped();
+        },
       },
     );
-    // SeaBus: AIS fixes anchor the timetable (packages/transit-core/DESIGN.md#seabus-ais).
-    this.ais = new AisClient(regionBase, opts.config, () => this.live.fresh);
-    // Schedule estimates for buses stop at stops, using the same travel-time profile as live prediction.
-    store.pacerFor = (pp) => this.rt.predictorFor(pp).pacer;
+    for (const slot of slots) slot.liveFresh = () => this.live.fresh;
     this.snapshot = this.buildSnapshot(this.clock.now());
 
-    // Track infrastructure, in a region with track-level rail (optional even there: without it,
-    // SkyTrain falls back to GTFS shapes).
-    const tracksPath = store.tracksPath;
-    const dataUrl = (path: string) => store.dataUrl(path);
-    if (tracksPath)
-      void loadTracks(dataUrl, tracksPath).then(async (t) => {
-        if (this.disposed) return;
-        this.tracks = t;
-        if (t) store.setTrackGraph(TrackGraph.fromCollection(t));
-        if (this.disposed) return;
-        this.syncStatic(true);
+    for (const slot of slots)
+      slot.loadTracks(() => {
+        if (!this.disposed) this.syncStatic(true);
       });
     this.syncStatic(true);
 
     const onStyleLoad = () => {
       this.styleReady = true;
-      this.ferryPair = undefined;
+      for (const slot of slots) slot.ferryPair = undefined;
       this.syncStatic(true);
     };
     // A new style (theme switch) replaces our sources and layers: wait for it to load. Only a new
@@ -622,7 +516,7 @@ export class TransitEngine {
       }
       const v = this.vehicles.pickAt(e.point.x, e.point.y);
       if (v) {
-        this.select(v.id, {
+        this.select(vehicleId(v), {
           follow: Math.abs(this.clock.rate) <= FOLLOW_MAX_RATE,
         });
         return;
@@ -652,16 +546,20 @@ export class TransitEngine {
     // A source loading tiles fires sourcedata; one showing tiles it already had may not: idle
     // catches those.
     const onSourceData = (e: { sourceId?: string }) => {
-      if (
-        this.linesReady
-        || !this.visible
-        || (e.sourceId !== undefined && e.sourceId !== LINES_SOURCE)
-        || !map.getSource(LINES_SOURCE)
-        || !map.isSourceLoaded(LINES_SOURCE)
-      )
-        return;
-      this.linesReady = true;
-      this.publish();
+      if (!this.visible) return;
+      let changed = false;
+      for (const slot of slots) {
+        const source = slot.ids.lines;
+        if (
+          slot.linesReady
+          || (e.sourceId !== undefined && e.sourceId !== source)
+          || !map.getSource(source)
+          || !map.isSourceLoaded(source)
+        )
+          continue;
+        slot.linesReady = changed = true;
+      }
+      if (changed) this.publish();
     };
     map.on("sourcedata", onSourceData);
     const onIdle = () => onSourceData({});
@@ -698,23 +596,25 @@ export class TransitEngine {
         this.invalidate();
         this.writeUrlSoon();
       }),
-      store.onChange(() => {
-        if (store.rebuilt) {
-          if (!rebuilt) {
-            rebuilt = true;
-            this.writeUrl();
-            opts.onRebuilt?.();
+      ...slots.flatMap((slot) => [
+        slot.store.onChange(() => {
+          if (slot.store.rebuilt) {
+            if (!rebuilt) {
+              rebuilt = true;
+              this.writeUrl();
+              opts.onRebuilt?.();
+            }
+            return;
           }
-          return;
-        }
-        this.syncHubs();
-        this.syncStatic();
-        this.describers.clear();
-        this.resolveSelection();
-        this.invalidate();
-      }),
-      this.rt.onChange(invalidate),
-      this.ais.onChange(invalidate),
+          this.syncHubs(slot);
+          this.syncStatic();
+          slot.clearDescribers();
+          this.resolveSelection();
+          this.invalidate();
+        }),
+        slot.rt.onChange(invalidate),
+        slot.ais.onChange(invalidate),
+      ]),
     );
 
     this.raf = requestAnimationFrame(this.frame);
@@ -741,20 +641,20 @@ export class TransitEngine {
   /** Seek to t: scrubbing, so the day's recorded buses start loading. */
   seek(t: number): void {
     this.clock.seek(t);
-    this.rt.prefetchDay();
+    for (const slot of this.slots) slot.rt.prefetchDay();
   }
 
   /** Jump to another service date at the same time of day. */
   seekDate(date: ServiceDate): void {
     const t = this.clock.now();
-    const sec = (t - serviceDayStart(displayServiceDate(t))) / 1000;
-    this.clock.seek(serviceDayStart(date) + sec * 1000);
+    const sec = (t - this.dayStart(this.displayDate(t))) / 1000;
+    this.clock.seek(this.dayStart(date) + sec * 1000);
   }
 
   /** Seconds since the start of the displayed service day (the slider's value). */
   seekServiceSeconds(sec: number): void {
-    const d = displayServiceDate(this.clock.now());
-    this.seek(serviceDayStart(d) + sec * 1000);
+    const d = this.displayDate(this.clock.now());
+    this.seek(this.dayStart(d) + sec * 1000);
   }
 
   /** Show or hide a group's routes (a route in another group that's shown stays drawn). */
@@ -775,50 +675,60 @@ export class TransitEngine {
     this.showBrandColors = on;
     savePref("showBrandColors", on);
     if (this.styleReady) applyBrandColors(this.map, on);
-    this.routeColorsFor = undefined;
+    for (const slot of this.slots) slot.invalidateRouteColors();
     this.invalidate();
     this.publish();
   }
 
-  /** The shown feed's routes by group (`routeGroups`, with weekday figures from `dayWait`). */
-  private groupsOf(
-    pp: PreparedPlan,
-  ): ReadonlyMap<string, readonly RouteGroup[]> {
-    let groups = this.groupsCache.get(pp.plan);
-    if (!groups) {
-      groups = new Map(
-        pp.plan.routes.map((r) => [r.key, routeGroups(r, this.dayWait(r.key))]),
+  /** Work out the hidden routes again (the groups or a shown plan changed), and filter the map's lines. */
+  private syncHidden(): void {
+    for (const slot of this.slots)
+      slot.syncHidden(
+        this.hiddenGroups,
+        this.styleReady ? this.map : undefined,
       );
-      this.groupsCache.set(pp.plan, groups);
-    }
-    return groups;
+    this.mergeHidden();
   }
 
-  /** Work out the hidden routes again (the groups or the shown feed changed), and filter the map's lines. */
-  private syncHidden(): void {
-    const pp = this.shownFeed;
-    const groups = pp ? this.groupsOf(pp) : new Map<string, RouteGroup[]>();
+  /** Every feed's hidden routes as `routeId`s, a new set only when they changed. */
+  private mergeHidden(): void {
     const hidden = new Set(
-      [...groups]
-        .filter(([, gs]) => gs.every((g) => this.hiddenGroups.has(g)))
-        .map(([key]) => key),
+      this.slots.flatMap((s) => [...s.hidden].map((k) => feedKey(s.feed, k))),
     );
     if (
-      hidden.size === this.hidden.size
-      && [...hidden].every((k) => this.hidden.has(k))
+      hidden.size !== this.hidden.size
+      || [...hidden].some((k) => !this.hidden.has(k))
     )
-      return;
-    this.hidden = hidden;
-    if (this.styleReady) {
-      applyRouteFilter(this.map, this.hidden);
-      applyTrackFilter(this.map, this.hidden);
-    }
+      this.hidden = hidden;
+  }
+
+  /** Every feed's route groups by `routeId`, the same map while no feed's changed. */
+  private groupsOf(): ReadonlyMap<string, readonly RouteGroup[]> {
+    const from = this.slots.flatMap((s) =>
+      s.shown ? [s.groupsOf(s.shown)] : [],
+    );
+    const was = this.groups;
+    if (
+      was
+      && was.from.length === from.length
+      && was.from.every((g, i) => g === from[i])
+    )
+      return was.merged;
+    const merged = new Map<string, readonly RouteGroup[]>();
+    for (const slot of this.slots)
+      if (slot.shown)
+        for (const [key, groups] of slot.groupsOf(slot.shown))
+          merged.set(feedKey(slot.feed, key), groups);
+    this.groups = { from, merged };
+    return merged;
   }
 
   setStopsShown(shown: boolean): void {
     this.showStops = shown;
     savePref("showStops", shown);
-    if (this.styleReady) applyStopsVisibility(this.map, shown);
+    if (this.styleReady)
+      for (const slot of this.slots)
+        applyStopsVisibility(this.map, slot.ids, shown);
     this.publish();
   }
 
@@ -837,9 +747,9 @@ export class TransitEngine {
   }
 
   /**
-   * Select a vehicle (or none). A new selection follows it only when asked (easing over from the
-   * one followed before); closing, or choosing another vehicle without asking, stops following.
-   * Forgets the cards `open()` came through.
+   * Select a vehicle (by `vehicleId`, or none). A new selection follows it only when asked (easing
+   * over from the one followed before); closing, or choosing another vehicle without asking, stops
+   * following. Forgets the cards `open()` came through.
    */
   select(id: string | undefined, opts?: { follow?: boolean }): void {
     this.trail.clear();
@@ -876,7 +786,7 @@ export class TransitEngine {
    */
   open(target: CardTarget, from: string): void {
     const here: CardTarget | undefined =
-      this.selectedId !== undefined ? { vehicle: this.selectedId }
+      this.selected ? { vehicle: this.selectedId! }
       : this.place ? { place: this.place }
       : undefined;
     if (here) this.trail.push(here, from);
@@ -900,18 +810,45 @@ export class TransitEngine {
       });
   }
 
+  /** The selected vehicle's `vehicleId`. */
+  private get selectedId(): string | undefined {
+    return this.selected && feedKey(this.selected.feed, this.selected.id);
+  }
+
+  /** Whether a vehicle is the selected one. */
+  private isSelected(v: VehicleState): boolean {
+    const s = this.selected;
+    return s !== undefined && v.id === s.id && v.feed === s.feed;
+  }
+
+  /** The selected vehicle, if it was computed at the time last shown. */
+  private selectedVehicle(): VehicleState | undefined {
+    return this.selected && this.lastVehicles.find((v) => this.isSelected(v));
+  }
+
   private selectVehicle(
     id: string | undefined,
     opts?: { follow?: boolean },
   ): void {
     const changed = id !== this.selectedId;
-    if (changed)
-      this.selectedRoute = this.lastVehicles.find((v) => v.id === id)?.routeKey;
+    const ref = id === undefined ? undefined : splitFeedKey(id);
+    const selected = ref && { feed: ref.feed, id: ref.key };
+    if (changed) {
+      const v =
+        selected
+        && this.lastVehicles.find(
+          (x) => x.id === selected.id && x.feed === selected.feed,
+        );
+      this.selectedRoute =
+        v ? routeId({ feed: v.feed, key: v.routeKey }) : undefined;
+    }
     const follow =
-      changed ? id !== undefined && (opts?.follow ?? false) : this.following;
-    if (id !== undefined && changed && !follow)
+      changed ?
+        selected !== undefined && (opts?.follow ?? false)
+      : this.following;
+    if (selected !== undefined && changed && !follow)
       this.revealAt = performance.now() + REVEAL_DELAY_MS;
-    this.selectedId = this.vehicles.selectedId = id;
+    this.selected = this.vehicles.selected = selected;
     // Already following: ease to the new vehicle rather than letting keepCentred jump there.
     if (changed && follow && this.following)
       this.easeToFollowed(FOLLOW_START_MS);
@@ -926,7 +863,7 @@ export class TransitEngine {
 
   private showPlace(place: Place): void {
     this.pendingSelect = this.elsewhere = undefined;
-    this.selectedId = this.vehicles.selectedId = undefined;
+    this.selected = this.vehicles.selected = undefined;
     this.selectedRoute = undefined;
     this.setFollow(false);
     this.place = place;
@@ -937,36 +874,99 @@ export class TransitEngine {
     this.publish();
   }
 
+  /** The first feed's slot: its time zone is the clock's, and its summaries the snapshot's. */
+  private get primary(): FeedSlot {
+    return this.slots[0]!;
+  }
+
+  private slotOf(feed: string): FeedSlot | undefined {
+    return this.slots.find((s) => s.feed === feed);
+  }
+
+  /** The service date shown for an instant, in the clock's time zone. */
+  private displayDate(t: number): ServiceDate {
+    return displayServiceDate(t, this.tz);
+  }
+
+  /** Epoch ms of a service date's reference point, in the clock's time zone. */
+  private dayStart(date: ServiceDate): number {
+    return this.primary.dayStart(date);
+  }
+
+  /** Instants any feed has timetables for, from the first feed's first day to the last one's end. */
+  private range(): [number, number] | undefined {
+    const ranges = this.slots.flatMap((s) => {
+      const r = s.store.range();
+      return r ? [r] : [];
+    });
+    if (!ranges.length) return undefined;
+    return [
+      Math.min(...ranges.map((r) => r[0])),
+      Math.max(...ranges.map((r) => r[1])),
+    ];
+  }
+
+  /**
+   * The rendered features of the given layers (by name, every feed's) within `d` px of a screen
+   * point, each with its feed's slot and its layer's name.
+   */
+  private featuresAt(
+    x: number,
+    y: number,
+    d: number,
+    names: readonly string[],
+  ): {
+    f: ReturnType<MlMap["queryRenderedFeatures"]>[number];
+    slot: FeedSlot;
+    name: string;
+  }[] {
+    const { map } = this;
+    const layers = this.slots.flatMap((s) =>
+      names.map((n) => s.ids.layer(n)).filter((id) => map.getLayer(id)),
+    );
+    if (!layers.length) return [];
+    return map
+      .queryRenderedFeatures(
+        [
+          [x - d, y - d],
+          [x + d, y + d],
+        ],
+        { layers },
+      )
+      .flatMap((f) => {
+        for (const slot of this.slots) {
+          const name = slot.ids.nameOf(f.layer.id);
+          if (name !== undefined) return [{ f, slot, name }];
+        }
+        return [];
+      });
+  }
+
   /** The station, exchange or stop drawn under a screen point, if any (stations win, then exchanges). */
   private placeAt(x: number, y: number): Place | undefined {
-    const { map } = this;
-    const layers = [
-      "stations",
-      "stations-label",
-      "exchanges",
-      "exchanges-label",
-      "bus-stops",
-      "bus-stops-focus",
-      VEHICLES_BEFORE_LAYER,
-    ].filter((id) => map.getLayer(id));
-    if (!layers.length) return undefined;
-    const d = PLACE_PICK_PX;
-    const hits = map.queryRenderedFeatures(
-      [
-        [x - d, y - d],
-        [x + d, y + d],
-      ],
-      { layers },
-    );
-    const station = hits.find((f) => f.layer.id.startsWith("stations"));
+    const hits = this.featuresAt(x, y, PLACE_PICK_PX, PLACE_LAYERS);
+    const station = hits.find((h) => h.name.startsWith("stations"));
     if (station)
-      return { kind: "station", id: String(station.properties["id"]) };
-    const exchange = hits.find((f) => f.layer.id.startsWith("exchanges"));
+      return {
+        kind: "station",
+        feed: station.slot.feed,
+        id: String(station.f.properties["id"]),
+      };
+    const exchange = hits.find((h) => h.name.startsWith("exchanges"));
     if (exchange)
-      return { kind: "exchange", id: String(exchange.properties["id"]) };
-    const stop = hits.find((f) => f.properties["stop"] !== undefined);
-    if (stop) return { kind: "stop", id: String(stop.properties["stop"]) };
-    return this.routeAt(x, y);
+      return {
+        kind: "exchange",
+        feed: exchange.slot.feed,
+        id: String(exchange.f.properties["id"]),
+      };
+    const stop = hits.find((h) => h.f.properties["stop"] !== undefined);
+    if (stop)
+      return {
+        kind: "stop",
+        feed: stop.slot.feed,
+        id: String(stop.f.properties["stop"]),
+      };
+    return this.routesAt(x, y, PLACE_PICK_PX)[0];
   }
 
   /**
@@ -978,8 +978,7 @@ export class TransitEngine {
    */
   private choicesAt(x: number, y: number): PickChoice[] {
     const { map } = this;
-    const pp = this.shownFeed;
-    if (!pp || !this.styleReady) return [];
+    if (!this.styleReady || !this.slots.some((s) => s.shown)) return [];
     const r = SELECTED_PLACE_RADIUS_PX;
     const near = (f: { geometry: GeoJSON.Geometry }) => {
       if (f.geometry.type !== "Point") return false;
@@ -987,74 +986,66 @@ export class TransitEngine {
       const p = map.project([lon!, lat!]);
       return Math.hypot(p.x - x, p.y - y) <= r;
     };
+    /** Routes (`routeId`s) a vehicle, station or stop in the list is on. */
     const covered = new Set<string>();
     const vehicles: PickChoice[] = [];
     for (const v of this.vehicles.pickWithin(x, y, r)) {
-      covered.add(v.routeKey);
+      covered.add(feedKey(v.feed, v.routeKey));
       vehicles.push({
         kind: "vehicle",
-        id: v.id,
+        id: vehicleId(v),
         vehicle: v,
-        route: pp.routes.get(v.routeKey),
+        route: this.slotOf(v.feed)?.shown?.routes.get(v.routeKey),
       });
     }
-    const placeLayers = [
-      "stations",
-      "stations-label",
-      "exchanges",
-      "exchanges-label",
-      "bus-stops",
-      "bus-stops-focus",
-      VEHICLES_BEFORE_LAYER,
-    ].filter((id) => map.getLayer(id));
-    const hits =
-      placeLayers.length ?
-        map
-          .queryRenderedFeatures(
-            [
-              [x - r, y - r],
-              [x + r, y + r],
-            ],
-            { layers: placeLayers },
-          )
-          .filter((f) => NAME_LAYERS.has(f.layer.id) || near(f))
-      : [];
+    const hits = this.featuresAt(x, y, r, PLACE_LAYERS).filter(
+      (h) => NAME_LAYERS.has(h.name) || near(h.f),
+    );
     const found = new Map<string, Place>();
+    const keyOf = (p: Place) => `${p.kind}:${p.feed}:${p.id}`;
     for (const kind of ["station", "exchange", "stop"] as const)
-      for (const f of hits) {
+      for (const { f, slot, name } of hits) {
         const id =
           kind === "station" ?
-            f.layer.id.startsWith("stations") ?
+            name.startsWith("stations") ?
               f.properties["id"]
             : undefined
           : kind === "exchange" ?
-            f.layer.id.startsWith("exchanges") ?
+            name.startsWith("exchanges") ?
               f.properties["id"]
             : undefined
           : f.properties["stop"];
         if (id === undefined) continue;
-        found.set(`${kind}:${id}`, { kind, id: String(id) });
+        const place: Place = { kind, feed: slot.feed, id: String(id) };
+        found.set(keyOf(place), place);
         for (const k of String(f.properties["routes"] ?? "").split(","))
-          if (k) covered.add(k);
+          if (k) covered.add(feedKey(slot.feed, k));
       }
     // A station's or exchange's bays are on its card.
-    for (const h of hubsOf(pp.plan))
-      if (
-        found.has(`exchange:${h.id}`)
-        || (h.station !== undefined && found.has(`station:${h.station}`))
-      )
-        for (const b of h.bays) found.delete(`stop:${b}`);
+    for (const slot of this.slots) {
+      if (!slot.shown) continue;
+      const feed = slot.feed;
+      for (const h of hubsOf(slot.shown.plan))
+        if (
+          found.has(keyOf({ kind: "exchange", feed, id: h.id }))
+          || (h.station !== undefined
+            && found.has(keyOf({ kind: "station", feed, id: h.station })))
+        )
+          for (const b of h.bays)
+            found.delete(keyOf({ kind: "stop", feed, id: b }));
+    }
     const routes = this.routesAt(x, y, r);
-    const uncovered = routes.filter((key) => !covered.has(key));
+    const uncovered = routes.filter((p) => !covered.has(feedKey(p.feed, p.id)));
     const asks = vehicles.length + found.size + uncovered.length > 1;
-    for (const key of asks ? routes : uncovered)
-      found.set(`route:${key}`, { kind: "route", id: key });
+    for (const place of asks ? routes : uncovered)
+      found.set(keyOf(place), place);
     // Stations, exchanges, vehicles, stops, then routes, so the list's cut drops the least likely.
     const out: PickChoice[] = [];
     const add = (kinds: readonly Place["kind"][]) => {
       for (const place of found.values()) {
         if (!kinds.includes(place.kind)) continue;
-        const c = placeChoice(pp, place);
+        const pp = this.slotOf(place.feed)?.shown;
+        const c = pp && placeChoice(pp, place);
         if (c) out.push(c);
       }
     };
@@ -1064,214 +1055,131 @@ export class TransitEngine {
     return out.slice(0, MAX_PICK_CHOICES);
   }
 
-  /** The route line under a screen point (bus, ferry and rail lines, and SkyTrain track). */
-  private routeAt(x: number, y: number): Place | undefined {
-    const key = this.routesAt(x, y, PLACE_PICK_PX)[0];
-    return key === undefined ? undefined : { kind: "route", id: key };
-  }
-
-  /** The keys of the route lines within `d` px of a screen point, topmost first. */
-  private routesAt(x: number, y: number, d: number): string[] {
-    const { map } = this;
-    const layers = [
-      "routes-bus",
-      "routes-bus-limited",
-      "corridors-brand",
-      "corridors-overview-brand",
-      // Regular routes, drawn as the corridors they share (packages/transit-map/README.md#bus-corridors).
-      "corridors",
-      "corridors-overview",
-      "corridors-idle",
-      "corridors-overview-idle",
-      "routes-shape",
-      "routes-shape-inactive",
-      "routes-skytrain",
-      ...PICKABLE_TRACK_LAYERS,
-    ].filter((id) => map.getLayer(id));
-    const brands = this.shownFeed ? brandedRoutes(this.shownFeed.plan) : [];
-    if (!layers.length) return [];
-    const known = this.shownFeed?.routes;
-    const out = new Set<string>();
-    for (const f of map.queryRenderedFeatures(
-      [
-        [x - d, y - d],
-        [x + d, y + d],
-      ],
-      { layers },
-    )) {
-      if (/^corridors(-overview)?(-idle)?$/.test(f.layer.id)) {
-        for (const key of this.frequencyLayer?.routesOn(
+  /** The route lines within `d` px of a screen point, topmost first, as places. */
+  private routesAt(x: number, y: number, d: number): Place[] {
+    const out = new Map<string, Place>();
+    const add = (slot: FeedSlot, key: string) => {
+      if (slot.shown?.routes.has(key) && !slot.hidden.has(key))
+        out.set(feedKey(slot.feed, key), {
+          kind: "route",
+          feed: slot.feed,
+          id: key,
+        });
+    };
+    for (const { f, slot, name } of this.featuresAt(x, y, d, ROUTE_LAYERS)) {
+      if (/^corridors(-overview)?(-idle)?$/.test(name)) {
+        for (const key of slot.frequencyLayer?.routesOn(
           f.sourceLayer ?? PLAN_TILE_LAYERS.corridors,
           Number(f.id),
         ) ?? [])
-          if (known?.has(key) && !this.hidden.has(key)) out.add(key);
+          add(slot, key);
         continue;
       }
       // Corridors carry the route with its own colour drawn on them as feature state.
-      const brand =
-        f.layer.id.endsWith("-brand") ? f.state["brand"] : undefined;
-      if (
-        f.layer.id.endsWith("-brand")
-        && !(typeof brand === "number" && brand >= 0)
-      )
+      const brand = name.endsWith("-brand") ? f.state["brand"] : undefined;
+      if (name.endsWith("-brand") && !(typeof brand === "number" && brand >= 0))
         continue;
-      const key =
+      const brands = slot.shown ? brandedRoutes(slot.shown.plan) : [];
+      add(
+        slot,
         typeof brand === "number" ?
           (brands[brand]?.key ?? "")
-        : String(f.properties["route"] ?? f.properties["line"] ?? "");
-      if (known?.has(key) && !this.hidden.has(key)) out.add(key);
+        : String(f.properties["route"] ?? f.properties["line"] ?? ""),
+      );
     }
-    return [...out];
+    return [...out.values()];
+  }
+
+  /** The selected place's feed's slot and shown plan. */
+  private placeSlot(): FeedSlot | undefined {
+    return this.place && this.slotOf(this.place.feed);
   }
 
   /** Where the selected place is, for its highlight and "Centre on map". */
   private placePoint(): [number, number] | undefined {
-    const pp = this.shownFeed;
+    const pp = this.placeSlot()?.shown;
     return pp && this.place ? placeLocation(pp, this.place) : undefined;
   }
 
-  /** The route whose card is open, when the map draws it: the map dims every other route. */
+  /** The route whose card is open (`routeId`), when the map draws it: the map dims every other route. */
   private focusRoute(): string | undefined {
-    const id = this.place?.kind === "route" ? this.place.id : undefined;
-    return id !== undefined && routeKeys(this.shownFeed).includes(id) ?
-        id
+    const place = this.place;
+    if (place?.kind !== "route") return undefined;
+    return this.placeSlot()?.shown?.routes.has(place.id) ?
+        feedKey(place.feed, place.id)
       : undefined;
   }
 
   /**
-   * What the map focuses on (packages/transit-map/README.md#route-focus): the route whose card is
-   * open, or the combined route's stretch.
+   * What a feed's corridors focus on (packages/transit-map/README.md#route-focus): the route whose
+   * card is open, or the combined route's stretch, when they're the feed's; ELSEWHERE when they're
+   * another feed's.
    */
-  private focus(): Focus | undefined {
+  private focusOf(slot: FeedSlot): Focus | undefined {
     const route = this.focusRoute();
-    if (route !== undefined) return { route };
+    const place = this.place;
+    if (route !== undefined)
+      return place!.feed === slot.feed ? { route: place!.id } : ELSEWHERE;
     const info = this.segmentInfo();
-    return info?.segment && this.place ?
+    if (!info?.segment || !place) return undefined;
+    return place.feed === slot.feed ?
         {
-          key: this.place.id,
+          key: place.id,
           routes: new Set(info.segment.routes),
           sources: info.sources,
           corridors: info.corridors,
           stops: info.stops,
         }
-      : undefined;
+      : ELSEWHERE;
   }
 
-  /**
-   * Keep the open combined route's SkyTrain pieces marked (`setRailFocus`): those of the last ones
-   * marked it no longer has unmarked, and after the lines' source was re-created (`railFocusFor`
-   * cleared), every one marked again, since MapLibre keeps state by feature id across new data.
-   */
+  /** Keep the open combined route's SkyTrain pieces marked (FeedSlot.syncRailFocus), and no other feed's. */
   private syncRailFocus(): void {
-    const want = this.segmentInfo()?.rail ?? NO_IDS;
-    if (want === this.railFocusFor) return;
-    const was = this.railFocused;
-    setRailFocus(
-      this.map,
-      [...was].filter((id) => !want.has(id)),
-      false,
-    );
-    setRailFocus(this.map, want, true);
-    this.railFocused = want;
-    this.railFocusFor = want;
+    const info = this.segmentInfo();
+    for (const slot of this.slots)
+      slot.syncRailFocus(
+        this.map,
+        this.place?.feed === slot.feed ? info?.rail : undefined,
+      );
   }
 
   private syncPlaceHighlight(): void {
     const route = this.focusRoute();
     const info = route === undefined ? this.segmentInfo() : undefined;
+    const place = this.place;
     this.vehicles.focus =
-      route !== undefined ? (v) => v.routeKey === route
+      route !== undefined ?
+        (v) => v.feed === place!.feed && v.routeKey === place!.id
       : info?.segment ? info.onSegment
       : undefined;
     if (!this.styleReady || this.disposed) return;
-    setSelectedPlace(this.map, this.placePoint());
+    setSelectedPlace(
+      this.map,
+      this.placePoint(),
+      (this.placeSlot() ?? this.primary).ids.layer("stations"),
+    );
     setFocus(
       this.map,
       route !== undefined ? { route }
-      : info?.segment ? { stops: info.stopIds }
+      : info?.segment ?
+        { stops: info.stopIds.map((id) => feedKey(place!.feed, id)) }
       : undefined,
     );
   }
 
-  /**
-   * The open combined route in the shown feed (packages/transit-core/DESIGN.md#combined-routes):
-   * its segment (undefined when no route runs it in this feed) and what the card and the map's
-   * focus need of it, worked out once per prepared plan (its departures' offsets come from the
-   * trips loaded) and, for its corridors, once the plan's corridor refs are in.
-   */
+  /** The open combined route in its feed (FeedSlot.segmentInfo). */
   private segmentInfo(): SegmentInfo | undefined {
-    const pp = this.shownFeed;
-    const place = this.place;
-    if (!pp || place?.kind !== "shared") return undefined;
-    let byId = this.segmentCache.get(pp);
-    if (!byId) this.segmentCache.set(pp, (byId = new Map()));
-    // Its places are the hubs' (stations' bays, exchanges), which change when the places file arrives.
-    const hubs = hubsOf(pp.plan);
-    let info = byId.get(place.id);
-    if (!info || info.hubs !== hubs) {
-      const { from, to } = sharedEnds(place);
-      const segment = sharedSegment(pp.plan, from, to, placeOfStop(pp.plan));
-      const cumOf = (shape: string) => pp.shapeCum.get(shape);
-      const ranges = segment ? segmentRanges(pp.plan, segment) : new Map();
-      const stops =
-        segment ? segmentStops(pp.plan, segment) : new Set<number>();
-      const plan = pp.plan;
-      info = {
-        segment,
-        routes: segment?.routes ?? [],
-        sources:
-          segment ?
-            segmentStarts(
-              segment,
-              patternStarts(plan),
-              startOffsets(segment, plan.trips),
-            )
-          : [],
-        stops,
-        stopIds: [...stops].map((i) => plan.stops[i]!.id),
-        corridors: undefined,
-        rail: undefined,
-        hubs,
-        days: {},
-        onSegment: (v) => {
-          const pattern = pp.tripIndex.get(v.tripId)?.pattern.id;
-          return (
-            pattern !== undefined
-            && onSegment(plan, ranges, pattern, [v.lon, v.lat], cumOf)
-          );
-        },
-      };
-      byId.set(place.id, info);
-    }
-    // What it's drawn over, once its patterns' paths are in: corridors, and SkyTrain's line pieces.
-    const seg = info.segment;
-    if (seg && !info.corridors && pp.plan.corridorInfo) {
-      const paths = this.store.patternPathsFor(pp, seg.routes);
-      if (paths !== undefined)
-        info.corridors = {
-          detailed: segmentSteps(pp.plan, seg, (p) => paths?.get(p)?.detailed),
-          overview: segmentSteps(pp.plan, seg, (p) => paths?.get(p)?.overview),
-        };
-    }
-    if (seg && !info.rail) {
-      const rail =
-        seg.routes.some((r) => pp.routes.get(r)?.mode === "skytrain") ?
-          this.store.railPathsFor(pp)
-        : null;
-      if (rail !== undefined)
-        info.rail = segmentSteps(pp.plan, seg, (p) => rail?.get(p));
-    }
-    return info;
+    return this.place && this.placeSlot()?.segmentInfo(this.place);
   }
 
   /** Centre the map on the selected vehicle (or station or stop), in the part of the map the host's chrome leaves clear. */
   locateSelected(): void {
     if (this.place?.kind === "route") {
-      this.fitRoute(this.place.id);
+      this.fitRoute(this.place);
       return;
     }
     if (this.place?.kind === "shared") {
-      const pp = this.shownFeed;
+      const pp = this.placeSlot()?.shown;
       const segment = this.segmentInfo()?.segment;
       if (pp && segment)
         this.fitLines(
@@ -1280,7 +1188,7 @@ export class TransitEngine {
       return;
     }
     const v =
-      this.lastVehicles.find((x) => x.id === this.selectedId)
+      this.selectedVehicle()
       ?? (() => {
         const at = this.placePoint();
         return at && { lon: at[0], lat: at[1] };
@@ -1311,12 +1219,12 @@ export class TransitEngine {
   }
 
   /** Fit a route's lines into the area the host's chrome leaves clear. */
-  private fitRoute(key: string): void {
-    const plan = this.shownFeed?.plan;
+  private fitRoute(route: Place): void {
+    const plan = this.slotOf(route.feed)?.shown?.plan;
     if (!plan) return;
     this.fitLines(
       plan.patterns
-        .filter((p) => p.route === key)
+        .filter((p) => p.route === route.id)
         .map((p) => (plan.shapes[p.shape] ?? []) as LonLat[]),
     );
   }
@@ -1352,42 +1260,22 @@ export class TransitEngine {
   }
 
   /**
-   * A route's hourly frequency for each kind of day in the shown feed, the shown date's kind first
-   * (cached: it doesn't change with the time).
+   * A route's hourly frequency for each kind of day in its feed's shown plan, the shown date's kind
+   * first (cached: it doesn't change with the time).
    */
-  routeDays(key: string): RouteDay[] {
-    const pp = this.shownFeed;
-    if (!pp) return [];
-    let byRoute = this.routeDayCache.get(pp);
-    if (!byRoute) this.routeDayCache.set(pp, (byRoute = new Map()));
-    const from = displayServiceDate(this.clock.now());
-    const cacheKey = `${key}|${from}`;
-    let days = byRoute.get(cacheKey);
-    if (!days) {
-      days = dayTypes(pp, from).map((d) => ({
-        date: d.date,
-        label: this.describeDate(d.date),
-        hours: hourlyFrequency(pp, key, d.date),
-      }));
-      byRoute.set(cacheKey, days);
-    }
-    return days;
+  routeDays(route: Pick<PlanRoute, "feed" | "key">): RouteDay[] {
+    return (
+      this.slotOf(route.feed)?.routeDays(route.key, this.clock.now()) ?? []
+    );
   }
 
   /**
    * The open combined route's hourly frequency (its buses leaving its start) for each kind of day in
-   * the shown feed, the shown date's kind first, as `routeDays`.
+   * its feed's shown plan, the shown date's kind first, as `routeDays`.
    */
   sharedDays(): RouteDay[] {
-    const pp = this.shownFeed;
     const info = this.segmentInfo();
-    if (!pp || !info?.segment) return [];
-    const from = displayServiceDate(this.clock.now());
-    return (info.days[from] ??= dayTypes(pp, from).map((d) => ({
-      date: d.date,
-      label: this.describeDate(d.date),
-      hours: segmentHourly(pp.servicesOn, info.sources, d.date),
-    })));
+    return (info && this.placeSlot()?.sharedDays(info, this.clock.now())) ?? [];
   }
 
   /**
@@ -1395,30 +1283,14 @@ export class TransitEngine {
    * worst wait on regular weekdays, as the map's "Day" bus frequency), worked out here for a plan
    * published without it; undefined when it doesn't run then.
    */
-  dayWait(key: string): number | undefined {
-    const pp = this.shownFeed;
-    if (!pp) return undefined;
-    const route = pp.routes.get(key);
-    if (route?.weekdayWait !== undefined) return route.weekdayWait;
-    let byRoute = this.dayWaitCache.get(pp);
-    if (!byRoute) this.dayWaitCache.set(pp, (byRoute = new Map()));
-    if (!byRoute.has(key)) {
-      const { plan } = pp;
-      byRoute.set(
-        key,
-        routeWeekdayWait(
-          pp.servicesOn,
-          regularWeekdays(pp.servicesOn, plan.feedStart, plan.feedEnd),
-          routeStarts(plan, patternStarts(plan), key),
-        ),
-      );
-    }
-    return byRoute.get(key);
+  dayWait(route: Pick<PlanRoute, "feed" | "key">): number | undefined {
+    const slot = this.slotOf(route.feed);
+    return slot?.shown && slot.dayWait(slot.shown, route.key);
   }
 
   /** Keep the selected vehicle at the centre of the view (or stop). */
   setFollowing(on: boolean): void {
-    this.setFollow(on && this.selectedId !== undefined);
+    this.setFollow(on && this.selected !== undefined);
     if (this.following) this.locateSelected();
     this.publish();
   }
@@ -1452,7 +1324,7 @@ export class TransitEngine {
     const { map } = this;
     if (!map.scrollZoom.isActive() && !map.touchZoomRotate.isActive())
       return {};
-    const v = this.lastVehicles.find((x) => x.id === this.selectedId);
+    const v = this.selectedVehicle();
     return v ? { center: new LngLat(v.lon, v.lat) } : {};
   };
 
@@ -1473,7 +1345,7 @@ export class TransitEngine {
 
   /** Ease the followed vehicle to the centre of the area the host's chrome leaves clear. */
   private easeToFollowed(duration: number): void {
-    const v = this.lastVehicles.find((x) => x.id === this.selectedId);
+    const v = this.selectedVehicle();
     if (!v) return;
     this.followEaseEnds = performance.now() + duration;
     this.map.easeTo({
@@ -1550,7 +1422,7 @@ export class TransitEngine {
    */
   private keepCentred(): void {
     const { map } = this;
-    const v = this.lastVehicles.find((x) => x.id === this.selectedId);
+    const v = this.selectedVehicle();
     if (!v) return; // between trips or out of service: wait for it
     if (map.isMoving() && !this.scrollZoomSettled()) return;
     const want = this.viewPadding;
@@ -1628,10 +1500,11 @@ export class TransitEngine {
       this.vehicles.update([], this.theme === "dark");
       this.vehicles.detach();
       this.hiddenLayers = [];
+      const sources = this.sources();
       for (const layer of map.getStyle()?.layers ?? [])
         if (
           "source" in layer
-          && SOURCES.includes(layer.source)
+          && sources.includes(layer.source)
           && map.getLayoutProperty(layer.id, "visibility") !== "none"
         ) {
           this.hiddenLayers.push(layer.id);
@@ -1643,17 +1516,22 @@ export class TransitEngine {
       if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
     this.hiddenLayers = [];
     // Its tiles in the new view load from now on (MapLibre loads none for hidden layers).
-    this.linesReady = false;
+    for (const slot of this.slots) slot.linesReady = false;
     // Layers a new style (a theme switch while hidden) dropped are added again.
     this.syncStatic(true);
     // Vehicles for this view before the layer draws again.
     const t = this.clock.now();
     this.computedFor = { t, zoom: this.map.getZoom(), at: performance.now() };
     this.computeVehicles(t);
-    this.vehicles.attach();
+    this.attachVehicles();
     this.invalidate();
     this.publish();
     this.raf = requestAnimationFrame(this.frame);
+  }
+
+  /** Sources the engine adds to the host's map (removed on dispose). */
+  private sources(): string[] {
+    return [SELECTED_PLACE_SOURCE, ...this.slots.flatMap((s) => s.ids.sources)];
   }
 
   dispose(): void {
@@ -1666,7 +1544,7 @@ export class TransitEngine {
     for (const fn of this.cleanups) fn();
     this.live.stop();
     this.vehicles.detach();
-    removeSources(this.map, SOURCES);
+    removeSources(this.map, this.sources());
     this.listeners.clear();
   }
 
@@ -1688,25 +1566,43 @@ export class TransitEngine {
   }
 
   /**
-   * What selection keys are resolved against: the shown plan and its places file (null while it
-   * loads when `waitForPlaces` is false, so the key is a ref until the file is in).
+   * What selection keys are resolved against in a feed: its shown plan and its places file (null
+   * while it loads when `waitForPlaces` is false, so the key is a ref until the file is in).
    */
-  private selectContext(waitForPlaces: boolean): SelectContext | undefined {
+  private selectContext(
+    slot: FeedSlot,
+    waitForPlaces: boolean,
+  ): SelectContext | undefined {
     const pp =
-      this.shownFeed
-      ?? this.store.planFor(displayServiceDate(this.clock.now()), Infinity);
+      slot.shown
+      ?? slot.store.planFor(slot.displayDate(this.clock.now()), Infinity);
     if (!pp) return undefined;
-    const places = this.store.placesFor(pp);
+    const places = slot.store.placesFor(pp);
     if (places === undefined && waitForPlaces) return undefined;
     return {
-      feed: this.feed,
+      feed: slot.feed,
       plan: pp.plan,
       hubs: hubsOf(pp.plan),
       places: places ?? null,
     };
   }
 
-  /** Select what the URL's key names, once its plan and places file are in. */
+  /**
+   * The vehicle a `?select=` key names in a feed shown, if it names one: an `rt` key names its feed;
+   * a `run` key (packages/transit-map/src/select.ts) is the first feed's.
+   */
+  private vehicleOf(key: string): { feed: string; id: string } | undefined {
+    for (const slot of this.slots) {
+      const id = vehicleOfKey(key, slot.feed);
+      if (id !== undefined) return { feed: slot.feed, id };
+    }
+    return undefined;
+  }
+
+  /**
+   * Select what the URL's key names, once every feed's plan and places file are in: the first feed
+   * that has it (a feature ID is one feed's), else it's elsewhere.
+   */
   private resolveSelection(): void {
     const key = this.pendingSelect;
     if (key === undefined) {
@@ -1714,31 +1610,40 @@ export class TransitEngine {
       if (this.place) this.writeUrl();
       return;
     }
-    const ctx = this.selectContext(true);
-    if (!ctx) return;
+    const contexts = this.slots.map((s) => this.selectContext(s, true));
+    if (contexts.some((c) => !c)) return;
     this.pendingSelect = undefined;
-    const r = resolveSelect(key, ctx);
-    if (r === "elsewhere") {
+    let elsewhere = false;
+    for (const ctx of contexts) {
+      const r = resolveSelect(key, ctx!);
+      if (r === "elsewhere") {
+        elsewhere = true;
+        continue;
+      }
+      if (!r) break;
+      if ("vehicle" in r) this.selectVehicle(feedKey(ctx!.feed, r.vehicle));
+      else this.showPlace(r.place);
+      return;
+    }
+    if (elsewhere) {
       this.elsewhere = key;
       this.publish();
-    } else if (!r) this.writeUrl();
-    else if ("vehicle" in r) this.selectVehicle(r.vehicle);
-    else this.showPlace(r.place);
+    } else this.writeUrl();
   }
 
   /** The selection's key for the URL: canonical once it's resolved, else as given. */
   private selectionKey(): string | undefined {
-    if (this.selectedId !== undefined)
-      return vehicleKey(this.feed, this.selectedId);
-    if (this.place) {
-      const ctx = this.selectContext(false);
+    if (this.selected) return vehicleKey(this.selected.feed, this.selected.id);
+    const slot = this.placeSlot();
+    if (this.place && slot) {
+      const ctx = this.selectContext(slot, false);
       return ctx && selectKey({ place: this.place }, ctx);
     }
     return this.pendingSelect ?? this.elsewhere;
   }
 
   private writeUrl(): void {
-    if (!this.disposed) writeUrl(this.clock, this.selectionKey());
+    if (!this.disposed) writeUrl(this.clock, this.selectionKey(), this.tz);
   }
 
   /** Writes the URL once a burst of clock changes settles (URL_WRITE_THROTTLE_MS). */
@@ -1750,31 +1655,13 @@ export class TransitEngine {
     }, URL_WRITE_THROTTLE_MS);
   }
 
-  private describeDate(date: ServiceDate): string {
-    const feed = feedForDate(this.store.manifest, date);
-    const pp = this.store.planFor(date, Infinity);
-    if (!feed) return "No timetable for this date";
-    if (!pp) return "…";
-    let fn = this.describers.get(feed.version);
-    if (!fn)
-      this.describers.set(
-        feed.version,
-        (fn = makeServiceDescriber(
-          pp.servicesOn,
-          pp.plan.feedStart,
-          pp.plan.feedEnd,
-        )),
-      );
-    return fn(date).label;
-  }
-
   /** The time bus frequencies are shown for: the clock's, at most FREQUENCY_INTERVAL_MS behind. */
   private frequencyTime(): number {
     return this.frequencyAt?.t ?? this.clock.now();
   }
 
   private sliderRange(t: number): [number, number] {
-    const start = serviceDayStart(displayServiceDate(t));
+    const start = this.dayStart(this.displayDate(t));
     return [start + SLIDER_START_S * 1000, start + SLIDER_END_S * 1000];
   }
 
@@ -1787,16 +1674,17 @@ export class TransitEngine {
   private datasets: string[] = [];
 
   private buildSnapshot(t: number): TransitSnapshot {
-    const serviceDate = displayServiceDate(t);
-    const feeds = this.store.manifest.feeds;
+    const serviceDate = this.displayDate(t);
+    const feeds = this.slots.flatMap((s) => s.store.manifest.feeds);
     const selected =
-      this.selectedId === undefined ?
+      this.selected === undefined ?
         undefined
       : (() => {
-          const v = this.lastVehicles.find((x) => x.id === this.selectedId);
-          const route = v ? this.shownFeed?.routes.get(v.routeKey) : undefined;
+          const v = this.selectedVehicle();
+          const route =
+            v ? this.slotOf(v.feed)?.shown?.routes.get(v.routeKey) : undefined;
           return {
-            id: this.selectedId,
+            id: this.selectedId!,
             vehicle: v,
             route,
             trip: v && this.tripSummary(v),
@@ -1806,11 +1694,13 @@ export class TransitEngine {
           };
         })();
     const prev = this.snapshot as TransitSnapshot | undefined;
-    const routes = this.shownFeed?.plan.routes ?? [];
+    const routes = this.slots.flatMap((s) => s.shown?.plan.routes ?? []);
+    const scenario = this.primary.store.scenario;
     return {
       t,
+      timezone: this.tz,
       serviceDate,
-      serviceLabel: this.describeDate(serviceDate),
+      serviceLabel: this.primary.describeDate(serviceDate),
       playing: this.clock.playing,
       rate: this.clock.rate,
       live: this.clock.isLive(),
@@ -1828,21 +1718,23 @@ export class TransitEngine {
       coverage: this.coverage,
       rt: this.rtState,
       notices: this.notices,
-      preview: this.store.previewDates,
+      preview: [
+        ...new Set(this.slots.flatMap((s) => s.store.previewDates)),
+      ].sort(),
       // Stable identities, so React skips re-rendering the legend.
       routes: prev && sameRoutes(prev.routes, routes) ? prev.routes : routes,
-      groups: this.shownFeed ? this.groupsOf(this.shownFeed) : new Map(),
+      groups: this.groupsOf(),
       hiddenGroups: this.hiddenGroups,
       hidden: this.hidden,
       showBrandColors: this.showBrandColors,
       showStops: this.showStops,
       liveOnly: this.liveOnly,
-      corridors: Boolean(this.shownFeed?.plan.corridorInfo),
-      linesReady: this.linesReady,
+      corridors: this.slots.some((s) => Boolean(s.shown?.plan.corridorInfo)),
+      linesReady: this.slots.every((s) => s.linesReady),
       busFrequency: this.busFrequency,
       busFrequencyHour: (() => {
         const ft = this.frequencyTime();
-        const day = serviceDayStart(displayServiceDate(ft));
+        const day = this.dayStart(this.displayDate(ft));
         const from = day + nowWindowStart((ft - day) / 1000) * 1000;
         const same = prev?.busFrequencyHour;
         // A stable identity while the window stays put, so React skips re-rendering the key.
@@ -1858,199 +1750,133 @@ export class TransitEngine {
           prev.datasets
         : this.datasets,
       scenario:
-        this.store.scenario ?
-          {
-            name: this.store.scenario.name,
-            description: this.store.scenario.description,
-          }
+        scenario ?
+          { name: scenario.name, description: scenario.description }
         : undefined,
       elsewhere: this.elsewhere,
     };
   }
 
-  /**
-   * Departures from the selected place after the shown time, from the timetable shifted by the
-   * real-time corrections the vehicles use (packages/transit-core/DESIGN.md#departures).
-   */
   /** The selected vehicle's trip: where and when riders can first board it (epoch ms), and its short id. */
   private tripSummary(v: VehicleState): SelectedVehicle["trip"] {
+    const slot = this.slotOf(v.feed);
     // A vehicle's trip is loaded, or it wouldn't be drawn.
-    const pp = this.store.planFor(v.serviceDate, Infinity);
+    const pp = slot?.store.planFor(v.serviceDate, Infinity);
     const pt = pp?.tripIndex.get(v.tripId);
-    if (!pp || !pt) return undefined;
+    if (!slot || !pp || !pt) return undefined;
     const i = firstBoarding(pt.pattern);
     return {
-      start: serviceDayStart(v.serviceDate) + pt.dep[i]! * 1000,
+      start: slot.dayStart(v.serviceDate) + pt.dep[i]! * 1000,
       from: placeName(pp.plan, pt.pattern.stops[i]!),
       shortId: shortId(pp.plan.tripIdPattern, v.tripId),
     };
   }
 
+  /**
+   * The selected place's card: departures from it after the shown time, from the timetable shifted
+   * by the real-time corrections the vehicles use (packages/transit-core/DESIGN.md#departures).
+   */
   private placeSnapshot(
     t: number,
   ): PlaceSnapshot | RouteSnapshot | SharedSnapshot | undefined {
-    const pp = this.shownFeed;
-    if (!this.place || !pp) return undefined;
+    const slot = this.placeSlot();
+    const pp = slot?.shown;
+    if (!this.place || !slot || !pp) return undefined;
     return placeSnapshot(this.place, {
       pp,
       t,
       vehicles: this.lastVehicles,
       drawn: (v) =>
-        !this.hidden.has(v.routeKey)
+        !this.hiddenRoute(v)
         && !(this.liveOnly && v.provenance === "estimated"),
-      corrections: (d) => this.lastCorrections?.get(d),
+      corrections: (d) => slot.lastCorrections?.get(d),
       datasetsOf: (routes) => this.datasetsOf(routes),
       segment: () => this.segmentInfo(),
     });
   }
 
+  /** Whether a vehicle's route is hidden. */
+  private hiddenRoute(v: VehicleState): boolean {
+    return this.slotOf(v.feed)?.hidden.has(v.routeKey) ?? false;
+  }
+
   /**
-   * When the shown plan's places file arrives, its stations and exchanges replace the plan's own
-   * grouping (src/hubs.ts): redraw them, and keep an open exchange card on the exchange sharing its
-   * bays (its id is now the feature's).
+   * When a feed's shown plan's places file arrives, its stations and exchanges replace the plan's
+   * own grouping (src/hubs.ts): redraw them, and keep an open exchange card of that feed on the
+   * exchange sharing its bays (its id is now the feature's).
    */
-  private syncHubs(): void {
-    const pp = this.shownFeed;
+  private syncHubs(slot: FeedSlot): void {
+    const pp = slot.shown;
     if (!pp) return;
-    this.store.placesFor(pp);
+    slot.store.placesFor(pp);
     const hubs = hubsOf(pp.plan);
-    if (hubs === this.shownHubs) return;
-    const old = this.shownHubs;
-    this.shownHubs = hubs;
+    if (hubs === slot.shownHubs) return;
+    const old = slot.shownHubs;
+    slot.shownHubs = hubs;
     const place = this.place;
-    if (place?.kind === "exchange" && !hubs.some((h) => h.id === place.id)) {
+    if (
+      place?.kind === "exchange"
+      && place.feed === slot.feed
+      && !hubs.some((h) => h.id === place.id)
+    ) {
       const bays = new Set(old?.find((h) => h.id === place.id)?.bays);
       const now = hubs.find((h) => h.bays.some((b) => bays.has(b)));
       this.place =
         now ?
           now.station !== undefined ?
-            { kind: "station", id: now.station }
-          : { kind: "exchange", id: now.id }
+            { kind: "station", feed: slot.feed, id: now.station }
+          : { kind: "exchange", feed: slot.feed, id: now.id }
         : undefined;
     }
     this.syncStatic(true);
   }
 
   /**
-   * Static layers follow the feed of the displayed date: they need only its core and its tiles, so
-   * they're drawn before its trips are in. The shown plan is the latest prepared one (with the trips
-   * loaded so far); its layers are redrawn when the feed changes.
+   * Static layers follow each feed's plan for the displayed date (FeedSlot.drawStatic); whenever a
+   * feed's are redrawn, what's map-wide goes with them: the brand colour switch, the selected
+   * place's ring and the focus, and the vehicles' place beneath the labels.
    */
   private syncStatic(force = false): void {
-    const { map, store } = this;
-    if (!this.visible) return;
-    const pp = store.planFor(displayServiceDate(this.clock.now()), Infinity);
-    if (!pp || !this.styleReady || this.disposed) return;
-    const tiles = store.tilesUrl(pp);
-    if (!tiles) return;
-    const same = pp.plan === this.shownFeed?.plan;
-    this.shownFeed = pp;
-    if (same && !force) return;
-    if (!same) this.syncHidden();
+    const { map } = this;
+    if (!this.visible || !this.styleReady || this.disposed) return;
+    const t = this.clock.now();
+    let drawn = false;
+    for (const slot of this.slots) {
+      const shown = slot.shown?.plan;
+      const r = slot.drawStatic(map, t, {
+        theme: this.theme,
+        force,
+        hiddenGroups: this.hiddenGroups,
+        showStops: this.showStops,
+        debug: this.debug,
+        vehicles: this.vehicles,
+        isDisposed: () => this.disposed,
+      });
+      if (slot.shown?.plan !== shown) this.mergeHidden();
+      drawn ||= r === true;
+    }
+    if (!drawn) return;
     // A new style (a theme switch) has no global state: set it again.
     applyBrandColors(map, this.showBrandColors);
-    this.routeColorsFor = undefined;
-    // Start loading its places file, whose grouping replaces the plan's (syncHubs).
-    store.placesFor(pp);
-    this.shownHubs = hubsOf(pp.plan);
-    // Published with the rest at the end (invalidate).
-    if (addStaticLayers(map, pp.plan, tiles, this.theme, this.hidden))
-      this.linesReady = false;
-    applyStopsVisibility(map, this.showStops);
-    if (!pp.plan.corridorInfo) this.frequencyLayer = undefined;
-    else if (!this.frequencyLayer || this.frequencyLayer.plan !== pp.plan)
-      this.frequencyLayer = new BusFrequencyLayer(pp.plan);
-    this.frequencyLayer?.invalidate(map);
-    this.railFocusFor = undefined;
     this.syncPlaceHighlight();
-    this.ferryPair = undefined;
-    // SkyTrain's track, in the tiles of a region with track-level rail (they replace its GTFS shapes).
-    addTrackLayers(map, pp.plan, this.theme);
-    applyTrackFilter(map, this.hidden);
-    if (this.debug && this.tracks) {
-      addTrackDebugLayers(map, this.tracks, this.theme);
-      const plan = pp.plan;
-      const tracks = this.tracks;
-      void loadPlatforms(
-        (path) => this.store.dataUrl(path),
-        plan.feed,
-        plan.feedVersion,
-      ).then(
-        (p) =>
-          p
-          && !this.disposed
-          && setDebugPlatforms(map, TrackGraph.fromCollection(tracks), plan, p),
-      );
-    }
-    this.vehicles.attach();
-    this.vehicles.setRouteColors(pp.plan.routes);
-    this.routeColorsFor = undefined;
+    this.attachVehicles();
+    // Published with the rest at the end (invalidate).
     this.invalidate();
   }
 
-  /**
-   * Routes in their colour on the map: their own (`PlanRoute.brand`, while `showBrandColors` is on), or
-   * the frequency band of the map's window ("now" or "day"), as their corridors show it, in the
-   * current theme (packages/transit-map/README.md#bus-corridors): vehicles, and with brand colours
-   * off, lines too (`setRouteColors`). Re-set when the feed, the theme, the choice, the window or the
-   * frequency layer's rates change; returns whether they did.
-   */
-  private syncRouteColors(): boolean {
-    const pp = this.shownFeed;
-    if (!pp) return false;
-    const freq = this.frequencyLayer;
-    const t = this.frequencyTime();
-    const date = displayServiceDate(t);
-    const step =
-      this.busFrequency === "now" ?
-        nowWindowStart((t - serviceDayStart(date)) / 1000)
-      : 0;
-    const key = `${freq?.version ?? -1}|${this.theme}|${this.showBrandColors}|${this.busFrequency}|${date}|${step}`;
-    if (this.routeColorsFor?.pp === pp && this.routeColorsFor.key === key)
-      return false;
-    this.routeColorsFor = { pp, key };
-    const colors: Record<string, string> = {};
-    for (const r of pp.plan.routes) {
-      if (r.brand && this.showBrandColors) continue;
-      // Corridors' rates first: a bus out when none start in the window (its last trip) has
-      // Infinity there, the last band.
-      const wait =
-        freq?.routeWait(r.key)
-        ?? (this.busFrequency === "day" ?
-          this.dayWait(r.key)
-        : routeFrequency(pp, r.key, date, step, 3600)?.wait);
-      if (wait !== undefined)
-        colors[r.key] = FREQUENCY_BANDS[bandIndex(wait)]!.color[this.theme];
-    }
-    this.vehicles.setRouteColors(
-      pp.plan.routes.map((r) => ({
-        key: r.key,
-        color: colors[r.key] ?? r.color,
-      })),
-    );
-    if (this.styleReady)
-      setRouteColors(
-        this.map,
-        this.showBrandColors ? undefined : colors,
-        this.showBrandColors ? undefined : (
-          Object.fromEntries(
-            Object.entries(colors).map(([k, c]) => [
-              k,
-              fadeColor(c, this.theme),
-            ]),
-          )
-        ),
-      );
-    return true;
+  /** Vehicles go beneath the first feed's stop labels, above its focused route (static.ts). */
+  private attachVehicles(): void {
+    this.vehicles.attach(this.primary.ids.layer(VEHICLES_BEFORE_LAYER));
   }
 
   private frame = (): void => {
     if (this.disposed) return;
-    const { store, rt, clock, map } = this;
+    const { clock, map } = this;
     const t = clock.now();
+    const scenario = this.primary.store.scenario !== undefined;
     // Scenarios are hypothetical: never mix in real bus positions.
-    if (!store.scenario) {
-      rt.update(t, this.sliderRange(t));
+    if (!scenario) {
+      for (const slot of this.slots) slot.rt.update(t, this.sliderRange(t));
       this.live.update(t);
     }
     // Vehicles (and the map repaint their upload triggers) only when something they depend on
@@ -2075,7 +1901,8 @@ export class TransitEngine {
     if (performance.now() - this.lastCoverageUpdate > 1000) {
       this.lastCoverageUpdate = performance.now();
       const [lo, hi] = this.sliderRange(t);
-      const next = rt.coverageFor(lo, hi);
+      // The slider shades where the first feed's buses are real (its badge's).
+      const next = this.primary.rt.coverageFor(lo, hi);
       if (JSON.stringify(next) !== JSON.stringify(this.coverage)) {
         this.coverage = next;
         this.dirty = true;
@@ -2090,27 +1917,38 @@ export class TransitEngine {
       this.frequencyAt = { t, at };
       this.dirty = true; // "Now"'s label
     }
-    if (this.frequencyLayer && this.styleReady) {
-      const ft = this.frequencyTime();
-      const date = displayServiceDate(ft);
-      this.frequencyLayer.update(
-        map,
-        date,
-        (ft - serviceDayStart(date)) / 1000,
-        this.busFrequency,
-        this.hidden,
-        this.focus(),
-      );
-    }
+    const ft = this.frequencyTime();
+    if (this.styleReady)
+      for (const slot of this.slots) {
+        if (!slot.frequencyLayer) continue;
+        const date = slot.displayDate(ft);
+        slot.frequencyLayer.update(
+          map,
+          date,
+          (ft - slot.dayStart(date)) / 1000,
+          this.busFrequency,
+          slot.hidden,
+          this.focusOf(slot),
+        );
+      }
     if (this.styleReady) this.syncRailFocus();
-    if (this.syncRouteColors()) this.inputsChanged = true;
+    for (const slot of this.slots)
+      if (
+        slot.syncRouteColors(this.styleReady ? map : undefined, this.vehicles, {
+          t: ft,
+          theme: this.theme,
+          showBrandColors: this.showBrandColors,
+          window: this.busFrequency,
+        })
+      )
+        this.inputsChanged = true;
     if (this.following && this.styleReady) this.keepCentred();
     else if (this.clearPaddingPending && !map.isMoving())
       this.clearMapPadding();
     if (this.revealAt !== undefined && performance.now() > this.revealAt) {
       this.revealAt = undefined;
       const at = this.placePoint();
-      const v = this.lastVehicles.find((x) => x.id === this.selectedId);
+      const v = this.selectedVehicle();
       if (this.styleReady) {
         if (at) this.keepPointInView({ lon: at[0], lat: at[1] });
         else if (v) this.keepPointInView(v);
@@ -2131,140 +1969,77 @@ export class TransitEngine {
     this.raf = requestAnimationFrame(this.frame);
   };
 
-  /** Every vehicle at t, the corrections and badges that go with them, drawn on the map. */
+  /** Every feed's vehicles at t, the corrections and badges that go with them, drawn on the map. */
   private computeVehicles(t: number): void {
-    const { store, rt, ais, map } = this;
+    const scenario = this.primary.store.scenario !== undefined;
     // Hidden routes aren't computed, except the selected vehicle's and the open route card's:
     // hiding a layer hides it from the map, but its cards stay true. Until the selected vehicle
     // has been seen, compute everything to find it.
     const keep = new Set<string>();
     if (this.selectedRoute) keep.add(this.selectedRoute);
-    if (this.place?.kind === "route") keep.add(this.place.id);
-    for (const r of this.segmentInfo()?.routes ?? []) keep.add(r);
-    const visible =
-      !this.hidden.size || (this.selectedId && !this.selectedRoute) ?
-        undefined
-      : new Set(
-          routeKeys(this.shownFeed).filter(
-            (k) => !this.hidden.has(k) || keep.has(k),
-          ),
-        );
-    const pp = store.planFor(displayServiceDate(t));
-    const live =
-      store.scenario ?
-        { mode: "estimated" as const, vehicles: undefined }
-      : rt.vehiclesAt(t, pp, visible, (id) => id === this.selectedId);
-    // RT delays carried forward: schedule estimates continue from where buses really were. Of a
-    // bus drawn from RT only a place card needs the delay (its departure times); the map draws an
-    // estimate only for a bus that isn't (below), so the rest are left out.
-    const carry =
-      store.scenario ? undefined : (
-        rt.delayCorrections(
-          t,
-          pp,
-          live.vehicles && !this.place ?
-            new Set(live.vehicles.map((v) => v.id))
-          : undefined,
-        )
-      );
-    let byDate = carry?.byDate;
-    let aisUsed = false;
-    if (!store.scenario) {
-      for (const date of [addDays(localDate(t), -1), localDate(t)]) {
-        // The day before: only its trips still running.
-        const dpp = store.planFor(
-          date,
-          date === localDate(t) ? 0 : (t - serviceDayStart(date)) / 1000,
-        );
-        const seabus = dpp && ais.correctionsFor(date, dpp, t);
-        if (!seabus) continue;
-        aisUsed = true;
-        byDate = new Map(byDate);
-        byDate.set(date, mergeCorrections(seabus, byDate.get(date))!);
-      }
-      // Bus trips TransLink cancelled: no schedule estimates for them.
-      for (const date of [addDays(localDate(t), -1), localDate(t)]) {
-        const cancelled = rt.cancellationsFor(date);
-        if (!cancelled) continue;
-        byDate = new Map(byDate);
-        byDate.set(date, mergeCorrections(byDate.get(date), cancelled)!);
-      }
+    const place = this.place;
+    if (place?.kind === "route") keep.add(feedKey(place.feed, place.id));
+    for (const r of this.segmentInfo()?.routes ?? [])
+      keep.add(feedKey(place!.feed, r));
+    const byFeed: FeedVehicles[] = this.slots.map((slot) => {
+      const visible =
+        !slot.hidden.size || (this.selected && !this.selectedRoute) ?
+          undefined
+        : new Set(
+            (slot.shown?.plan.routes ?? [])
+              .map((r) => r.key)
+              .filter(
+                (k) => !slot.hidden.has(k) || keep.has(feedKey(slot.feed, k)),
+              ),
+          );
+      const selected = this.selected;
+      const own = selected?.feed === slot.feed ? selected.id : undefined;
+      const out = slot.vehiclesAt(t, {
+        visible,
+        selected: (id) => id === own,
+        place: place !== undefined,
+        scenario,
+      });
+      slot.syncFerryPair(this.styleReady ? this.map : undefined, t, scenario);
+      return out;
+    });
+    this.lastVehicles = byFeed.flatMap((f) => f.vehicles);
+    if (this.selected) {
+      const v = this.selectedVehicle();
+      if (v) this.selectedRoute = feedKey(v.feed, v.routeKey);
     }
-    const scheduled = store.vehiclesAt(t, visible, byDate);
-    // SeaBus route lines: the berth pair in use on the day shown solid, the other dotted.
-    const shownDate = displayServiceDate(t);
-    const shownPp = store.planFor(shownDate);
-    const ferry = shownPp?.plan.ferry;
-    const pair =
-      ferry ?
-        (!store.scenario && ais.pairFor(shownDate, shownPp)) || ferry.default
-      : null;
-    if (pair !== this.ferryPair && this.styleReady) {
-      this.ferryPair = pair;
-      setFerryPair(map, pair ?? undefined);
-    }
-    // An estimate carrying a bus's RT delay stands for that bus: it keeps the RT vehicle's id and
-    // number, so a selection (or follow) carries across the hand-over, and back at the next fix.
-    const shownIds = new Set(live.vehicles?.map((v) => v.id));
-    const asBus = (v: VehicleState): VehicleState => {
-      const bus = v.mode === "bus" ? carry?.carried.get(v.tripId) : undefined;
-      if (!bus || shownIds.has(bus.id)) return v;
-      shownIds.add(bus.id);
-      const est: VehicleState = { ...v, id: bus.id };
-      if (bus.label) est.label = bus.label;
-      return est;
-    };
-    if (live.vehicles) {
-      // RT buses, plus estimates for buses whose RT prediction has run out (unreported for a while)
-      // but whose delay is known, unless the same bus (block) is already shown from RT.
-      const shownBlocks = new Set(
-        live.vehicles.map((v) => pp?.tripIndex.get(v.tripId)?.vehicleId),
-      );
-      const carried = scheduled
-        .filter(
-          (v) =>
-            v.mode === "bus"
-            && carry?.carried.has(v.tripId)
-            && !shownBlocks.has(v.id),
-        )
-        .map(asBus)
-        .filter((v) => v.id.startsWith("rt:"));
-      this.lastVehicles = [
-        ...scheduled.filter((v) => v.mode !== "bus"),
-        ...live.vehicles,
-        ...carried,
-      ];
-    } else this.lastVehicles = scheduled.map(asBus);
-    if (this.selectedId)
-      this.selectedRoute =
-        this.lastVehicles.find((v) => v.id === this.selectedId)?.routeKey
-        ?? this.selectedRoute;
-    this.lastCorrections = byDate;
 
-    const notices = store.scenario ? [] : store.noticesAt(t);
+    const notices =
+      scenario ? [] : this.slots.flatMap((s) => s.store.noticesAt(t));
     if (notices.join("\n") !== this.notices.join("\n")) {
       this.notices = notices;
       this.dirty = true;
     }
-    const [label, title] = RT_BADGE[live.mode];
-    const fullTitle = rt.liveStatus() ? `${title} (${rt.liveStatus()})` : title;
+    // The badge says where the first feed's buses come from.
+    const mode = byFeed[0]!.mode;
+    const [label, title] = RT_BADGE[mode];
+    const status = this.primary.rt.liveStatus();
+    const fullTitle = status ? `${title} (${status})` : title;
     if (
-      live.mode !== this.rtState.mode
+      mode !== this.rtState.mode
       || label !== this.rtState.label
       || fullTitle !== this.rtState.title
     ) {
-      this.rtState = { mode: live.mode, label, title: fullTitle };
+      this.rtState = { mode, label, title: fullTitle };
       this.dirty = true;
     }
-    this.datasets = this.datasetsDrawn(live.vehicles ?? [], aisUsed);
+    this.datasets = this.datasetsDrawn(
+      byFeed.flatMap((f) => f.live),
+      byFeed.some((f) => f.aisUsed),
+    );
 
     if (this.styleReady)
       this.vehicles.update(
         // The selected vehicle stays, so its card (and follow) still point at something.
         this.lastVehicles.filter(
           (v) =>
-            v.id === this.selectedId
-            || (!this.hidden.has(v.routeKey)
+            this.isSelected(v)
+            || (!this.hiddenRoute(v)
               && !(this.liveOnly && v.provenance === "estimated")),
         ),
         this.theme === "dark",
@@ -2272,7 +2047,7 @@ export class TransitEngine {
   }
 
   /**
-   * The datasets behind routes: each route's schedule (the plan's, else the host's default), and its
+   * The datasets behind routes: each route's schedule (the plan's, else its feed's), and its
    * provider's real-time data where `realtime` (real positions or predicted times are shown).
    */
   private datasetsOf(
@@ -2280,7 +2055,9 @@ export class TransitEngine {
   ): string[] {
     const out = new Set<string>();
     for (const [route, realtime] of routes) {
-      const schedule = route?.dataset ?? this.defaultDataset;
+      const schedule =
+        route?.dataset
+        ?? (route && this.slotOf(route.feed)?.config.feed.dataset);
       if (!route || !schedule) continue;
       out.add(schedule);
       const rt = realtime ? realtimeOf(schedule) : undefined;
@@ -2294,40 +2071,41 @@ export class TransitEngine {
     rtVehicles: readonly VehicleState[],
     aisUsed: boolean,
   ): string[] {
-    const routes = this.shownFeed?.routes;
+    const routeOf = (v: VehicleState) =>
+      this.slotOf(v.feed)?.shown?.routes.get(v.routeKey);
     const out = this.datasetsOf([
-      ...routeKeys(this.shownFeed)
-        .filter((k) => !this.hidden.has(k))
-        .map((k): [PlanRoute | undefined, boolean] => [routes?.get(k), false]),
+      ...this.slots.flatMap((s) =>
+        (s.shown?.plan.routes ?? [])
+          .filter((r) => !s.hidden.has(r.key))
+          .map((r): [PlanRoute, boolean] => [r, false]),
+      ),
       ...this.lastVehicles.map((v): [PlanRoute | undefined, boolean] => [
-        routes?.get(v.routeKey),
+        routeOf(v),
         false,
       ]),
       ...rtVehicles.map((v): [PlanRoute | undefined, boolean] => [
-        routes?.get(v.routeKey),
+        routeOf(v),
         true,
       ]),
     ]);
     if (aisUsed) out.push("aisstream");
     // The track network is imported from OpenStreetMap plus our overrides; corrections are ours.
-    if (this.tracks) out.push("osm", "transitopia");
+    if (this.slots.some((s) => s.tracks)) out.push("osm", "transitopia");
     return out;
   }
 
   /** Debug handle for the console (window.transit). */
   debugHandle(): object {
+    const primary = this.primary;
     return {
       map: this.map,
       clock: this.clock,
-      store: this.store,
-      rt: this.rt,
+      slots: this.slots,
+      store: primary.store,
+      rt: primary.rt,
       vehicles: () => this.lastVehicles,
     };
   }
-}
-
-function routeKeys(pp: PreparedPlan | undefined): string[] {
-  return pp ? pp.plan.routes.map((r) => r.key) : [];
 }
 
 function sameRoutes(a: PlanRoute[], b: PlanRoute[]): boolean {
@@ -2335,7 +2113,8 @@ function sameRoutes(a: PlanRoute[], b: PlanRoute[]): boolean {
     a.length === b.length
     && a.every(
       (r, i) =>
-        r.key === b[i]!.key
+        r.feed === b[i]!.feed
+        && r.key === b[i]!.key
         && r.color === b[i]!.color
         && r.label === b[i]!.label,
     )

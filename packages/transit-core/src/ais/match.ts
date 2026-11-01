@@ -89,7 +89,7 @@ export function aisCorrections(
   route: string,
   cfg: AisMatchConfig,
 ): AisDay {
-  const dayStart = serviceDayStart(serviceDate);
+  const dayStart = serviceDayStart(serviceDate, pp.plan.timezone);
   const trips = [...pp.servicesOn(serviceDate)]
     .flatMap((s) => pp.tripsByService.get(s) ?? [])
     .filter((t) => t.route.key === route);

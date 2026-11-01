@@ -7,6 +7,9 @@ import type {
 import { serviceDate } from "@transitopia/transit-core/time.ts";
 import { PLAN_TILE_LAYERS } from "@transitopia/transit-core/plan/tiles.ts";
 import { BusFrequencyLayer } from "../src/layers/bus-frequency.ts";
+import { feedIds } from "../src/layers/ids.ts";
+
+const IDS = feedIds("translink");
 
 // Two routes on corridors of their own: the R2 (its own colour) and the 19 (regular), each every
 // 10 minutes all day.
@@ -114,7 +117,7 @@ describe("BusFrequencyLayer", () => {
         new Set(),
         undefined,
       );
-    const before = new BusFrequencyLayer(plan(corridors(0, 1)));
+    const before = new BusFrequencyLayer(plan(corridors(0, 1)), IDS);
     before.invalidate(map);
     update(before);
     expect(set.get(PLAN_TILE_LAYERS.corridors)?.get(0)?.["brand"]).toBe(0);
@@ -122,7 +125,7 @@ describe("BusFrequencyLayer", () => {
     // Another plan's tiles, numbered differently: corridor 0 is now the 19's. MapLibre may still
     // apply the old plan's queued brand (packages/transit-map/src/layers/bus-frequency.ts →
     // invalidate), unless the new state sets one explicitly.
-    const after = new BusFrequencyLayer(plan(corridors(1, 0)));
+    const after = new BusFrequencyLayer(plan(corridors(1, 0)), IDS);
     after.invalidate(map);
     update(after);
     const detailed = set.get(PLAN_TILE_LAYERS.corridors)!;
@@ -132,7 +135,7 @@ describe("BusFrequencyLayer", () => {
 
   it("sets only the state that changed", () => {
     const { map, set, calls } = fakeMap();
-    const layer = new BusFrequencyLayer(plan(corridors(0, 1)));
+    const layer = new BusFrequencyLayer(plan(corridors(0, 1)), IDS);
     layer.invalidate(map);
     const update = (seconds: number, hidden = new Set<string>()) => {
       calls.length = 0;

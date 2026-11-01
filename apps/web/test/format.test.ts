@@ -25,11 +25,15 @@ describe("dates", () => {
   });
 });
 
+const TZ = "America/Vancouver";
+
 describe("times", () => {
-  it("shows wall-clock time in the region's timezone", () => {
-    expect(clockTime(T)).toBe("08:04:05");
-    expect(clockMinutes(T)).toBe("08:04");
-    expect(clockTime(Date.parse("2026-10-07T06:59:59.900Z"))).toBe("23:59:59");
+  it("shows wall-clock time in the given time zone", () => {
+    expect(clockTime(T, TZ)).toBe("08:04:05");
+    expect(clockMinutes(T, TZ)).toBe("08:04");
+    expect(clockTime(Date.parse("2026-10-07T06:59:59.900Z"), TZ)).toBe(
+      "23:59:59",
+    );
   });
 
   it("labels playback rates with a real minus sign", () => {
@@ -43,19 +47,23 @@ describe("timeState", () => {
 
   it("is future only when not live and ahead of now", () => {
     vi.useFakeTimers({ now: T });
-    expect(timeState({ t: T + 60_000, live: false })).toEqual({
+    expect(timeState({ t: T + 60_000, live: false, timezone: TZ })).toEqual({
       live: false,
       future: true,
       when: "Tue 6 Oct, 08:05",
     });
-    expect(timeState({ t: T - 60_000, live: false }).future).toBe(false);
-    expect(timeState({ t: T + 60_000, live: true }).future).toBe(false);
+    expect(timeState({ t: T - 60_000, live: false, timezone: TZ }).future).toBe(
+      false,
+    );
+    expect(timeState({ t: T + 60_000, live: true, timezone: TZ }).future).toBe(
+      false,
+    );
   });
 
   it("shows the calendar date after midnight", () => {
     const halfPastMidnight = Date.parse("2026-10-07T07:30:00Z");
-    expect(timeState({ t: halfPastMidnight, live: true }).when).toBe(
-      "Wed 7 Oct, 00:30",
-    );
+    expect(
+      timeState({ t: halfPastMidnight, live: true, timezone: TZ }).when,
+    ).toBe("Wed 7 Oct, 00:30");
   });
 });

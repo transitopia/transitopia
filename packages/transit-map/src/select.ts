@@ -14,6 +14,7 @@ import type { BusHub } from "@transitopia/transit-core/plan/exchanges.ts";
 import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
 import { sharedEnds, sharedPlace, type Place } from "./url.ts";
 
+/** One feed's plan and places: keys are resolved against each feed shown. */
 export interface SelectContext {
   feed: string;
   plan: Pick<ServicePlan, "stations" | "stops" | "routes">;
@@ -22,6 +23,7 @@ export interface SelectContext {
   places: PlacesFile | null;
 }
 
+/** A place, or a vehicle by its id in the context's feed (VehicleState.id). */
 export type Selection = { place: Place } | { vehicle: string };
 
 /** The engine's id of a GTFS-RT vehicle (`rt:<vehicle id>`) and of everything else (a run id). */
@@ -71,15 +73,21 @@ export function resolveSelect(
     switch (k.kind) {
       case "station": {
         const s = find(places.stations);
-        return s ? { place: { kind: "station", id: s } } : "elsewhere";
+        return s ?
+            { place: { kind: "station", feed: ctx.feed, id: s } }
+          : "elsewhere";
       }
       case "stop": {
         const s = find(places.stops);
-        return s ? { place: { kind: "stop", id: s } } : "elsewhere";
+        return s ?
+            { place: { kind: "stop", feed: ctx.feed, id: s } }
+          : "elsewhere";
       }
       case "route": {
         const r = find(places.routes);
-        return r ? { place: { kind: "route", id: r } } : "elsewhere";
+        return r ?
+            { place: { kind: "route", feed: ctx.feed, id: r } }
+          : "elsewhere";
       }
       case "exchange": {
         // Hubs from the places file have the exchange's ID; the plan's own, its bays.
@@ -91,7 +99,9 @@ export function resolveSelect(
           ?? ctx.hubs.find(
             (h) => !h.station && h.bays.some((b) => bays.has(b)),
           );
-        return hub ? { place: { kind: "exchange", id: hub.id } } : "elsewhere";
+        return hub ?
+            { place: { kind: "exchange", feed: ctx.feed, id: hub.id } }
+          : "elsewhere";
       }
       default:
         return "elsewhere";
@@ -101,17 +111,21 @@ export function resolveSelect(
   switch (k.scheme) {
     case "gtfs-stop":
       if (plan.stations.some((s) => s.id === k.value))
-        return { place: { kind: "station", id: k.value } };
+        return { place: { kind: "station", feed: ctx.feed, id: k.value } };
       if (plan.stops.some((s) => s.id === k.value))
-        return { place: { kind: "stop", id: k.value } };
+        return { place: { kind: "stop", feed: ctx.feed, id: k.value } };
       return "elsewhere";
     case "stop": {
       const s = plan.stops.find((x) => x.code === k.value);
-      return s ? { place: { kind: "stop", id: s.id } } : "elsewhere";
+      return s ?
+          { place: { kind: "stop", feed: ctx.feed, id: s.id } }
+        : "elsewhere";
     }
     case "gtfs-route": {
       const r = plan.routes.find((x) => x.gtfsRouteId === k.value);
-      return r ? { place: { kind: "route", id: r.key } } : "elsewhere";
+      return r ?
+          { place: { kind: "route", feed: ctx.feed, id: r.key } }
+        : "elsewhere";
     }
     default:
       return "elsewhere";
@@ -137,7 +151,7 @@ function resolveShared(
   for (let i = value.indexOf(":"); i > 0; i = value.indexOf(":", i + 1)) {
     const from = end(value.slice(0, i));
     const to = from && end(value.slice(i + 1));
-    if (from && to) return { place: sharedPlace(from, to) };
+    if (from && to) return { place: sharedPlace(ctx.feed, from, to) };
   }
   return undefined;
 }
@@ -179,14 +193,20 @@ export function selectKey(
       // has no key), else a stop.
       const key = (id: string) => {
         if (plan.stations.some((s) => s.id === id))
-          return selectKey({ place: { kind: "station", id } }, ctx);
+          return selectKey(
+            { place: { kind: "station", feed: ctx.feed, id } },
+            ctx,
+          );
         const exchange = ctx.hubs.find(
           (h) => !h.station && h.bays.includes(id),
         );
         return (
           (exchange
-            && selectKey({ place: { kind: "exchange", id: exchange.id } }, ctx))
-          || selectKey({ place: { kind: "stop", id } }, ctx)
+            && selectKey(
+              { place: { kind: "exchange", feed: ctx.feed, id: exchange.id } },
+              ctx,
+            ))
+          || selectKey({ place: { kind: "stop", feed: ctx.feed, id } }, ctx)
         );
       };
       const { from, to } = sharedEnds(place);

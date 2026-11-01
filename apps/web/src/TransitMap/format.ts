@@ -19,9 +19,9 @@ export function fromIsoDate(s: string): ServiceDate | undefined {
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-/** Wall-clock time in the region's timezone, "HH:MM:SS". */
-export function clockTime(t: number): string {
-  const w = toWallTime(t);
+/** Wall-clock time in a time zone (the snapshot's), "HH:MM:SS". */
+export function clockTime(t: number, tz: string): string {
+  const w = toWallTime(t, tz);
   return `${pad(w.hour)}:${pad(w.minute)}:${pad(w.second)}`;
 }
 
@@ -50,9 +50,9 @@ export function toHeadsign(h: string): string {
   return h.replace(/^.*?\bTo\s+/i, "To ");
 }
 
-/** Wall-clock time in the region's timezone, "HH:MM". */
-export function clockMinutes(t: number): string {
-  return clockTime(t).slice(0, 5);
+/** Wall-clock time in a time zone (the snapshot's), "HH:MM". */
+export function clockMinutes(t: number, tz: string): string {
+  return clockTime(t, tz).slice(0, 5);
 }
 
 /**
@@ -66,11 +66,15 @@ export interface TimeState {
   when: string;
 }
 
-export function timeState(snap: { t: number; live: boolean }): TimeState {
+export function timeState(snap: {
+  t: number;
+  live: boolean;
+  timezone: string;
+}): TimeState {
   return {
     live: snap.live,
     future: !snap.live && snap.t > Date.now(),
     // The calendar date (after midnight the service day is still the previous one).
-    when: `${shortDate(localDate(snap.t))}, ${clockMinutes(snap.t)}`,
+    when: `${shortDate(localDate(snap.t, snap.timezone))}, ${clockMinutes(snap.t, snap.timezone)}`,
   };
 }

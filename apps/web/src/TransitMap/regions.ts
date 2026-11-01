@@ -1,6 +1,6 @@
 // The regions /transit can show, found in config/ (docs/DESIGN.md#feeds-operators-and-rail-networks),
-// each with its feed, that feed's settings resolved from the defaults and its operator
-// (packages/transit-core/src/config.ts), and the rail network it runs on, if any; checked as the
+// each with its feeds, their settings resolved from the defaults and their operators
+// (packages/transit-core/src/config.ts), and the rail networks they run on, if any; checked as the
 // transit chunk loads. Adding a region is data only. The map shows one region at a time: the one in
 // view (TransitMap.tsx).
 
@@ -15,7 +15,7 @@ import {
   type NetworkInfo,
   type RegionInfo,
 } from "@transitopia/transit-core/config.ts";
-import type { RegionConfig } from "@transitopia/transit-map/engine.ts";
+import type { FeedConfig } from "@transitopia/transit-map/engine.ts";
 
 /** Where /transit opens without a map position. */
 const DEFAULT_REGION_ID = "metro-vancouver";
@@ -60,14 +60,19 @@ function defaultsFile(name: string): unknown {
 
 export interface SiteRegion {
   info: RegionInfo;
-  config: RegionConfig;
+  /** Its feeds' configs (region.json → feeds), for the engine (TransitEngineOptions.feeds). */
+  feeds: FeedConfig[];
 }
 
 function siteRegion(info: RegionInfo): SiteRegion {
-  // The engine draws one feed per region for now (RegionConfig.feed).
+  // The engine has a slot per feed, but shows one feed per region until #250's phase 5.
   if (info.feeds.length !== 1)
     throw new Error(`Region ${info.id}: the site shows exactly one feed`);
-  const feedId = info.feeds[0]!;
+  return { info, feeds: info.feeds.map(feedConfig) };
+}
+
+/** A feed's config, with its operator's and the defaults' settings and its rail network, if any. */
+function feedConfig(feedId: string): FeedConfig {
   const feed = parseFeed(file(feedFiles, "feeds", feedId, "feed"));
   const routes = parseConfig(
     "routes",
@@ -78,28 +83,25 @@ function siteRegion(info: RegionInfo): SiteRegion {
   );
   const net = NETWORKS.find((n) => n.feeds.includes(feedId));
   return {
-    info,
-    config: {
+    feed,
+    kinematics: resolveKinematics(
+      defaultsFile("kinematics"),
+      op,
       feed,
-      kinematics: resolveKinematics(
-        defaultsFile("kinematics"),
-        op,
-        feed,
-        routes.routes,
-      ),
-      rt: resolveRt(defaultsFile("rt"), op, feed),
-      ...(net ?
-        {
-          rail: {
-            network: net.id,
-            operations: parseConfig(
-              "operations",
-              file(networkFiles, "networks", net.id, "operations"),
-            ),
-          },
-        }
-      : {}),
-    },
+      routes.routes,
+    ),
+    rt: resolveRt(defaultsFile("rt"), op, feed),
+    ...(net ?
+      {
+        rail: {
+          network: net.id,
+          operations: parseConfig(
+            "operations",
+            file(networkFiles, "networks", net.id, "operations"),
+          ),
+        },
+      }
+    : {}),
   };
 }
 

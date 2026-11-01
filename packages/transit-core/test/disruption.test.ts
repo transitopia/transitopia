@@ -179,6 +179,7 @@ const plan = {
       brand: true,
       color: "#009ac7",
       textColor: "#fff",
+      feed: "translink",
       gtfsRouteId: "1",
     },
   ],

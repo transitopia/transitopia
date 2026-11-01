@@ -47,6 +47,7 @@ const fixes = (
   await readRecordedFixes(
     new Recorder(feedPaths(FEED).aisHistory, ais.coverageGapS * 1000),
     date,
+    TIMEZONE,
   )
 ).map((f) => ({ ...f, name: names.get(f.mmsi) ?? f.name }));
 if (!fixes.length) {

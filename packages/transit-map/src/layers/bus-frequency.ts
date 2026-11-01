@@ -23,7 +23,8 @@ import {
 import { bandIndex } from "@transitopia/shared/frequency.ts";
 import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
 import type { ServiceDate } from "@transitopia/transit-core/time.ts";
-import { BUS_TICKS_SOURCE, LINES_SOURCE, tickStops } from "./static.ts";
+import { tickStops } from "./static.ts";
+import type { FeedIds } from "./ids.ts";
 
 /** "Now" counts trips in the hour from the shown time, refreshed in steps of this many seconds. */
 const NOW_STEP_S = 300;
@@ -62,6 +63,7 @@ interface Target {
 
 export class BusFrequencyLayer {
   readonly plan: ServicePlan;
+  private readonly ids: FeedIds;
   private readonly combos: CorridorFrequency;
   /** Per target: its features' ids (corridor or stop index) and their combos. */
   private readonly targets: (Target & {
@@ -87,9 +89,10 @@ export class BusFrequencyLayer {
   /** Bumped whenever update applies new rates (so the engine knows to re-colour vehicles). */
   version = 0;
 
-  /** For a plan with corridors (`plan.corridorInfo`). */
-  constructor(plan: ServicePlan) {
+  /** For a plan with corridors (`plan.corridorInfo`), drawn by its feed's layers (`ids`). */
+  constructor(plan: ServicePlan, ids: FeedIds) {
     this.plan = plan;
+    this.ids = ids;
     this.combos = new CorridorFrequency(plan);
     const brands = brandedRoutes(plan).map((r) => r.key);
     this.brandOf = this.combos.routeDirs.map((rd) => brands.indexOf(rd.route));
@@ -100,7 +103,7 @@ export class BusFrequencyLayer {
       name: "detailed" | "overview",
     ) => ({
       set: name,
-      source: LINES_SOURCE,
+      source: ids.lines,
       sourceLayer,
       ids: set.combo.map((_, i) => i),
       combo: Int32Array.from(set.combo),
@@ -115,7 +118,7 @@ export class BusFrequencyLayer {
       corridors(PLAN_TILE_LAYERS.overviewCorridors, info.overview, "overview"),
       {
         set: "stops",
-        source: BUS_TICKS_SOURCE,
+        source: ids.busTicks,
         ids: stopIds,
         combo: this.combos.combosOfStops(stopIds),
         short: [],
@@ -155,7 +158,7 @@ export class BusFrequencyLayer {
     hidden: ReadonlySet<string>,
     focus: Focus | undefined,
   ): void {
-    if (!map.getSource(LINES_SOURCE)) return;
+    if (!map.getSource(this.ids.lines)) return;
     const step = window === "now" ? nowWindowStart(seconds) : 0;
     const focusKey =
       !focus ? ""

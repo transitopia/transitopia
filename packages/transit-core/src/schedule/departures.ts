@@ -78,7 +78,7 @@ export function departuresAt(
   }
   const out: Departure[] = [];
   for (const date of dates) {
-    const day = serviceDayStart(date);
+    const day = serviceDayStart(date, plan.timezone);
     const fix = corrections?.(date);
     for (const service of pp.servicesOn(date)) {
       const trips = pp.tripsByService.get(service) ?? [];
