@@ -35,6 +35,7 @@ import {
   type ScheduleCorrections,
   type TripPacer,
   type VehicleState,
+  type Within,
 } from "@transitopia/transit-core/schedule/engine.ts";
 import {
   feedDataPath,
@@ -779,6 +780,7 @@ export class PlanStore {
     t: number,
     routes?: Set<string>,
     rtCorrections?: Map<ServiceDate, ScheduleCorrections>,
+    within?: Within,
   ): VehicleState[] {
     const today = localDate(t, this.tz);
     const out: VehicleState[] = [];
@@ -799,7 +801,13 @@ export class PlanStore {
         out.push(
           ...scheduledVehicles(
             pp,
-            { serviceDate: date, sec, routes: nonRail, ...this.pacing(pp) },
+            {
+              serviceDate: date,
+              sec,
+              routes: nonRail,
+              within,
+              ...this.pacing(pp),
+            },
             mergeCorrections(
               this.scheduledCorrectionsFor(date, pp),
               rtCorrections?.get(date),
@@ -810,7 +818,7 @@ export class PlanStore {
         out.push(
           ...scheduledVehicles(
             pp,
-            { serviceDate: date, sec, routes, ...this.pacing(pp) },
+            { serviceDate: date, sec, routes, within, ...this.pacing(pp) },
             mergeCorrections(
               this.scheduledCorrectionsFor(date, pp),
               rtCorrections?.get(date),

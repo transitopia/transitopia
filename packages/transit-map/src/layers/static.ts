@@ -6,6 +6,7 @@
 import type { FeatureCollection } from "geojson";
 import type {
   GeoJSONSource,
+  LayerSpecification,
   LineLayerSpecification,
   Map as MlMap,
   SymbolLayerSpecification,
@@ -562,16 +563,37 @@ export function addStaticLayers(
     type: "geojson",
     data: exchangesGeoJson(plan),
   });
-  map.addSource(ids.busStops, {
-    type: "geojson",
-    data: busStopsGeoJson(plan),
-  });
+  const busStops = busStopsGeoJson(plan);
+  map.addSource(ids.busStops, { type: "geojson", data: busStops });
   map.addSource(ids.busTicks, {
     type: "geojson",
     data: busTicksGeoJson(plan),
   });
   if (!map.hasImage(TICK_IMAGE))
     map.addImage(TICK_IMAGE, tickImage(), { sdf: true, pixelRatio: 2 });
+  // Only layers the plan has something for: Hullo's plan, a ferry alone, would add dozens of empty
+  // corridor, bus and SkyTrain layers (packages/transit-map/README.md#rendering).
+  const kinds = new Set(plan.routes.map((r) => r.kind));
+  const has = {
+    corridors: drawsCorridors(plan),
+    bus: kinds.has("bus"),
+    shape: kinds.has("shape"),
+    skytrain: kinds.has("skytrain"),
+    stops: busStops.features.length > 0,
+    stations: plan.stations.length > 0,
+  };
+  const add = (layer: LayerSpecification) => {
+    const name = ids.nameOf(layer.id) ?? "";
+    const wanted =
+      name.startsWith("corridors") ? has.corridors
+      : name.startsWith("routes-bus") ? has.bus
+      : name.startsWith("routes-shape") ? has.shape
+      : name.startsWith("routes-skytrain") ? has.skytrain
+      : name.startsWith("bus-stops") ? has.stops
+      : name.startsWith("stations") ? has.stations
+      : true;
+    if (wanted) addFeedLayer(map, layer);
+  };
   const dark = theme === "dark";
   const casing = dark ? "#111418" : "#ffffff";
   const text = dark ? "#e6e8eb" : "#1f2328";
@@ -727,10 +749,10 @@ export function addStaticLayers(
         "line-width": brandWidth(0, only),
       },
     });
-    addFeedLayer(map, casingLayer(L(`${prefix}-casing`), tierWidth(2, [0, 1])));
+    add(casingLayer(L(`${prefix}-casing`), tierWidth(2, [0, 1])));
     // Corridors whose routes don't run in the window (feature state `idle`): dotted grey, beneath
     // the tiers, so a route the site mentions is never missing from the map.
-    addFeedLayer(map, {
+    add({
       id: L(`${prefix}-idle`),
       type: "line",
       source,
@@ -757,9 +779,9 @@ export function addStaticLayers(
         "line-dasharray": [2, 2],
       },
     });
-    addFeedLayer(map, { id: L(prefix), ...line });
-    addFeedLayer(map, casingLayer(L(`${prefix}-brand-casing`), brandWidth(2)));
-    addFeedLayer(map, brandLayer(L(`${prefix}-brand`)));
+    add({ id: L(prefix), ...line });
+    add(casingLayer(L(`${prefix}-brand-casing`), brandWidth(2)));
+    add(brandLayer(L(`${prefix}-brand`)));
     // The focused corridors again, on top of everything but stations, exchanges and labels
     // (packages/transit-map/README.md#route-focus): another route's corridor along the same street
     // (the other direction) can come later in the tile and cover them, SkyTrain's lines are drawn
@@ -804,7 +826,7 @@ export function addStaticLayers(
     ] satisfies LineLayerSpecification[];
   });
   // Bus routes drawn on their own (99 B-Line, RapidBus; every route without corridors).
-  addFeedLayer(map, {
+  add({
     id: L("routes-bus"),
     type: "line",
     ...routes,
@@ -831,7 +853,7 @@ export function addStaticLayers(
         : ["interpolate", ["linear"], ["zoom"], 9, 1, 13, 2, 16, 4],
     },
   });
-  addFeedLayer(map, {
+  add({
     id: L("routes-bus-limited"),
     type: "line",
     ...routes,
@@ -844,7 +866,7 @@ export function addStaticLayers(
       "line-dasharray": [1, 2],
     },
   });
-  addFeedLayer(map, {
+  add({
     id: L("routes-shape-inactive"),
     type: "line",
     ...routes,
@@ -857,7 +879,7 @@ export function addStaticLayers(
       "line-dasharray": [1, 2],
     },
   });
-  addFeedLayer(map, {
+  add({
     id: L("routes-shape"),
     type: "line",
     ...routes,
@@ -868,7 +890,7 @@ export function addStaticLayers(
       "line-width": ["interpolate", ["linear"], ["zoom"], 9, 1.5, 13, 3, 16, 5],
     },
   });
-  addFeedLayer(map, {
+  add({
     id: L("routes-skytrain-casing"),
     type: "line",
     ...routes,
@@ -892,7 +914,7 @@ export function addStaticLayers(
       ],
     },
   });
-  addFeedLayer(map, {
+  add({
     id: L("routes-skytrain"),
     type: "line",
     ...routes,
@@ -968,11 +990,11 @@ export function addStaticLayers(
       ],
     },
   };
-  addFeedLayer(map, ticks);
+  add(ticks);
   // SkyTrain's layers go here (tracks.ts → addTrackLayers; layers/order.ts), then the focused route
   // over them, its stop ticks included.
-  for (const layer of corridorSets.flat()) addFeedLayer(map, layer);
-  addFeedLayer(map, {
+  for (const layer of corridorSets.flat()) add(layer);
+  add({
     ...ticks,
     id: L("bus-stops-focus"),
     paint: {
@@ -981,7 +1003,7 @@ export function addStaticLayers(
     },
   });
   // Bus exchanges: drawn like stations, in the stop labels' grey, once bus stops show.
-  addFeedLayer(map, {
+  add({
     id: L("exchanges"),
     type: "circle",
     source: ids.exchanges,
@@ -1011,7 +1033,7 @@ export function addStaticLayers(
       ],
     },
   });
-  addFeedLayer(map, {
+  add({
     id: L("stations"),
     type: "circle",
     source: ids.stations,
@@ -1032,7 +1054,7 @@ export function addStaticLayers(
       ],
     },
   });
-  addFeedLayer(map, {
+  add({
     id: L("stations-label"),
     type: "symbol",
     source: ids.stations,
@@ -1052,7 +1074,7 @@ export function addStaticLayers(
       "text-halo-width": 1.5,
     },
   });
-  addFeedLayer(map, {
+  add({
     id: L(VEHICLES_BEFORE_LAYER),
     type: "symbol",
     source: ids.busStops,
@@ -1091,7 +1113,7 @@ export function addStaticLayers(
     },
   });
   // Beneath station labels, which win where they collide (layers/order.ts).
-  addFeedLayer(map, {
+  add({
     id: L("exchanges-label"),
     type: "symbol",
     source: ids.exchanges,

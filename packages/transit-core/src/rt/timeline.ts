@@ -39,6 +39,7 @@ import type {
   PreparedPlan,
   PreparedTrip,
   VehicleState,
+  Within,
 } from "../schedule/engine.ts";
 import {
   kinematicsFor,
@@ -122,6 +123,14 @@ interface Shown {
 
 /** Upper bound for plausible bus speed when dead-reckoning (m/s). */
 const MAX_SPEED = 25;
+/**
+ * Viewport culling (`Within`): a bus is drawn at most this far from its fix besides what it can
+ * travel since (m): a shifted fix's bus is drawn on its route up to MAX_SHIFTED_GPS away, plus
+ * room for a glide from where it was shown before.
+ */
+const CULL_SLACK_M = 1500;
+/** Metres per degree of latitude. */
+const M_PER_DEG = 111_320;
 /** A fix implying a faster straight-line move than this since the last one is discarded (m/s). */
 const IMPLAUSIBLE_SPEED = 45;
 /** Fixes within this of their trip shape are on it (m). */
@@ -357,17 +366,41 @@ export class RtTimeline {
     t: number,
     routes?: Set<string>,
     withDelay?: (id: string) => boolean,
+    within?: Within & { outside: Set<string> },
   ): VehicleState[] {
     this.withDelay = withDelay;
     try {
-      return this.drawnAt(t, routes);
+      return this.drawnAt(t, routes, within);
     } finally {
       this.withDelay = undefined;
     }
   }
 
-  private drawnAt(t: number, routes: Set<string> | undefined): VehicleState[] {
+  /**
+   * The vehicles shown at t. With `within`, a bus that can't be in its area (by how far it can be
+   * from its last fix) isn't worked out: its id (`rt:<id>`) goes into `within.outside`, since it's
+   * still drawn from RT, just not here.
+   */
+  private drawnAt(
+    t: number,
+    routes: Set<string> | undefined,
+    within: (Within & { outside: Set<string> }) | undefined,
+  ): VehicleState[] {
     const out: VehicleState[] = [];
+    /** Whether a bus last fixed at o0 (next at o1) can't be in `within`'s area at t. */
+    const away = (o0: Obs, o1: Obs | undefined): boolean => {
+      if (!within || within.except?.has(o0.v.routeKey)) return false;
+      const dt = Math.max(t - o0.v.ts, o1 ? o1.v.ts - o0.v.ts : 0) / 1000;
+      const r = (CULL_SLACK_M + MAX_SPEED * dt) / M_PER_DEG;
+      const rx = r / Math.max(0.1, Math.cos((o0.v.lat * Math.PI) / 180));
+      const [w, s, e, n] = within.bounds;
+      return (
+        o0.v.lon < w - rx
+        || o0.v.lon > e + rx
+        || o0.v.lat < s - r
+        || o0.v.lat > n + r
+      );
+    };
     // Latest snapshot fetched at or before t: vehicles absent from it have left service.
     const latestFetch = floorValue(this.fetchTimes, t);
     for (const [id, tr] of this.tracks) {
@@ -376,6 +409,10 @@ export class RtTimeline {
       if (!o0 || this.hidden(tr, i)) continue;
       if (routes && !routes.has(o0.v.routeKey)) continue;
       const next = tr.obs[i + 1];
+      if (away(o0, next)) {
+        within!.outside.add(`rt:${id}`);
+        continue;
+      }
       if (next && this.hidden(tr, i + 1)) {
         // Known to be off its route next (between trips): stand where it was, rather than head there
         // or predict on past it.

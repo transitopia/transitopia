@@ -1,6 +1,6 @@
 # Transitopia server
 
-The server behind `api.transitopia.org` (Node, TypeScript, [Hono](https://hono.dev)). It serves real-time data to the site for every region, and on the leader it polls each feed's GTFS-realtime within its request budget ([docs/DESIGN.md → Feeds, operators and rail networks](../../docs/DESIGN.md#feeds-operators-and-rail-networks)), streams SeaBus AIS, records everything, re-dispatches SkyTrain when corrections change, and runs the scheduled jobs. How it fits with the rest: [docs/DESIGN.md](../../docs/DESIGN.md). Hosting and operations: [deployment/README.md](../../deployment/README.md#the-server-apitransitopiaorg).
+The server behind `api.transitopia.org` (Node, TypeScript, [Hono](https://hono.dev)). It serves real-time data to the site for every feed, and on the leader it polls each feed's GTFS-realtime within its request budget ([docs/DESIGN.md → Feeds, operators and rail networks](../../docs/DESIGN.md#feeds-operators-and-rail-networks)), streams SeaBus AIS, records everything, re-dispatches SkyTrain when corrections change, and runs the scheduled jobs. How it fits with the rest: [docs/DESIGN.md](../../docs/DESIGN.md). Hosting and operations: [deployment/README.md](../../deployment/README.md#the-server-apitransitopiaorg).
 
 ```sh
 # the local PostgreSQL (infra/compose.dev.yml), once
@@ -33,7 +33,7 @@ GET /auth/github/login, /auth/github/callback, /auth/me; POST /auth/logout     a
 /admin/api/*                        the review queue behind /admin (admins only)
 ```
 
-`/rt/*`, `/feeds/*` and `/networks/*` are public, with CORS for everyone, and cached at Cloudflare's edge, so server load doesn't grow with visitors. The server serves every feed a region in `config/regions/*/region.json` shows (and polls those with real time) and the one rail network (other ids are a 404).
+`/rt/*`, `/feeds/*` and `/networks/*` are public, with CORS for everyone, and cached at Cloudflare's edge, so server load doesn't grow with visitors. The server serves every feed in `config/feeds/` (and polls those with real time) and the one rail network (other ids are a 404).
 
 Where `feed` is a parameter it's required (400 without one, 404 for a feed without real time). `/admin/api` and `/auth` allow only `ALLOWED_ORIGINS`.
 

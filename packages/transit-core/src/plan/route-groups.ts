@@ -1,5 +1,5 @@
 // The site's route groups, its layers panel's switches (apps/web/README.md#header-and-layers, issue
-// #211): from the timetable, not an operator's labels, so the same rule holds in every region.
+// #211): from the timetable, not an operator's labels, so the same rule holds for every feed.
 
 import { isFrequent } from "@transitopia/shared/frequency.ts";
 import { spacingTier } from "@transitopia/shared/stop-spacing.ts";

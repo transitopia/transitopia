@@ -24,11 +24,7 @@ import {
 import { join } from "node:path";
 import { archivedFeeds } from "@transitopia/data/gtfs-day.ts";
 import { readCsv } from "@transitopia/data/gtfs-zip.ts";
-import {
-  feedPaths,
-  log,
-  readFeeds,
-} from "@transitopia/data/paths.ts";
+import { feedPaths, log, readFeeds } from "@transitopia/data/paths.ts";
 
 const ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
@@ -135,7 +131,7 @@ type BBox = [number, number, number, number];
 
 /**
  * Roads are fetched this far (degrees, about 2 km) past the feed's outermost stops: a shape can run
- * on past its last stop to turn or lay over (guess; regions' bboxes gave this room before #250).
+ * on past its last stop to turn or lay over (guess).
  */
 const ROADS_MARGIN_DEG = 0.02;
 

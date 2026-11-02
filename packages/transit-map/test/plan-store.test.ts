@@ -234,11 +234,11 @@ describe("PlanStore loading plans by parts", () => {
       }),
     );
     const s = PlanStore.create(
-    await PlanStore.manifests("https://data.example/", config),
-    "https://data.example/",
-    undefined,
-    config,
-  );
+      await PlanStore.manifests("https://data.example/", config),
+      "https://data.example/",
+      undefined,
+      config,
+    );
     return { s, urls };
   }
 

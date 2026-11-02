@@ -35,7 +35,7 @@ export const transitData: string = env.VITE_TRANSIT_DATA ?? "/dev-data/";
 export const transitApi: string | undefined = env.VITE_TRANSIT_API || undefined;
 
 /**
- * Every region's routes zoomed out (packages/transit-core/DESIGN.md#overview-tiles): from the tile
+ * Every feed's routes zoomed out (packages/transit-core/DESIGN.md#overview-tiles): from the tile
  * worker (a URL ending in "/"), else the local build (npm run build:overview-tiles).
  */
 export const transitOverviewTiles: string =

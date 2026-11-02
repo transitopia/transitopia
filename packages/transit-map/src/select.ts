@@ -51,7 +51,7 @@ export function vehicleOfKey(key: string, feed: string): string | undefined {
 
 /**
  * The selection a key names here, "elsewhere" for a valid key this plan doesn't have (another
- * region's feature, or one only the resolver knows), or undefined for an invalid key.
+ * feed's feature, or one only the resolver knows), or undefined for an invalid key.
  */
 export function resolveSelect(
   key: string,

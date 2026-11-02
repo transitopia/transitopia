@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { serviceDate } from "../src/time.ts";
 import { preparePlan, scheduledVehicles } from "../src/schedule/engine.ts";
-import type { ServicePlan } from "../src/plan/types.ts";
+import type { Bounds, ServicePlan } from "../src/plan/types.ts";
 import type { KinematicsConfig } from "../src/movement/kinematics.ts";
 
 const kin: KinematicsConfig = {
@@ -172,5 +172,22 @@ describe("scheduledVehicles", () => {
         routes: new Set(["99"]),
       }),
     ).toHaveLength(0);
+  });
+  it("works out only vehicles whose shape reaches the area, but for routes excepted", () => {
+    const q = { serviceDate: serviceDate("20260928"), sec: 85860 };
+    const near: Bounds = [-123.09, 49.24, -123.08, 49.26];
+    const far: Bounds = [-122.9, 49.2, -122.8, 49.3];
+    expect(
+      scheduledVehicles(pp, { ...q, within: { bounds: near } }),
+    ).toHaveLength(1);
+    expect(
+      scheduledVehicles(pp, { ...q, within: { bounds: far } }),
+    ).toHaveLength(0);
+    expect(
+      scheduledVehicles(pp, {
+        ...q,
+        within: { bounds: far, except: new Set(["expo"]) },
+      }),
+    ).toHaveLength(1);
   });
 });

@@ -31,7 +31,7 @@ import {
   type RtDayChanges,
 } from "../src/rt/changes.ts";
 import { preparePlan, scheduledVehicles } from "../src/schedule/engine.ts";
-import type { ServicePlan } from "../src/plan/types.ts";
+import type { Bounds, ServicePlan } from "../src/plan/types.ts";
 import type { KinematicsConfig } from "../src/movement/kinematics.ts";
 
 const kin: KinematicsConfig = {
@@ -187,6 +187,25 @@ describe("RtTimeline", () => {
   });
   it("filters by route", () => {
     expect(tl.vehiclesAt(T0 + 30_000, new Set(["R4"]))).toHaveLength(0);
+  });
+  it("leaves out a bus that can't be in the area, noting it as outside", () => {
+    const at = T0 + 30_000;
+    const outside = new Set<string>();
+    // Beside the fixes: worked out.
+    const near = { bounds: [-123.1, 49.24, -123.08, 49.27] as Bounds, outside };
+    expect(tl.vehiclesAt(at, undefined, undefined, near)).toHaveLength(1);
+    expect(outside.size).toBe(0);
+    // 20 km east: not, but noted, so no estimate stands in for it.
+    const far = { bounds: [-122.8, 49.2, -122.7, 49.3] as Bounds, outside };
+    expect(tl.vehiclesAt(at, undefined, undefined, far)).toHaveLength(0);
+    expect([...outside]).toEqual(["rt:bus1"]);
+    // Its route excepted (a card needs it): worked out wherever it is.
+    expect(
+      tl.vehiclesAt(at, undefined, undefined, {
+        ...far,
+        except: new Set([tl.vehiclesAt(at)[0]!.routeKey]),
+      }),
+    ).toHaveLength(1);
   });
 });
 

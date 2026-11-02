@@ -94,6 +94,7 @@ import type { FeedConfig } from "./config.ts";
 import {
   FeedSlot,
   type FeedVehicles,
+  type VehicleKind,
   type RouteDay,
   type SegmentInfo,
 } from "./feed-slot.ts";
@@ -305,6 +306,12 @@ const FREQUENCY_INTERVAL_MS = 250;
  * second, and recomputing every vehicle every frame kept the main thread busy for nothing.
  */
 const MAX_STEP_PX = 0.5;
+/**
+ * Viewport culling: vehicles are worked out only where they may be within the view grown by this
+ * fraction of its size on every side, and again once the view leaves that area
+ * (packages/transit-map/README.md#rendering).
+ */
+const CULL_MARGIN = 0.5;
 /** A tapped place is brought into view after this long, once its card is up and measured. */
 const REVEAL_DELAY_MS = 150;
 /** Tap tolerance around stations and stops (px). */
@@ -436,10 +443,19 @@ export class TransitEngine {
   private dirty = true;
   /** Something vehicles depend on changed since they were last computed (see frame()). */
   private inputsChanged = true;
-  /** The clock time, zoom and performance.now() vehicles were last computed at. */
-  private computedFor = { t: NaN, zoom: NaN, at: -Infinity };
-  /** The fastest any vehicle is set to move (m/s, from the kinematics config), for MAX_STEP_PX. */
-  private maxSpeedMps: number;
+  /** The zoom every vehicle was last computed at. */
+  private computedZoom = NaN;
+  /** Each feed's vehicles of each kind as last computed, and when (`computeVehicles`). */
+  private computed = new Map<
+    string,
+    Partial<Record<VehicleKind, { out: FeedVehicles; t: number; at: number }>>
+  >();
+  /** Per feed and kind of vehicle: the fastest any is set to move (m/s, `maxSpeedOf`). */
+  private maxSpeeds = new Map<string, number>();
+  /** The area vehicles were last worked out for (CULL_MARGIN), or undefined for everywhere. */
+  private cullArea: Bounds | undefined;
+  /** The routes worked out wherever they are, last time (`routeId`s, joined): a change republishes cards. */
+  private keptRoutes = "";
   private lastCoverageUpdate = 0;
   private coverage: [number, number][] = [];
   private lastUrlWrite = 0;
@@ -479,7 +495,10 @@ export class TransitEngine {
       feeds.map(({ config, m }) => ({
         config,
         manifests: m,
-        coverage: m.manifest.coverage,
+        // Expand step (#250 phase 6): a manifest published before manifests said where their feed
+        // runs counts as everywhere, until the next data build publishes `coverage`.
+        coverage:
+          "coverage" in m.manifest ? m.manifest.coverage : [-180, -90, 180, 90],
         slot: undefined,
         unsubscribe: undefined,
         leftAt: undefined,
@@ -498,7 +517,6 @@ export class TransitEngine {
     this.urls = { dataBase: opts.dataBase, apiBase: opts.apiBase };
     this.scenario = opts.scenario !== undefined;
     this.onRebuilt = opts.onRebuilt;
-    this.preview = undefined;
     this.tz = opts.feeds[0]!.feed.timezone;
     this.theme = opts.theme;
     this.debug = opts.debug ?? false;
@@ -533,13 +551,6 @@ export class TransitEngine {
 
     // Vehicles are sized for the first feed's kinematics, and recomputed for the fastest of any.
     this.vehicles = new VehicleLayer(map, opts.feeds[0]!.kinematics.sizing);
-    this.maxSpeedMps =
-      Math.max(
-        ...feeds.flatMap(({ config: { kinematics } }) => [
-          ...Object.values(kinematics.modes).map((k) => k.maxSpeed),
-          ...Object.values(kinematics.routes).map((k) => k.maxSpeed ?? 0),
-        ]),
-      ) / 3.6;
     this.vehicles.selected = this.selected;
     this.snapshot = this.buildSnapshot(this.clock.now());
 
@@ -920,9 +931,7 @@ export class TransitEngine {
    * and service label): the one with the most stops in view (`pickPrimary`).
    */
   private get primary(): FeedSlot | undefined {
-    return (
-      this.slots.find((s) => s.feed === this.primaryFeed) ?? this.slots[0]
-    );
+    return this.slots.find((s) => s.feed === this.primaryFeed) ?? this.slots[0];
   }
 
   /** The loaded feed with the most stops in view, the first loaded on a tie (or with none in view). */
@@ -950,16 +959,8 @@ export class TransitEngine {
   private syncFeeds(): void {
     if (this.disposed) return;
     const { map } = this;
-    const b = map.getBounds();
-    const view: Bounds = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
-    const mx = (view[2] - view[0]) * FEED_MARGIN;
-    const my = (view[3] - view[1]) * FEED_MARGIN;
-    const near: Bounds = [
-      view[0] - mx,
-      view[1] - my,
-      view[2] + mx,
-      view[3] + my,
-    ];
+    const view = viewBounds(map);
+    const near = grow(view, FEED_MARGIN);
     const was = this.view;
     this.view = view;
     this.near = near;
@@ -976,7 +977,9 @@ export class TransitEngine {
     }
     const held = new Set([this.selected?.feed, this.place?.feed]);
     const left = this.feeds
-      .filter((f) => f.slot && f.leftAt !== undefined && !held.has(f.config.feed.id))
+      .filter(
+        (f) => f.slot && f.leftAt !== undefined && !held.has(f.config.feed.id),
+      )
       .sort((a, b) => a.leftAt! - b.leftAt!);
     let loaded = this.slots.length;
     for (const f of left)
@@ -1044,6 +1047,7 @@ export class TransitEngine {
     if (network && !this.slots.some((s) => s.config.rail?.network === network))
       this.dispatchPolls.get(network)?.poll.stop();
     this.lastVehicles = this.lastVehicles.filter((v) => v.feed !== slot.feed);
+    this.computed.delete(slot.feed);
     this.mergeHidden();
     this.pickPrimary();
     this.invalidate();
@@ -1061,7 +1065,10 @@ export class TransitEngine {
     let d = this.dispatchPolls.get(network);
     if (d) return d;
     const apiBase = this.urls.apiBase;
-    const entry: { poll: LivePoller; versions: LiveDispatchVersions | undefined } = {
+    const entry: {
+      poll: LivePoller;
+      versions: LiveDispatchVersions | undefined;
+    } = {
       versions: undefined,
       poll: new LivePoller(
         apiBase
@@ -1693,7 +1700,7 @@ export class TransitEngine {
 
   /**
    * Hide the engine (its layers, vehicles, taps) and pause it (no frames, no live polling), or show
-   * it again as it was: a host keeps the engine of a region it zoomed out of, to show it again at
+   * it again as it was: a host keeps the engine while zoomed out, to show it again at
    * once when zoomed back in (apps/web/README.md#transit-mode). The clock keeps its time.
    */
   setVisible(visible: boolean): void {
@@ -1732,7 +1739,7 @@ export class TransitEngine {
     this.syncStatic(true);
     // Vehicles for this view before the layer draws again.
     const t = this.clock.now();
-    this.computedFor = { t, zoom: this.map.getZoom(), at: performance.now() };
+    this.computedZoom = this.map.getZoom();
     this.computeVehicles(t);
     this.attachVehicles();
     this.invalidate();
@@ -1831,7 +1838,10 @@ export class TransitEngine {
       return;
     }
     // Every feed in view is loaded (hidden, none are), with its plan and places file.
-    if (!this.visible || this.feeds.some((f) => !f.slot && overlaps(f.coverage, this.near)))
+    if (
+      !this.visible
+      || this.feeds.some((f) => !f.slot && overlaps(f.coverage, this.near))
+    )
       return;
     const contexts = this.slots.map((s) => this.selectContext(s, true));
     if (contexts.some((c) => !c)) return;
@@ -2024,7 +2034,7 @@ export class TransitEngine {
       drawn: (v) =>
         !this.hiddenRoute(v)
         && !(this.liveOnly && v.provenance === "estimated"),
-      corrections: (d) => slot.lastCorrections?.get(d),
+      corrections: (d) => slot.correctionsOn(d),
       datasetsOf: (routes) => this.datasetsOf(routes),
       segment: () => this.segmentInfo(),
     });
@@ -2129,18 +2139,29 @@ export class TransitEngine {
     // IDLE_RECOMPUTE_MS covers what ages with wall-clock time.
     const zoom = map.getZoom();
     const at = performance.now();
-    const stepMs =
+    // Culled: the view has moved past the area vehicles were worked out for.
+    if (this.cullArea && !insideBounds(viewBounds(map), this.cullArea))
+      this.inputsChanged = true;
+    // Each feed's buses, and the rest of its vehicles, at their own rate: the time counts once the
+    // fastest of them could have moved MAX_STEP_PX.
+    const msPerM =
       (1000 * MAX_STEP_PX * metresPerPixel(map.getCenter().lat, zoom))
-      / (this.maxSpeedMps * Math.abs(clock.rate || 1));
-    if (
-      this.inputsChanged
-      || (t !== this.computedFor.t && at - this.computedFor.at >= stepMs)
-      || zoom !== this.computedFor.zoom
-      || at - this.computedFor.at > IDLE_RECOMPUTE_MS
-    ) {
+      / Math.abs(clock.rate || 1);
+    if (this.inputsChanged || zoom !== this.computedZoom) {
       this.inputsChanged = false;
-      this.computedFor = { t, zoom, at };
+      this.computedZoom = zoom;
       this.computeVehicles(t);
+    } else {
+      const due = (feed: string, kind: VehicleKind) => {
+        const g = this.computed.get(feed)?.[kind];
+        return (
+          !g
+          || (t !== g.t && at - g.at >= msPerM / this.maxSpeedOf(feed, kind))
+          || at - g.at > IDLE_RECOMPUTE_MS
+        );
+      };
+      if (this.slots.some((s) => VEHICLE_KINDS.some((k) => due(s.feed, k))))
+        this.computeVehicles(t, due);
     }
     if (performance.now() - this.lastCoverageUpdate > 1000) {
       this.lastCoverageUpdate = performance.now();
@@ -2213,8 +2234,42 @@ export class TransitEngine {
     this.raf = requestAnimationFrame(this.frame);
   };
 
-  /** Every feed's vehicles at t, the corrections and badges that go with them, drawn on the map. */
-  private computeVehicles(t: number): void {
+  /**
+   * The fastest a feed's vehicles of a kind are set to move (m/s, from its kinematics config), for
+   * MAX_STEP_PX: its buses' mode, or every other mode and every route's own setting.
+   */
+  private maxSpeedOf(feed: string, kind: VehicleKind): number {
+    const key = `${feed}|${kind}`;
+    let v = this.maxSpeeds.get(key);
+    if (v === undefined) {
+      const k = this.feeds.find((f) => f.config.feed.id === feed)!.config
+        .kinematics;
+      v =
+        Math.max(
+          1,
+          ...(kind === "bus" ?
+            [k.modes.bus?.maxSpeed ?? 0]
+          : [
+              ...Object.entries(k.modes)
+                .filter(([mode]) => mode !== "bus")
+                .map(([, m]) => m.maxSpeed),
+              ...Object.values(k.routes).map((r) => r.maxSpeed ?? 0),
+            ]),
+        ) / 3.6;
+      this.maxSpeeds.set(key, v);
+    }
+    return v;
+  }
+
+  /**
+   * Every feed's vehicles at t, the corrections and badges that go with them, drawn on the map.
+   * With `due`, only the groups (a feed's buses, or the rest of its vehicles) it accepts are worked
+   * out again; the others are drawn as last computed.
+   */
+  private computeVehicles(
+    t: number,
+    due?: (feed: string, kind: VehicleKind) => boolean,
+  ): void {
     const { scenario } = this;
     // Hidden routes aren't computed, except the selected vehicle's and the open route card's:
     // hiding a layer hides it from the map, but its cards stay true. Until the selected vehicle
@@ -2225,7 +2280,26 @@ export class TransitEngine {
     if (place?.kind === "route") keep.add(feedKey(place.feed, place.id));
     for (const r of this.segmentInfo()?.routes ?? [])
       keep.add(feedKey(place!.feed, r));
-    const byFeed: FeedVehicles[] = this.slots.map((slot) => {
+    // A station's or stop's card links its departures to their vehicles, wherever they are.
+    const card = this.snapshot.place;
+    if (card && "groups" in card)
+      for (const r of [...card.routes, ...card.groups.map((g) => g.route)])
+        keep.add(routeId(r));
+    // Culled to the view and its margin, but for those routes; everywhere until the selected
+    // vehicle has been found. Only recomputing every group moves the area, so every group's
+    // vehicles are for the same one.
+    const area =
+      this.selected && !this.selectedRoute ? undefined
+      : due && this.cullArea ? this.cullArea
+      : grow(viewBounds(this.map), CULL_MARGIN);
+    this.cullArea = area;
+    const keptRoutes = [...keep].sort().join();
+    if (keptRoutes !== this.keptRoutes) {
+      this.keptRoutes = keptRoutes;
+      this.dirty = true;
+    }
+    const at = performance.now();
+    const byFeed = this.slots.map((slot) => {
       const visible =
         !slot.hidden.size || (this.selected && !this.selectedRoute) ?
           undefined
@@ -2238,14 +2312,38 @@ export class TransitEngine {
           );
       const selected = this.selected;
       const own = selected?.feed === slot.feed ? selected.id : undefined;
-      const out = slot.vehiclesAt(t, {
-        visible,
-        selected: (id) => id === own,
-        place: place !== undefined,
-        scenario,
-      });
+      let groups = this.computed.get(slot.feed);
+      if (!groups) this.computed.set(slot.feed, (groups = {}));
+      for (const kind of VEHICLE_KINDS) {
+        const was = groups[kind];
+        if (was && due && !due(slot.feed, kind)) continue;
+        const out = slot.vehiclesAt(t, {
+          kind,
+          visible,
+          selected: (id) => id === own,
+          place: place !== undefined,
+          scenario,
+          within: area && {
+            bounds: area,
+            except: new Set(
+              [...keep].flatMap((k) => {
+                const r = splitFeedKey(k);
+                return r?.feed === slot.feed ? [r.key] : [];
+              }),
+            ),
+          },
+        });
+        groups[kind] = { out, t, at };
+      }
       slot.syncFerryPair(this.styleReady ? this.map : undefined, t, scenario);
-      return out;
+      const bus = groups.bus!.out;
+      const other = groups.other!.out;
+      return {
+        vehicles: [...other.vehicles, ...bus.vehicles],
+        mode: bus.mode,
+        live: bus.live,
+        aisUsed: other.aisUsed,
+      };
     });
     this.lastVehicles = byFeed.flatMap((f) => f.vehicles);
     if (this.selected) {
@@ -2281,12 +2379,14 @@ export class TransitEngine {
 
     if (this.styleReady)
       this.vehicles.update(
-        // The selected vehicle stays, so its card (and follow) still point at something.
+        // The selected vehicle stays, so its card (and follow) still point at something; those
+        // worked out off the area for a card aren't drawn.
         this.lastVehicles.filter(
           (v) =>
             this.isSelected(v)
             || (!this.hiddenRoute(v)
-              && !(this.liveOnly && v.provenance === "estimated")),
+              && !(this.liveOnly && v.provenance === "estimated")
+              && (!area || contains(area, v.lon, v.lat))),
         ),
         this.theme === "dark",
       );
@@ -2353,6 +2453,8 @@ export class TransitEngine {
   }
 }
 
+const VEHICLE_KINDS: readonly VehicleKind[] = ["bus", "other"];
+
 /** Live dispatch's versions by service date (the live dispatch section). */
 type LiveDispatchVersions = Record<string, VersionPointer>;
 
@@ -2361,6 +2463,24 @@ function overlaps(a: Bounds | null, b: Bounds | undefined): boolean {
   return (
     !!a && !!b && a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3]
   );
+}
+
+/** The map's view as bounds (rotated or pitched: what encloses it). */
+function viewBounds(map: MlMap): Bounds {
+  const b = map.getBounds();
+  return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+}
+
+/** Bounds grown by a fraction of their size on every side. */
+function grow(b: Bounds, f: number): Bounds {
+  const dx = (b[2] - b[0]) * f;
+  const dy = (b[3] - b[1]) * f;
+  return [b[0] - dx, b[1] - dy, b[2] + dx, b[3] + dy];
+}
+
+/** Whether `a` lies within `b`. */
+function insideBounds(a: Bounds, b: Bounds): boolean {
+  return a[0] >= b[0] && a[1] >= b[1] && a[2] <= b[2] && a[3] <= b[3];
 }
 
 function contains(b: Bounds, lon: number, lat: number): boolean {

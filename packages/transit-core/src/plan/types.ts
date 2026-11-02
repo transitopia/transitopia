@@ -361,7 +361,7 @@ export interface PlanFiles {
   /** Bus patterns' paths over the corridors (`PatternPath`), a file per route group (`pathGroup`). */
   paths?: Record<string, string> | undefined;
   /**
-   * SkyTrain patterns' paths over its line pieces in the plan's tiles (`PathStep`s), where the region
+   * SkyTrain patterns' paths over its line pieces in the plan's tiles (`PathStep`s), where the feed
    * has track. Set by build-plan-tiles, with the tiles they're numbered by.
    */
   railPaths?: string | undefined;

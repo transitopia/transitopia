@@ -638,7 +638,6 @@ export function parseFeed(json: unknown): FeedInfo {
   return parsed(feed, "feed.json", json);
 }
 
-
 /** A rail network's network.json, checked. */
 export function parseNetwork(json: unknown): NetworkInfo {
   return parsed(network, "network.json", json);

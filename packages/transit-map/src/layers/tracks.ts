@@ -122,6 +122,8 @@ export function addTrackLayers(
   theme: Theme,
 ): void {
   const L = ids.layer;
+  // Only a plan with track-level SkyTrain has track in its tiles.
+  if (!plan.routes.some((r) => r.kind === "skytrain")) return;
   if (map.getLayer(L("rail-centre"))) return;
   const dark = theme === "dark";
   const yard = dark ? "#5b636d" : "#a9b0b8";

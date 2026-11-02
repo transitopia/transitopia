@@ -11,7 +11,7 @@ How Transitopia is hosted, deployed and operated. The system's design is in [doc
 | `data.transitopia.org` | The published transit and cycling data | The R2 bucket `transitopia-data` |
 | `api.transitopia.org` | The server (`apps/server`) | A FullHost VM in Toronto, behind Cloudflare's proxy (only Cloudflare can connect) |
 
-- **FullHost** (Canadian, with data centres in Vancouver, Calgary, Toronto and Montreal): the VM is Ubuntu 26.04 LTS, 4 vCPU, 8 GB RAM, 100 GB SSD, $36/month, in Toronto. Vancouver only offered a 2 vCPU plan at $48; the ~60–70 ms from Vancouver doesn't matter behind Cloudflare's cache, and local times come from the region's time zone, never the host's. Docker Compose runs the server, PostgreSQL (PostGIS), Caddy and backups.
+- **FullHost** (Canadian, with data centres in Vancouver, Calgary, Toronto and Montreal): the VM is Ubuntu 26.04 LTS, 4 vCPU, 8 GB RAM, 100 GB SSD, $36/month, in Toronto. Vancouver only offered a 2 vCPU plan at $48; the ~60–70 ms from Vancouver doesn't matter behind Cloudflare's cache, and local times come from each feed's time zone, never the host's. Docker Compose runs the server, PostgreSQL (PostGIS), Caddy and backups.
 - **Cloudflare**: DNS, the static site, the CDN and edge cache (including the live endpoint and the published data), WAF and rate limiting in front of `api.transitopia.org`, the tile worker, Web Analytics, and **R2**: `transitopia-maps` (tiles), `transitopia-data` (published transit and cycling data) and the private `transitopia-archive` (backups, raw recordings, GTFS feeds, developer snapshots). R2 has no Canadian location; nothing here is sensitive. Keeping all object storage at one provider means one toolchain (rclone), no egress fees for snapshot pulls, and backups at a different provider from the VM.
 - Bucket locations are settings (`DATA_PUBLISH_REMOTE`, `MAPS_PUBLISH_REMOTE`, `ARCHIVE_REMOTE`), and everything runs as portable Docker and S3, so either part can move.
 
@@ -40,7 +40,7 @@ https://docs.protomaps.com/deploy/cloudflare. A file `<name>.pmtiles` in the buc
 | File | Built by |
 |---|---|
 | `protomaps-bc.pmtiles` (the basemap) | `.github/workflows/build_basemap.yml`, weekly (`npm run tiles -- --region bc`) |
-| `transit-overview-v<N>.pmtiles` (every region's routes zoomed out) | The server's daily data build (`npm run build:overview-tiles`), uploaded to `MAPS_PUBLISH_REMOTE` ([packages/transit-core → Overview tiles](../packages/transit-core/DESIGN.md#overview-tiles)) |
+| `transit-overview-v<N>.pmtiles` (every feed's routes zoomed out) | The server's daily data build (`npm run build:overview-tiles`), uploaded to `MAPS_PUBLISH_REMOTE` ([packages/transit-core → Overview tiles](../packages/transit-core/DESIGN.md#overview-tiles)) |
 
 The worker's `ALLOWED_ORIGINS` variable lists the sites allowed to use the tiles (CORS), comma
 separated. It keeps other websites from building maps on our tiles and using up our Cloudflare

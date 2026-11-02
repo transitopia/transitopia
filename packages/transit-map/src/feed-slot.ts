@@ -22,11 +22,13 @@ import {
 import {
   feedForDate,
   patternStarts,
+  type PlanRoute,
 } from "@transitopia/transit-core/plan/types.ts";
 import type {
   PreparedPlan,
   ScheduleCorrections,
   VehicleState,
+  Within,
 } from "@transitopia/transit-core/schedule/engine.ts";
 import {
   onSegment,
@@ -115,6 +117,12 @@ export interface SegmentInfo extends SegmentContext {
   days: Record<string, RouteDay[]>;
 }
 
+/**
+ * The kinds of vehicle a feed's are computed as, each at its own rate: its buses, and the rest
+ * (trains and ferries), so moving trains don't recompute every bus.
+ */
+export type VehicleKind = "bus" | "other";
+
 /** The feed's vehicles at an instant, and what goes with them (`FeedSlot.vehiclesAt`). */
 export interface FeedVehicles {
   vehicles: VehicleState[];
@@ -152,8 +160,15 @@ export class FeedSlot {
   linesReady = false;
   /** The ferry berth pair last applied to the map (re-applied after the style reloads). */
   ferryPair: string | null | undefined;
-  /** The real-time corrections last applied, per service date (for departure times). */
-  lastCorrections: Map<ServiceDate, ScheduleCorrections> | undefined;
+  /** The corrections each kind of vehicle was last computed with, per service date (`correctionsOn`). */
+  private corrections: Partial<
+    Record<VehicleKind, Map<ServiceDate, ScheduleCorrections> | undefined>
+  > = {};
+  /** Per plan's routes: its route keys of each kind of vehicle (`routesOfKind`). */
+  private kindRoutes = new WeakMap<
+    readonly PlanRoute[],
+    Record<VehicleKind, Set<string>>
+  >();
   /** What route colours were last set for (syncRouteColors). */
   private routeColorsFor: { pp: PreparedPlan; key: string } | undefined;
   /** SkyTrain pieces last marked as on a combined route (`syncRailFocus`), and for what. */
@@ -608,64 +623,90 @@ export class FeedSlot {
    * which routes are computed (keys; undefined: all), and `selected` names its selected vehicle (by
    * its id), whose delay is always worked out. With `place`, a card needs every bus's delay (its
    * departure times), not only those of buses shown as estimates. A scenario mixes in no real data.
+   * With `within`, only vehicles that may be in its area are worked out (viewport culling; its
+   * `except` are route keys). `kind` is which of its vehicles: its buses (real time, and estimates
+   * carrying their delays) or the rest (trains and ferries, with AIS), each recomputed at its own
+   * rate (packages/transit-map/README.md#rendering).
    */
   vehiclesAt(
     t: number,
     opts: {
+      kind: VehicleKind;
       visible: Set<string> | undefined;
       selected: (id: string) => boolean;
       place: boolean;
       scenario: boolean;
+      within: Within | undefined;
     },
   ): FeedVehicles {
     const { store, rt, ais } = this;
     const { scenario } = opts;
     const pp = store.planFor(this.displayDate(t));
+    const routes = this.routesOfKind(opts.kind, opts.visible, pp);
+    if (opts.kind === "other") {
+      // Trains and ferries: the timetable, shifted by AIS fixes and service changes.
+      let byDate: Map<ServiceDate, ScheduleCorrections> | undefined;
+      let aisUsed = false;
+      if (!scenario) {
+        const today = localDate(t, this.tz);
+        for (const date of [addDays(today, -1), today]) {
+          // The day before: only its trips still running.
+          const dpp = store.planFor(
+            date,
+            date === today ? 0 : (t - this.dayStart(date)) / 1000,
+          );
+          const fixes = dpp && ais.correctionsFor(date, dpp, t);
+          if (!fixes) continue;
+          aisUsed = true;
+          byDate = new Map(byDate);
+          byDate.set(date, fixes);
+        }
+        byDate = this.withCancellations(t, byDate);
+      }
+      this.corrections.other = byDate;
+      return {
+        vehicles: store.vehiclesAt(t, routes, byDate, opts.within),
+        mode: "estimated",
+        live: [],
+        aisUsed,
+      };
+    }
+    // Buses drawn from RT but outside the area (not worked out).
+    const outside = new Set<string>();
     const live =
       scenario ?
         { mode: "estimated" as const, vehicles: undefined }
-      : rt.vehiclesAt(t, pp, opts.visible, opts.selected);
+      : rt.vehiclesAt(
+          t,
+          pp,
+          routes,
+          opts.selected,
+          opts.within && { ...opts.within, outside },
+        );
     // RT delays carried forward: schedule estimates continue from where buses really were. Of a
-    // bus drawn from RT only a place card needs the delay (its departure times); the map draws an
-    // estimate only for a bus that isn't (below), so the rest are left out.
+    // bus drawn from RT (here or outside the area) only a place card needs the delay (its departure
+    // times); the map draws an estimate only for a bus that isn't (below), so the rest are left out.
     const carry =
       scenario ? undefined : (
         rt.delayCorrections(
           t,
           pp,
           live.vehicles && !opts.place ?
-            new Set(live.vehicles.map((v) => v.id))
+            new Set([...live.vehicles.map((v) => v.id), ...outside])
           : undefined,
         )
       );
-    let byDate = carry?.byDate;
-    let aisUsed = false;
-    const today = localDate(t, this.tz);
-    if (!scenario) {
-      for (const date of [addDays(today, -1), today]) {
-        // The day before: only its trips still running.
-        const dpp = store.planFor(
-          date,
-          date === today ? 0 : (t - this.dayStart(date)) / 1000,
-        );
-        const seabus = dpp && ais.correctionsFor(date, dpp, t);
-        if (!seabus) continue;
-        aisUsed = true;
-        byDate = new Map(byDate);
-        byDate.set(date, mergeCorrections(seabus, byDate.get(date))!);
-      }
-      // Bus trips TransLink cancelled: no schedule estimates for them.
-      for (const date of [addDays(today, -1), today]) {
-        const cancelled = rt.cancellationsFor(date);
-        if (!cancelled) continue;
-        byDate = new Map(byDate);
-        byDate.set(date, mergeCorrections(byDate.get(date), cancelled)!);
-      }
-    }
-    const scheduled = store.vehiclesAt(t, opts.visible, byDate);
+    // Bus trips the feed cancelled: no schedule estimates for them.
+    const byDate =
+      scenario ? undefined : this.withCancellations(t, carry?.byDate);
+    const scheduled = store.vehiclesAt(t, routes, byDate, opts.within);
     // An estimate carrying a bus's RT delay stands for that bus: it keeps the RT vehicle's id and
     // number, so a selection (or follow) carries across the hand-over, and back at the next fix.
-    const shownIds = new Set(live.vehicles?.map((v) => v.id));
+    // A bus drawn from RT outside the area counts as shown: no estimate stands in for it.
+    const shownIds = new Set([
+      ...(live.vehicles?.map((v) => v.id) ?? []),
+      ...outside,
+    ]);
     const asBus = (v: VehicleState): VehicleState => {
       const bus = v.mode === "bus" ? carry?.carried.get(v.tripId) : undefined;
       if (!bus || shownIds.has(bus.id)) return v;
@@ -696,13 +737,63 @@ export class FeedSlot {
         ...carried,
       ];
     } else vehicles = scheduled.map(asBus);
-    this.lastCorrections = byDate;
+    this.corrections.bus = byDate;
     return {
       vehicles,
       mode: live.mode,
       live: live.vehicles ?? [],
-      aisUsed,
+      aisUsed: false,
     };
+  }
+
+  /** Trips the feed's service changes cancelled (no schedule estimates for them), added to `byDate`. */
+  private withCancellations(
+    t: number,
+    byDate: Map<ServiceDate, ScheduleCorrections> | undefined,
+  ): Map<ServiceDate, ScheduleCorrections> | undefined {
+    const today = localDate(t, this.tz);
+    for (const date of [addDays(today, -1), today]) {
+      const cancelled = this.rt.cancellationsFor(date);
+      if (!cancelled) continue;
+      byDate = new Map(byDate);
+      byDate.set(date, mergeCorrections(byDate.get(date), cancelled)!);
+    }
+    return byDate;
+  }
+
+  /**
+   * Its route keys of a kind of vehicle (buses, or the rest) that are computed: among `visible`,
+   * when given. From the shown plan, else `pp` (before the shown one is drawn); cached per plan.
+   */
+  private routesOfKind(
+    kind: VehicleKind,
+    visible: Set<string> | undefined,
+    pp: PreparedPlan | undefined,
+  ): Set<string> {
+    const routes = (this.shown ?? pp)?.plan.routes ?? [];
+    let byKind = this.kindRoutes.get(routes);
+    if (!byKind) {
+      byKind = {
+        bus: new Set(routes.filter((r) => r.mode === "bus").map((r) => r.key)),
+        other: new Set(
+          routes.filter((r) => r.mode !== "bus").map((r) => r.key),
+        ),
+      };
+      this.kindRoutes.set(routes, byKind);
+    }
+    const all = byKind[kind];
+    return visible ? new Set([...all].filter((k) => visible.has(k))) : all;
+  }
+
+  /**
+   * The real-time and AIS corrections the vehicles last used on a service date (for departure
+   * times): the buses' and the rest's together.
+   */
+  correctionsOn(date: ServiceDate): ScheduleCorrections | undefined {
+    return mergeCorrections(
+      this.corrections.other?.get(date),
+      this.corrections.bus?.get(date),
+    );
   }
 
   /**

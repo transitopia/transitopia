@@ -12,6 +12,7 @@ import {
 import { indexCalendar } from "../gtfs/calendar.ts";
 import { serviceDayStart, type ServiceDate } from "../time.ts";
 import type {
+  Bounds,
   PlanPattern,
   PlanRoute,
   PlanStop,
@@ -365,6 +366,62 @@ export interface ScheduleQuery {
   routes?: Set<string> | undefined;
   /** Paces trips between their timetable times (e.g. buses, with learned stops and slow sections). */
   pacer?: TripPacer | undefined;
+  /** Only vehicles that may be in an area (viewport culling); undefined for every one. */
+  within?: Within | undefined;
+}
+
+/**
+ * An area vehicles are wanted in (packages/transit-map/README.md#rendering, viewport culling): a
+ * vehicle that can't be in it isn't computed, unless its route is in `except` (a card needs it).
+ * Conservative: some vehicles computed are outside it, never the other way round.
+ */
+export interface Within {
+  bounds: Bounds;
+  /** Route keys whose vehicles are computed wherever they are. */
+  except?: ReadonlySet<string> | undefined;
+}
+
+const shapeBoundsCache = new WeakMap<
+  ServicePlan["shapes"],
+  Map<string, Bounds | null>
+>();
+
+/** A shape's bbox (cached per plan), or null for an unknown or empty shape. */
+export function shapeBounds(
+  plan: Pick<ServicePlan, "shapes">,
+  shape: string,
+): Bounds | null {
+  let byShape = shapeBoundsCache.get(plan.shapes);
+  if (!byShape) shapeBoundsCache.set(plan.shapes, (byShape = new Map()));
+  let b = byShape.get(shape);
+  if (b === undefined) {
+    b = null;
+    for (const [lon, lat] of plan.shapes[shape] ?? [])
+      b =
+        b ?
+          [
+            Math.min(b[0], lon),
+            Math.min(b[1], lat),
+            Math.max(b[2], lon),
+            Math.max(b[3], lat),
+          ]
+        : [lon, lat, lon, lat];
+    byShape.set(shape, b);
+  }
+  return b;
+}
+
+/** Whether a trip's vehicle may be within the area: its route is excepted, or its shape reaches it. */
+function tripWithin(
+  pp: PreparedPlan,
+  t: PreparedTrip,
+  w: Within,
+  shapeOverride: string | undefined,
+): boolean {
+  if (w.except?.has(t.route.key)) return true;
+  const b = shapeBounds(pp.plan, shapeOverride ?? t.pattern.shape);
+  const a = w.bounds;
+  return !b || (b[0] <= a[2] && a[0] <= b[2] && b[1] <= a[3] && a[1] <= b[3]);
 }
 
 /**
@@ -495,6 +552,11 @@ export function scheduledVehicles(
         continue;
       if (q.routes && !q.routes.has(t.route.key)) continue;
       if (special.has(t)) continue;
+      if (
+        q.within
+        && !tripWithin(pp, t, q.within, corr?.shapes?.get(t.pattern.id))
+      )
+        continue;
       const v = positionOnTrip(
         pp,
         t,
@@ -513,6 +575,8 @@ export function scheduledVehicles(
         t.trip.service !== service
         || corr.cancelled.has(t.trip.id)
         || (q.routes && !q.routes.has(t.route.key))
+        || (q.within
+          && !tripWithin(pp, t, q.within, corr.shapes?.get(t.pattern.id)))
       )
         continue;
       const c = corr.trips.get(t.trip.id);
