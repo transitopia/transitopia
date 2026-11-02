@@ -499,10 +499,7 @@ export class TransitEngine {
       feeds.map(({ config, m }) => ({
         config,
         manifests: m,
-        // Expand step (#250 phase 6): a manifest published before manifests said where their feed
-        // runs counts as everywhere, until the next data build publishes `coverage`.
-        coverage:
-          "coverage" in m.manifest ? m.manifest.coverage : [-180, -90, 180, 90],
+        coverage: m.manifest.coverage,
         slot: undefined,
         unsubscribe: undefined,
         leftAt: undefined,
