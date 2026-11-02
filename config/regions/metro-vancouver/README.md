@@ -1,6 +1,6 @@
 # Metro Vancouver
 
-Where `/transit` opens, showing TransLink's feed ([config/feeds/translink/](../../feeds/translink/README.md)). A region is only a view now ([docs/DESIGN.md → Feeds, operators and rail networks](../../../docs/DESIGN.md#feeds-operators-and-rail-networks)):
+Where `/transit` opens, showing TransLink's feed ([config/feeds/translink/](../../feeds/translink/README.md)) and Hullo's ferry to Nanaimo ([config/feeds/hullo/](../../feeds/hullo/README.md)). A region is only a view now ([docs/DESIGN.md → Feeds, operators and rail networks](../../../docs/DESIGN.md#feeds-operators-and-rail-networks)):
 
 | Path | What |
 |---|---|

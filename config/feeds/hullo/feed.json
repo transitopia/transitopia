@@ -1,0 +1,53 @@
+{
+  "$comment": "Hullo's passenger ferry between Vancouver and Nanaimo (https://hullo.com). One route (routes.json) along berths and a lane traced from AIS (ferries/hullo.json). Regions showing it: metro-vancouver. Terms: none published for the GTFS (DATA-LICENSES.md; OPEN-QUESTIONS #4).",
+  "id": "hullo",
+  "name": "Hullo",
+  "operator": "hullo",
+  "timezone": "America/Vancouver",
+  "$timezoneChecks": "Known facts about the feed's time zone that the runtime's time zone data (tzdata, via ICU) must agree with; the server refuses to start otherwise (checkTimezoneData in packages/transit-core/src/time.ts). Times are still always computed from the runtime's data, never from these. BC moved to permanent UTC-7 in 2026 (tzdata 2026b, https://data.iana.org/time-zones/tzdb/NEWS); older data falls back to UTC-8 on 2026-11-01.",
+  "timezoneChecks": [
+    {
+      "at": "2026-11-02T20:00:00Z",
+      "utcOffsetMinutes": -420,
+      "reason": "British Columbia's permanent UTC-7 (tzdata 2026b or later)"
+    }
+  ],
+  "dataset": "hullo-gtfs",
+  "static": {
+    "$comment": "Linked from nowhere we found; given in issue #250 (checked 2026-11-01: version 20261020115220, 35 KB, valid 2026-01-24 to 2026-12-31). Every service is dated in calendar_dates.txt, one service_id per date, with no calendar.txt; 2,919 trips of 75 minutes with no block_id. No dated history: fetch-gtfs archives each version it sees. Whether the next timetable comes before 2026-12-31: OPEN-QUESTIONS #3.",
+    "url": "https://hullo.com/gtfs/gtfs-hullo.zip"
+  },
+  "ais": {
+    "$comment": "No GTFS-realtime found. Its two vessels' positions from aisstream.io (packages/transit-core/DESIGN.md#seabus-ais), on the server leader's one connection with the SeaBus's, recorded to var/ais-history/hullo/; the browser turns them into timetable anchors (packages/transit-core/src/ais/match.ts). With no block_id, which vessel runs which trip comes from matching. Coverage mid-strait is unknown: gaps are filled from the timetable. OPEN-QUESTIONS #5.",
+    "route": "hullo",
+    "$vessels": "MMSIs from issue #250 (2026-11-01).",
+    "vessels": [
+      { "mmsi": "316052439", "name": "spuhéls" },
+      { "mmsi": "316052438", "name": "sthuqi'" }
+    ],
+    "$boundingBox": "The whole crossing, both harbours with a margin, [[lat, lon], [lat, lon]] (aisstream order).",
+    "boundingBox": [[49.13, -123.97], [49.34, -123.08]],
+    "$batchS": "As the SeaBus's (config/feeds/translink/feed.json).",
+    "batchS": 10,
+    "coverageGapS": 75,
+    "$liveWindowS": "As the SeaBus's: more than the day file's edge-cache time plus the browser's longest poll interval.",
+    "liveWindowS": 300,
+    "maxBackoffS": 300,
+    "$match": "Matching fixes to trips. Guesses, looser than the SeaBus's for a long crossing along an averaged lane; tune with pipelines/eval-ais.ts --feed hullo. OPEN-QUESTIONS #5.",
+    "match": {
+      "$maxOffsetM": "The tracks spread ~1 km either side of the averaged lane mid-strait, one ~2.5 km (ferries/hullo.json).",
+      "maxOffsetM": 3000,
+      "maxShiftS": 1800,
+      "stationaryKn": 0.5,
+      "$dockRadiusM": "Docks are known to ±150 m (ferries/hullo.json).",
+      "dockRadiusM": 200,
+      "courseToleranceDeg": 60,
+      "$minTurnaroundS": "Timetabled layovers are 45 minutes; a late vessel catches up by shortening them to this.",
+      "minTurnaroundS": 900,
+      "maxCarryTrips": 2,
+      "pairMinFixes": 2
+    },
+    "$glide": "As the SeaBus's (config/feeds/translink/feed.json), scaled for a vessel cruising at ~16 m/s. guess",
+    "glide": { "minM": 20, "snapM": 3000, "catchUpMps": 8, "minGlideS": 3, "maxGlideS": 60, "maxHoldS": 180 }
+  }
+}

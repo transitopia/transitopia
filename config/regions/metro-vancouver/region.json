@@ -4,7 +4,8 @@
   "name": "Metro Vancouver",
   "$feeds": "The feeds whose transit it shows (config/feeds/<id>/feed.json; docs/DESIGN.md#feeds-operators-and-rail-networks).",
   "feeds": [
-    "translink"
+    "translink",
+    "hullo"
   ],
   "bbox": [-123.6, 48.95, -122.45, 49.55],
   "initialBounds": [-123.2, 49.17, -122.79, 49.32]

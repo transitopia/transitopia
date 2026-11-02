@@ -30,6 +30,11 @@ export interface PlanRoute {
   textColor: string;
   gtfsRouteId: string;
   /**
+   * Other GTFS routes drawn as this one, where its routes.json entry matches several (Hullo's one
+   * route per direction). Absent for most routes; every GTFS route of it is `gtfsRouteIds`.
+   */
+  mergedGtfsRouteIds?: string[] | undefined;
+  /**
    * Dataset registry id of the feed it comes from (@transitopia/shared/datasets.ts), for credits.
    * Absent in plans built before it: hosts pass a default (TransitEngineOptions.dataset).
    */
@@ -47,6 +52,13 @@ export interface PlanRoute {
    * (km/h, schedule/stops.ts → `weekdaySpeedRange`). Set when the plan is published.
    */
   weekdaySpeed?: [number, number] | undefined;
+}
+
+/** Every GTFS route a route is drawn for: its own and any merged into it. */
+export function gtfsRouteIds(
+  r: Pick<PlanRoute, "gtfsRouteId" | "mergedGtfsRouteIds">,
+): string[] {
+  return [r.gtfsRouteId, ...(r.mergedGtfsRouteIds ?? [])];
 }
 
 export interface PlanStop {

@@ -1,8 +1,10 @@
-// Ferry berths and lanes (SeaBus): replaces a route's GTFS shapes with berth-to-berth paths along
-// per-direction lanes. Every vessel uses the same berth pair all day: the berth of the same name at
-// every terminal (west–west or east–east). Patterns use the default pair; the plan's `ferry` entry
-// lists every pair's shapes, so a day known (from AIS) to use another pair can be drawn along them.
-// Runs at plan build time. Patterns keep their ids (movement files reference pattern ids).
+// Ferry berths and lanes (config/feeds/<feed>/ferries/<route>.json: the SeaBus, Hullo): replaces a
+// route's GTFS shapes with berth-to-berth paths along lanes, one per direction or one used both
+// ways. Every vessel uses the same berth pair all day: the berth of the same name at every terminal
+// (the SeaBus's west–west or east–east). Patterns use the default pair; where a route has more than
+// one pair, the plan's `ferry` entry lists every pair's shapes, so a day known (from AIS) to use
+// another pair can be drawn along them. Runs at plan build time. Patterns keep their ids (movement
+// files reference pattern ids).
 
 import {
   distM,
@@ -29,11 +31,11 @@ export interface FerryInfra {
   route: string;
   approachM: number;
   terminals: Record<string, { berths: Record<string, FerryBerth> }>;
-  /** Keyed "from>to" by terminal name, in travel order, excluding the slip approaches. */
+  /**
+   * Keyed "from>to" by terminal name, in travel order, excluding the slip approaches. A direction
+   * without its own lane runs the other direction's backwards.
+   */
   lanes: Record<string, LonLat[]>;
-}
-
-export interface FerryConfig {
   /** The berth name every vessel uses at every terminal, unless AIS shows otherwise. */
   defaultPair: string;
 }
@@ -53,7 +55,6 @@ export interface FerryBerthReport {
 export function applyFerryBerths(
   plan: ServicePlan,
   infra: FerryInfra,
-  cfg: FerryConfig,
 ): FerryBerthReport {
   const report: FerryBerthReport = { sharedBerthS: 0, minBerthGapS: Infinity };
   const patterns = plan.patterns.filter((p) => p.route === infra.route);
@@ -81,13 +82,13 @@ export function applyFerryBerths(
   const pairNames = Object.keys(terminals[0]?.berths ?? {}).filter((b) =>
     terminals.every((t) => t.berths[b]),
   );
-  if (!pairNames.includes(cfg.defaultPair))
+  if (!pairNames.includes(infra.defaultPair))
     throw new Error(
-      `${infra.route}: default berth pair "${cfg.defaultPair}" isn't at every terminal`,
+      `${infra.route}: default berth pair "${infra.defaultPair}" isn't at every terminal`,
     );
   const ferry: FerryBerthPlan = {
     route: infra.route,
-    default: cfg.defaultPair,
+    default: infra.defaultPair,
     pairs: {},
   };
   for (const pair of pairNames)
@@ -108,11 +109,18 @@ export function applyFerryBerths(
       plan.shapes[shape] = berthPath(infra, from, pair, to, pair);
       ferry.pairs[pair]!.shapes[p.id] = shape;
     }
-    p.shape = ferry.pairs[cfg.defaultPair]!.shapes[p.id]!;
+    p.shape = ferry.pairs[infra.defaultPair]!.shapes[p.id]!;
     const cum = cumulativeLengths(plan.shapes[p.shape]!);
     p.dist = [0, Math.round(cum[cum.length - 1]!)];
   }
-  if (patterns.length) plan.ferry = ferry;
+  // One pair: nothing for AIS to choose between.
+  if (patterns.length && pairNames.length > 1) {
+    if (plan.ferry && plan.ferry.route !== infra.route)
+      throw new Error(
+        `${infra.route}: the plan already has ${plan.ferry.route}'s berth pairs (one ferry route with several pairs per feed)`,
+      );
+    plan.ferry = ferry;
+  }
   for (const id of oldShapes)
     if (!plan.patterns.some((p) => p.shape === id)) delete plan.shapes[id];
 
@@ -163,7 +171,8 @@ export function berthPath(
 ): LonLat[] {
   const a = infra.terminals[from]?.berths[fromBerth];
   const b = infra.terminals[to]?.berths[toBerth];
-  const lane = infra.lanes[`${from}>${to}`];
+  const lane =
+    infra.lanes[`${from}>${to}`] ?? infra.lanes[`${to}>${from}`]?.toReversed();
   if (!a || !b || !lane)
     throw new Error(
       `${infra.route}: no berth or lane for ${from}-${fromBerth} > ${to}-${toBerth}`,

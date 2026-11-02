@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RtService } from "../src/rt/service.ts";
 import type { CorrectionsRepo } from "../src/corrections.ts";
-import type { LiveResponse } from "@transitopia/transit-core/rt/live.ts";
 
 const RAIL = { network: "skytrain", feed: "translink" };
 /** No corrections: the dispatcher has nothing to dispatch, so its index stays empty. */
@@ -36,10 +35,6 @@ describe("live dispatch by rail network", () => {
         historyDir: join(dir, "dispatch"),
         log: () => {},
       },
-      regions: [
-        { id: "metro-vancouver", feeds: ["translink"] },
-        { id: "elsewhere", feeds: ["bc-transit-victoria"] },
-      ],
     });
     const get = (p: string) => service.handle(p, new URLSearchParams());
     const r = await get("/networks/skytrain/dispatch");
@@ -60,15 +55,5 @@ describe("live dispatch by rail network", () => {
     });
     expect((await get("/networks/elsewhere/live/dispatch")).status).toBe(404);
     expect((await get("/networks/skytrain/live/nothing")).status).toBe(404);
-    // The region form, until #250 phase 4's contract: the dispatch of regions showing its feed.
-    const live = async (region: string) =>
-      JSON.parse(
-        String((await get(`/regions/${region}/live/transit`)).body),
-      ) as LiveResponse;
-    expect((await live("metro-vancouver")).sources["dispatch"]).toEqual({
-      kind: "dispatch",
-      versions: {},
-    });
-    expect((await live("elsewhere")).sources["dispatch"]).toBeUndefined();
   });
 });

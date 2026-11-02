@@ -37,7 +37,7 @@ export const ROOT = join(
 );
 
 // Committed, curated inputs (config/, docs/DESIGN.md#feeds-operators-and-rail-networks): global
-// defaults, operators, the feeds they run (feed.json, routes.json, SeaBus berths, observations), rail
+// defaults, operators, the feeds they run (feed.json, routes.json, ferry berths and lanes, observations), rail
 // networks (network.json and settings, infrastructure, scenarios, disruptions) and regions (region.json).
 export const CONFIG_ROOT = join(ROOT, "config");
 export const DEFAULTS_DIR = join(CONFIG_ROOT, "defaults");
@@ -124,10 +124,10 @@ export function cyclingPaths(area: string): {
 
 /** Where a feed's files are, on disk. */
 export function feedPaths(feed: string): {
-  /** config/feeds/<feed>: feed.json, routes.json, and where it has them observations/ and the SeaBus's files. */
+  /** config/feeds/<feed>: feed.json, routes.json, and where it has them observations/ and ferries/. */
   dir: string;
-  /** SeaBus berths and crossing lanes (ferries/seabus.json), used instead of the GTFS shapes, and the default berth pair (seabus.json). */
-  seabus: { berths: string; config: string };
+  /** Ferry routes' berths and lanes (ferries/<route>.json), used instead of their GTFS shapes. */
+  ferries: string;
   /** Archived GTFS zips, one directory per version. */
   raw: string;
   /** Published: manifest.json, and <version dir>/{plan.json, movements/, platforms.json, rt-profile.<band>.bin}. */
@@ -142,10 +142,7 @@ export function feedPaths(feed: string): {
 } {
   return {
     dir: join(FEEDS_DIR, feed),
-    seabus: {
-      berths: join(FEEDS_DIR, feed, "ferries", "seabus.json"),
-      config: join(FEEDS_DIR, feed, "seabus.json"),
-    },
+    ferries: join(FEEDS_DIR, feed, "ferries"),
     raw: join(GTFS_RAW_DIR, feed),
     out: join(PUBLIC_DIR, feedDataPath(feed)),
     manifest: join(PUBLIC_DIR, feedDataPath(feed, undefined, "manifest.json")),
@@ -195,6 +192,24 @@ export async function readRegions(): Promise<RegionInfo[]> {
 /** A feed's feed.json, checked. */
 export async function readFeed(id: string): Promise<FeedInfo> {
   return parseFeed(await readJson<unknown>(join(FEEDS_DIR, id, "feed.json")));
+}
+
+/**
+ * A feed's ferry routes' berths and lanes (ferries/<route>.json), checked, each with its file; none
+ * for a feed without ferries/.
+ */
+export async function readFerries(
+  feed: string,
+): Promise<{ path: string; ferry: Config<"ferry"> }[]> {
+  const dir = feedPaths(feed).ferries;
+  if (!(await exists(dir))) return [];
+  const names = (await readdir(dir)).filter((n) => n.endsWith(".json")).sort();
+  return Promise.all(
+    names.map(async (n) => ({
+      path: join(dir, n),
+      ferry: parseConfig("ferry", await readJson<unknown>(join(dir, n))),
+    })),
+  );
 }
 
 /** Every feed some region shows, checked, in region then listing order. */

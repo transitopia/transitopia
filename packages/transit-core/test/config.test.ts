@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -70,11 +70,17 @@ describe("config files", () => {
       expect(() => parseConfig(name as ConfigName, json)).not.toThrow();
     });
 
-  it("feeds/translink/seabus.json matches its schema", () => {
-    expect(() =>
-      parseConfig("seabus", readJson(join(FEEDS, "translink", "seabus.json"))),
-    ).not.toThrow();
-  });
+  for (const feed of dirs(FEEDS))
+    for (const name of existsSync(join(FEEDS, feed, "ferries")) ?
+      readdirSync(join(FEEDS, feed, "ferries"))
+    : [])
+      it(`feeds/${feed}/ferries/${name} matches its schema`, () => {
+        const ferry = parseConfig(
+          "ferry",
+          readJson(join(FEEDS, feed, "ferries", name)),
+        );
+        expect(`${ferry.route}.json`).toBe(name);
+      });
 
   for (const id of dirs(OPERATORS))
     it(`operators/${id}: its id is its directory`, () => {

@@ -11,9 +11,10 @@ import type {
   FeedInfo,
   FeedRealtime,
 } from "@transitopia/transit-core/config.ts";
-import type {
-  FeedManifest,
-  ServicePlan,
+import {
+  gtfsRouteIds,
+  type FeedManifest,
+  type ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
 import {
   compactSnapshot,
@@ -341,8 +342,10 @@ export class FeedPoller {
           await readFile(join(PUBLIC_DIR, f.path), "utf8"),
         ) as Pick<ServicePlan, "routes">;
         for (const r of plan.routes) {
-          if (r.kind === "bus") map.set(r.gtfsRouteId, r.key);
-          if (r.kind === "skytrain") rail.set(r.gtfsRouteId, r.key);
+          for (const id of gtfsRouteIds(r)) {
+            if (r.kind === "bus") map.set(id, r.key);
+            if (r.kind === "skytrain") rail.set(id, r.key);
+          }
         }
       }
       if (this.routesLoadedFrom !== undefined)

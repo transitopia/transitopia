@@ -48,7 +48,7 @@ describe("disruptionProblems", () => {
 });
 
 describe("the real-time API", () => {
-  it("routes /rt/*, /feeds/*, /networks/* and /regions/*, and answers a matching If-None-Match with a 304", async () => {
+  it("routes /rt/*, /feeds/* and /networks/*, and answers a matching If-None-Match with a 304", async () => {
     const paths: string[] = [];
     const service = {
       handle: async (path: string) => {
@@ -79,13 +79,11 @@ describe("the real-time API", () => {
     });
     expect(changed.status).toBe(200);
     await app.request("/networks/n/live/dispatch");
-    await app.request("/regions/r/live/transit");
     expect(paths).toEqual([
       "/feeds/f/live",
       "/feeds/f/live",
       "/rt/status",
       "/networks/n/live/dispatch",
-      "/regions/r/live/transit",
     ]);
   });
 });

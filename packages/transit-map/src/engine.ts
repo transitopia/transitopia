@@ -45,6 +45,7 @@ import { VehicleLayer } from "./layers/vehicles.ts";
 import { metresPerPixel } from "./layers/vehicle-geometry.ts";
 import { nowWindowStart, type Focus } from "./layers/bus-frequency.ts";
 import { PICKABLE_TRACK_LAYERS } from "./layers/tracks.ts";
+import { firstFeedLayer } from "./layers/order.ts";
 import {
   brandedRoutes,
   PLAN_TILE_LAYERS,
@@ -1153,7 +1154,7 @@ export class TransitEngine {
     setSelectedPlace(
       this.map,
       this.placePoint(),
-      (this.placeSlot() ?? this.primary).ids.layer("stations"),
+      firstFeedLayer(this.map, "stations"),
     );
     setFocus(
       this.map,
@@ -1867,9 +1868,9 @@ export class TransitEngine {
     this.invalidate();
   }
 
-  /** Vehicles go beneath the first feed's stop labels, above its focused route (static.ts). */
+  /** Vehicles go beneath every feed's stop labels, above their focused routes (layers/order.ts). */
   private attachVehicles(): void {
-    this.vehicles.attach(this.primary.ids.layer(VEHICLES_BEFORE_LAYER));
+    this.vehicles.attach(firstFeedLayer(this.map, VEHICLES_BEFORE_LAYER));
   }
 
   private frame = (): void => {

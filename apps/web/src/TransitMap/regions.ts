@@ -1,8 +1,8 @@
 // The regions /transit can show, found in config/ (docs/DESIGN.md#feeds-operators-and-rail-networks),
 // each with its feeds, their settings resolved from the defaults and their operators
 // (packages/transit-core/src/config.ts), and the rail networks they run on, if any; checked as the
-// transit chunk loads. Adding a region is data only. The map shows one region at a time: the one in
-// view (TransitMap.tsx).
+// transit chunk loads. Adding a region is data only. The map shows one region at a time, every feed
+// it lists at once: the one in view (TransitMap.tsx).
 
 import {
   parseConfig,
@@ -65,9 +65,6 @@ export interface SiteRegion {
 }
 
 function siteRegion(info: RegionInfo): SiteRegion {
-  // The engine has a slot per feed, but shows one feed per region until #250's phase 5.
-  if (info.feeds.length !== 1)
-    throw new Error(`Region ${info.id}: the site shows exactly one feed`);
   return { info, feeds: info.feeds.map(feedConfig) };
 }
 

@@ -133,7 +133,6 @@ describe("RtService", () => {
       apiKey: "test-key",
       aisApiKey: null,
       dispatch: false,
-      regionId: "test-region",
     });
     await service.start();
     await vi.waitFor(() => expect(upstream.mock.calls.length).toBe(3));
@@ -204,29 +203,8 @@ describe("RtService", () => {
     expect((await get("/feeds/translink/nothing")).status).toBe(404);
     expect((await get("/feeds/translink/days/2026101/ais")).status).toBe(404);
 
-    // The region forms, until the sites before the feed endpoints are gone (#250 phase 4): each
-    // feed's sections under "<feed>/", and the same per-date files.
-    const region = JSON.parse(
-      String((await get("/regions/test-region/live/transit")).body),
-    ) as LiveResponse;
-    expect(Object.keys(region.sources).sort()).toEqual([
-      "translink/ais",
-      "translink/changes",
-      "translink/vehicles",
-    ]);
-    expect(region.sources["translink/changes"]).toEqual(changes);
-    expect(region.nextAt).toBe(body.nextAt);
-    expect(
-      (await get(`/regions/test-region/days/${date}/translink/changes`)).body,
-    ).toBe((await get(`/feeds/translink/days/${date}/changes`)).body);
-    expect(
-      (await get(`/regions/test-region/days/${date}/translink/ais`)).body,
-    ).toBe(ais.body);
-    expect(
-      (await get(`/regions/test-region/days/${date}/elsewhere/ais`)).status,
-    ).toBe(404);
-    expect((await get("/regions/elsewhere/live/transit")).status).toBe(404);
-    expect((await get("/regions/test-region/nothing")).status).toBe(404);
+    // The region forms the feed endpoints replaced are gone.
+    expect((await get("/regions/test-region/live/transit")).status).toBe(404);
     expect(upstream.mock.calls.length).toBe(3);
   });
 
