@@ -8,6 +8,8 @@ import {
 } from "../src/plan/exchanges.ts";
 import type { ServicePlan } from "../src/plan/types.ts";
 
+const named = (name: string) => ({ name });
+
 describe("isBay", () => {
   it("knows exchange and station bays from street stops and layovers", () => {
     expect(isBay("UBC Exchange @ Bay 7")).toBe(true);
@@ -34,9 +36,9 @@ describe("isBay", () => {
     expect(isBay("Cooper Rd at Orchard Park Exchange")).toBe(false);
     expect(isBay("Fort St at Foul Bay Rd")).toBe(false);
     expect(isBay("HMC Dockyard Terminal")).toBe(false);
-    expect(bayNumber("Royal Oak Exch Bay H")).toBe("H");
-    expect(bayLabel("Langford Exch (Jacklin Rd) Bay D")).toBe("Bay D");
-    expect(bayLabel("Legislature Exch")).toBe("Bay");
+    expect(bayNumber(named("Royal Oak Exch Bay H"))).toBe("H");
+    expect(bayLabel(named("Langford Exch (Jacklin Rd) Bay D"))).toBe("Bay D");
+    expect(bayLabel(named("Legislature Exch"))).toBe("Bay");
     expect(baseName("Langford Exch (Jacklin Rd) Bay D")).toBe(
       "Langford Exchange",
     );
@@ -52,8 +54,20 @@ describe("isBay", () => {
   });
 
   it("reads bay numbers", () => {
-    expect(bayNumber("Metrotown Station @ Bay 14")).toBe("14");
-    expect(bayNumber("UBC Exchange @ Unloading Only")).toBeUndefined();
+    expect(bayNumber(named("Metrotown Station @ Bay 14"))).toBe("14");
+    expect(bayNumber(named("UBC Exchange @ Unloading Only"))).toBeUndefined();
+    // A bay at the end of the name, whatever the place is called.
+    expect(bayNumber(named("Lougheed Stn Bay 5"))).toBe("5");
+    expect(bayLabel(named("Downtown Chilliwack Bay A"))).toBe("Bay A");
+    expect(bayNumber(named("Fort St at Foul Bay Rd"))).toBeUndefined();
+    expect(bayNumber(named("Douglas St at Bay St"))).toBeUndefined();
+  });
+
+  it("prefers GTFS platform_code", () => {
+    expect(
+      bayNumber({ name: "Metrotown Station @ Bay 14", platform: "3" }),
+    ).toBe("3");
+    expect(bayLabel({ name: "Central Exchange", platform: "C" })).toBe("Bay C");
   });
 });
 
@@ -118,8 +132,10 @@ describe("busHubs", () => {
 
 describe("bayLabel", () => {
   it("names bays shortly", () => {
-    expect(bayLabel("Joyce Station @ Bay 1 Unload Only")).toBe("Bay 1");
-    expect(bayLabel("UBC Exchange @ Unloading Only")).toBe("Unloading Only");
-    expect(bayLabel("Phibbs Exchange @")).toBe("Bay");
+    expect(bayLabel(named("Joyce Station @ Bay 1 Unload Only"))).toBe("Bay 1");
+    expect(bayLabel(named("UBC Exchange @ Unloading Only"))).toBe(
+      "Unloading Only",
+    );
+    expect(bayLabel(named("Phibbs Exchange @"))).toBe("Bay");
   });
 });

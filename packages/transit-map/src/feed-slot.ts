@@ -225,8 +225,10 @@ export class FeedSlot {
       onError: (error, missing) => this.rt.liveFailed(error, missing),
       onStop: () => this.rt.liveStopped(),
     });
-    // Schedule estimates for buses stop at stops, using the same travel-time profile as live prediction.
-    store.pacerFor = (pp) => this.rt.predictorFor(pp).pacer;
+    // Schedule estimates for buses stop at stops, using the same travel-time profile as live
+    // prediction. Only a feed with GTFS-RT has one (build-rt-profile learns it from recordings).
+    if (config.feed.realtime)
+      store.pacerFor = (pp) => this.rt.predictorFor(pp).pacer;
   }
 
   /**

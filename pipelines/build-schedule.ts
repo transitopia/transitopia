@@ -293,7 +293,8 @@ export async function buildPlan(
     };
     if (row.stop_code) s.code = row.stop_code;
     if (row.parent_station) s.parent = row.parent_station;
-    const platform = /@\s*Platform\s+(\w+)/i.exec(s.name)?.[1];
+    const platform =
+      row.platform_code || /@\s*Platform\s+(\w+)/i.exec(s.name)?.[1];
     if (platform) s.platform = platform;
     stopIndex.set(id, stops.length);
     stops.push(s);
