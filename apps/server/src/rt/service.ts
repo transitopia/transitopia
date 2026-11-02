@@ -9,10 +9,6 @@
 //   GET /feeds/<id>/days/<YYYYMMDD>/changes/<v>.json   a version of them (immutable)
 //   GET /networks/<id>/live/dispatch              a rail network's live dispatch, shared and edge-cached
 //
-// Until the sites before them are gone (#250 phase 4), also the region forms they replace:
-// GET /regions/<id>/live/transit (every feed of a region, with prefixed source ids, and the rail
-// network's dispatch) and GET /regions/<id>/days/<YYYYMMDD>/<feed>/{ais,changes[/<v>.json]}.
-//
 // And:
 //
 //   GET /rt/history?feed=<id>&date=YYYY-MM-DD&hour=HH   a feed's recorded snapshots for one local hour (NDJSON)
@@ -25,7 +21,7 @@
 // `feed` is required where it's a parameter. Client requests never trigger upstream
 // calls: each feed's rate is fixed by its poll schedule within its daily cap
 // (packages/transit-core/src/rt/budget.ts). Only one process polls and records (the "leader",
-// leader.ts); the others forward /rt/*, /feeds/*, /regions/* and /networks/* to it and take over when it goes away. Every
+// leader.ts); the others forward /rt/*, /feeds/* and /networks/* to it and take over when it goes away. Every
 // route's vehicles are recorded (files and database); clients only ever see the routes we draw.
 
 import { join } from "node:path";
@@ -36,7 +32,6 @@ import {
   parseFeed,
   type FeedAis,
   type FeedInfo,
-  type RegionInfo,
 } from "@transitopia/transit-core/config.ts";
 import type { RtCoverageResponse } from "@transitopia/transit-core/rt/types.ts";
 import {
@@ -132,16 +127,11 @@ export function notModified(
 /** How long the edge may keep a day file of a date still in progress (s); see feed.json → ais.liveWindowS. */
 const AIS_DAY_MAX_AGE_S = 60;
 
-/** A region as the service needs it: its id and the feeds it shows. */
-export type ServedRegion = Pick<RegionInfo, "id" | "feeds">;
-
 export interface RtServiceOptions {
   /** Where recordings go: each feed's under <historyDir>/<feed>/. */
   historyDir?: string;
   /** Record snapshots to disk (default true). */
   record?: boolean;
-  /** The regions served under /regions/<id>/ (default: the rail region, showing TransLink's feed). */
-  regions?: ServedRegion[] | undefined;
   /**
    * Every feed served under /feeds/<id>/ (default: TransLink's); those with real time get a poller,
    * those with AIS a stream.
@@ -181,8 +171,6 @@ export interface RtServiceOptions {
    * /networks/<id>/, and its feed's alerts become disruption drafts. Without one, neither runs.
    */
   rail?: RailNetwork | undefined;
-  /** When `regions` isn't given, serve one region of this id showing `feeds` (tests). */
-  regionId?: string | undefined;
   log?: (msg: string) => void;
 }
 
@@ -195,7 +183,6 @@ export class RtService {
   readonly alertDrafts: AlertDrafts | undefined;
   /** One per feed with real time, by feed id. */
   readonly pollers = new Map<string, FeedPoller>();
-  readonly regions: ServedRegion[];
   /** The feeds served under /feeds/<id>/. */
   readonly feeds: ReadonlySet<string>;
   /** The rail network, if this server has one: live dispatch and alert drafts are its. */
@@ -224,11 +211,9 @@ export class RtService {
 
   constructor(opts: RtServiceOptions = {}) {
     this.rail = opts.rail;
-    const feedIds = (opts.feeds ?? [parseFeed(translinkFeed)]).map((f) => f.id);
-    this.feeds = new Set(feedIds);
-    this.regions =
-      opts.regions
-      ?? (opts.regionId ? [{ id: opts.regionId, feeds: feedIds }] : []);
+    this.feeds = new Set(
+      (opts.feeds ?? [parseFeed(translinkFeed)]).map((f) => f.id),
+    );
     this.historyDir = opts.historyDir ?? RT_HISTORY_DIR;
     this.log = opts.log ?? ((m) => console.log(`[rt] ${m}`));
     this.record = opts.record ?? true;
@@ -501,30 +486,6 @@ export class RtService {
     };
   }
 
-  /**
-   * GET /regions/<id>/live/transit, the form the feed and network endpoints replace: each feed's
-   * sections as "<feed>/<source>", and "dispatch" where a feed runs on the rail network.
-   */
-  async liveTransit(
-    region: ServedRegion,
-    now = Date.now(),
-  ): Promise<LiveResponse> {
-    const r: LiveResponse = { schema: LIVE_SCHEMA, nextAt: null, sources: {} };
-    const due: number[] = [];
-    for (const feed of region.feeds) {
-      const f = await this.liveFeed(feed, now);
-      for (const [id, section] of Object.entries(f.sources))
-        r.sources[`${feed}/${id}`] = section;
-      if (f.nextAt !== null) due.push(f.nextAt);
-    }
-    if (this.rail && region.feeds.includes(this.rail.feed) && this.dispatcher)
-      r.sources["dispatch"] = this.liveDispatch(this.dispatcher).sources[
-        "dispatch"
-      ]!;
-    if (due.length) r.nextAt = Math.min(...due);
-    return r;
-  }
-
   /** A live endpoint's response: the edge keeps it until new data is due, and never longer than clients poll. */
   private liveResult(r: LiveResponse, now: number): HttpResult {
     const maxAge =
@@ -648,31 +609,10 @@ export class RtService {
     );
   }
 
-  /** GET /regions/<id>/…: the region forms of the live endpoint and per-date files (until #250 phase 4's contract). */
-  private async handleRegion(
-    id: string,
-    rest: string,
-    now = Date.now(),
-  ): Promise<HttpResult> {
-    const region = this.regions.find((r) => r.id === id);
-    if (!region) return json(404, { error: "No such region" });
-    if (rest === "/live/transit")
-      return this.liveResult(await this.liveTransit(region, now), now);
-    const day =
-      /^\/days\/(\d{8})\/([a-z0-9-]+)\/(ais|changes(?:\/[0-9a-f]+\.json)?)$/.exec(
-        rest,
-      );
-    return day && region.feeds.includes(day[2]!) ?
-        this.handleFeed(day[2]!, `/days/${day[1]!}/${day[3]!}`, now)
-      : json(404, { error: "Not found" });
-  }
-
   async handle(pathname: string, params: URLSearchParams): Promise<HttpResult> {
     if (this.leaderUrl) return this.forward(pathname, params);
     const inFeed = /^\/feeds\/([^/]+)(\/.*)$/.exec(pathname);
     if (inFeed) return this.handleFeed(inFeed[1]!, inFeed[2]!);
-    const inRegion = /^\/regions\/([^/]+)(\/.*)$/.exec(pathname);
-    if (inRegion) return this.handleRegion(inRegion[1]!, inRegion[2]!);
     const inNetwork = /^\/networks\/([^/]+)(\/.*)$/.exec(pathname);
     if (inNetwork) {
       if (inNetwork[1] !== this.rail?.network)

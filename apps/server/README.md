@@ -33,9 +33,9 @@ GET /auth/github/login, /auth/github/callback, /auth/me; POST /auth/logout     a
 /admin/api/*                        the review queue behind /admin (admins only)
 ```
 
-`/rt/*`, `/feeds/*`, `/networks/*` and `/regions/*` are public, with CORS for everyone, and cached at Cloudflare's edge, so server load doesn't grow with visitors. The server serves every feed a region in `config/regions/*/region.json` shows (and polls those with real time) and the one rail network (other ids are a 404).
+`/rt/*`, `/feeds/*` and `/networks/*` are public, with CORS for everyone, and cached at Cloudflare's edge, so server load doesn't grow with visitors. The server serves every feed a region in `config/regions/*/region.json` shows (and polls those with real time) and the one rail network (other ids are a 404).
 
-Until the sites from before the per-feed endpoints are gone (#250 phase 4's contract step), the region forms they replace still answer: `GET /regions/<id>/live/transit` (every feed of the region, each section's id prefixed `<feed>/`, plus `dispatch` where a feed runs on the rail network) and `GET /regions/<id>/days/<YYYYMMDD>/<feed>/{ais,changes[/<v>.json]}`, the same as the feed's. Where `feed` is a parameter it's required (400 without one, 404 for a feed without real time). `/admin/api` and `/auth` allow only `ALLOWED_ORIGINS`.
+Where `feed` is a parameter it's required (400 without one, 404 for a feed without real time). `/admin/api` and `/auth` allow only `ALLOWED_ORIGINS`.
 
 ## Leader
 

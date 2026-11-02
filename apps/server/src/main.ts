@@ -7,12 +7,7 @@
 
 import { serve } from "@hono/node-server";
 import { checkTimezoneData } from "@transitopia/transit-core/time.ts";
-import {
-  VAR_DIR,
-  railNetwork,
-  readFeeds,
-  readRegions,
-} from "@transitopia/data/paths.ts";
+import { VAR_DIR, railNetwork, readFeeds } from "@transitopia/data/paths.ts";
 import { createDb } from "@transitopia/db/connect.ts";
 import { migrate } from "@transitopia/db/migrate.ts";
 import { ensurePartitions } from "@transitopia/db/partitions.ts";
@@ -29,8 +24,7 @@ import { syncSources } from "./sources.ts";
 
 const log = (m: string) => console.log(`[server] ${m}`);
 
-// Every region (config/regions/*/region.json) and the feeds they show (config/feeds/*/feed.json), checked.
-const regions = await readRegions();
+// Every feed a region shows (config/feeds/*/feed.json), checked.
 const feeds = await readFeeds();
 // Track-level rail (config/networks/): its live dispatch, corrections and /admin support one network so far.
 const rail = await railNetwork();
@@ -90,7 +84,6 @@ const jobs =
   : undefined;
 
 const service = new RtService({
-  regions,
   feeds,
   rail,
   // Without RT_POLL nothing is polled and keys in .secrets or the environment are ignored: polling
