@@ -1,0 +1,22 @@
+{
+  "$comment": "How Hullo's route is drawn where the GTFS alone doesn't say; every route in the feed is drawn by default, and the format is in config/feeds/translink/routes.json. The GTFS has one route per direction (NAN-VAN 'Nanaimo to Vancouver', VAN-NAN 'Vancouver to Nanaimo', both route_type 4), drawn as one route. No route_color in the GTFS: #ff3503 is the theme colour of hullo.com (checked 2026-11-02).",
+  "routes": [
+    {
+      "key": "hullo",
+      "label": "Hullo",
+      "match": [
+        { "route_long_name": "Nanaimo to Vancouver" },
+        { "route_long_name": "Vancouver to Nanaimo" }
+      ],
+      "color": "#ff3503",
+      "kinematics": {
+        "$comment": "guess: fast catamarans; the 75-minute timetabled crossing of ~65 km averages ~28 kn with the slow harbour legs, so ~32 kn in open water. Length and beam guessed. config/feeds/hullo/OPEN-QUESTIONS.md #2",
+        "maxSpeed": 60,
+        "accel": 0.15,
+        "decel": 0.15,
+        "length": 45,
+        "width": 12
+      }
+    }
+  ]
+}

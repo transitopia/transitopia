@@ -10,6 +10,7 @@ export type DatasetId =
   | "translink-gtfs-rt"
   | "bc-transit-gtfs"
   | "bc-transit-gtfs-rt"
+  | "hullo-gtfs"
   | "aisstream";
 
 export interface Dataset {
@@ -96,6 +97,12 @@ export const DATASETS: Record<DatasetId, Dataset> = {
     credit: "Real-time: BC Transit",
     url: "https://www.bctransit.com/open-data/",
     license: BC_TRANSIT_TERMS,
+  },
+  // Hullo publishes no terms for its GTFS (DATA-LICENSES.md): the credit names it, no license.
+  "hullo-gtfs": {
+    id: "hullo-gtfs",
+    credit: "Schedules: Hullo",
+    url: "https://hullo.com",
   },
   aisstream: {
     id: "aisstream",

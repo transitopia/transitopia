@@ -1,0 +1,5 @@
+{
+  "$comment": "Hullo Ferries: the passenger ferry between Vancouver and Nanaimo, the operator of the hullo feed (config/feeds/hullo/). No overrides of the defaults (config/defaults/): its vessels' own settings are on its route (config/feeds/hullo/routes.json).",
+  "id": "hullo",
+  "name": "Hullo"
+}

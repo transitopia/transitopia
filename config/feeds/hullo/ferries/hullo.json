@@ -1,0 +1,35 @@
+{
+  "$comment": "Hullo's berths and crossing lane, used instead of the GTFS shapes (six points per direction, cutting across Stanley Park and through First Narrows). Applied by build-schedule (packages/transit-core/src/plan/ferry-berths.ts). OPEN-QUESTIONS #1.",
+  "route": "hullo",
+  "$approachM": "Vessels leave and enter a berth straight along its axis for this far before turning into the lane. guess",
+  "approachM": 150,
+  "terminals": {
+    "vancouver": {
+      "$comment": "Coal Harbour, west of Canada Place: where the AIS tracks end (see lanes), moved onto the water beside the terminal's pier as the basemap draws it (the fit put it ~80 m inland). outBearing: the tracks' first heading out. guess",
+      "berths": {
+        "main": { "dock": [-123.11586, 49.29049], "outBearing": 60 }
+      }
+    },
+    "nanaimo": {
+      "$comment": "Nanaimo's inner harbour: where the AIS tracks end (see lanes), ±150 m. outBearing: the tracks' first heading out. guess",
+      "berths": {
+        "main": { "dock": [-123.924249, 49.163082], "outBearing": 46 }
+      }
+    }
+  },
+  "$lanes": "One lane, run both ways (no keep-right lanes yet: OPEN-QUESTIONS #1). The average of five crossings' AIS tracks (a screenshot of sthuqi''s and spuhéls's tracks, Braden, 2026-11-02): mid-strait the tracks spread over ~2 km and the line is their median, smoothed over ±3 km; out of Nanaimo and from First Narrows to Coal Harbour, where the tracks run together, it follows them. Georeferenced on the two terminals and Lions Gate Bridge (fit: 25 m/px, ±170 m), so ±200 m; the point under Lions Gate Bridge is mid-channel, read off the basemap.",
+  "lanes": {
+    "nanaimo>vancouver": [
+      [-123.90567, 49.17478], [-123.90291, 49.17928], [-123.90085, 49.18378], [-123.89758, 49.18828],
+      [-123.89397, 49.19278], [-123.88674, 49.19727], [-123.85198, 49.21231], [-123.83133, 49.21634],
+      [-123.79004, 49.2244], [-123.74874, 49.23294], [-123.70745, 49.24048], [-123.66615, 49.24793],
+      [-123.62486, 49.25425], [-123.58356, 49.26246], [-123.54227, 49.27204], [-123.50097, 49.27864],
+      [-123.45967, 49.28398], [-123.41838, 49.28916], [-123.37708, 49.29638], [-123.33579, 49.30187],
+      [-123.29449, 49.30583], [-123.2532, 49.3104], [-123.2119, 49.31401], [-123.17749, 49.31538],
+      [-123.16372, 49.31547], [-123.1395, 49.3154], [-123.13275, 49.31183], [-123.12472, 49.30734], [-123.11669, 49.30323],
+      [-123.10981, 49.30023], [-123.10694, 49.29762], [-123.10666, 49.29462], [-123.10752, 49.29201]
+    ]
+  },
+  "$defaultPair": "One berth per terminal.",
+  "defaultPair": "main"
+}
