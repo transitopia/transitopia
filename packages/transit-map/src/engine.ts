@@ -2452,7 +2452,9 @@ export class TransitEngine {
     }
     this.datasets = this.datasetsDrawn(
       byFeed.flatMap((f) => f.live),
-      byFeed.some((f) => f.aisUsed),
+      new Set(
+        this.slots.filter((_, i) => byFeed[i]!.aisUsed).map((s) => s.feed),
+      ),
     );
 
     if (this.styleReady)
@@ -2493,28 +2495,36 @@ export class TransitEngine {
   /** What the map shows right now, for the attribution control (docs/DESIGN.md#attribution). */
   private datasetsDrawn(
     rtVehicles: readonly VehicleState[],
-    aisUsed: boolean,
+    aisFeeds: ReadonlySet<string>,
   ): string[] {
     const routeOf = (v: VehicleState) =>
       this.slotOf(v.feed)?.shown?.routes.get(v.routeKey);
+    // What's in view: feeds loaded for the margin around it aren't credited.
+    const view = this.view;
+    const seen = (v: VehicleState) => !view || contains(view, v.lon, v.lat);
+    const shown = this.slots.filter((s) =>
+      overlaps(this.feeds.find((f) => f.slot === s)?.coverage ?? null, view),
+    );
+    const vehicles = this.lastVehicles.filter(seen);
     const out = this.datasetsOf([
-      ...this.slots.flatMap((s) =>
+      ...shown.flatMap((s) =>
         (s.shown?.plan.routes ?? [])
           .filter((r) => !s.hidden.has(r.key))
           .map((r): [PlanRoute, boolean] => [r, false]),
       ),
-      ...this.lastVehicles.map((v): [PlanRoute | undefined, boolean] => [
+      ...vehicles.map((v): [PlanRoute | undefined, boolean] => [
         routeOf(v),
         false,
       ]),
-      ...rtVehicles.map((v): [PlanRoute | undefined, boolean] => [
-        routeOf(v),
-        true,
-      ]),
+      ...rtVehicles
+        .filter(seen)
+        .map((v): [PlanRoute | undefined, boolean] => [routeOf(v), true]),
     ]);
-    if (aisUsed) out.push("aisstream");
+    // AIS fixes moved a vessel in view.
+    if (vehicles.some((v) => v.mode === "ferry" && aisFeeds.has(v.feed)))
+      out.push("aisstream");
     // The track network is imported from OpenStreetMap plus our overrides; corrections are ours.
-    if (this.slots.some((s) => s.tracks)) out.push("osm", "transitopia");
+    if (shown.some((s) => s.tracks)) out.push("osm", "transitopia");
     return out;
   }
 
