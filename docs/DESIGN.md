@@ -37,11 +37,11 @@ Desktop-first, but the map and time controls must work on phones, with minimal c
 3. **Upstream APIs are polled centrally,** within each provider's limits and on an explicit request budget ([below](#upstream-request-budget)). Client requests never trigger calls to TransLink, aisstream.io or OSM, and neither do development machines.
 4. **Shared state is computed centrally.** The dispatcher and disruption parsing run on the server or at build time, and every visitor sees the same versioned result.
 5. **Secrets never reach the browser or the app bundle.**
-6. **Infrastructure is data.** OSM first, fixed upstream where possible. Our own fixes are reviewable data (`config/regions/*/infrastructure/overrides.json`).
+6. **Infrastructure is data.** OSM first, fixed upstream where possible. Our own fixes are reviewable data (`config/networks/*/infrastructure/overrides.json`).
 7. **Nothing untrusted reaches the public map or the dispatcher without review.** Drafts can be previewed, but only confirmed inputs are published ([below](#corrections-and-previews)).
 8. **Static first, dynamic where needed.** Anything that can be an immutable file behind a CDN is one. The server handles live data, writes and moderation. If the server is down, the site degrades to schedule estimates instead of breaking.
 9. **Licensing is tracked per dataset** ([DATA-LICENSES.md](../DATA-LICENSES.md)). Every dataset records its source and license, and publishing respects them.
-10. **Every assumption is config.** Operating assumptions live in `config/regions/<region>/` with a source or "guess", and a cross-reference to the region's open questions. No magic numbers in code. Every config file has a schema (`packages/transit-core/src/config.ts`), checked wherever it's loaded, so a mistyped setting fails instead of reading as undefined.
+10. **Every assumption is config.** Operating assumptions live in config (a rail network's, a feed's, an operator's or `config/defaults/`) with a source or "guess", and a cross-reference to the matching open question. No magic numbers in code. Every config file has a schema (`packages/transit-core/src/config.ts`), checked wherever it's loaded, so a mistyped setting fails instead of reading as undefined.
 
 ## Architecture
 
