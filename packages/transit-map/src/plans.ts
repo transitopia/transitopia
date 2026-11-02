@@ -24,7 +24,7 @@ import type {
   ObservationIndex,
 } from "@transitopia/transit-core/corrections/types.ts";
 import type { PlacesFile, PlacesIndex } from "@transitopia/shared/features.ts";
-import { hubsFromPlaces } from "./hubs.ts";
+import { baysFromPlaces, hubsFromPlaces } from "./hubs.ts";
 import { type BusHub } from "@transitopia/transit-core/plan/exchanges.ts";
 import type { ScenarioManifest } from "@transitopia/transit-core/scenario/types.ts";
 import {
@@ -895,6 +895,32 @@ export function hubsOf(plan: ServicePlan): BusHub[] {
       }),
     );
   return c.hubs;
+}
+
+const baysCache = new WeakMap<PlacesFile, Map<string, string[]>>();
+/**
+ * The plan's stops in each station and exchange by its ID (`baysFromPlaces`), from its places file;
+ * undefined until that's loaded (or without one).
+ */
+export function baysOf(plan: ServicePlan): Map<string, string[]> | undefined {
+  const places = placesOfPlan.get(plan);
+  if (!places) return undefined;
+  let bays = baysCache.get(places);
+  if (!bays) {
+    bays = new Map(
+      [...baysFromPlaces(plan, places)].map(([id, sis]) => [
+        id,
+        sis.map((si) => plan.stops[si]!.id),
+      ]),
+    );
+    baysCache.set(places, bays);
+  }
+  return bays;
+}
+
+/** The plan's places file, once loaded (`PlanStore.placesFor`). */
+export function placesOf(plan: ServicePlan): PlacesFile | undefined {
+  return placesOfPlan.get(plan);
 }
 
 const placeOfCache = new WeakMap<BusHub[], PlaceOf>();

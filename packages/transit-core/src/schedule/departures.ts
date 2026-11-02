@@ -151,17 +151,25 @@ export function groupDepartures(deps: readonly Departure[]): DepartureGroup[] {
       g.platforms.push(d.platform);
   }
   // deps are sorted, so insertion order is by soonest departure; the stable sort keeps it within a route.
-  return [...groups.values()].sort(
-    (a, b) =>
-      comparePlatforms(lowestPlatform(a), lowestPlatform(b))
-      || byNumber.compare(a.routeKey, b.routeKey),
+  return [...groups.values()].sort(compareGroups);
+}
+
+/** groupDepartures' order: by lowest platform or bay, then by route number. */
+export function compareGroups(
+  a: Pick<DepartureGroup, "platforms" | "routeKey">,
+  b: Pick<DepartureGroup, "platforms" | "routeKey">,
+): number {
+  return (
+    comparePlatforms(lowestPlatform(a), lowestPlatform(b))
+    || byNumber.compare(a.routeKey, b.routeKey)
   );
 }
 
 const byNumber = new Intl.Collator(undefined, { numeric: true });
 
-const lowestPlatform = (g: DepartureGroup): string | undefined =>
-  [...g.platforms].sort(byNumber.compare)[0];
+const lowestPlatform = (
+  g: Pick<DepartureGroup, "platforms">,
+): string | undefined => [...g.platforms].sort(byNumber.compare)[0];
 
 /** Numbered platforms in order ("2" before "10"), unnumbered last. */
 function comparePlatforms(

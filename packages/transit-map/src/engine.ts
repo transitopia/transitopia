@@ -37,8 +37,10 @@ import { Clock } from "./clock.ts";
 import {
   PlanStore,
   SERVICE_DAY_ROLLOVER_H,
+  baysOf,
   displayServiceDate,
   hubsOf,
+  placesOf,
   manifestInstants,
   playedManifest,
   type FeedManifests,
@@ -82,6 +84,7 @@ import {
   placeChoice,
   placeLocation,
   placeSnapshot,
+  type ForeignBays,
   type PickChoice,
   type PickMenu,
   type PlaceGroup,
@@ -99,6 +102,7 @@ import {
   type SegmentInfo,
 } from "./feed-slot.ts";
 import { feedKey, routeId, splitFeedKey, vehicleId } from "./keys.ts";
+import { stationFeatureId } from "./hubs.ts";
 
 export type { Theme };
 export type { RtMode };
@@ -1237,6 +1241,23 @@ export class TransitEngine {
         for (const k of String(f.properties["routes"] ?? "").split(","))
           if (k) covered.add(feedKey(slot.feed, k));
       }
+    // A place two feeds serve is one card: the first feed's exchange of an ID, and no stop of any
+    // feed's that the registry puts in a station or exchange listed.
+    const placeIds = new Set<string>();
+    for (const [k, place] of found) {
+      if (place.kind !== "station" && place.kind !== "exchange") continue;
+      const slot = this.slotOf(place.feed);
+      const id = slot && this.featureIdOf(slot, place);
+      if (id === undefined) continue;
+      if (placeIds.has(id)) found.delete(k);
+      placeIds.add(id);
+    }
+    for (const [k, place] of found) {
+      if (place.kind !== "stop") continue;
+      const plan = this.slotOf(place.feed)?.shown?.plan;
+      const parent = plan && placesOf(plan)?.parents[place.id];
+      if (parent !== undefined && placeIds.has(parent)) found.delete(k);
+    }
     // A station's or exchange's bays are on its card.
     for (const slot of this.slots) {
       if (!slot.shown) continue;
@@ -2037,7 +2058,64 @@ export class TransitEngine {
       corrections: (d) => slot.correctionsOn(d),
       datasetsOf: (routes) => this.datasetsOf(routes),
       segment: () => this.segmentInfo(),
+      foreign: this.foreignBays(slot, this.place),
+      foreignParent: this.foreignParent(slot, this.place),
     });
+  }
+
+  /**
+   * A station's or exchange's ID in the registry (docs/DESIGN.md#feature-ids), from its feed's
+   * places file: the same place in every feed.
+   */
+  private featureIdOf(slot: FeedSlot, place: Place): string | undefined {
+    const places = slot.shown && placesOf(slot.shown.plan);
+    if (!places) return undefined;
+    if (place.kind === "station") return stationFeatureId(places, place.id);
+    if (place.kind === "exchange")
+      return places.places[place.id] ? place.id : undefined;
+    return undefined;
+  }
+
+  /**
+   * Other loaded feeds' stops in a station or exchange: those their places files put in it (the
+   * Fraser Valley's 66 at Lougheed Station), whose departures join its card
+   * (packages/transit-map/README.md#feeds).
+   */
+  private foreignBays(slot: FeedSlot, place: Place): ForeignBays[] {
+    const id = this.featureIdOf(slot, place);
+    if (id === undefined) return [];
+    return this.slots.flatMap((s) => {
+      const pp = s.shown;
+      const stops = s !== slot && pp ? baysOf(pp.plan)?.get(id) : undefined;
+      return stops?.length ?
+          [{ pp: pp!, stops, corrections: (d) => s.correctionsOn(d) }]
+        : [];
+    });
+  }
+
+  /** The station or exchange of another loaded feed's that the registry puts a stop in, if any. */
+  private foreignParent(slot: FeedSlot, place: Place): PlaceSnapshot["partOf"] {
+    const places = slot.shown && placesOf(slot.shown.plan);
+    const id = place.kind === "stop" ? places?.parents[place.id] : undefined;
+    if (id === undefined) return undefined;
+    for (const s of this.slots) {
+      const plan = s !== slot ? s.shown?.plan : undefined;
+      const theirs = plan && placesOf(plan);
+      if (!plan || !theirs) continue;
+      const station = plan.stations.find(
+        (x) => stationFeatureId(theirs, x.id) === id,
+      );
+      if (station)
+        return {
+          kind: "station",
+          feed: s.feed,
+          id: station.id,
+          name: station.name,
+        };
+      const hub = hubsOf(plan).find((h) => h.id === id && !h.station);
+      if (hub) return { kind: "exchange", feed: s.feed, id, name: hub.name };
+    }
+    return undefined;
   }
 
   /** Whether a vehicle's route is hidden. */

@@ -13,6 +13,7 @@ import type {
 } from "@transitopia/transit-core/plan/types.ts";
 import {
   bayLabel,
+  byBay,
   type BusHub,
 } from "@transitopia/transit-core/plan/exchanges.ts";
 import type {
@@ -21,6 +22,7 @@ import type {
   VehicleState,
 } from "@transitopia/transit-core/schedule/engine.ts";
 import {
+  compareGroups,
   departureFrequency,
   departuresAt,
   groupDepartures,
@@ -42,7 +44,7 @@ import {
 } from "@transitopia/transit-core/schedule/shared-segment.ts";
 import { displayServiceDate, hubsOf, placeOfStop } from "./plans.ts";
 import { sharedPlace, type Place } from "./url.ts";
-import { vehicleId } from "./keys.ts";
+import { feedKey, vehicleId } from "./keys.ts";
 
 /** A route + destination leaving a station or stop, with its next departures. */
 export interface PlaceGroup {
@@ -113,8 +115,11 @@ export interface PlaceSnapshot extends Place {
   datasets: string[];
   /** A bus stop's number on its sign (GTFS stop_code), where the plan has it. */
   code?: string | undefined;
-  /** A station's or exchange's bus bays, by number: each has its own stop card. */
-  bays: { id: string; label: string }[];
+  /**
+   * A station's or exchange's bus bays, by number, its own feed's first: each has its own stop card
+   * (in its feed: another feed's bays at the same place are on the card too).
+   */
+  bays: { id: string; feed: string; label: string }[];
   /** The station or exchange a bay belongs to. */
   partOf?:
     | { kind: "station" | "exchange"; feed: string; id: string; name: string }
@@ -124,7 +129,7 @@ export interface PlaceSnapshot extends Place {
     routes: PlanRoute[];
     /** Platforms its trips leave from, where known. */
     platforms: string[];
-    /** The groups it combines, as `${route key}|${headsign}`. */
+    /** The groups it combines, as `${routeId}|${headsign}` (src/keys.ts). */
     groups: string[];
     to: string;
     frequency: Frequency | undefined;
@@ -208,6 +213,22 @@ export interface PlaceContext {
   datasetsOf: (routes: Iterable<[PlanRoute | undefined, boolean]>) => string[];
   /** A combined route's segment and whether a vehicle is on it, for its card. */
   segment: (p: Place) => SegmentContext | undefined;
+  /**
+   * Other loaded feeds' stops in this station or exchange (the registry puts them in it): their
+   * departures, routes and bays join its card (packages/transit-map/README.md#feeds).
+   */
+  foreign?: ForeignBays[] | undefined;
+  /** For a stop in no station or exchange of its own feed's: another feed's that the registry puts it in. */
+  foreignParent?: PlaceSnapshot["partOf"];
+}
+
+/** Another feed's stops in a station or exchange, with what its departures are worked out from. */
+export interface ForeignBays {
+  pp: PreparedPlan;
+  /** Its stop ids. */
+  stops: string[];
+  /** The real-time corrections its vehicles use, per service date. */
+  corrections: (date: ServiceDate) => ScheduleCorrections | undefined;
 }
 
 /** What a combined route's card is worked out from (the engine keeps it per plan). */
@@ -275,16 +296,152 @@ export function placeSnapshot(
     : p.kind === "exchange" ? hub
     : pp.stopById.get(p.id);
   if (!where) return undefined;
-  const date = displayServiceDate(t, plan.timezone);
   const stopIds =
     p.kind === "exchange" ? new Set(hub!.bays) : stopsOf(plan, p.id, hub?.bays);
+  const parent =
+    p.kind === "stop" ? hubs.find((h) => h.bays.includes(p.id)) : undefined;
+  // Its own feed's rows, then any other feed's stops here (a station the 66 stops beside).
+  const here = [p, ...(parent ? [parentPlace(plan.feed, parent)] : [])];
+  const own = departureRows(pp, stopIds, ctx, ctx.corrections, (q) =>
+    here.some((h) => h.kind === q.kind && h.id === q.id && h.feed === q.feed),
+  );
+  const foreign = (ctx.foreign ?? []).map((f) => {
+    const stops = new Set(f.stops);
+    return {
+      f,
+      rows: departureRows(f.pp, stops, ctx, f.corrections, (q) =>
+        q.kind === "stop" && q.feed === f.pp.plan.feed ?
+          stops.has(q.id)
+        : q.kind === p.kind && q.id === p.id && q.feed === p.feed,
+      ),
+    };
+  });
+  const routeKeys =
+    p.kind === "station" || p.kind === "exchange" ?
+      [
+        ...new Set([
+          ...(where as { routes: string[] }).routes,
+          ...(hub?.routes ?? []),
+        ]),
+      ]
+    : routesAt(plan, new Set([p.id]));
+  const routes = [
+    ...routeKeys.flatMap((k) => pp.routes.get(k) ?? []),
+    ...foreign.flatMap(({ f }) =>
+      routesAt(f.pp.plan, new Set(f.stops)).flatMap(
+        (k) => f.pp.routes.get(k) ?? [],
+      ),
+    ),
+  ];
+  const stopName = (fpp: PreparedPlan, id: string) =>
+    fpp.stopById.get(id)?.name ?? id;
+  const all = [own, ...foreign.map((x) => x.rows)];
+  // Each feed's shared stretches, their `within` pointing into the list as a whole.
+  let offset = 0;
+  const shared = all.flatMap((r) => {
+    const out = r.shared.map((x) => ({
+      ...x,
+      within: x.within === undefined ? undefined : x.within + offset,
+    }));
+    offset += out.length;
+    return out;
+  });
+  return {
+    ...p,
+    kind: p.kind,
+    name: where.name,
+    code: "code" in where ? where.code : undefined,
+    bays: [
+      ...(hub?.bays ?? []).map((id) => ({
+        id,
+        feed: plan.feed,
+        label: bayLabel(stopName(pp, id)),
+      })),
+      ...foreign.flatMap(({ f }) =>
+        [...f.stops]
+          .sort((a, b) => byBay(f.pp.stopById.get(a)!, f.pp.stopById.get(b)!))
+          .map((id) => ({
+            id,
+            feed: f.pp.plan.feed,
+            label: bayLabel(stopName(f.pp, id)),
+          })),
+      ),
+    ],
+    partOf:
+      parent ?
+        parent.station ?
+          {
+            kind: "station",
+            feed: plan.feed,
+            id: parent.station,
+            name:
+              plan.stations.find((s) => s.id === parent.station)?.name
+              ?? parent.name,
+          }
+        : {
+            kind: "exchange",
+            feed: plan.feed,
+            id: parent.id,
+            name: parent.name,
+          }
+      : ctx.foreignParent,
+    lon: where.lon,
+    lat: where.lat,
+    routes,
+    datasets: ctx.datasetsOf([
+      ...routes.map((r): [PlanRoute | undefined, boolean] => [r, false]),
+      ...all.flatMap((r) => r.datasets),
+    ]),
+    groups: all
+      .flatMap((r) => r.groups)
+      .sort((a, b) =>
+        compareGroups(
+          { platforms: a.platforms, routeKey: a.route.key },
+          { platforms: b.platforms, routeKey: b.route.key },
+        ),
+      ),
+    shared,
+  };
+}
+
+/** The routes whose patterns stop at any of these stops (by id). */
+function routesAt(plan: ServicePlan, stops: ReadonlySet<string>): string[] {
+  return [
+    ...new Set(
+      plan.patterns
+        .filter((pt) => pt.stops.some((i) => stops.has(plan.stops[i]!.id)))
+        .map((pt) => pt.route),
+    ),
+  ];
+}
+
+/**
+ * One feed's rows on a card: its departures from some of its stops after ctx.t, grouped by route
+ * and destination, with their shared stretches, and the datasets behind them. `isHere` says whether
+ * a place is the card's own (a trip ending there has no "View destination").
+ */
+function departureRows(
+  pp: PreparedPlan,
+  stopIds: Set<string>,
+  ctx: PlaceContext,
+  corrections: (date: ServiceDate) => ScheduleCorrections | undefined,
+  isHere: (p: Place) => boolean,
+): {
+  groups: PlaceGroup[];
+  shared: PlaceSnapshot["shared"];
+  datasets: [PlanRoute | undefined, boolean][];
+} {
+  const { plan } = pp;
+  const { t } = ctx;
+  const hubs = hubsOf(plan);
+  const date = displayServiceDate(t, plan.timezone);
   const deps = departuresAt(
     pp,
     stopIds,
     t,
     t + DEPARTURES_AHEAD_MS,
     [addDays(date, -1), date],
-    ctx.corrections,
+    corrections,
   );
   const groups = groupDepartures(deps);
   // Departures' routes are the plan's; a places file's hub may name one this version hasn't.
@@ -295,24 +452,6 @@ export function placeSnapshot(
       .filter((v) => v.feed === plan.feed && ctx.drawn(v))
       .map((v) => [`${v.serviceDate}|${v.tripId}`, vehicleId(v)]),
   );
-  const routeKeys =
-    p.kind === "station" || p.kind === "exchange" ?
-      [
-        ...new Set([
-          ...(where as { routes: string[] }).routes,
-          ...(hub?.routes ?? []),
-        ]),
-      ]
-    : [
-        ...new Set(
-          plan.patterns
-            .filter((pt) => pt.stops.some((i) => plan.stops[i]!.id === p.id))
-            .map((pt) => pt.route),
-        ),
-      ];
-  const stopName = (id: string) => pp.stopById.get(id)?.name ?? id;
-  const parent =
-    p.kind === "stop" ? hubs.find((h) => h.bays.includes(p.id)) : undefined;
   // A trip's last stop as a card: its station, its exchange (or station's bays), or the stop.
   const terminusOf = (d: Departure): PlaceGroup["terminus"] => {
     const stops = plan.patterns[d.pattern]!.stops;
@@ -323,57 +462,20 @@ export function placeSnapshot(
         { kind: "station", feed: plan.feed, id: stop.parent }
       : hub ? parentPlace(plan.feed, hub)
       : { kind: "stop", feed: plan.feed, id: stop.id };
-    const here = [p, ...(parent ? [parentPlace(plan.feed, parent)] : [])];
-    return here.some((h) => h.kind === place.kind && h.id === place.id) ?
-        undefined
-      : {
+    return isHere(place) ? undefined : (
+        {
           place,
           // A street stop in full ("Boundary Rd @ Lougheed Hwy"): its cross street alone is no name.
           name:
             place.kind === "stop" ?
               stop.name.replace(/^(North|South|East|West)bound\s+/i, "")
             : placeName(plan, stop.id),
-        };
-  };
-  return {
-    ...p,
-    kind: p.kind,
-    name: where.name,
-    code: "code" in where ? where.code : undefined,
-    bays: (hub?.bays ?? []).map((id) => ({
-      id,
-      label: bayLabel(stopName(id)),
-    })),
-    partOf:
-      parent
-      && (parent.station ?
-        {
-          kind: "station",
-          feed: plan.feed,
-          id: parent.station,
-          name:
-            plan.stations.find((s) => s.id === parent.station)?.name
-            ?? parent.name,
         }
-      : {
-          kind: "exchange",
-          feed: plan.feed,
-          id: parent.id,
-          name: parent.name,
-        }),
-    lon: where.lon,
-    lat: where.lat,
-    routes: routeKeys.flatMap((k) => pp.routes.get(k) ?? []),
-    datasets: ctx.datasetsOf([
-      ...routeKeys.map((k): [PlanRoute | undefined, boolean] => [
-        routeOf(k),
-        false,
-      ]),
-      ...groups.map((g): [PlanRoute | undefined, boolean] => [
-        routeOf(g.routeKey),
-        g.departures.some((d) => d.source !== "schedule"),
-      ]),
-    ]),
+      );
+  };
+  const key = (routeKey: string, headsign: string) =>
+    `${feedKey(plan.feed, routeKey)}|${headsign}`;
+  return {
     groups: groups.map((g) => ({
       route: routeOf(g.routeKey),
       headsign: g.headsign,
@@ -394,13 +496,17 @@ export function placeSnapshot(
       return {
         routes,
         platforms: [...new Set(s.groups.flatMap((g) => g.platforms))].sort(),
-        groups: s.groups.map((g) => `${g.routeKey}|${g.headsign}`),
+        groups: s.groups.map((g) => key(g.routeKey, g.headsign)),
         to: placeName(plan, s.toStopId),
         frequency: departureFrequency(s.departures, t),
         segment: sharedSegmentOf(plan, s),
         within: s.within,
       };
     }),
+    datasets: groups.map((g): [PlanRoute | undefined, boolean] => [
+      routeOf(g.routeKey),
+      g.departures.some((d) => d.source !== "schedule"),
+    ]),
   };
 }
 

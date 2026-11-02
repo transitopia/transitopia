@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { PlacesFile } from "@transitopia/shared/features.ts";
-import { hubsFromPlaces } from "../src/hubs.ts";
+import {
+  baysFromPlaces,
+  hubsFromPlaces,
+  stationFeatureId,
+} from "../src/hubs.ts";
 
 const stop = (id: string, name: string, more = {}) => ({
   id,
@@ -133,5 +137,40 @@ describe("hubsFromPlaces", () => {
     const p = structuredClone(plan);
     p.patterns[0]!.stops = [1, 2];
     expect(hubsFromPlaces(p, places).map((h) => h.id)).toEqual(["sn-00000001"]);
+  });
+});
+
+describe("another feed's stops in a place", () => {
+  // The Fraser Valley's 66 at Lougheed Station: the registry puts its bay in TransLink's station,
+  // and its plan has no station there.
+  const fv = {
+    ...plan,
+    stations: [],
+    stops: [stop("120110", "Lougheed Stn Bay 5"), stop("120000", "Carvolth")],
+    patterns: [{ ...plan.patterns[0]!, stops: [1, 0] }],
+  };
+  const fvPlaces: PlacesFile = {
+    ...places,
+    feed: "bc-transit-fraser-valley",
+    stations: {},
+    parents: { "120110": "sn-00000001" },
+  };
+
+  it("lists them by the place's ID, for the other feed's card", () => {
+    expect(
+      [...baysFromPlaces(fv, fvPlaces)].map(([id, sis]) => [
+        id,
+        sis.map((si) => fv.stops[si]!.id),
+      ]),
+    ).toEqual([["sn-00000001", ["120110"]]]);
+  });
+
+  it("draws no hub for a station of another feed's", () => {
+    expect(hubsFromPlaces(fv, fvPlaces)).toEqual([]);
+  });
+
+  it("names a plan station by its feature ID", () => {
+    expect(stationFeatureId(places, "99939")).toBe("sn-00000001");
+    expect(stationFeatureId(places, "99999")).toBeUndefined();
   });
 });
