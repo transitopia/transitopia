@@ -128,6 +128,39 @@ describe("selectRoutes", () => {
   });
 });
 
+describe("merged routes", () => {
+  it("draws one route for every GTFS route an entry's match list matches", () => {
+    const { routes } = selectRoutes(
+      [
+        row("NAN-VAN", "Nan→Van", "Nanaimo to Vancouver", "4"),
+        row("VAN-NAN", "Van→Nan", "Vancouver to Nanaimo", "4"),
+      ],
+      cfg({
+        routes: [
+          {
+            key: "hullo",
+            label: "Hullo",
+            match: [
+              { route_long_name: "Nanaimo to Vancouver" },
+              { route_long_name: "Vancouver to Nanaimo" },
+            ],
+          },
+        ],
+      }),
+      "hullo",
+      undefined,
+    );
+    expect(routes).toHaveLength(1);
+    expect(routes[0]).toMatchObject({
+      key: "hullo",
+      label: "Hullo",
+      mode: "ferry",
+      gtfsRouteId: "NAN-VAN",
+      mergedGtfsRouteIds: ["VAN-NAN"],
+    });
+  });
+});
+
 describe("defaults", () => {
   it("keys routes by short name, else long name", () => {
     expect(defaultKey(row("x", "R1", "King George Blvd"))).toBe("R1");

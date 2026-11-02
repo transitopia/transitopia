@@ -69,7 +69,11 @@ export function defaultLabel(row: GtfsRouteRow, key: string): string {
   return long ? `${key} ${long}` : key;
 }
 
-export function matches(row: GtfsRouteRow, m: RouteMatch): boolean {
+export function matches(
+  row: GtfsRouteRow,
+  m: RouteMatch | readonly RouteMatch[],
+): boolean {
+  if (Array.isArray(m)) return m.some((x: RouteMatch) => matches(row, x));
   return Object.entries(m).every(
     ([field, value]) =>
       (row[field as keyof GtfsRouteRow] ?? "").trim().toLowerCase()
@@ -101,7 +105,8 @@ export interface RouteSelection {
 /**
  * The plan's routes from a feed's routes.txt and its routes.json. Sorted by group (rail and
  * ferries, buses in their own colour, other buses), then as listed in routes.json, then by key, numbers in order. Throws when an
- * entry matches more than one route, or two routes would share a key.
+ * entry matches more than one route (unless its `match` lists several: then they're one route, the
+ * first one's, with the others in `mergedGtfsRouteIds`), or two routes would share a key.
  */
 export function selectRoutes(
   rows: readonly GtfsRouteRow[],
@@ -118,10 +123,15 @@ export function selectRoutes(
       continue;
     }
     const over = cfg.routes.find((c) => matches(row, c.match));
-    if (over && used.has(over))
-      throw new Error(
-        `routes.json: ${over.key} matches more than one GTFS route`,
-      );
+    if (over && used.has(over)) {
+      const into = routes.find((r) => r.key === over.key);
+      if (!Array.isArray(over.match) || !into)
+        throw new Error(
+          `routes.json: ${over.key} matches more than one GTFS route`,
+        );
+      (into.mergedGtfsRouteIds ??= []).push(row.route_id!);
+      continue;
+    }
     if (over) used.add(over);
     const model = defaultModel(row.route_type);
     if (!model && !(over?.kind && over.mode)) {

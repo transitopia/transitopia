@@ -11,7 +11,10 @@ import {
   type PlacesFile,
 } from "@transitopia/shared/features.ts";
 import type { BusHub } from "@transitopia/transit-core/plan/exchanges.ts";
-import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
+import {
+  gtfsRouteIds,
+  type ServicePlan,
+} from "@transitopia/transit-core/plan/types.ts";
 import { sharedEnds, sharedPlace, type Place } from "./url.ts";
 
 /** One feed's plan and places: keys are resolved against each feed shown. */
@@ -122,7 +125,7 @@ export function resolveSelect(
         : "elsewhere";
     }
     case "gtfs-route": {
-      const r = plan.routes.find((x) => x.gtfsRouteId === k.value);
+      const r = plan.routes.find((x) => gtfsRouteIds(x).includes(k.value));
       return r ?
           { place: { kind: "route", feed: ctx.feed, id: r.key } }
         : "elsewhere";
