@@ -34,6 +34,7 @@ import { hubsOf } from "../plans.ts";
 import { SHOW_BRAND_COLORS } from "../overview.ts";
 import { hexToRgb } from "./vehicle-geometry.ts";
 import type { FeedIds } from "./ids.ts";
+import { addFeedLayer } from "./order.ts";
 
 // Every source and layer here is a feed's (`FeedIds`: its plan's tiles are its `lines`), named by
 // `ids.layer`; the names below are within a feed.
@@ -52,8 +53,6 @@ const ANCHORS = [
 ];
 /** Vehicles are inserted beneath this layer, so stop and station labels stay readable above them. */
 export const VEHICLES_BEFORE_LAYER = "bus-stops-label";
-/** The first of the focused route's layers, drawn over SkyTrain's (addTrackLayers goes beneath it). */
-export const FOCUS_LAYERS_START = "corridors-overview-focus-casing";
 /** Layers drawing stations, exchanges and stops (and their names): taps on them open their cards. */
 export const PLACE_LAYERS = [
   "stations",
@@ -728,10 +727,10 @@ export function addStaticLayers(
         "line-width": brandWidth(0, only),
       },
     });
-    map.addLayer(casingLayer(L(`${prefix}-casing`), tierWidth(2, [0, 1])));
+    addFeedLayer(map, casingLayer(L(`${prefix}-casing`), tierWidth(2, [0, 1])));
     // Corridors whose routes don't run in the window (feature state `idle`): dotted grey, beneath
     // the tiers, so a route the site mentions is never missing from the map.
-    map.addLayer({
+    addFeedLayer(map, {
       id: L(`${prefix}-idle`),
       type: "line",
       source,
@@ -758,9 +757,9 @@ export function addStaticLayers(
         "line-dasharray": [2, 2],
       },
     });
-    map.addLayer({ id: L(prefix), ...line });
-    map.addLayer(casingLayer(L(`${prefix}-brand-casing`), brandWidth(2)));
-    map.addLayer(brandLayer(L(`${prefix}-brand`)));
+    addFeedLayer(map, { id: L(prefix), ...line });
+    addFeedLayer(map, casingLayer(L(`${prefix}-brand-casing`), brandWidth(2)));
+    addFeedLayer(map, brandLayer(L(`${prefix}-brand`)));
     // The focused corridors again, on top of everything but stations, exchanges and labels
     // (packages/transit-map/README.md#route-focus): another route's corridor along the same street
     // (the other direction) can come later in the tile and cover them, SkyTrain's lines are drawn
@@ -805,7 +804,7 @@ export function addStaticLayers(
     ] satisfies LineLayerSpecification[];
   });
   // Bus routes drawn on their own (99 B-Line, RapidBus; every route without corridors).
-  map.addLayer({
+  addFeedLayer(map, {
     id: L("routes-bus"),
     type: "line",
     ...routes,
@@ -832,7 +831,7 @@ export function addStaticLayers(
         : ["interpolate", ["linear"], ["zoom"], 9, 1, 13, 2, 16, 4],
     },
   });
-  map.addLayer({
+  addFeedLayer(map, {
     id: L("routes-bus-limited"),
     type: "line",
     ...routes,
@@ -845,7 +844,7 @@ export function addStaticLayers(
       "line-dasharray": [1, 2],
     },
   });
-  map.addLayer({
+  addFeedLayer(map, {
     id: L("routes-shape-inactive"),
     type: "line",
     ...routes,
@@ -858,7 +857,7 @@ export function addStaticLayers(
       "line-dasharray": [1, 2],
     },
   });
-  map.addLayer({
+  addFeedLayer(map, {
     id: L("routes-shape"),
     type: "line",
     ...routes,
@@ -869,7 +868,7 @@ export function addStaticLayers(
       "line-width": ["interpolate", ["linear"], ["zoom"], 9, 1.5, 13, 3, 16, 5],
     },
   });
-  map.addLayer({
+  addFeedLayer(map, {
     id: L("routes-skytrain-casing"),
     type: "line",
     ...routes,
@@ -893,7 +892,7 @@ export function addStaticLayers(
       ],
     },
   });
-  map.addLayer({
+  addFeedLayer(map, {
     id: L("routes-skytrain"),
     type: "line",
     ...routes,
@@ -969,11 +968,11 @@ export function addStaticLayers(
       ],
     },
   };
-  map.addLayer(ticks);
-  // SkyTrain's layers go here (tracks.ts → addTrackLayers: before FOCUS_LAYERS_START), then the
-  // focused route over them, its stop ticks included.
-  for (const layer of corridorSets.flat()) map.addLayer(layer);
-  map.addLayer({
+  addFeedLayer(map, ticks);
+  // SkyTrain's layers go here (tracks.ts → addTrackLayers; layers/order.ts), then the focused route
+  // over them, its stop ticks included.
+  for (const layer of corridorSets.flat()) addFeedLayer(map, layer);
+  addFeedLayer(map, {
     ...ticks,
     id: L("bus-stops-focus"),
     paint: {
@@ -982,7 +981,7 @@ export function addStaticLayers(
     },
   });
   // Bus exchanges: drawn like stations, in the stop labels' grey, once bus stops show.
-  map.addLayer({
+  addFeedLayer(map, {
     id: L("exchanges"),
     type: "circle",
     source: ids.exchanges,
@@ -1012,7 +1011,7 @@ export function addStaticLayers(
       ],
     },
   });
-  map.addLayer({
+  addFeedLayer(map, {
     id: L("stations"),
     type: "circle",
     source: ids.stations,
@@ -1033,7 +1032,7 @@ export function addStaticLayers(
       ],
     },
   });
-  map.addLayer({
+  addFeedLayer(map, {
     id: L("stations-label"),
     type: "symbol",
     source: ids.stations,
@@ -1053,70 +1052,64 @@ export function addStaticLayers(
       "text-halo-width": 1.5,
     },
   });
-  map.addLayer(
-    {
-      id: L(VEHICLES_BEFORE_LAYER),
-      type: "symbol",
-      source: ids.busStops,
-      minzoom: 14,
-      layout: {
-        "text-field": ["get", "name"],
-        "text-font": ["Noto Sans Medium"],
-        "text-size": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          14,
-          10.5,
-          16,
-          12.5,
-          18,
-          14,
-        ],
-        "text-radial-offset": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          14,
-          0.9,
-          18,
-          1.5,
-        ],
-        "text-anchor": ["get", "anchor"],
-        "text-optional": true,
-      },
-      paint: {
-        "text-color": mutedText,
-        "text-halo-color": halo,
-        "text-halo-width": 1.5,
-        "text-opacity": focusOpacity(1, stopFocused),
-      },
+  addFeedLayer(map, {
+    id: L(VEHICLES_BEFORE_LAYER),
+    type: "symbol",
+    source: ids.busStops,
+    minzoom: 14,
+    layout: {
+      "text-field": ["get", "name"],
+      "text-font": ["Noto Sans Medium"],
+      "text-size": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        14,
+        10.5,
+        16,
+        12.5,
+        18,
+        14,
+      ],
+      "text-radial-offset": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        14,
+        0.9,
+        18,
+        1.5,
+      ],
+      "text-anchor": ["get", "anchor"],
+      "text-optional": true,
     },
-    L("stations-label"),
-  );
-  // Beneath station labels, which win where they collide.
-  map.addLayer(
-    {
-      id: L("exchanges-label"),
-      type: "symbol",
-      source: ids.exchanges,
-      minzoom: 12,
-      layout: {
-        "text-field": ["get", "name"],
-        "text-font": ["Noto Sans Medium"],
-        "text-size": ["interpolate", ["linear"], ["zoom"], 12, 10, 15, 12.5],
-        "text-offset": [0, 1.1],
-        "text-anchor": "top",
-        "text-optional": true,
-      },
-      paint: {
-        "text-color": mutedText,
-        "text-halo-color": halo,
-        "text-halo-width": 1.5,
-      },
+    paint: {
+      "text-color": mutedText,
+      "text-halo-color": halo,
+      "text-halo-width": 1.5,
+      "text-opacity": focusOpacity(1, stopFocused),
     },
-    L("stations-label"),
-  );
+  });
+  // Beneath station labels, which win where they collide (layers/order.ts).
+  addFeedLayer(map, {
+    id: L("exchanges-label"),
+    type: "symbol",
+    source: ids.exchanges,
+    minzoom: 12,
+    layout: {
+      "text-field": ["get", "name"],
+      "text-font": ["Noto Sans Medium"],
+      "text-size": ["interpolate", ["linear"], ["zoom"], 12, 10, 15, 12.5],
+      "text-offset": [0, 1.1],
+      "text-anchor": "top",
+      "text-optional": true,
+    },
+    paint: {
+      "text-color": mutedText,
+      "text-halo-color": halo,
+      "text-halo-width": 1.5,
+    },
+  });
   applyRouteFilter(map, ids, hiddenRoutes);
   return true;
 }
@@ -1211,13 +1204,13 @@ export function applyStopsVisibility(
 
 /**
  * A ring around the selected station, exchange or stop (its card is open), or none, beneath the
- * layer `before` where it's on the map. Re-call after a style change: it adds its source and layer
- * when they're missing.
+ * layer `before` (every feed's stations). Re-call after a style change or a feed's layers were
+ * redrawn: it adds its source and layer when they're missing, and moves the layer back beneath.
  */
 export function setSelectedPlace(
   map: MlMap,
   at: [number, number] | undefined,
-  before: string,
+  before: string | undefined,
 ): void {
   const data: FeatureCollection = {
     type: "FeatureCollection",
@@ -1236,7 +1229,9 @@ export function setSelectedPlace(
     GeoJSONSource | undefined;
   if (source) void source.setData(data);
   else map.addSource(SELECTED_PLACE_SOURCE, { type: "geojson", data });
-  if (!map.getLayer(SELECTED_PLACE_LAYER))
+  if (map.getLayer(SELECTED_PLACE_LAYER))
+    map.moveLayer(SELECTED_PLACE_LAYER, before);
+  else
     map.addLayer(
       {
         id: SELECTED_PLACE_LAYER,
@@ -1250,6 +1245,6 @@ export function setSelectedPlace(
           "circle-stroke-width": 2,
         },
       },
-      map.getLayer(before) ? before : undefined,
+      before,
     );
 }

@@ -27,12 +27,11 @@ import {
   casingOpacity,
   DIM_OPACITY,
   focusColor,
-  FOCUS_LAYERS_START,
   onFocus,
   routeLineColor,
-  VEHICLES_BEFORE_LAYER,
 } from "./static.ts";
 import type { FeedIds } from "./ids.ts";
+import { addFeedLayer } from "./order.ts";
 
 // The rail network's layers are those of the feed whose plan's tiles draw it (`FeedIds`): its
 // `tracks` source is the track network itself, drawn only with ?debug=1.
@@ -129,14 +128,7 @@ export function addTrackLayers(
   const casing = dark ? "#15181c" : "#ffffff";
   // Above bus stop ticks, so zoomed out the line hides stops under or over the guideway; they show
   // through once it fades close in. Below the focused bus route (its card is open), exchanges,
-  // stations and labels.
-  const before =
-    (
-      map.getLayer(L(VEHICLES_BEFORE_LAYER))
-      && map.getLayer(L(FOCUS_LAYERS_START))
-    ) ?
-      L(FOCUS_LAYERS_START)
-    : undefined;
+  // stations and labels (layers/order.ts).
   const lines = {
     source: ids.lines,
     "source-layer": PLAN_TILE_LAYERS.railLines,
@@ -227,64 +219,52 @@ export function addTrackLayers(
       x * DIM_OPACITY,
     ] as ExpressionSpecification;
 
-  map.addLayer(
-    {
-      id: L("tracks-yard"),
-      type: "line",
-      ...segments,
-      minzoom: 12,
-      filter: kind("yard"),
-      layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": yard, "line-width": width(0.5, 1, 3) },
-    },
-    before,
-  );
+  addFeedLayer(map, {
+    id: L("tracks-yard"),
+    type: "line",
+    ...segments,
+    minzoom: 12,
+    filter: kind("yard"),
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": yard, "line-width": width(0.5, 1, 3) },
+  });
   // Tail tracks, spurs and track past the last platform: drawn like yard track.
-  map.addLayer(
-    {
-      id: L("tracks-other"),
-      type: "line",
-      ...lines,
-      minzoom: 12,
-      filter: track(false),
-      layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": yard, "line-width": width(0.5, 1, 3) },
+  addFeedLayer(map, {
+    id: L("tracks-other"),
+    type: "line",
+    ...lines,
+    minzoom: 12,
+    filter: track(false),
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": yard, "line-width": width(0.5, 1, 3) },
+  });
+  addFeedLayer(map, {
+    id: L("rail-casing"),
+    type: "line",
+    ...lines,
+    ...low,
+    filter: centre,
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: {
+      "line-color": casing,
+      "line-width": stroke(1, 3),
+      "line-opacity": casingOpacity(onFocus(ids, "line")),
     },
-    before,
-  );
-  map.addLayer(
-    {
-      id: L("rail-casing"),
-      type: "line",
-      ...lines,
-      ...low,
-      filter: centre,
-      layout: { "line-cap": "round", "line-join": "round" },
-      paint: {
-        "line-color": casing,
-        "line-width": stroke(1, 3),
-        "line-opacity": casingOpacity(onFocus(ids, "line")),
-      },
+  });
+  addFeedLayer(map, {
+    id: L("tracks-minor"),
+    type: "line",
+    ...lines,
+    minzoom: 12.5,
+    ...low,
+    filter: ["all", track(true), ["!=", ["get", "kind"], "main"]],
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: {
+      "line-color": lineColor,
+      "line-width": width(0.8, 1.5, 3.5),
+      "line-opacity": 0.9,
     },
-    before,
-  );
-  map.addLayer(
-    {
-      id: L("tracks-minor"),
-      type: "line",
-      ...lines,
-      minzoom: 12.5,
-      ...low,
-      filter: ["all", track(true), ["!=", ["get", "kind"], "main"]],
-      layout: { "line-cap": "round", "line-join": "round" },
-      paint: {
-        "line-color": lineColor,
-        "line-width": width(0.8, 1.5, 3.5),
-        "line-opacity": 0.9,
-      },
-    },
-    before,
-  );
+  });
   const centreStroke: Omit<LineLayerSpecification, "id" | "paint"> = {
     type: "line",
     ...lines,
@@ -292,14 +272,11 @@ export function addTrackLayers(
     filter: ["all", centre, ["!", shared]],
     layout: { "line-cap": "round", "line-join": "round" },
   };
-  map.addLayer(
-    {
-      id: L("rail-centre"),
-      ...centreStroke,
-      paint: { "line-color": lineColor, "line-width": stroke(1) },
-    },
-    before,
-  );
+  addFeedLayer(map, {
+    id: L("rail-centre"),
+    ...centreStroke,
+    paint: { "line-color": lineColor, "line-width": stroke(1) },
+  });
   // Shared track: one stroke per line along the stretch's spine, side by side, the first line on
   // the left of west to east (stripe 0 of `stripes`).
   const stripes = ["get", "stripes"] as ExpressionSpecification;
@@ -324,138 +301,117 @@ export function addTrackLayers(
       ["*", w, ["-", ["/", ["+", ["get", "stripe"], 0.5], stripes], 0.5]],
     ]),
   ] as ExpressionSpecification;
-  map.addLayer(
-    {
-      id: L("rail-shared"),
-      ...sharedStroke,
-      paint: {
-        "line-color": lineColor,
-        "line-width": stripeWidth(),
-        "line-offset": stripeOffset,
-      },
+  addFeedLayer(map, {
+    id: L("rail-shared"),
+    ...sharedStroke,
+    paint: {
+      "line-color": lineColor,
+      "line-width": stripeWidth(),
+      "line-offset": stripeOffset,
     },
-    before,
-  );
-  map.addLayer(
-    {
-      id: L("rail-centre-focus"),
-      ...centreStroke,
-      paint: {
-        "line-color": ownColor,
-        "line-width": stops(STROKE, true),
-      },
+  });
+  addFeedLayer(map, {
+    id: L("rail-centre-focus"),
+    ...centreStroke,
+    paint: {
+      "line-color": ownColor,
+      "line-width": stops(STROKE, true),
     },
-    before,
-  );
-  map.addLayer(
-    {
-      id: L("rail-shared-focus"),
-      ...sharedStroke,
-      paint: {
-        "line-color": ownColor,
-        "line-width": stripeWidth(true),
-        "line-offset": stripeOffset,
-      },
+  });
+  addFeedLayer(map, {
+    id: L("rail-shared-focus"),
+    ...sharedStroke,
+    paint: {
+      "line-color": ownColor,
+      "line-width": stripeWidth(true),
+      "line-offset": stripeOffset,
     },
-    before,
-  );
+  });
   // Close in: the ribbon, one polygon per line, so it fades evenly.
-  map.addLayer(
-    {
-      id: L("rail-ribbon"),
-      type: "fill",
-      ...lines,
-      minzoom: RIBBON_ZOOM,
-      filter: ["==", ["get", "type"], "ribbon"],
-      paint: {
-        "fill-color": ownColor,
-        "fill-opacity": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          16,
-          dimmed(1),
-          17,
-          dimmed(0.5),
-        ],
-      },
+  addFeedLayer(map, {
+    id: L("rail-ribbon"),
+    type: "fill",
+    ...lines,
+    minzoom: RIBBON_ZOOM,
+    filter: ["==", ["get", "type"], "ribbon"],
+    paint: {
+      "fill-color": ownColor,
+      "fill-opacity": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        16,
+        dimmed(1),
+        17,
+        dimmed(0.5),
+      ],
     },
-    before,
-  );
-  map.addLayer(
-    {
-      id: L("tracks-works"),
-      type: "line",
-      ...segments,
-      filter: ["has", "works"],
-      paint: {
-        "line-color": lineColor,
-        "line-width": width(2, 3, 4),
-        "line-dasharray": [2, 1],
-      },
+  });
+  addFeedLayer(map, {
+    id: L("tracks-works"),
+    type: "line",
+    ...segments,
+    filter: ["has", "works"],
+    paint: {
+      "line-color": lineColor,
+      "line-width": width(2, 3, 4),
+      "line-dasharray": [2, 1],
     },
-    before,
-  );
+  });
   // The tracks themselves inside the ribbon.
-  map.addLayer(
-    {
-      id: L("tracks-hairline"),
-      type: "line",
-      ...lines,
-      minzoom: RIBBON_ZOOM,
-      filter: track(true),
-      layout: { "line-cap": "butt", "line-join": "round" },
-      paint: {
-        "line-color": "#ffffff",
-        "line-width": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          15.5,
-          0.7,
-          17,
-          1.3,
-          19,
-          2,
-        ],
-        "line-opacity": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          RIBBON_ZOOM,
-          0,
-          16,
-          dimmed(1),
-          17,
-          dimmed(0.6),
-        ],
-      },
+  addFeedLayer(map, {
+    id: L("tracks-hairline"),
+    type: "line",
+    ...lines,
+    minzoom: RIBBON_ZOOM,
+    filter: track(true),
+    layout: { "line-cap": "butt", "line-join": "round" },
+    paint: {
+      "line-color": "#ffffff",
+      "line-width": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        15.5,
+        0.7,
+        17,
+        1.3,
+        19,
+        2,
+      ],
+      "line-opacity": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        RIBBON_ZOOM,
+        0,
+        16,
+        dimmed(1),
+        17,
+        dimmed(0.6),
+      ],
     },
-    before,
-  );
+  });
   // Close in, the stretch's tracks in their line's colour over its faded ribbon.
-  map.addLayer(
-    {
-      id: L("tracks-focus"),
-      type: "line",
-      ...lines,
-      minzoom: RIBBON_ZOOM,
-      filter: track(true),
-      layout: { "line-cap": "butt", "line-join": "round" },
-      paint: {
-        "line-color": ownColor,
-        "line-width": stops(
-          [
-            [15.5, 3],
-            [17, 5],
-            [19, 8],
-          ],
-          true,
-        ),
-      },
+  addFeedLayer(map, {
+    id: L("tracks-focus"),
+    type: "line",
+    ...lines,
+    minzoom: RIBBON_ZOOM,
+    filter: track(true),
+    layout: { "line-cap": "butt", "line-join": "round" },
+    paint: {
+      "line-color": ownColor,
+      "line-width": stops(
+        [
+          [15.5, 3],
+          [17, 5],
+          [19, 8],
+        ],
+        true,
+      ),
     },
-    before,
-  );
+  });
   for (const name of TRACK_LAYERS) {
     const f = map.getFilter(L(name));
     if (f) baseFilters.set(L(name), f as ExpressionSpecification);
@@ -478,7 +434,7 @@ export function addTrackDebugLayers(
     type: "geojson",
     data: tracks as FeatureCollection,
   });
-  map.addLayer({
+  addFeedLayer(map, {
     id: L("tracks-nodes"),
     type: "circle",
     source: ids.tracks,
@@ -512,7 +468,7 @@ export function addTrackDebugLayers(
     type: "geojson",
     data: { type: "FeatureCollection", features: [] },
   });
-  map.addLayer({
+  addFeedLayer(map, {
     id: L("debug-seg-labels"),
     type: "symbol",
     source: ids.tracks,
@@ -530,7 +486,7 @@ export function addTrackDebugLayers(
       "text-halo-width": 1.5,
     },
   });
-  map.addLayer({
+  addFeedLayer(map, {
     id: L("debug-platforms"),
     type: "symbol",
     source: ids.debug,
