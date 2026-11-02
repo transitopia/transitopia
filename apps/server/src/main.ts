@@ -24,7 +24,7 @@ import { syncSources } from "./sources.ts";
 
 const log = (m: string) => console.log(`[server] ${m}`);
 
-// Every feed a region shows (config/feeds/*/feed.json), checked.
+// Every feed (config/feeds/*/feed.json), checked.
 const feeds = await readFeeds();
 // Track-level rail (config/networks/): its live dispatch, corrections and /admin support one network so far.
 const rail = await railNetwork();

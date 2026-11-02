@@ -1,8 +1,7 @@
 // The committed config (config/: docs/DESIGN.md#feeds-operators-and-rail-networks): global defaults
 // (config/defaults/), operators (config/operators/<id>/operator.json), feeds
 // (config/feeds/<id>/feed.json, routes.json, ferries/<route>.json), rail networks
-// (config/networks/<id>/network.json, operations.json, dispatch.json) and regions
-// (config/regions/<id>/region.json): one schema each,
+// (config/networks/<id>/network.json, operations.json, dispatch.json): one schema each,
 // checked wherever a file is loaded (site, server, pipelines) and by a test over every committed file,
 // so a misspelled or mistyped setting fails loudly instead of reading as undefined. Keys starting with
 // "$" are comments (the files cite their sources there) and are dropped before checking, at any depth.
@@ -428,7 +427,7 @@ const rtLayer = z.strictObject({
 
 // --- config/feeds/<feed>/feed.json ---
 
-/** Ids of regions, feeds and rail networks: they name directories, URL segments and database keys. */
+/** Ids of feeds, operators and rail networks: they name directories, URL segments and database keys. */
 const slug = z
   .string()
   .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "expected a lower-case-slug");
@@ -562,31 +561,10 @@ const network = z.strictObject({
     .refine((fs) => new Set(fs).size === fs.length, "feeds are listed once"),
 });
 
-// --- config/regions/<id>/region.json ---
-
-/** A view of /transit: where it opens and what it shows (the site's only use of regions). */
-const region = z.strictObject({
-  id: slug,
-  name: z.string().min(1),
-  /**
-   * The feeds whose transit the region shows (config/feeds/<id>/). A feed can be in several regions (a
-   * ferry between two), and it is fetched, built, polled and recorded once whichever regions show it.
-   */
-  feeds: z
-    .array(slug)
-    .min(1)
-    .refine((fs) => new Set(fs).size === fs.length, "feeds are listed once"),
-  /** Where the region's transit data applies. */
-  bbox: bounds,
-  /** The first view of /transit when the URL has no map position. */
-  initialBounds: bounds,
-});
-
 export type FeedInfo = z.output<typeof feed>;
 export type OperatorInfo = z.output<typeof operator>;
 export type FeedAis = z.output<typeof feedAis>;
 export type FeedRealtime = z.output<typeof feedRealtime>;
-export type RegionInfo = z.output<typeof region>;
 export type NetworkInfo = z.output<typeof network>;
 
 function parsed<T>(schema: z.ZodType<T>, file: string, json: unknown): T {
@@ -660,10 +638,6 @@ export function parseFeed(json: unknown): FeedInfo {
   return parsed(feed, "feed.json", json);
 }
 
-/** A region's region.json, checked. */
-export function parseRegion(json: unknown): RegionInfo {
-  return parsed(region, "region.json", json);
-}
 
 /** A rail network's network.json, checked. */
 export function parseNetwork(json: unknown): NetworkInfo {

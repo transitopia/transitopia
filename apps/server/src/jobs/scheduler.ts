@@ -61,7 +61,7 @@ export class Jobs {
   private recovered = false;
 
   private readonly db: Db;
-  /** Every feed the regions show: the data build publishes them, statistics are of those with real time. */
+  /** Every feed (config/feeds/): the data build publishes them, statistics are of those with real time. */
   private readonly feeds: FeedInfo[];
   private readonly repo: CorrectionsRepo;
   private readonly env: ServerEnv;

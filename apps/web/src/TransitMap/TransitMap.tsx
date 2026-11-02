@@ -3,7 +3,6 @@ import {
   TransitEngine,
   type TransitSnapshot,
 } from "@transitopia/transit-map/engine.ts";
-import { readUrl } from "@transitopia/transit-map/url.ts";
 import {
   applyBrandColors,
   overviewLayers,
@@ -32,19 +31,14 @@ import { PickMenu } from "./PickMenu.tsx";
 import { RouteCard } from "./RouteCard.tsx";
 import { FollowPill } from "./FollowPill.tsx";
 import { useOverlayPadding } from "./overlayPadding.ts";
-import {
-  DEFAULT_REGION,
-  REGIONS,
-  lngLatBounds,
-  regionInView,
-  type SiteRegion,
-} from "./regions.ts";
+import { FEEDS } from "./feeds.ts";
+import { VIEWS, lngLatBounds } from "./views.ts";
 
 const PADDING = { top: 90, bottom: 150, left: 20, right: 50 };
 
 /**
- * Move the map to bounds, zoomed in at least as far as a region's engine starts (on a phone, a
- * region's first view fits only further out).
+ * Move the map to bounds, zoomed in at least as far as the engine starts (on a phone, a view's
+ * bounds fit only further out).
  */
 function showBounds(
   map: MapType,
@@ -65,7 +59,7 @@ function showBounds(
 }
 
 /**
- * Show the default region's network when the site was opened on /transit (or /) without a map
+ * Show the first named view (views.ts) when the site was opened on /transit (or /) without a map
  * position. Only once: switching modes later keeps wherever the map is.
  */
 let initialViewDone = false;
@@ -76,86 +70,36 @@ function useInitialView(map: MapType | undefined): void {
     const openedOnTransit =
       openedPath === "/" || openedPath.startsWith("/transit");
     if (openedOnTransit && !openedWithPosition)
-      showBounds(map, lngLatBounds(DEFAULT_REGION.info.initialBounds), {
+      showBounds(map, lngLatBounds(VIEWS[0]!.bounds), {
         animate: false,
       });
   }, [map]);
 }
 
-function viewOf(map: MapType): SiteRegion | undefined {
-  const b = map.getBounds();
-  return regionInView({
-    west: b.getWest(),
-    south: b.getSouth(),
-    east: b.getEast(),
-    north: b.getNorth(),
-  });
-}
-
-interface RegionState {
-  region: SiteRegion;
-  /** Whether any region is in view. */
-  inView: boolean;
-  /** Whether its engine runs: it's in view, zoomed in to ENGINE_MIN_ZOOM or further. */
-  active: boolean;
-  /** Whether the map has been looked at yet (until then `region` is only the default). */
-  ready: boolean;
-}
-
-/**
- * The region the engine shows (docs/DESIGN.md#feeds-operators-and-rail-networks): the one in view, or while the
- * view is outside every region, the last one shown (at first, the default). Its engine runs only
- * zoomed in to ENGINE_MIN_ZOOM; further out, the overview shows every region.
- */
-function useRegion(map: MapType | undefined): RegionState {
-  const [state, setState] = React.useState<RegionState>({
-    region: DEFAULT_REGION,
-    inView: true,
-    active: false,
-    ready: false,
-  });
+/** Whether the map is zoomed in far enough for the engine (ENGINE_MIN_ZOOM); further out, the overview shows. */
+function useEngineZoom(map: MapType | undefined): boolean {
+  const [active, setActive] = React.useState(false);
   React.useEffect(() => {
     if (!map) return;
-    const update = () => {
-      const r = viewOf(map);
-      const active = r !== undefined && map.getZoom() >= ENGINE_MIN_ZOOM;
-      setState((prev) => {
-        const next = {
-          region: r ?? prev.region,
-          inView: r !== undefined,
-          active,
-          ready: true,
-        };
-        return (
-            prev.ready
-              && prev.region === next.region
-              && prev.inView === next.inView
-              && prev.active === next.active
-          ) ?
-            prev
-          : next;
-      });
-    };
+    const update = () => setActive(map.getZoom() >= ENGINE_MIN_ZOOM);
     update();
-    map.on("moveend", update);
+    map.on("zoomend", update);
     return () => {
-      map.off("moveend", update);
+      map.off("zoomend", update);
     };
   }, [map]);
-  return state;
+  return active;
 }
 
 /** The transit overview tileset's source (packages/transit-map/src/overview.ts), only on /transit. */
 const OVERVIEW_SOURCE = "transitopia-transit-overview";
 
-/** What the overview draws: every region's feed. */
-const OVERVIEW_DATASETS = REGIONS.flatMap((r) =>
-  r.feeds.map((f) => f.feed.dataset),
-);
+/** What the overview draws: every feed. */
+const OVERVIEW_DATASETS = [...new Set(FEEDS.map((f) => f.feed.dataset))];
 
 /**
- * Every region's routes zoomed out (packages/transit-core/DESIGN.md#overview-tiles), below the zoom
- * a region's engine starts at, and further in until the engine draws its own lines (so zooming in
+ * Every feed's routes zoomed out (packages/transit-core/DESIGN.md#overview-tiles), below the zoom
+ * the engine starts at, and further in until the engine draws the lines in view (so zooming in
  * never leaves the map without any); again after a theme switch replaces the style.
  */
 function useOverview(
@@ -214,7 +158,9 @@ function useOverview(
 
 /**
  * /transit (apps/web/README.md#transit-mode): mounts the transit engine on the shared map and renders its
- * controls. The engine draws every frame on its own; React only sees its snapshot store.
+ * controls. The engine draws every frame on its own; React only sees its snapshot store. One engine
+ * shows every feed, loading each while it's in view (packages/transit-map/README.md#feeds); zoomed
+ * out, it's hidden and paused (not disposed), so zooming back in shows it at once.
  */
 export default function TransitMap() {
   const map = useMap();
@@ -226,38 +172,21 @@ export default function TransitMap() {
   const [build, setBuild] = React.useState(0);
   useInitialView(map);
   useOtherModeRedirect("transit");
-  const { region, inView, active, ready } = useRegion(map);
-  // The region whose engine is kept: the last one zoomed in to. Zoomed out, its engine is hidden
-  // (and paused) rather than disposed, so zooming back in shows it at once; zooming in to
-  // another region replaces it.
-  const [kept, setKept] = React.useState<SiteRegion>();
-  React.useEffect(() => {
-    if (ready && active) setKept(region);
-  }, [ready, active, region]);
-  const shown = active && kept === region;
+  const shown = useEngineZoom(map);
+  const inCoverage = React.useSyncExternalStore(
+    React.useCallback(
+      (fn: () => void) => engine?.subscribe(fn) ?? (() => {}),
+      [engine],
+    ),
+    () => engine?.getSnapshot().inCoverage ?? true,
+  );
   useOverview(map, theme, shown ? engine : undefined);
-  // The first engine takes its selection from the URL; one for a region panned to later starts
-  // without it (a vehicle or place of another region), at the same time, unless the map moved
-  // there to find the selection (`carry`, from the feature resolver).
-  const shownRegion = React.useRef<string>(undefined);
-  const carry = React.useRef<{ key: string; region: string }>(undefined);
 
   React.useEffect(() => {
-    if (!map || !kept) return;
-    const region = kept;
+    if (!map) return;
     let cancelled = false;
     let created: TransitEngine | undefined;
     const params = new URLSearchParams(location.search);
-    const { select: _s, ...time } = readUrl(region.feeds[0]!.feed.timezone);
-    // A key carried for this region is used once its engine starts; one for another region (the
-    // user panned elsewhere first) is dropped.
-    const select =
-      carry.current?.region === region.info.id ? carry.current.key : undefined;
-    if (!select) carry.current = undefined;
-    const switched =
-      shownRegion.current !== undefined
-      && shownRegion.current !== region.info.id;
-    shownRegion.current = region.info.id;
     setError(undefined);
     TransitEngine.create(map, {
       dataBase: transitData,
@@ -265,11 +194,8 @@ export default function TransitMap() {
       theme: themeRef.current,
       scenario: params.get("scenario") ?? undefined,
       debug: params.has("debug"),
-      feeds: region.feeds,
+      feeds: FEEDS,
       onRebuilt: () => setBuild((b) => b + 1),
-      ...(switched ?
-        { initial: { ...time, ...(select ? { select } : {}) } }
-      : {}),
     }).then(
       (eng) => {
         if (cancelled) {
@@ -277,7 +203,6 @@ export default function TransitMap() {
           return;
         }
         created = eng;
-        if (select) carry.current = undefined;
         setEngine(eng);
         Object.assign(window, { transit: eng.debugHandle() });
       },
@@ -292,7 +217,7 @@ export default function TransitMap() {
       setEngine(undefined);
       delete (window as { transit?: unknown }).transit;
     };
-  }, [map, kept, build]);
+  }, [map, build]);
 
   React.useEffect(() => {
     engine?.setVisible(shown);
@@ -307,28 +232,26 @@ export default function TransitMap() {
 
   return (
     <>
-      {error && active ?
+      {error && shown ?
         <MapOverlayWindow className="top-5 sm:top-24 text-red-700 dark:text-red-300">
           <div role="alert">{error}</div>
         </MapOverlayWindow>
       : null}
-      {!inView ?
+      {!inCoverage ?
         <MapOverlayWindow className="top-5 sm:top-24">
           Transit data isn't available here yet. Go to{" "}
-          {REGIONS.map((r, i) => (
-            <React.Fragment key={r.info.id}>
+          {VIEWS.map((v, i) => (
+            <React.Fragment key={v.name}>
               {i === 0 ?
                 ""
-              : i === REGIONS.length - 1 ?
+              : i === VIEWS.length - 1 ?
                 " or "
               : ", "}
               <button
                 type="button"
                 className="underline"
-                onClick={() =>
-                  map && showBounds(map, lngLatBounds(r.info.initialBounds))
-                }>
-                {r.info.name}
+                onClick={() => map && showBounds(map, lngLatBounds(v.bounds))}>
+                {v.name}
               </button>
             </React.Fragment>
           ))}
@@ -338,28 +261,16 @@ export default function TransitMap() {
       {engine && shown ?
         <EngineControls
           engine={engine}
-          onElsewhere={(key, bounds) => {
-            // Carried only to another region, whose engine will select it. A feature in this
-            // region that its plan doesn't have (a stop no drawn route serves) can't be selected:
-            // the map just shows where it is.
-            const [w, s, e, n] = bounds;
-            const pad = 1e-5;
-            const target = regionInView({
-              west: w - pad,
-              south: s - pad,
-              east: e + pad,
-              north: n + pad,
-            });
-            carry.current =
-              target && target.info.id !== region.info.id ?
-                { key, region: target.info.id }
-              : undefined;
+          onElsewhere={(bounds) => {
+            // The engine selects it once a feed loaded there has it. A feature a loaded feed's
+            // plan doesn't have (a stop no drawn route serves) can't be selected: the map just
+            // shows where it is.
             if (map) showBounds(map, lngLatBounds(bounds), { maxZoom: 16 });
           }}
         />
       : null}
       {map && !shown ?
-        <OverviewLayers map={map} engine={engine} inView={inView} />
+        <OverviewLayers map={map} engine={engine} inView={inCoverage} />
       : null}
     </>
   );
@@ -367,8 +278,8 @@ export default function TransitMap() {
 
 const EngineControls: React.FC<{
   engine: TransitEngine;
-  /** A selected feature is elsewhere: move the map there (another region's engine selects it). */
-  onElsewhere: (key: string, bounds: [number, number, number, number]) => void;
+  /** A selected feature is elsewhere: move the map there (the engine selects it once it can). */
+  onElsewhere: (bounds: [number, number, number, number]) => void;
 }> = ({ engine, onElsewhere }) => {
   const snap: TransitSnapshot = React.useSyncExternalStore(
     engine.subscribe,
@@ -395,13 +306,13 @@ const EngineControls: React.FC<{
 };
 
 /**
- * A `?select=` key the region's plan doesn't have: ask the feature resolver where it is
- * (apps/server/README.md#feature-resolver), so the map can move to its region. An OSM ref that no
- * transit feature has goes to /cycling.
+ * A `?select=` key no loaded feed has: ask the feature resolver where it is
+ * (apps/server/README.md#feature-resolver), so the map can move there. An OSM ref that no transit
+ * feature has goes to /cycling.
  */
 function useElsewhere(
   key: string | undefined,
-  onFound: (key: string, bounds: [number, number, number, number]) => void,
+  onFound: (bounds: [number, number, number, number]) => void,
 ): void {
   const found = React.useRef(onFound);
   found.current = onFound;
@@ -429,7 +340,7 @@ function useElsewhere(
       .then((f) => {
         if (cancelled || !f) return;
         if (f.kind ? modeOfKind(f.kind) === "cycling" : osm) toCycling();
-        else if (f.bbox) found.current(key, f.bbox);
+        else if (f.bbox) found.current(f.bbox);
       })
       .catch(() => {});
     return () => {

@@ -81,6 +81,11 @@ export class VehicleLayer {
     for (const r of routes) colors.set(r.key, hexToRgb(r.color));
   }
 
+  /** Forget an unloaded feed's route colours. */
+  dropFeed(feed: string): void {
+    this.colors.delete(feed);
+  }
+
   private isSelected(v: VehicleState): boolean {
     const s = this.selected;
     return s !== undefined && v.id === s.id && v.feed === s.feed;

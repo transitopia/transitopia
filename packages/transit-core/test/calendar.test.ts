@@ -87,6 +87,7 @@ describe("feedForDate", () => {
   const manifest: FeedManifest = {
     schema: 1,
     generatedAt: "",
+    coverage: null,
     feeds: [
       {
         version: "26SEP",

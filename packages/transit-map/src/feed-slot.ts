@@ -57,6 +57,7 @@ import type { BusHub } from "@transitopia/transit-core/plan/exchanges.ts";
 import {
   PlanStore,
   displayServiceDate,
+  type FeedManifests,
   hubsOf,
   mergeCorrections,
   placeOfStop,
@@ -71,6 +72,7 @@ import {
   applyRouteFilter,
   applyStopsVisibility,
   fadeColor,
+  removeSources,
   setFerryPair,
   setRouteColors,
 } from "./layers/static.ts";
@@ -173,25 +175,17 @@ export class FeedSlot {
   >();
   private describers = new Map<string, (d: ServiceDate) => ServiceDayInfo>();
 
-  static async create(
+  constructor(
     config: FeedConfig,
+    manifests: FeedManifests,
     urls: { dataBase: string; apiBase: string | undefined },
-    scenario: string | undefined,
-  ): Promise<FeedSlot> {
-    const store = await PlanStore.load(
+  ) {
+    const store = PlanStore.create(
+      manifests,
       urls.dataBase,
       urls.apiBase,
       config,
-      scenario,
     );
-    return new FeedSlot(config, store, urls);
-  }
-
-  private constructor(
-    config: FeedConfig,
-    store: PlanStore,
-    urls: { apiBase: string | undefined },
-  ) {
     this.feed = config.feed.id;
     this.ids = feedIds(this.feed);
     this.config = config;
@@ -218,6 +212,15 @@ export class FeedSlot {
     });
     // Schedule estimates for buses stop at stops, using the same travel-time profile as live prediction.
     store.pacerFor = (pp) => this.rt.predictorFor(pp).pacer;
+  }
+
+  /**
+   * Unload the feed (it left the view, packages/transit-map/README.md#feeds): stop its live poll and
+   * remove its sources and layers (when `map` is given: the style is ready; a new style has none).
+   */
+  dispose(map: MlMap | undefined): void {
+    this.live.stop();
+    if (map) removeSources(map, this.ids.sources);
   }
 
   /** The service date shown for an instant (displayServiceDate) in the feed's time zone. */
