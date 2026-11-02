@@ -1,4 +1,4 @@
-// Evaluate recorded SeaBus AIS fixes against the timetable (packages/transit-core/DESIGN.md#seabus-ais): how many fixes match a
+// Evaluate recorded ferry AIS fixes (SeaBus, Hullo) against the timetable (packages/transit-core/DESIGN.md#seabus-ais): how many fixes match a
 // trip, how late each vessel ran, which vessel ran which block, and which berths were used.
 //
 //   npx tsx pipelines/eval-ais.ts [YYYYMMDD] [--feed translink]     # default: today's service date
@@ -7,7 +7,7 @@ import {
   feedPaths,
   readFeed,
   readFeedConfig,
-  readJson,
+  readFerries,
 } from "@transitopia/data/paths.ts";
 import { loadLatestPlan } from "@transitopia/data/infra.ts";
 import { Recorder } from "@transitopia/server/rt/recorder.ts";
@@ -32,7 +32,13 @@ const kin = (await readFeedConfig(FEED)).kinematics;
 const ais = (await readFeed(FEED)).ais;
 if (!ais)
   throw new Error(`Feed ${FEED} has no vessels with AIS (feed.json → ais)`);
-const infra = await readJson<any>(feedPaths(FEED).seabus.berths);
+const infra = (await readFerries(FEED)).find(
+  (f) => f.ferry.route === ais.route,
+)?.ferry;
+if (!infra)
+  throw new Error(
+    `Feed ${FEED} has no berths for ${ais.route} (ferries/<route>.json)`,
+  );
 const cfg: AisMatchConfig = ais.match;
 const names = new Map(ais.vessels.map((v) => [v.mmsi, v.name]));
 
@@ -83,8 +89,8 @@ for (const [tripId, c] of r.corrections.trips) {
 
 // Stationary fixes near a berth: which berth pair is in use.
 const berths: { name: string; dock: LonLat }[] = [];
-for (const [t, term] of Object.entries<any>(infra.terminals))
-  for (const [b, berth] of Object.entries<any>(term.berths))
+for (const [t, term] of Object.entries(infra.terminals))
+  for (const [b, berth] of Object.entries(term.berths))
     berths.push({ name: `${t} ${b}`, dock: berth.dock });
 const seen = new Map<string, number>();
 for (const f of fixes) {

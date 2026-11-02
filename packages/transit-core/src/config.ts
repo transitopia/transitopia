@@ -1,6 +1,6 @@
 // The committed config (config/: docs/DESIGN.md#feeds-operators-and-rail-networks): global defaults
 // (config/defaults/), operators (config/operators/<id>/operator.json), feeds
-// (config/feeds/<id>/feed.json, routes.json, seabus.json), rail networks
+// (config/feeds/<id>/feed.json, routes.json, ferries/<route>.json), rail networks
 // (config/networks/<id>/network.json, operations.json, dispatch.json) and regions
 // (config/regions/<id>/region.json): one schema each,
 // checked wherever a file is loaded (site, server, pipelines) and by a test over every committed file,
@@ -19,6 +19,7 @@ import type { CarryConfig } from "./rt/carry.ts";
 import type { AisMatchConfig } from "./ais/match.ts";
 import type { GlideConfig } from "./ais/glide.ts";
 import type { RouteKind, RouteMode } from "./plan/types.ts";
+import type { FerryInfra } from "./plan/ferry-berths.ts";
 
 /** The value without its "$" comment keys, at any depth. */
 export function stripComments(v: unknown): unknown {
@@ -228,9 +229,10 @@ const routeMatch = z
  * every route in a feed is drawn by default, so only routes drawn differently are listed.
  */
 const route = z.strictObject({
-  /** The route's key, what other config (kinematics, SeaBus, regions) and URLs name it by. */
+  /** The route's key, what other config (kinematics, ferries, AIS) and URLs name it by. */
   key: z.string().min(1),
-  match: routeMatch,
+  /** Several: one route drawn for every GTFS route they match (Hullo's one route per direction). */
+  match: z.union([routeMatch, z.array(routeMatch).min(2)]),
   label: z.string().min(1).exactOptional(),
   kind: z.enum(routeKinds).exactOptional(),
   mode: z.enum(routeModes).exactOptional(),
@@ -334,7 +336,7 @@ const rt = z.strictObject({
   carry,
 });
 
-// --- seabus.json ---
+// --- ferries/<route>.json ---
 
 const aisMatch: z.ZodType<AisMatchConfig> = z.strictObject({
   maxOffsetM: pos,
@@ -358,10 +360,32 @@ const glide: z.ZodType<GlideConfig> = z.strictObject({
 
 const latLon = z.tuple([num.min(-90).max(90), num.min(-180).max(180)]);
 
-const seabus = z.strictObject({
-  /** The berth pair every vessel uses unless AIS shows otherwise (FerryConfig). */
-  defaultPair: z.string().min(1),
-});
+const lonLat = z.tuple([num.min(-180).max(180), num.min(-90).max(90)]);
+
+/**
+ * A ferry route's berths and lanes (config/feeds/<feed>/ferries/<route>.json), used instead of its
+ * GTFS shapes (packages/transit-core/src/plan/ferry-berths.ts).
+ */
+const ferry: z.ZodType<FerryInfra> = z
+  .strictObject({
+    route: z.string().min(1),
+    approachM: nonNeg,
+    terminals: z.record(
+      z.string().min(1),
+      z.strictObject({
+        berths: z.record(
+          z.string().min(1),
+          z.strictObject({ dock: lonLat, outBearing: num.min(0).max(360) }),
+        ),
+      }),
+    ),
+    lanes: z.record(z.string().regex(/^[^>]+>[^>]+$/), z.array(lonLat).min(1)),
+    defaultPair: z.string().min(1),
+  })
+  .refine(
+    (f) => Object.values(f.terminals).every((t) => t.berths[f.defaultPair]),
+    { message: "the default berth pair must be at every terminal" },
+  );
 
 /** A feed's vessels' AIS positions (feed.json → ais; packages/transit-core/DESIGN.md#seabus-ais). */
 const feedAis = z.strictObject({
@@ -670,7 +694,7 @@ export const CONFIG_SCHEMAS = {
   recording,
   routes,
   rt,
-  seabus,
+  ferry,
   server,
 } as const;
 

@@ -1,5 +1,5 @@
 {
-  "$comment": "SeaBus berths and crossing lanes, used instead of the GTFS shapes (a straight line between the terminals). Applied by build-schedule (packages/transit-core/src/plan/ferry-berths.ts). Berth pairing is in config/feeds/translink/seabus.json. OPEN-QUESTIONS #24.",
+  "$comment": "SeaBus berths and crossing lanes, used instead of the GTFS shapes (a straight line between the terminals). Applied by build-schedule (packages/transit-core/src/plan/ferry-berths.ts). OPEN-QUESTIONS #24.",
   "route": "seabus",
   "$approachM": "Vessels leave and enter a slip straight along its axis for this far before turning into a lane. guess",
   "approachM": 60,
@@ -31,5 +31,7 @@
       [-123.096183, 49.302253], [-123.098558, 49.300286], [-123.100501, 49.298599], [-123.102444, 49.296351],
       [-123.103828, 49.294102], [-123.104735, 49.292415], [-123.105904, 49.289604]
     ]
-  }
+  },
+  "$defaultPair": "The berth every vessel uses at both terminals, unless AIS shows otherwise: when a day's docked fixes are mostly at the other pair's berths, that day is drawn along its paths (packages/transit-core/src/ais/match.ts). On a given day all vessels use west–west or east–east, with rare exceptions: the wheelhouse sees the passenger ramps better from one side, so a vessel always loads facing the same way (Braden, 2026-09-28). The timetable allows it: one vessel leaves at least 7 min before the next arrives, even at the weekday peak. Which pair is used varies by day and isn't known in advance; west is from the one sighting (Burrard Pacific Breeze at the West berths, 2026-09-26 14:15/14:29, Braden). guess",
+  "defaultPair": "west"
 }

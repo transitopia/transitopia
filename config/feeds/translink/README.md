@@ -5,7 +5,7 @@ What we've learned about how TransLink's SeaBus runs, and where it came from (th
 | Path | What |
 |---|---|
 | `feed.json`, `routes.json` | The feed: GTFS and GTFS-RT, request budget, AIS, time zone checks; overrides of the routes drawn ([docs/DESIGN.md → Feeds, operators and rail networks](../../../docs/DESIGN.md#feeds-operators-and-rail-networks)) |
-| `seabus.json`, `ferries/seabus.json` | SeaBus: the default berth pair, and the berths and crossing lanes drawn instead of the GTFS shapes |
+| `ferries/seabus.json` | SeaBus: the berths and crossing lanes drawn instead of the GTFS shapes, and the default berth pair |
 | `observations/` | Observations in the file format ([README](observations/README.md)), with GPS tracks in `observations/gpx/`: imported into a new database, and read by local pipeline runs (`npm run data`) |
 
 ## SeaBus

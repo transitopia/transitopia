@@ -1,8 +1,7 @@
 // Build the compact service plan for each archived version of each feed, and each feed's manifest.
 // Input:  var/raw/gtfs/<feed>/<version dir>/google_transit.zip, config/feeds/<feed>/{feed,routes}.json,
 //         its operator's config/operators/<id>/operator.json (the name plans record),
-//         and where the feed has SeaBus berths and lanes:
-//         config/feeds/<feed>/ferries/seabus.json + config/feeds/<feed>/seabus.json,
+//         and where the feed has ferry berths and lanes: config/feeds/<feed>/ferries/<route>.json,
 //         and the feed's OSM roads when fetched (var/raw/osm-roads/<feed>/latest.json, fetch-osm-roads):
 //         bus shapes are matched to them and bus corridors built (packages/transit-core/DESIGN.md#bus-corridors)
 // Output: var/public/data/feeds/<feed>/<version dir>/plan.json and its parts beside it (shapes,
@@ -28,17 +27,14 @@ import {
   log,
   readFeed,
   readFeedRoutes,
+  readFerries,
   readFeeds,
-  readJson,
   readOperator,
   writeJson,
 } from "@transitopia/data/paths.ts";
 import { readPlanCore, writePlan } from "@transitopia/data/plans.ts";
 import { shortId } from "@transitopia/transit-core/plan/display.ts";
-import {
-  parseConfig,
-  type FeedInfo,
-} from "@transitopia/transit-core/config.ts";
+import type { FeedInfo } from "@transitopia/transit-core/config.ts";
 import { selectRoutes } from "@transitopia/transit-core/plan/routes.ts";
 import {
   cumulativeLengths,
@@ -67,10 +63,7 @@ import {
   roadCoords,
 } from "@transitopia/transit-core/plan/corridors.ts";
 import { corridorPaths } from "@transitopia/transit-core/plan/paths.ts";
-import {
-  applyFerryBerths,
-  type FerryInfra,
-} from "@transitopia/transit-core/plan/ferry-berths.ts";
+import { applyFerryBerths } from "@transitopia/transit-core/plan/ferry-berths.ts";
 import type {
   CalendarEntry,
   CalendarException,
@@ -88,6 +81,7 @@ import {
   type ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
 import {
+  gtfsRouteIds,
   LINE_DECIMALS,
   STOP_NO_DROPOFF,
   STOP_NO_PICKUP,
@@ -124,11 +118,6 @@ const STOP_OFFSET_WARN_M = 150;
  * stops and weekday speeds.
  */
 const PLAN_FORMAT = 19;
-
-/** Whether the feed has SeaBus berths and lanes (ferries/seabus.json): build-schedule applies them. */
-async function hasFerryBerths(feed: string): Promise<boolean> {
-  return exists(feedPaths(feed).seabus.berths);
-}
 
 const roadsFile = (feed: string) => join(feedPaths(feed).roads, "latest.json");
 
@@ -174,8 +163,7 @@ async function inputsHash(feed: string): Promise<string> {
     join(feedPaths(feed).dir, "routes.json"),
     join(OPERATORS_DIR, info.operator, "operator.json"),
   ];
-  if (await hasFerryBerths(feed))
-    files.push(feedPaths(feed).seabus.berths, feedPaths(feed).seabus.config);
+  files.push(...(await readFerries(feed)).map((f) => f.path));
   for (const f of files) h.update(await readFile(f));
   h.update(`roads ${(await roadsStamp(feed)) ?? "none"}\n`);
   return h.digest("hex").slice(0, 16);
@@ -221,7 +209,9 @@ export async function buildPlan(
     );
   for (const c of selected.unmatched)
     log(`  warn: routes.json entry ${c.key} matches no route in this feed`);
-  const routeByGtfsId = new Map(selected.routes.map((r) => [r.gtfsRouteId, r]));
+  const routeByGtfsId = new Map(
+    selected.routes.flatMap((r) => gtfsRouteIds(r).map((id) => [id, r])),
+  );
 
   // Trips on those routes.
   interface RawTrip {
@@ -560,25 +550,17 @@ export async function buildPlan(
     );
   }
 
-  // SeaBus: berth-to-berth paths along the keep-right lanes instead of the GTFS shapes.
-  const seabus = feedPaths(feed.id).seabus;
-  const infra =
-    (await hasFerryBerths(feed.id)) ?
-      await readJson<FerryInfra>(seabus.berths)
-    : undefined;
-  if (infra && plan.routes.some((r) => r.key === infra.route)) {
-    const ferry = applyFerryBerths(
-      plan,
-      infra,
-      parseConfig("seabus", await readJson<unknown>(seabus.config)),
-    );
+  // Ferries (the SeaBus, Hullo): berth-to-berth paths along their lanes instead of the GTFS shapes.
+  for (const { ferry: infra } of await readFerries(feed.id)) {
+    if (!plan.routes.some((r) => r.key === infra.route)) continue;
+    const ferry = applyFerryBerths(plan, infra);
     if (ferry.sharedBerthS > 0)
       log(
-        `  warn: SeaBus vessels are docked at the same berth for ${ferry.sharedBerthS} s`,
+        `  warn: ${infra.route} vessels are docked at the same berth for ${ferry.sharedBerthS} s`,
       );
-    else
+    else if (Number.isFinite(ferry.minBerthGapS))
       log(
-        `  SeaBus: one berth pair for all vessels; berths free for ≥ ${Math.round(ferry.minBerthGapS / 60)} min between vessels`,
+        `  ${infra.route}: one berth pair for all vessels; berths free for ≥ ${Math.round(ferry.minBerthGapS / 60)} min between vessels`,
       );
   }
   return plan;

@@ -3,7 +3,6 @@ import { serviceDate } from "../src/time.ts";
 import {
   applyFerryBerths,
   berthPath,
-  type FerryConfig,
   type FerryInfra,
 } from "../src/plan/ferry-berths.ts";
 import { bearingDeg, distM } from "../src/geo.ts";
@@ -39,8 +38,8 @@ const infra: FerryInfra = {
       [-123.102, 49.285],
     ],
   },
+  defaultPair: "west",
 };
-const cfg: FerryConfig = { defaultPair: "west" };
 
 function makePlan(trips: PlanTrip[]): ServicePlan {
   return {
@@ -167,7 +166,7 @@ describe("applyFerryBerths", () => {
       },
     ];
     const plan = makePlan(trips);
-    const report = applyFerryBerths(plan, infra, cfg);
+    const report = applyFerryBerths(plan, infra);
     expect(plan.patterns.map((p) => p.id)).toEqual([0, 1, 2]);
     expect(plan.patterns[0]!.shape).toBe("bus");
     expect(plan.shapes.gn).toBeUndefined();
@@ -202,6 +201,27 @@ describe("applyFerryBerths", () => {
       ...shuttle("a", 21600, 4),
       ...shuttle("b", 21660, 4),
     ]);
-    expect(applyFerryBerths(plan, infra, cfg).sharedBerthS).toBeGreaterThan(0);
+    expect(applyFerryBerths(plan, infra).sharedBerthS).toBeGreaterThan(0);
+  });
+
+  it("runs a lane both ways, and lists no pairs for a route with one berth pair", () => {
+    const north = infra.lanes["south>north"]!;
+    const single: FerryInfra = {
+      ...infra,
+      terminals: {
+        south: { berths: { main: infra.terminals.south!.berths.west! } },
+        north: { berths: { main: infra.terminals.north!.berths.west! } },
+      },
+      lanes: { "south>north": north },
+      defaultPair: "main",
+    };
+    const plan = makePlan(shuttle("a", 21600, 2));
+    applyFerryBerths(plan, single);
+    expect(plan.ferry).toBeUndefined();
+    const back = plan.shapes[plan.patterns[2]!.shape]!;
+    expect(back[0]).toEqual(single.terminals.north!.berths.main!.dock);
+    // Southbound along the northbound lane, east of the direct line.
+    const mid = back[Math.floor(back.length / 2)]!;
+    expect(distM(mid, [-123.097, 49.29])).toBeLessThan(200);
   });
 });
