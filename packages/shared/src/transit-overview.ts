@@ -1,5 +1,5 @@
 // The transit overview tileset (packages/transit-core/DESIGN.md#overview-tiles): every feed's routes at
-// low zoom with static colours, so a zoomed-out map shows every region. Built daily
+// low zoom with static colours, so a zoomed-out map shows every feed. Built daily
 // (pipelines/build-overview-tiles.ts), drawn by the site (packages/transit-map/src/overview.ts).
 
 import { PLAN_TILES_MIN_ZOOM } from "@transitopia/transit-core/plan/tiles.ts";
@@ -13,7 +13,7 @@ export const OVERVIEW_TILES_VERSION = 2;
 /** The tileset's name: `<name>.pmtiles` locally and in the maps bucket, `<name>.json` from the tile worker. */
 export const OVERVIEW_TILES_NAME = `transit-overview-v${OVERVIEW_TILES_VERSION}`;
 
-/** A region's engine starts at this zoom; the overview is drawn only below it. */
+/** The engine is shown from this zoom; the overview is drawn only below it. */
 export const ENGINE_MIN_ZOOM = PLAN_TILES_MIN_ZOOM;
 
 /**

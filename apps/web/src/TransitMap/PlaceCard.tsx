@@ -8,6 +8,7 @@ import type {
   TransitSnapshot,
 } from "@transitopia/transit-map/engine.ts";
 import type { Place } from "@transitopia/transit-map/url.ts";
+import { routeId } from "@transitopia/transit-map/keys.ts";
 import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
 import { bayLabel } from "@transitopia/transit-core/plan/exchanges.ts";
 import { creditsFor, legendsFor } from "@transitopia/shared/datasets.ts";
@@ -266,7 +267,8 @@ const byRouteNumber = (a: PlanRoute, b: PlanRoute) =>
     a.key.localeCompare(b.key, undefined, { numeric: true })
   : 0);
 
-const groupKey = (g: PlaceGroup) => `${g.route.key}|${g.headsign}`;
+/** As a shared stretch's `groups` name it: `${routeId}|${headsign}`. */
+const groupKey = (g: PlaceGroup) => `${routeId(g.route)}|${g.headsign}`;
 const sharedKey = (s: Shared) => s.routes.map((r) => r.key).join() + s.to;
 
 /**
@@ -465,14 +467,14 @@ const PlaceCardBody: React.FC<{
     ];
     const bay =
       g.stopIds.length === 1 ?
-        place.bays.find((b) => b.id === g.stopIds[0])
+        place.bays.find((b) => b.id === g.stopIds[0] && b.feed === g.route.feed)
       : undefined;
     if (bay)
       items.push({
         id: "stop",
         label: `View stop: ${bay.label}`,
         icon: "bus-stop",
-        onSelect: go({ kind: "stop", feed: place.feed, id: bay.id }),
+        onSelect: go({ kind: "stop", feed: bay.feed, id: bay.id }),
       });
     // Where it ends, so a rider new to the route sees which way it goes (and a short turn's end).
     if (g.terminus)
@@ -529,7 +531,7 @@ const PlaceCardBody: React.FC<{
       id: `bay-${b.id}`,
       label: `Only ${b.label}`,
       icon: "bus-stop",
-      onSelect: go({ kind: "stop", feed: place.feed, id: b.id }),
+      onSelect: go({ kind: "stop", feed: b.feed, id: b.id }),
     })),
     {
       id: "share",

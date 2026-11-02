@@ -1,6 +1,6 @@
 // Transitopia's stop spacing categories (apps/web/README.md#stop-spacing): one definition for the
 // route cards' chip, the plan's route figures and the layers panel's Fast Bus switch. A presentation
-// choice, the same for every route in every region, from published guidance where there is some:
+// choice, the same for every route of every feed, from published guidance where there is some:
 //   TransLink, Transit Service Guidelines (2018), U.2 Stop Spacing: Standard and Basic routes
 //     250–400 m, Frequent 300–800 m, Rapid 800–1,500 m, measured as route length ÷ (stops − 1).
 //     https://www.translink.ca/-/media/translink/documents/plans-and-projects/managing-the-transit-network/transit-oriented-communities/transit-services-guidelines-public-summary.pdf

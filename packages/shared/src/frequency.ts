@@ -1,6 +1,6 @@
 // Transitopia's service frequency bands (apps/web/README.md#service-frequency): one definition for
 // the route and stop cards' graphs and keys, the map's bus corridors and stop ticks, and the layers
-// panel's key. A presentation choice, the same for every route in every region, not an operator's
+// panel's key. A presentation choice, the same for every route of every feed, not an operator's
 // standard.
 
 export interface FrequencyBand {

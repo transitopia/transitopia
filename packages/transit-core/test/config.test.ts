@@ -7,7 +7,6 @@ import {
   parseFeed,
   parseNetwork,
   parseOperator,
-  parseRegion,
   realtimeUrl,
   resolveKinematics,
   resolveRt,
@@ -17,7 +16,6 @@ import {
 import { DATASETS, realtimeOf } from "@transitopia/shared/datasets.ts";
 
 const CONFIG = join(import.meta.dirname, "../../../config");
-const REGIONS = join(CONFIG, "regions");
 const NETWORKS = join(CONFIG, "networks");
 const FEEDS = join(CONFIG, "feeds");
 const OPERATORS = join(CONFIG, "operators");
@@ -184,11 +182,7 @@ describe("config files", () => {
 const translink = () =>
   readJson(join(FEEDS, "translink/feed.json")) as Record<string, unknown>;
 
-describe("regions, feeds and rail networks", () => {
-  const regions = dirs(REGIONS).map((id) => ({
-    id,
-    region: parseRegion(readJson(join(REGIONS, id, "region.json"))),
-  }));
+describe("feeds and rail networks", () => {
   const networks = dirs(NETWORKS).map((id) => ({
     id,
     network: parseNetwork(readJson(join(NETWORKS, id, "network.json"))),
@@ -199,7 +193,6 @@ describe("regions, feeds and rail networks", () => {
   }));
 
   it("finds them", () => {
-    expect(regions.map((r) => r.id)).toContain("metro-vancouver");
     expect(feeds.map((f) => f.id)).toContain("translink");
     expect(networks.map((n) => n.id)).toContain("skytrain");
   });
@@ -227,23 +220,18 @@ describe("regions, feeds and rail networks", () => {
       }
     });
 
-  for (const { id, region } of regions)
-    it(`regions/${id}: its id is its directory, and its feeds exist and resolve`, () => {
-      expect(region.id).toBe(id);
-      for (const f of region.feeds) {
-        const feed = feeds.find((x) => x.id === f)?.feed;
-        expect(feed, f).toBeDefined();
-        // Every layer together: the defaults, the operator, the feed and the routes.
-        const op = operator(feed!.operator);
-        const routes = parseConfig(
-          "routes",
-          readJson(join(FEEDS, f, "routes.json")),
-        ).routes;
-        expect(() =>
-          resolveKinematics(defaults("kinematics"), op, feed!, routes),
-        ).not.toThrow();
-        expect(() => resolveRt(defaults("rt"), op, feed!)).not.toThrow();
-      }
+  for (const { id, feed } of feeds)
+    it(`feeds/${id}: its settings resolve`, () => {
+      // Every layer together: the defaults, the operator, the feed and the routes.
+      const op = operator(feed.operator);
+      const routes = parseConfig(
+        "routes",
+        readJson(join(FEEDS, id, "routes.json")),
+      ).routes;
+      expect(() =>
+        resolveKinematics(defaults("kinematics"), op, feed, routes),
+      ).not.toThrow();
+      expect(() => resolveRt(defaults("rt"), op, feed)).not.toThrow();
     });
 
   it("feeds credit a registered dataset, with its real-time companion where they have real time", () => {
@@ -251,19 +239,6 @@ describe("regions, feeds and rail networks", () => {
       expect(DATASETS, id).toHaveProperty(feed.dataset);
       if (feed.realtime) expect(realtimeOf(feed.dataset), id).toBeDefined();
     }
-  });
-
-  it("regions don't overlap", () => {
-    for (const a of regions)
-      for (const b of regions) {
-        if (a.id >= b.id) continue;
-        const [aw, as, ae, an] = a.region.bbox;
-        const [bw, bs, be, bn] = b.region.bbox;
-        expect(
-          aw < be && bw < ae && as < bn && bs < an,
-          `${a.id} and ${b.id}`,
-        ).toBe(false);
-      }
   });
 
   it("fills in a key, and refuses URLs that don't agree with apiKey", () => {

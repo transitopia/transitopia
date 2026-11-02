@@ -2,7 +2,7 @@
 //   var/rt-history/<feed>/**  →  var/public/data/feeds/<feed>/<version>/rt-profile.<band>.bin (one per time-of-day band, per version with data)
 //
 //   npm run build:rt-profile [-- --feed <id>]
-// Prediction settings are those of the first region showing the feed (config/defaults/rt.json → prediction).
+// Prediction settings are the feed's (readFeedConfig: config/defaults/rt.json → prediction, its operator's and its own).
 // The live view uses the profile to predict buses between fixes; without one it falls back to the
 // timetable. Rebuild as history accumulates. Check the effect with `npx tsx pipelines/eval-rt.ts`.
 

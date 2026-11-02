@@ -6,7 +6,7 @@
 // a new feed_version). See
 // packages/transit-core/DESIGN.md#timetables.
 //
-//   tsx pipelines/fetch-gtfs.ts                              # every region's feeds, latest
+//   tsx pipelines/fetch-gtfs.ts                              # every feed (config/feeds/), latest
 //   tsx pipelines/fetch-gtfs.ts --feed translink             # one feed
 //   tsx pipelines/fetch-gtfs.ts --feed translink --history 2026-09-25
 

@@ -7,8 +7,14 @@ import { LngLat, type Map as MlMap } from "maplibre-gl";
 import type { Theme } from "@transitopia/map-style/basemap.ts";
 import { CardTrail } from "@transitopia/shared/card-trail.ts";
 import { realtimeOf } from "@transitopia/shared/datasets.ts";
-import type { ServiceDate } from "@transitopia/transit-core/time.ts";
-import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
+import {
+  serviceDayStart,
+  type ServiceDate,
+} from "@transitopia/transit-core/time.ts";
+import type {
+  Bounds,
+  PlanRoute,
+} from "@transitopia/transit-core/plan/types.ts";
 import {
   firstBoarding,
   placeName,
@@ -28,7 +34,17 @@ import {
   type RouteGroup,
 } from "@transitopia/transit-core/plan/route-groups.ts";
 import { Clock } from "./clock.ts";
-import { SERVICE_DAY_ROLLOVER_H, displayServiceDate, hubsOf } from "./plans.ts";
+import {
+  PlanStore,
+  SERVICE_DAY_ROLLOVER_H,
+  baysOf,
+  displayServiceDate,
+  hubsOf,
+  placesOf,
+  manifestInstants,
+  playedManifest,
+  type FeedManifests,
+} from "./plans.ts";
 import {
   PLACE_LAYERS,
   SEGMENT_FOCUS,
@@ -60,11 +76,15 @@ import {
 } from "./select.ts";
 import type { RtMode } from "./rt.ts";
 import { LivePoller } from "./live.ts";
-import { sectionOf } from "@transitopia/transit-core/rt/live.ts";
+import {
+  sectionOf,
+  type VersionPointer,
+} from "@transitopia/transit-core/rt/live.ts";
 import {
   placeChoice,
   placeLocation,
   placeSnapshot,
+  type ForeignBays,
   type PickChoice,
   type PickMenu,
   type PlaceGroup,
@@ -77,10 +97,12 @@ import type { FeedConfig } from "./config.ts";
 import {
   FeedSlot,
   type FeedVehicles,
+  type VehicleKind,
   type RouteDay,
   type SegmentInfo,
 } from "./feed-slot.ts";
 import { feedKey, routeId, splitFeedKey, vehicleId } from "./keys.ts";
+import { stationFeatureId } from "./hubs.ts";
 
 export type { Theme };
 export type { RtMode };
@@ -102,9 +124,9 @@ export interface TransitEngineOptions {
   /** Initial time, rate and selection; defaults to the current URL. */
   initial?: UrlState | undefined;
   /**
-   * The feeds shown, each with its config (kinematics, real time, and rail and SeaBus where it has
-   * them), checked: one slot each (packages/transit-map/README.md#feeds). The first one's time zone
-   * is the clock's.
+   * Every feed the engine may show, each with its config (kinematics, real time, and rail and
+   * ferries where it has them), checked. Each is loaded into a slot of its own while its coverage
+   * is in view (packages/transit-map/README.md#feeds). The first one's time zone is the clock's.
    */
   feeds: readonly FeedConfig[];
   /**
@@ -207,10 +229,27 @@ export interface TransitSnapshot {
   datasets: string[];
   scenario: { name: string; description: string } | undefined;
   /**
-   * A `?select=` key no feed shown has (another region's feature, or one only the resolver knows):
-   * the host can look it up (GET /features/<key>) and move the map there.
+   * A `?select=` key no feed loaded has (a feature elsewhere, or one only the resolver knows): the
+   * host can look it up (GET /features/<key>) and move the map there; the engine selects it once a
+   * feed loaded there has it.
    */
   elsewhere: string | undefined;
+  /** Some feed's coverage is in view (zoomed out too, while the engine is hidden). */
+  inCoverage: boolean;
+}
+
+/** A feed the engine may show (TransitEngineOptions.feeds), loaded while it's in view. */
+interface FeedEntry {
+  config: FeedConfig;
+  manifests: FeedManifests;
+  /** Where it runs (FeedManifest.coverage). */
+  coverage: Bounds | null;
+  /** Its slot while loaded. */
+  slot: FeedSlot | undefined;
+  /** Unsubscribes the engine from its slot. */
+  unsubscribe: (() => void) | undefined;
+  /** When the view (with its margin) stopped overlapping its coverage, while loaded (performance.now()). */
+  leftAt: number | undefined;
 }
 
 const RT_BADGE: Record<RtMode, [string, string]> = {
@@ -271,6 +310,12 @@ const FREQUENCY_INTERVAL_MS = 250;
  * second, and recomputing every vehicle every frame kept the main thread busy for nothing.
  */
 const MAX_STEP_PX = 0.5;
+/**
+ * Viewport culling: vehicles are worked out only where they may be within the view grown by this
+ * fraction of its size on every side, and again once the view leaves that area
+ * (packages/transit-map/README.md#rendering).
+ */
+const CULL_MARGIN = 0.5;
 /** A tapped place is brought into view after this long, once its card is up and measured. */
 const REVEAL_DELAY_MS = 150;
 /** Tap tolerance around stations and stops (px). */
@@ -300,16 +345,47 @@ const ROUTE_LAYERS = [
  * has this key, so all of theirs are dimmed.
  */
 const ELSEWHERE: Focus = { route: SEGMENT_FOCUS };
+/**
+ * A feed loads while the view, grown by this fraction of its size on every side, overlaps its
+ * coverage, so a feed panned towards is in before it's on screen.
+ */
+const FEED_MARGIN = 0.5;
+/** A feed that has left the view and its margin is unloaded after this long… */
+const FEED_UNLOAD_MS = 2 * 60_000;
+/** …or sooner, oldest first, while more than this many are loaded. */
+const MAX_FEEDS_LOADED = 4;
+/** Unloading is checked this often (ms), besides whenever the view settles. */
+const FEED_CHECK_MS = 5_000;
 const SLIDER_START_S = SERVICE_DAY_ROLLOVER_H * 3600;
 const SLIDER_END_S = (24 + SERVICE_DAY_ROLLOVER_H) * 3600;
 
 export class TransitEngine {
   readonly clock: Clock;
-  /** One per feed shown (packages/transit-map/README.md#feeds). */
-  private readonly slots: readonly FeedSlot[];
+  /** Every feed the engine may show, in the host's order. */
+  private readonly feeds: readonly FeedEntry[];
+  /** The loaded feeds' slots, in the host's order (packages/transit-map/README.md#feeds). */
+  private slots: FeedSlot[] = [];
+  /** The feed whose single values the snapshot shows (`pickPrimary`). */
+  private primaryFeed: string | undefined;
+  /** The view when it last settled, and grown by FEED_MARGIN. */
+  private view: Bounds | undefined;
+  private near: Bounds | undefined;
+  private lastFeedCheck = 0;
   private readonly map: MlMap;
-  /** Live dispatch, one poll per rail network a feed shown runs on (GET /networks/<id>/live/dispatch). */
-  private readonly dispatchPolls: readonly LivePoller[];
+  private readonly urls: { dataBase: string; apiBase: string | undefined };
+  /** Shown instead of the real network (?scenario=). */
+  private readonly scenario: boolean;
+  /** Called once when the published data was rebuilt (TransitEngineOptions.onRebuilt). */
+  private readonly onRebuilt: (() => void) | undefined;
+  private rebuilt = false;
+  /**
+   * Live dispatch, one poll per rail network a loaded feed runs on (GET /networks/<id>/live/dispatch),
+   * with the versions it last handed on, for a feed on it loaded later.
+   */
+  private readonly dispatchPolls = new Map<
+    string,
+    { poll: LivePoller; versions: LiveDispatchVersions | undefined }
+  >();
   private readonly vehicles: VehicleLayer;
   private readonly debug: boolean;
   /** The time zone the clock's times and dates are shown in: the first feed's. */
@@ -352,7 +428,9 @@ export class TransitEngine {
   private visible = true;
   /** Layers hidden by `setVisible(false)`, to show again. */
   private hiddenLayers: string[] = [];
-  /** A `?select=` key waiting for the plans and their places files. */
+  /** Dispatch versions to preview (?preview=), for each rail feed as it loads. */
+  private preview: Record<string, string> | undefined;
+  /** A `?select=` key waiting for the plans and their places files (and while elsewhere, for a feed that has it). */
   private pendingSelect: string | undefined;
   /** A `?select=` key no feed shown has (TransitSnapshot.elsewhere). */
   private elsewhere: string | undefined;
@@ -369,10 +447,19 @@ export class TransitEngine {
   private dirty = true;
   /** Something vehicles depend on changed since they were last computed (see frame()). */
   private inputsChanged = true;
-  /** The clock time, zoom and performance.now() vehicles were last computed at. */
-  private computedFor = { t: NaN, zoom: NaN, at: -Infinity };
-  /** The fastest any vehicle is set to move (m/s, from the kinematics config), for MAX_STEP_PX. */
-  private maxSpeedMps: number;
+  /** The zoom every vehicle was last computed at. */
+  private computedZoom = NaN;
+  /** Each feed's vehicles of each kind as last computed, and when (`computeVehicles`). */
+  private computed = new Map<
+    string,
+    Partial<Record<VehicleKind, { out: FeedVehicles; t: number; at: number }>>
+  >();
+  /** Per feed and kind of vehicle: the fastest any is set to move (m/s, `maxSpeedOf`). */
+  private maxSpeeds = new Map<string, number>();
+  /** The area vehicles were last worked out for (CULL_MARGIN), or undefined for everywhere. */
+  private cullArea: Bounds | undefined;
+  /** The routes worked out wherever they are, last time (`routeId`s, joined): a change republishes cards. */
+  private keptRoutes = "";
   private lastCoverageUpdate = 0;
   private coverage: [number, number][] = [];
   private lastUrlWrite = 0;
@@ -381,31 +468,60 @@ export class TransitEngine {
   private disposed = false;
   private cleanups: (() => void)[] = [];
 
+  /**
+   * An engine for these feeds: their manifests (small: where each runs, and its versions) are
+   * loaded now, and each feed's plans once it's in view. A feed whose manifest fails to load is
+   * left out; with none, this fails.
+   */
   static async create(
     map: MlMap,
     opts: TransitEngineOptions,
   ): Promise<TransitEngine> {
     if (!opts.feeds.length) throw new Error("The engine shows no feeds");
-    const slots = await Promise.all(
+    const loaded = await Promise.all(
       opts.feeds.map((config) =>
-        FeedSlot.create(
-          config,
-          { dataBase: opts.dataBase, apiBase: opts.apiBase },
-          opts.scenario,
+        PlanStore.manifests(opts.dataBase, config, opts.scenario).then(
+          (m) => ({ config, m }),
+          (e: unknown) => {
+            // A scenario that isn't built fails the engine; another feed's missing data only leaves it out.
+            if (opts.scenario && config.rail) throw e;
+            console.error(e);
+            return undefined;
+          },
         ),
       ),
     );
-    return new TransitEngine(map, slots, opts);
+    const feeds = loaded.filter((x) => x !== undefined);
+    if (!feeds.length)
+      throw new Error('No timetable data. Run "npm run data" first.');
+    return new TransitEngine(
+      map,
+      feeds.map(({ config, m }) => ({
+        config,
+        manifests: m,
+        // Expand step (#250 phase 6): a manifest published before manifests said where their feed
+        // runs counts as everywhere, until the next data build publishes `coverage`.
+        coverage:
+          "coverage" in m.manifest ? m.manifest.coverage : [-180, -90, 180, 90],
+        slot: undefined,
+        unsubscribe: undefined,
+        leftAt: undefined,
+      })),
+      opts,
+    );
   }
 
   private constructor(
     map: MlMap,
-    slots: readonly FeedSlot[],
+    feeds: readonly FeedEntry[],
     opts: TransitEngineOptions,
   ) {
     this.map = map;
-    this.slots = slots;
-    this.tz = this.primary.tz;
+    this.feeds = feeds;
+    this.urls = { dataBase: opts.dataBase, apiBase: opts.apiBase };
+    this.scenario = opts.scenario !== undefined;
+    this.onRebuilt = opts.onRebuilt;
+    this.tz = opts.feeds[0]!.feed.timezone;
     this.theme = opts.theme;
     this.debug = opts.debug ?? false;
     const range = this.range();
@@ -415,8 +531,7 @@ export class TransitEngine {
       );
 
     const url = opts.initial ?? readUrl(this.tz);
-    if (url.preview)
-      for (const slot of slots) slot.store.setPreview(url.preview);
+    this.preview = url.preview;
     this.clock = new Clock(url.t ?? Date.now());
     this.clock.setBounds(range[0], range[1]);
     if (url.t === undefined && (Date.now() < range[0] || Date.now() > range[1]))
@@ -439,54 +554,13 @@ export class TransitEngine {
       loadPref<string>("busFrequency", "now") === "day" ? "day" : "now";
 
     // Vehicles are sized for the first feed's kinematics, and recomputed for the fastest of any.
-    this.vehicles = new VehicleLayer(
-      map,
-      this.primary.config.kinematics.sizing,
-    );
-    this.maxSpeedMps =
-      Math.max(
-        ...slots.flatMap(({ config: { kinematics } }) => [
-          ...Object.values(kinematics.modes).map((k) => k.maxSpeed),
-          ...Object.values(kinematics.routes).map((k) => k.maxSpeed ?? 0),
-        ]),
-      ) / 3.6;
+    this.vehicles = new VehicleLayer(map, opts.feeds[0]!.kinematics.sizing);
     this.vehicles.selected = this.selected;
-    // Each slot polls its feed's live endpoint; live dispatch is polled once per rail network, for
-    // every feed on it.
-    const byNetwork = new Map<string, FeedSlot[]>();
-    for (const slot of slots) {
-      const network = slot.config.rail?.network;
-      if (network)
-        byNetwork.set(network, [...(byNetwork.get(network) ?? []), slot]);
-    }
-    this.dispatchPolls = [...byNetwork].map(
-      ([network, on]) =>
-        new LivePoller(
-          opts.apiBase
-            && `${opts.apiBase}networks/${encodeURIComponent(network)}/live/dispatch`,
-          on[0]!.config.rt,
-          {
-            onResponse: (r) => {
-              const versions = sectionOf(r, "dispatch", "dispatch")?.versions;
-              for (const slot of on) slot.store.setLiveDispatch(versions);
-            },
-            // Without live dispatch, the published patches still apply.
-            onError: () => {},
-            onStop: () => {},
-          },
-        ),
-    );
     this.snapshot = this.buildSnapshot(this.clock.now());
-
-    for (const slot of slots)
-      slot.loadTracks(() => {
-        if (!this.disposed) this.syncStatic(true);
-      });
-    this.syncStatic(true);
 
     const onStyleLoad = () => {
       this.styleReady = true;
-      for (const slot of slots) slot.ferryPair = undefined;
+      for (const slot of this.slots) slot.ferryPair = undefined;
       this.syncStatic(true);
     };
     // A new style (theme switch) replaces our sources and layers: wait for it to load. Only a new
@@ -546,7 +620,7 @@ export class TransitEngine {
     const onSourceData = (e: { sourceId?: string }) => {
       if (!this.visible) return;
       let changed = false;
-      for (const slot of slots) {
+      for (const slot of this.slots) {
         const source = slot.ids.lines;
         if (
           slot.linesReady
@@ -569,6 +643,9 @@ export class TransitEngine {
     const onMove = () => {
       this.lastCameraMove = performance.now();
     };
+    // Feeds load and unload as the view settles.
+    const onMoveEnd = () => this.syncFeeds();
+    map.on("moveend", onMoveEnd);
     map.on("dragstart", onDragStart);
     map.on("zoomstart", onGesture);
     map.on("rotatestart", onGesture);
@@ -578,6 +655,7 @@ export class TransitEngine {
       map.off("zoomstart", onGesture);
       map.off("rotatestart", onGesture);
       map.off("move", onMove);
+      map.off("moveend", onMoveEnd);
       map.off("sourcedata", onSourceData);
       map.off("idle", onIdle);
       map.off("style.load", onStyleLoad);
@@ -587,34 +665,14 @@ export class TransitEngine {
       map.getCanvas().style.cursor = "";
     });
 
-    const invalidate = () => this.invalidate();
-    let rebuilt = false;
     this.cleanups.push(
       this.clock.subscribe(() => {
         this.invalidate();
         this.writeUrlSoon();
       }),
-      ...slots.flatMap((slot) => [
-        slot.store.onChange(() => {
-          if (slot.store.rebuilt) {
-            if (!rebuilt) {
-              rebuilt = true;
-              this.writeUrl();
-              opts.onRebuilt?.();
-            }
-            return;
-          }
-          this.syncHubs(slot);
-          this.syncStatic();
-          slot.clearDescribers();
-          this.resolveSelection();
-          this.invalidate();
-        }),
-        slot.rt.onChange(invalidate),
-        slot.ais.onChange(invalidate),
-      ]),
     );
 
+    this.syncFeeds();
     this.raf = requestAnimationFrame(this.frame);
     this.resolveSelection();
     // Drop a `?select=` that isn't a feature key (an old link's form), now rather than at the first
@@ -872,9 +930,170 @@ export class TransitEngine {
     this.publish();
   }
 
-  /** The first feed's slot: its time zone is the clock's, and its summaries the snapshot's. */
-  private get primary(): FeedSlot {
-    return this.slots[0]!;
+  /**
+   * The loaded feed whose single values the snapshot shows (its real-time badge, slider shading
+   * and service label): the one with the most stops in view (`pickPrimary`).
+   */
+  private get primary(): FeedSlot | undefined {
+    return this.slots.find((s) => s.feed === this.primaryFeed) ?? this.slots[0];
+  }
+
+  /** The loaded feed with the most stops in view, the first loaded on a tie (or with none in view). */
+  private pickPrimary(): void {
+    const view = this.view;
+    let best: { feed: string; n: number } | undefined;
+    for (const slot of this.slots) {
+      let n = 0;
+      if (view)
+        for (const stop of slot.shown?.plan.stops ?? [])
+          if (contains(view, stop.lon, stop.lat)) n++;
+      if (!best || n > best.n) best = { feed: slot.feed, n };
+    }
+    if (best?.feed === this.primaryFeed) return;
+    this.primaryFeed = best?.feed;
+    this.dirty = true;
+  }
+
+  /**
+   * Load the feeds whose coverage the view (grown by FEED_MARGIN) overlaps, and unload those that
+   * left it FEED_UNLOAD_MS ago, or, past MAX_FEEDS_LOADED, the ones that left it first; never the
+   * selection's feed (packages/transit-map/README.md#feeds). Hidden, the engine only notes whether
+   * any feed is in view.
+   */
+  private syncFeeds(): void {
+    if (this.disposed) return;
+    const { map } = this;
+    const view = viewBounds(map);
+    const near = grow(view, FEED_MARGIN);
+    const was = this.view;
+    this.view = view;
+    this.near = near;
+    this.lastFeedCheck = performance.now();
+    const inCoverage = this.feeds.some((f) => overlaps(f.coverage, view));
+    if (inCoverage !== this.snapshot.inCoverage) this.dirty = true;
+    if (!this.visible) return;
+    const now = performance.now();
+    for (const f of this.feeds) {
+      if (overlaps(f.coverage, near)) {
+        f.leftAt = undefined;
+        if (!f.slot) this.loadFeed(f);
+      } else if (f.slot) f.leftAt ??= now;
+    }
+    const held = new Set([this.selected?.feed, this.place?.feed]);
+    const left = this.feeds
+      .filter(
+        (f) => f.slot && f.leftAt !== undefined && !held.has(f.config.feed.id),
+      )
+      .sort((a, b) => a.leftAt! - b.leftAt!);
+    let loaded = this.slots.length;
+    for (const f of left)
+      if (now - f.leftAt! >= FEED_UNLOAD_MS || loaded > MAX_FEEDS_LOADED) {
+        this.unloadFeed(f);
+        loaded--;
+      }
+    if (was !== view) this.pickPrimary();
+    this.resolveSelection();
+  }
+
+  /** Make a feed's slot, and draw and play it with the others. */
+  private loadFeed(f: FeedEntry): void {
+    const slot = new FeedSlot(f.config, f.manifests, this.urls);
+    f.slot = slot;
+    this.slots = this.feeds.flatMap((x) => (x.slot ? [x.slot] : []));
+    if (this.preview) slot.store.setPreview(this.preview);
+    const network = slot.config.rail?.network;
+    if (network) {
+      const dispatch = this.dispatchPollOf(network, slot);
+      slot.store.setLiveDispatch(dispatch.versions);
+    }
+    const invalidate = () => this.invalidate();
+    const offs = [
+      slot.store.onChange(() => {
+        if (slot.store.rebuilt) {
+          if (!this.rebuilt) {
+            this.rebuilt = true;
+            this.writeUrl();
+            this.onRebuilt?.();
+          }
+          return;
+        }
+        this.syncHubs(slot);
+        this.syncStatic();
+        slot.clearDescribers();
+        this.resolveSelection();
+        this.invalidate();
+      }),
+      slot.rt.onChange(invalidate),
+      slot.ais.onChange(invalidate),
+    ];
+    f.unsubscribe = () => {
+      for (const off of offs) off();
+    };
+    slot.loadTracks(() => {
+      if (!this.disposed && f.slot === slot) this.syncStatic(true);
+    });
+    this.syncStatic(true);
+    this.mergeHidden();
+    this.invalidate();
+    this.dirty = true;
+  }
+
+  /** Remove a feed's slot: its layers, its polls and its vehicles. */
+  private unloadFeed(f: FeedEntry): void {
+    const slot = f.slot;
+    if (!slot) return;
+    f.unsubscribe?.();
+    f.slot = f.unsubscribe = f.leftAt = undefined;
+    slot.dispose(this.styleReady ? this.map : undefined);
+    this.vehicles.dropFeed(slot.feed);
+    this.slots = this.feeds.flatMap((x) => (x.slot ? [x.slot] : []));
+    const network = slot.config.rail?.network;
+    if (network && !this.slots.some((s) => s.config.rail?.network === network))
+      this.dispatchPolls.get(network)?.poll.stop();
+    this.lastVehicles = this.lastVehicles.filter((v) => v.feed !== slot.feed);
+    this.computed.delete(slot.feed);
+    this.mergeHidden();
+    this.pickPrimary();
+    this.invalidate();
+    this.dirty = true;
+  }
+
+  /**
+   * A rail network's live dispatch poll, made when the first feed on it loads: it hands each new
+   * response to every loaded feed on the network.
+   */
+  private dispatchPollOf(
+    network: string,
+    slot: FeedSlot,
+  ): { poll: LivePoller; versions: LiveDispatchVersions | undefined } {
+    let d = this.dispatchPolls.get(network);
+    if (d) return d;
+    const apiBase = this.urls.apiBase;
+    const entry: {
+      poll: LivePoller;
+      versions: LiveDispatchVersions | undefined;
+    } = {
+      versions: undefined,
+      poll: new LivePoller(
+        apiBase
+          && `${apiBase}networks/${encodeURIComponent(network)}/live/dispatch`,
+        slot.config.rt,
+        {
+          onResponse: (r) => {
+            entry.versions = sectionOf(r, "dispatch", "dispatch")?.versions;
+            for (const s of this.slots)
+              if (s.config.rail?.network === network)
+                s.store.setLiveDispatch(entry.versions);
+          },
+          // Without live dispatch, the published patches still apply.
+          onError: () => {},
+          onStop: () => {},
+        },
+      ),
+    };
+    this.dispatchPolls.set(network, entry);
+    d = entry;
+    return d;
   }
 
   private slotOf(feed: string): FeedSlot | undefined {
@@ -888,13 +1107,16 @@ export class TransitEngine {
 
   /** Epoch ms of a service date's reference point, in the clock's time zone. */
   private dayStart(date: ServiceDate): number {
-    return this.primary.dayStart(date);
+    return serviceDayStart(date, this.tz);
   }
 
   /** Instants any feed has timetables for, from the first feed's first day to the last one's end. */
   private range(): [number, number] | undefined {
-    const ranges = this.slots.flatMap((s) => {
-      const r = s.store.range();
+    const ranges = this.feeds.flatMap((f) => {
+      const r = manifestInstants(
+        playedManifest(f.manifests),
+        f.config.feed.timezone,
+      );
       return r ? [r] : [];
     });
     if (!ranges.length) return undefined;
@@ -1019,6 +1241,23 @@ export class TransitEngine {
         for (const k of String(f.properties["routes"] ?? "").split(","))
           if (k) covered.add(feedKey(slot.feed, k));
       }
+    // A place two feeds serve is one card: the first feed's exchange of an ID, and no stop of any
+    // feed's that the registry puts in a station or exchange listed.
+    const placeIds = new Set<string>();
+    for (const [k, place] of found) {
+      if (place.kind !== "station" && place.kind !== "exchange") continue;
+      const slot = this.slotOf(place.feed);
+      const id = slot && this.featureIdOf(slot, place);
+      if (id === undefined) continue;
+      if (placeIds.has(id)) found.delete(k);
+      placeIds.add(id);
+    }
+    for (const [k, place] of found) {
+      if (place.kind !== "stop") continue;
+      const plan = this.slotOf(place.feed)?.shown?.plan;
+      const parent = plan && placesOf(plan)?.parents[place.id];
+      if (parent !== undefined && placeIds.has(parent)) found.delete(k);
+    }
     // A station's or exchange's bays are on its card.
     for (const slot of this.slots) {
       if (!slot.shown) continue;
@@ -1482,7 +1721,7 @@ export class TransitEngine {
 
   /**
    * Hide the engine (its layers, vehicles, taps) and pause it (no frames, no live polling), or show
-   * it again as it was: a host keeps the engine of a region it zoomed out of, to show it again at
+   * it again as it was: a host keeps the engine while zoomed out, to show it again at
    * once when zoomed back in (apps/web/README.md#transit-mode). The clock keeps its time.
    */
   setVisible(visible: boolean): void {
@@ -1513,13 +1752,15 @@ export class TransitEngine {
     for (const id of this.hiddenLayers)
       if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
     this.hiddenLayers = [];
+    // Feeds that came into view while hidden.
+    this.syncFeeds();
     // Its tiles in the new view load from now on (MapLibre loads none for hidden layers).
     for (const slot of this.slots) slot.linesReady = false;
     // Layers a new style (a theme switch while hidden) dropped are added again.
     this.syncStatic(true);
     // Vehicles for this view before the layer draws again.
     const t = this.clock.now();
-    this.computedFor = { t, zoom: this.map.getZoom(), at: performance.now() };
+    this.computedZoom = this.map.getZoom();
     this.computeVehicles(t);
     this.attachVehicles();
     this.invalidate();
@@ -1530,7 +1771,7 @@ export class TransitEngine {
   /** Stop every live poll: each feed's and each rail network's. */
   private stopLive(): void {
     for (const slot of this.slots) slot.live.stop();
-    for (const poll of this.dispatchPolls) poll.stop();
+    for (const d of this.dispatchPolls.values()) d.poll.stop();
   }
 
   /** Sources the engine adds to the host's map (removed on dispose). */
@@ -1592,13 +1833,16 @@ export class TransitEngine {
   }
 
   /**
-   * The vehicle a `?select=` key names in a feed shown, if it names one: an `rt` key names its feed;
-   * a `run` key (packages/transit-map/src/select.ts) is the first feed's.
+   * The vehicle a `?select=` key names, if it names one: an `rt` key names its feed; a `run` key
+   * (packages/transit-map/src/select.ts) is a train's, of the first feed on a rail network.
    */
   private vehicleOf(key: string): { feed: string; id: string } | undefined {
-    for (const slot of this.slots) {
-      const id = vehicleOfKey(key, slot.feed);
-      if (id !== undefined) return { feed: slot.feed, id };
+    for (const { config } of this.feeds) {
+      const feed = config.feed.id;
+      const id = vehicleOfKey(key, feed);
+      if (id === undefined) continue;
+      if (!id.startsWith("rt:") && !config.rail) continue;
+      return { feed, id };
     }
     return undefined;
   }
@@ -1614,25 +1858,34 @@ export class TransitEngine {
       if (this.place) this.writeUrl();
       return;
     }
+    // Every feed in view is loaded (hidden, none are), with its plan and places file.
+    if (
+      !this.visible
+      || this.feeds.some((f) => !f.slot && overlaps(f.coverage, this.near))
+    )
+      return;
     const contexts = this.slots.map((s) => this.selectContext(s, true));
     if (contexts.some((c) => !c)) return;
-    this.pendingSelect = undefined;
-    let elsewhere = false;
     for (const ctx of contexts) {
       const r = resolveSelect(key, ctx!);
-      if (r === "elsewhere") {
-        elsewhere = true;
-        continue;
-      }
+      if (r === "elsewhere") continue;
+      this.pendingSelect = undefined;
       if (!r) break;
       if ("vehicle" in r) this.selectVehicle(feedKey(ctx!.feed, r.vehicle));
       else this.showPlace(r.place);
       return;
     }
-    if (elsewhere) {
+    if (this.pendingSelect === undefined) {
+      // Not a key at all.
+      this.writeUrl();
+      return;
+    }
+    // No feed loaded has it: the host may move the map there, where a feed that has it loads, and
+    // it's tried again (it stays pending).
+    if (this.elsewhere !== key) {
       this.elsewhere = key;
       this.publish();
-    } else this.writeUrl();
+    }
   }
 
   /** The selection's key for the URL: canonical once it's resolved, else as given. */
@@ -1679,7 +1932,7 @@ export class TransitEngine {
 
   private buildSnapshot(t: number): TransitSnapshot {
     const serviceDate = this.displayDate(t);
-    const feeds = this.slots.flatMap((s) => s.store.manifest.feeds);
+    const feeds = this.feeds.flatMap((f) => playedManifest(f.manifests).feeds);
     const selected =
       this.selected === undefined ?
         undefined
@@ -1699,12 +1952,13 @@ export class TransitEngine {
         })();
     const prev = this.snapshot as TransitSnapshot | undefined;
     const routes = this.slots.flatMap((s) => s.shown?.plan.routes ?? []);
-    const scenario = this.primary.store.scenario;
+    const scenario = this.feeds.find((f) => f.manifests.scenario)?.manifests
+      .scenario;
     return {
       t,
       timezone: this.tz,
       serviceDate,
-      serviceLabel: this.primary.describeDate(serviceDate),
+      serviceLabel: this.primary?.describeDate(serviceDate) ?? "…",
       playing: this.clock.playing,
       rate: this.clock.rate,
       live: this.clock.isLive(),
@@ -1734,7 +1988,7 @@ export class TransitEngine {
       showStops: this.showStops,
       liveOnly: this.liveOnly,
       corridors: this.slots.some((s) => Boolean(s.shown?.plan.corridorInfo)),
-      linesReady: this.slots.every((s) => s.linesReady),
+      linesReady: this.linesReady(),
       busFrequency: this.busFrequency,
       busFrequencyHour: (() => {
         const ft = this.frequencyTime();
@@ -1758,7 +2012,15 @@ export class TransitEngine {
           { name: scenario.name, description: scenario.description }
         : undefined,
       elsewhere: this.elsewhere,
+      inCoverage: this.feeds.some((f) => overlaps(f.coverage, this.view)),
     };
+  }
+
+  /** Every feed in view has its lines drawn: each is loaded, and its tiles in view are in. */
+  private linesReady(): boolean {
+    return this.feeds.every(
+      (f) => !overlaps(f.coverage, this.view) || f.slot?.linesReady,
+    );
   }
 
   /** The selected vehicle's trip: where and when riders can first board it (epoch ms), and its short id. */
@@ -1793,10 +2055,67 @@ export class TransitEngine {
       drawn: (v) =>
         !this.hiddenRoute(v)
         && !(this.liveOnly && v.provenance === "estimated"),
-      corrections: (d) => slot.lastCorrections?.get(d),
+      corrections: (d) => slot.correctionsOn(d),
       datasetsOf: (routes) => this.datasetsOf(routes),
       segment: () => this.segmentInfo(),
+      foreign: this.foreignBays(slot, this.place),
+      foreignParent: this.foreignParent(slot, this.place),
     });
+  }
+
+  /**
+   * A station's or exchange's ID in the registry (docs/DESIGN.md#feature-ids), from its feed's
+   * places file: the same place in every feed.
+   */
+  private featureIdOf(slot: FeedSlot, place: Place): string | undefined {
+    const places = slot.shown && placesOf(slot.shown.plan);
+    if (!places) return undefined;
+    if (place.kind === "station") return stationFeatureId(places, place.id);
+    if (place.kind === "exchange")
+      return places.places[place.id] ? place.id : undefined;
+    return undefined;
+  }
+
+  /**
+   * Other loaded feeds' stops in a station or exchange: those their places files put in it (the
+   * Fraser Valley's 66 at Lougheed Station), whose departures join its card
+   * (packages/transit-map/README.md#feeds).
+   */
+  private foreignBays(slot: FeedSlot, place: Place): ForeignBays[] {
+    const id = this.featureIdOf(slot, place);
+    if (id === undefined) return [];
+    return this.slots.flatMap((s) => {
+      const pp = s.shown;
+      const stops = s !== slot && pp ? baysOf(pp.plan)?.get(id) : undefined;
+      return stops?.length ?
+          [{ pp: pp!, stops, corrections: (d) => s.correctionsOn(d) }]
+        : [];
+    });
+  }
+
+  /** The station or exchange of another loaded feed's that the registry puts a stop in, if any. */
+  private foreignParent(slot: FeedSlot, place: Place): PlaceSnapshot["partOf"] {
+    const places = slot.shown && placesOf(slot.shown.plan);
+    const id = place.kind === "stop" ? places?.parents[place.id] : undefined;
+    if (id === undefined) return undefined;
+    for (const s of this.slots) {
+      const plan = s !== slot ? s.shown?.plan : undefined;
+      const theirs = plan && placesOf(plan);
+      if (!plan || !theirs) continue;
+      const station = plan.stations.find(
+        (x) => stationFeatureId(theirs, x.id) === id,
+      );
+      if (station)
+        return {
+          kind: "station",
+          feed: s.feed,
+          id: station.id,
+          name: station.name,
+        };
+      const hub = hubsOf(plan).find((h) => h.id === id && !h.station);
+      if (hub) return { kind: "exchange", feed: s.feed, id, name: hub.name };
+    }
+    return undefined;
   }
 
   /** Whether a vehicle's route is hidden. */
@@ -1860,6 +2179,8 @@ export class TransitEngine {
       drawn ||= r === true;
     }
     if (!drawn) return;
+    // A plan drawn for the first time: its stops count towards the primary feed.
+    this.pickPrimary();
     // A new style (a theme switch) has no global state: set it again.
     applyBrandColors(map, this.showBrandColors);
     this.syncPlaceHighlight();
@@ -1877,39 +2198,54 @@ export class TransitEngine {
     if (this.disposed) return;
     const { clock, map } = this;
     const t = clock.now();
-    const scenario = this.primary.store.scenario !== undefined;
     // Scenarios are hypothetical: never mix in real bus positions.
-    if (!scenario) {
+    if (!this.scenario) {
       for (const slot of this.slots) {
         slot.rt.update(t, this.sliderRange(t));
         slot.live.update(t);
       }
-      for (const poll of this.dispatchPolls) poll.update(t);
+      for (const [network, d] of this.dispatchPolls)
+        if (this.slots.some((s) => s.config.rail?.network === network))
+          d.poll.update(t);
     }
+    // Feeds that left the view are unloaded in time, even while it stays put.
+    if (performance.now() - this.lastFeedCheck > FEED_CHECK_MS)
+      this.syncFeeds();
     // Vehicles (and the map repaint their upload triggers) only when something they depend on
     // changed: the time (once vehicles could have moved MAX_STEP_PX), the zoom (minimum drawn
     // sizes), or an input (data, selection, filters). Paused, that's almost never;
     // IDLE_RECOMPUTE_MS covers what ages with wall-clock time.
     const zoom = map.getZoom();
     const at = performance.now();
-    const stepMs =
+    // Culled: the view has moved past the area vehicles were worked out for.
+    if (this.cullArea && !insideBounds(viewBounds(map), this.cullArea))
+      this.inputsChanged = true;
+    // Each feed's buses, and the rest of its vehicles, at their own rate: the time counts once the
+    // fastest of them could have moved MAX_STEP_PX.
+    const msPerM =
       (1000 * MAX_STEP_PX * metresPerPixel(map.getCenter().lat, zoom))
-      / (this.maxSpeedMps * Math.abs(clock.rate || 1));
-    if (
-      this.inputsChanged
-      || (t !== this.computedFor.t && at - this.computedFor.at >= stepMs)
-      || zoom !== this.computedFor.zoom
-      || at - this.computedFor.at > IDLE_RECOMPUTE_MS
-    ) {
+      / Math.abs(clock.rate || 1);
+    if (this.inputsChanged || zoom !== this.computedZoom) {
       this.inputsChanged = false;
-      this.computedFor = { t, zoom, at };
+      this.computedZoom = zoom;
       this.computeVehicles(t);
+    } else {
+      const due = (feed: string, kind: VehicleKind) => {
+        const g = this.computed.get(feed)?.[kind];
+        return (
+          !g
+          || (t !== g.t && at - g.at >= msPerM / this.maxSpeedOf(feed, kind))
+          || at - g.at > IDLE_RECOMPUTE_MS
+        );
+      };
+      if (this.slots.some((s) => VEHICLE_KINDS.some((k) => due(s.feed, k))))
+        this.computeVehicles(t, due);
     }
     if (performance.now() - this.lastCoverageUpdate > 1000) {
       this.lastCoverageUpdate = performance.now();
       const [lo, hi] = this.sliderRange(t);
-      // The slider shades where the first feed's buses are real (its badge's).
-      const next = this.primary.rt.coverageFor(lo, hi);
+      // The slider shades where the primary feed's buses are real (its badge's).
+      const next = this.primary?.rt.coverageFor(lo, hi) ?? [];
       if (JSON.stringify(next) !== JSON.stringify(this.coverage)) {
         this.coverage = next;
         this.dirty = true;
@@ -1976,9 +2312,43 @@ export class TransitEngine {
     this.raf = requestAnimationFrame(this.frame);
   };
 
-  /** Every feed's vehicles at t, the corrections and badges that go with them, drawn on the map. */
-  private computeVehicles(t: number): void {
-    const scenario = this.primary.store.scenario !== undefined;
+  /**
+   * The fastest a feed's vehicles of a kind are set to move (m/s, from its kinematics config), for
+   * MAX_STEP_PX: its buses' mode, or every other mode and every route's own setting.
+   */
+  private maxSpeedOf(feed: string, kind: VehicleKind): number {
+    const key = `${feed}|${kind}`;
+    let v = this.maxSpeeds.get(key);
+    if (v === undefined) {
+      const k = this.feeds.find((f) => f.config.feed.id === feed)!.config
+        .kinematics;
+      v =
+        Math.max(
+          1,
+          ...(kind === "bus" ?
+            [k.modes.bus?.maxSpeed ?? 0]
+          : [
+              ...Object.entries(k.modes)
+                .filter(([mode]) => mode !== "bus")
+                .map(([, m]) => m.maxSpeed),
+              ...Object.values(k.routes).map((r) => r.maxSpeed ?? 0),
+            ]),
+        ) / 3.6;
+      this.maxSpeeds.set(key, v);
+    }
+    return v;
+  }
+
+  /**
+   * Every feed's vehicles at t, the corrections and badges that go with them, drawn on the map.
+   * With `due`, only the groups (a feed's buses, or the rest of its vehicles) it accepts are worked
+   * out again; the others are drawn as last computed.
+   */
+  private computeVehicles(
+    t: number,
+    due?: (feed: string, kind: VehicleKind) => boolean,
+  ): void {
+    const { scenario } = this;
     // Hidden routes aren't computed, except the selected vehicle's and the open route card's:
     // hiding a layer hides it from the map, but its cards stay true. Until the selected vehicle
     // has been seen, compute everything to find it.
@@ -1988,7 +2358,26 @@ export class TransitEngine {
     if (place?.kind === "route") keep.add(feedKey(place.feed, place.id));
     for (const r of this.segmentInfo()?.routes ?? [])
       keep.add(feedKey(place!.feed, r));
-    const byFeed: FeedVehicles[] = this.slots.map((slot) => {
+    // A station's or stop's card links its departures to their vehicles, wherever they are.
+    const card = this.snapshot.place;
+    if (card && "groups" in card)
+      for (const r of [...card.routes, ...card.groups.map((g) => g.route)])
+        keep.add(routeId(r));
+    // Culled to the view and its margin, but for those routes; everywhere until the selected
+    // vehicle has been found. Only recomputing every group moves the area, so every group's
+    // vehicles are for the same one.
+    const area =
+      this.selected && !this.selectedRoute ? undefined
+      : due && this.cullArea ? this.cullArea
+      : grow(viewBounds(this.map), CULL_MARGIN);
+    this.cullArea = area;
+    const keptRoutes = [...keep].sort().join();
+    if (keptRoutes !== this.keptRoutes) {
+      this.keptRoutes = keptRoutes;
+      this.dirty = true;
+    }
+    const at = performance.now();
+    const byFeed = this.slots.map((slot) => {
       const visible =
         !slot.hidden.size || (this.selected && !this.selectedRoute) ?
           undefined
@@ -2001,14 +2390,38 @@ export class TransitEngine {
           );
       const selected = this.selected;
       const own = selected?.feed === slot.feed ? selected.id : undefined;
-      const out = slot.vehiclesAt(t, {
-        visible,
-        selected: (id) => id === own,
-        place: place !== undefined,
-        scenario,
-      });
+      let groups = this.computed.get(slot.feed);
+      if (!groups) this.computed.set(slot.feed, (groups = {}));
+      for (const kind of VEHICLE_KINDS) {
+        const was = groups[kind];
+        if (was && due && !due(slot.feed, kind)) continue;
+        const out = slot.vehiclesAt(t, {
+          kind,
+          visible,
+          selected: (id) => id === own,
+          place: place !== undefined,
+          scenario,
+          within: area && {
+            bounds: area,
+            except: new Set(
+              [...keep].flatMap((k) => {
+                const r = splitFeedKey(k);
+                return r?.feed === slot.feed ? [r.key] : [];
+              }),
+            ),
+          },
+        });
+        groups[kind] = { out, t, at };
+      }
       slot.syncFerryPair(this.styleReady ? this.map : undefined, t, scenario);
-      return out;
+      const bus = groups.bus!.out;
+      const other = groups.other!.out;
+      return {
+        vehicles: [...other.vehicles, ...bus.vehicles],
+        mode: bus.mode,
+        live: bus.live,
+        aisUsed: other.aisUsed,
+      };
     });
     this.lastVehicles = byFeed.flatMap((f) => f.vehicles);
     if (this.selected) {
@@ -2022,10 +2435,12 @@ export class TransitEngine {
       this.notices = notices;
       this.dirty = true;
     }
-    // The badge says where the first feed's buses come from.
-    const mode = byFeed[0]!.mode;
+    // The badge says where the primary feed's buses come from.
+    const primary = this.primary;
+    const mode =
+      byFeed[primary ? this.slots.indexOf(primary) : -1]?.mode ?? "unavailable";
     const [label, title] = RT_BADGE[mode];
-    const status = this.primary.rt.liveStatus();
+    const status = primary?.rt.liveStatus();
     const fullTitle = status ? `${title} (${status})` : title;
     if (
       mode !== this.rtState.mode
@@ -2037,17 +2452,21 @@ export class TransitEngine {
     }
     this.datasets = this.datasetsDrawn(
       byFeed.flatMap((f) => f.live),
-      byFeed.some((f) => f.aisUsed),
+      new Set(
+        this.slots.filter((_, i) => byFeed[i]!.aisUsed).map((s) => s.feed),
+      ),
     );
 
     if (this.styleReady)
       this.vehicles.update(
-        // The selected vehicle stays, so its card (and follow) still point at something.
+        // The selected vehicle stays, so its card (and follow) still point at something; those
+        // worked out off the area for a card aren't drawn.
         this.lastVehicles.filter(
           (v) =>
             this.isSelected(v)
             || (!this.hiddenRoute(v)
-              && !(this.liveOnly && v.provenance === "estimated")),
+              && !(this.liveOnly && v.provenance === "estimated")
+              && (!area || contains(area, v.lon, v.lat))),
         ),
         this.theme === "dark",
       );
@@ -2076,43 +2495,84 @@ export class TransitEngine {
   /** What the map shows right now, for the attribution control (docs/DESIGN.md#attribution). */
   private datasetsDrawn(
     rtVehicles: readonly VehicleState[],
-    aisUsed: boolean,
+    aisFeeds: ReadonlySet<string>,
   ): string[] {
     const routeOf = (v: VehicleState) =>
       this.slotOf(v.feed)?.shown?.routes.get(v.routeKey);
+    // What's in view: feeds loaded for the margin around it aren't credited.
+    const view = this.view;
+    const seen = (v: VehicleState) => !view || contains(view, v.lon, v.lat);
+    const shown = this.slots.filter((s) =>
+      overlaps(this.feeds.find((f) => f.slot === s)?.coverage ?? null, view),
+    );
+    const vehicles = this.lastVehicles.filter(seen);
     const out = this.datasetsOf([
-      ...this.slots.flatMap((s) =>
+      ...shown.flatMap((s) =>
         (s.shown?.plan.routes ?? [])
           .filter((r) => !s.hidden.has(r.key))
           .map((r): [PlanRoute, boolean] => [r, false]),
       ),
-      ...this.lastVehicles.map((v): [PlanRoute | undefined, boolean] => [
+      ...vehicles.map((v): [PlanRoute | undefined, boolean] => [
         routeOf(v),
         false,
       ]),
-      ...rtVehicles.map((v): [PlanRoute | undefined, boolean] => [
-        routeOf(v),
-        true,
-      ]),
+      ...rtVehicles
+        .filter(seen)
+        .map((v): [PlanRoute | undefined, boolean] => [routeOf(v), true]),
     ]);
-    if (aisUsed) out.push("aisstream");
+    // AIS fixes moved a vessel in view.
+    if (vehicles.some((v) => v.mode === "ferry" && aisFeeds.has(v.feed)))
+      out.push("aisstream");
     // The track network is imported from OpenStreetMap plus our overrides; corrections are ours.
-    if (this.slots.some((s) => s.tracks)) out.push("osm", "transitopia");
+    if (shown.some((s) => s.tracks)) out.push("osm", "transitopia");
     return out;
   }
 
   /** Debug handle for the console (window.transit). */
   debugHandle(): object {
-    const primary = this.primary;
     return {
       map: this.map,
       clock: this.clock,
-      slots: this.slots,
-      store: primary.store,
-      rt: primary.rt,
+      slots: () => this.slots,
+      store: () => this.primary?.store,
+      rt: () => this.primary?.rt,
       vehicles: () => this.lastVehicles,
     };
   }
+}
+
+const VEHICLE_KINDS: readonly VehicleKind[] = ["bus", "other"];
+
+/** Live dispatch's versions by service date (the live dispatch section). */
+type LiveDispatchVersions = Record<string, VersionPointer>;
+
+/** Whether two bounds overlap (never with null or undefined). */
+function overlaps(a: Bounds | null, b: Bounds | undefined): boolean {
+  return (
+    !!a && !!b && a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3]
+  );
+}
+
+/** The map's view as bounds (rotated or pitched: what encloses it). */
+function viewBounds(map: MlMap): Bounds {
+  const b = map.getBounds();
+  return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+}
+
+/** Bounds grown by a fraction of their size on every side. */
+function grow(b: Bounds, f: number): Bounds {
+  const dx = (b[2] - b[0]) * f;
+  const dy = (b[3] - b[1]) * f;
+  return [b[0] - dx, b[1] - dy, b[2] + dx, b[3] + dy];
+}
+
+/** Whether `a` lies within `b`. */
+function insideBounds(a: Bounds, b: Bounds): boolean {
+  return a[0] >= b[0] && a[1] >= b[1] && a[2] <= b[2] && a[3] <= b[3];
+}
+
+function contains(b: Bounds, lon: number, lat: number): boolean {
+  return lon >= b[0] && lon <= b[2] && lat >= b[1] && lat <= b[3];
 }
 
 function sameRoutes(a: PlanRoute[], b: PlanRoute[]): boolean {

@@ -24,7 +24,7 @@ import type {
   ObservationIndex,
 } from "@transitopia/transit-core/corrections/types.ts";
 import type { PlacesFile, PlacesIndex } from "@transitopia/shared/features.ts";
-import { hubsFromPlaces } from "./hubs.ts";
+import { baysFromPlaces, hubsFromPlaces } from "./hubs.ts";
 import { type BusHub } from "@transitopia/transit-core/plan/exchanges.ts";
 import type { ScenarioManifest } from "@transitopia/transit-core/scenario/types.ts";
 import {
@@ -35,6 +35,7 @@ import {
   type ScheduleCorrections,
   type TripPacer,
   type VehicleState,
+  type Within,
 } from "@transitopia/transit-core/schedule/engine.ts";
 import {
   feedDataPath,
@@ -542,44 +543,40 @@ export class PlanStore {
     return out;
   }
 
-  static async load(
+  /**
+   * A feed's manifests: its own (data/feeds/<feed>/manifest.json), and with `scenario`, where the
+   * feed runs on a rail network, the scenario's (its plans replace the feed's own).
+   */
+  static async manifests(
     base: string,
-    apiBase: string | undefined,
-    config: Pick<FeedConfig, "kinematics" | "rail" | "feed">,
+    config: Pick<FeedConfig, "rail" | "feed">,
     scenario?: string,
-  ): Promise<PlanStore> {
-    if (scenario) {
-      if (!config.rail)
-        throw new Error(
-          `Scenarios are a rail network's, and ${config.feed.name} runs on none.`,
-        );
-      const res = await fetch(
-        `${base}${networkDataPath(config.rail.network, `scenarios/${encodeURIComponent(scenario)}/manifest.json`)}`,
-      );
-      if (!res.ok)
-        throw new Error(
-          `Scenario "${scenario}" isn't built (HTTP ${res.status}). Run "npm run scenario -- ${scenario}".`,
-        );
-      const sm = (await res.json()) as ScenarioManifest;
-      return new PlanStore(
-        { schema: 1, generatedAt: sm.builtAt, feeds: sm.feeds },
-        base,
-        apiBase,
-        config,
-        sm,
-      );
-    }
+  ): Promise<FeedManifests> {
     const res = await fetchManifest(base, config.feed.id);
     if (!res.ok)
       throw new Error(
-        `No timetable data (HTTP ${res.status}). Run "npm run data" first.`,
+        `No timetable data for ${config.feed.name} (HTTP ${res.status}). Run "npm run data" first.`,
       );
-    return new PlanStore(
-      (await res.json()) as FeedManifest,
-      base,
-      apiBase,
-      config,
+    const manifest = (await res.json()) as FeedManifest;
+    if (!scenario || !config.rail) return { manifest };
+    const sres = await fetch(
+      `${base}${networkDataPath(config.rail.network, `scenarios/${encodeURIComponent(scenario)}/manifest.json`)}`,
     );
+    if (!sres.ok)
+      throw new Error(
+        `Scenario "${scenario}" isn't built (HTTP ${sres.status}). Run "npm run scenario -- ${scenario}".`,
+      );
+    return { manifest, scenario: (await sres.json()) as ScenarioManifest };
+  }
+
+  /** A store for a feed whose manifests are in (`manifests`). */
+  static create(
+    m: FeedManifests,
+    base: string,
+    apiBase: string | undefined,
+    config: Pick<FeedConfig, "kinematics" | "rail" | "feed">,
+  ): PlanStore {
+    return new PlanStore(playedManifest(m), base, apiBase, config, m.scenario);
   }
 
   /** Track network to draw and route on, for a feed with track-level rail. */
@@ -590,12 +587,7 @@ export class PlanStore {
 
   /** Instants covered by the available feeds: first service day start to end of last service day. */
   range(): [number, number] | undefined {
-    const r = manifestRange(this.manifest);
-    if (!r) return undefined;
-    return [
-      serviceDayStart(r.start, this.tz),
-      serviceDayStart(addDays(r.end, 1), this.tz) + 4 * 3600_000,
-    ];
+    return manifestInstants(this.manifest, this.tz);
   }
 
   /**
@@ -788,6 +780,7 @@ export class PlanStore {
     t: number,
     routes?: Set<string>,
     rtCorrections?: Map<ServiceDate, ScheduleCorrections>,
+    within?: Within,
   ): VehicleState[] {
     const today = localDate(t, this.tz);
     const out: VehicleState[] = [];
@@ -808,7 +801,13 @@ export class PlanStore {
         out.push(
           ...scheduledVehicles(
             pp,
-            { serviceDate: date, sec, routes: nonRail, ...this.pacing(pp) },
+            {
+              serviceDate: date,
+              sec,
+              routes: nonRail,
+              within,
+              ...this.pacing(pp),
+            },
             mergeCorrections(
               this.scheduledCorrectionsFor(date, pp),
               rtCorrections?.get(date),
@@ -819,7 +818,7 @@ export class PlanStore {
         out.push(
           ...scheduledVehicles(
             pp,
-            { serviceDate: date, sec, routes, ...this.pacing(pp) },
+            { serviceDate: date, sec, routes, within, ...this.pacing(pp) },
             mergeCorrections(
               this.scheduledCorrectionsFor(date, pp),
               rtCorrections?.get(date),
@@ -898,6 +897,32 @@ export function hubsOf(plan: ServicePlan): BusHub[] {
   return c.hubs;
 }
 
+const baysCache = new WeakMap<PlacesFile, Map<string, string[]>>();
+/**
+ * The plan's stops in each station and exchange by its ID (`baysFromPlaces`), from its places file;
+ * undefined until that's loaded (or without one).
+ */
+export function baysOf(plan: ServicePlan): Map<string, string[]> | undefined {
+  const places = placesOfPlan.get(plan);
+  if (!places) return undefined;
+  let bays = baysCache.get(places);
+  if (!bays) {
+    bays = new Map(
+      [...baysFromPlaces(plan, places)].map(([id, sis]) => [
+        id,
+        sis.map((si) => plan.stops[si]!.id),
+      ]),
+    );
+    baysCache.set(places, bays);
+  }
+  return bays;
+}
+
+/** The plan's places file, once loaded (`PlanStore.placesFor`). */
+export function placesOf(plan: ServicePlan): PlacesFile | undefined {
+  return placesOfPlan.get(plan);
+}
+
 const placeOfCache = new WeakMap<BusHub[], PlaceOf>();
 /**
  * Which place a stop counts as for combined routes (packages/transit-core/DESIGN.md#combined-routes):
@@ -933,6 +958,41 @@ function railServices(pp: PreparedPlan): Set<string> {
  * A feed's manifest, revalidated rather than taken from the browser's cache: it names the build
  * every other file's URL is for.
  */
+/** A feed's manifest and, while a scenario is shown, its scenario's (`PlanStore.manifests`). */
+export interface FeedManifests {
+  manifest: FeedManifest;
+  scenario?: ScenarioManifest | undefined;
+}
+
+/** The manifest a feed's plans come from: its scenario's, while one is shown, else its own. */
+export function playedManifest(m: FeedManifests): FeedManifest {
+  const sm = m.scenario;
+  return sm ?
+      {
+        schema: 1,
+        generatedAt: sm.builtAt,
+        coverage: m.manifest.coverage,
+        feeds: sm.feeds,
+      }
+    : m.manifest;
+}
+
+/**
+ * Instants a manifest's versions cover, in the feed's time zone: its first service day's start to
+ * the end of its last.
+ */
+export function manifestInstants(
+  manifest: FeedManifest,
+  tz: string,
+): [number, number] | undefined {
+  const r = manifestRange(manifest);
+  if (!r) return undefined;
+  return [
+    serviceDayStart(r.start, tz),
+    serviceDayStart(addDays(r.end, 1), tz) + 4 * 3600_000,
+  ];
+}
+
 function fetchManifest(base: string, feed: string): Promise<Response> {
   return fetch(`${base}${feedDataPath(feed, undefined, "manifest.json")}`, {
     cache: "no-cache",

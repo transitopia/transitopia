@@ -2,7 +2,7 @@
 // the buttons that move it along, and links to previews.
 
 import React from "react";
-import { railNetwork } from "../TransitMap/regions.ts";
+import { railNetwork } from "../TransitMap/feeds.ts";
 import type { Previews, ReviewState } from "@transitopia/shared/admin-api.ts";
 import { useWrite } from "./api.ts";
 import { button, errorText, primary } from "./styles.ts";

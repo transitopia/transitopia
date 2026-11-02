@@ -52,7 +52,12 @@ async function store(
         : new Response("", { status: 404 });
     }),
   );
-  const s = await PlanStore.load("https://data.example/", undefined, config);
+  const s = PlanStore.create(
+    await PlanStore.manifests("https://data.example/", config),
+    "https://data.example/",
+    undefined,
+    config,
+  );
   urls.length = 0;
   return { s, urls };
 }
@@ -228,7 +233,12 @@ describe("PlanStore loading plans by parts", () => {
           : new Response("", { status: 404 });
       }),
     );
-    const s = await PlanStore.load("https://data.example/", undefined, config);
+    const s = PlanStore.create(
+      await PlanStore.manifests("https://data.example/", config),
+      "https://data.example/",
+      undefined,
+      config,
+    );
     return { s, urls };
   }
 

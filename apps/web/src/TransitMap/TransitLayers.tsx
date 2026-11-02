@@ -124,15 +124,14 @@ const BrandColorsRow: React.FC<{
 );
 
 /**
- * The transit layers panel while no engine is shown (zoomed out, or outside every region): the
- * overview follows brand colours, so that switch stays; the rest waits for a region's engine. The
- * kept engine, if any, takes the choice so it agrees when shown again; without one it's saved for
- * the next.
+ * The transit layers panel while the engine isn't shown (zoomed out): the overview follows brand
+ * colours, so that switch stays; the rest waits for the engine. The engine, if any, takes the
+ * choice so it agrees when shown again; without one it's saved for the next.
  */
 export const OverviewLayers: React.FC<{
   map: MlMap;
   engine: TransitEngine | undefined;
-  /** Whether a region is in view (only zoomed out too far for its engine). */
+  /** Whether a feed is in view (only zoomed out too far for the engine). */
   inView: boolean;
 }> = ({ map, engine, inView }) => {
   const [saved, setSaved] = React.useState(() =>
@@ -201,7 +200,7 @@ export const TransitLayers: React.FC<{
             on={!snap.hiddenGroups.has(g.id)}
             onChange={(on) => engine.setGroupShown(g.id, on)}
             disabled={!routes.length}
-            disabledReason="No routes like this in this region"
+            disabledReason="No routes like this here"
           />
         );
       })}

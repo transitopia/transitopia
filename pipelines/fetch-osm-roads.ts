@@ -1,9 +1,8 @@
 // Download the roads a feed's buses can use from OpenStreetMap via Overpass, for matching bus shapes
 // to streets in build-schedule (packages/transit-core/DESIGN.md#bus-corridors): every public road
 // class, busways, service roads open to buses, and service roads near bus stops (exchange loops are
-// often plain service roads). The area is the bbox of the regions showing the feed and of the feed's
-// stops in its newest archived GTFS (a route can run past its region: the Fraser Valley's 66 to
-// Lougheed Station). Saved with a date
+// often plain service roads). The area is the bbox of the feed's stops in its newest archived GTFS,
+// with a margin (ROADS_MARGIN_DEG) for shapes that run a little past the outermost stops. Saved with a date
 // so builds are reproducible: var/raw/osm-roads/<feed>/YYYY-MM-DD.json (and latest.json).
 //
 //   tsx pipelines/fetch-osm-roads.ts [--feed <id>]   (default: every feed)
@@ -25,12 +24,7 @@ import {
 import { join } from "node:path";
 import { archivedFeeds } from "@transitopia/data/gtfs-day.ts";
 import { readCsv } from "@transitopia/data/gtfs-zip.ts";
-import {
-  feedPaths,
-  log,
-  readFeeds,
-  readRegions,
-} from "@transitopia/data/paths.ts";
+import { feedPaths, log, readFeeds } from "@transitopia/data/paths.ts";
 
 const ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
@@ -135,6 +129,12 @@ async function fresh(feed: string): Promise<boolean> {
 
 type BBox = [number, number, number, number];
 
+/**
+ * Roads are fetched this far (degrees, about 2 km) past the feed's outermost stops: a shape can run
+ * on past its last stop to turn or lay over (guess).
+ */
+const ROADS_MARGIN_DEG = 0.02;
+
 /** The bbox of the stops in the feed's newest archived GTFS, if it has one. */
 async function stopsBbox(feed: string): Promise<BBox | undefined> {
   const [newest] = await archivedFeeds(feed);
@@ -157,23 +157,19 @@ async function stopsBbox(feed: string): Promise<BBox | undefined> {
   return b;
 }
 
-const regions = await readRegions();
 for (const feed of await readFeeds()) {
   if (only && feed.id !== only) continue;
   if (await fresh(feed.id)) {
     log(`${feed.id}: roads fetched within ${maxAgeDays} days`);
     continue;
   }
-  const shown = regions.filter((r) => r.feeds.includes(feed.id));
-  if (!shown.length) continue;
-  const boxes: BBox[] = shown.map((r) => r.bbox);
   const stops = await stopsBbox(feed.id);
-  if (stops) boxes.push(stops);
-  const bbox: BBox = [
-    Math.min(...boxes.map((b) => b[0])),
-    Math.min(...boxes.map((b) => b[1])),
-    Math.max(...boxes.map((b) => b[2])),
-    Math.max(...boxes.map((b) => b[3])),
-  ];
-  await fetchFeed(feed.id, bbox);
+  if (!stops) continue;
+  const m = ROADS_MARGIN_DEG;
+  await fetchFeed(feed.id, [
+    stops[0] - m,
+    stops[1] - m,
+    stops[2] + m,
+    stops[3] + m,
+  ]);
 }

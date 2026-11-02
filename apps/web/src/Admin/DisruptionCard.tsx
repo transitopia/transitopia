@@ -1,5 +1,5 @@
 import React from "react";
-import { railNetwork } from "../TransitMap/regions.ts";
+import { railNetwork } from "../TransitMap/feeds.ts";
 import type { Disruption } from "@transitopia/transit-core/disruption/types.ts";
 import {
   disruption,

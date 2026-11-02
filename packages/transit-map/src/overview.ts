@@ -1,7 +1,7 @@
-// The transit overview's layers (packages/transit-core/DESIGN.md#overview-tiles): every region's routes
-// zoomed out, below the zoom a region's engine starts at, with static colours (how often buses pass
+// The transit overview's layers (packages/transit-core/DESIGN.md#overview-tiles): every feed's routes
+// zoomed out, below the zoom the engine is shown from, with static colours (how often buses pass
 // on regular weekdays, as the map's "Day"). The host adds the tileset as a vector source and these
-// layers on it; they need no engine. Until a region's engine draws its own lines (its snapshot's
+// layers on it; they need no engine. Until the engine draws the lines in view (its snapshot's
 // `linesReady`), the host keeps them drawn further in too (`overviewMaxZoom`), overzoomed, so
 // zooming in never leaves the map without lines.
 

@@ -17,7 +17,7 @@ import {
   type MapType,
 } from "./MapUtils.ts";
 
-/** Where the basemap has tiles (BC, docs/DESIGN.md#regions), with some margin. */
+/** Where the basemap has tiles (BC, docs/DESIGN.md#feeds-operators-and-rail-networks), with some margin. */
 const MAX_BOUNDS: [[number, number], [number, number]] = [
   [-142, 46],
   [-112, 62],

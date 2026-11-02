@@ -12,7 +12,7 @@
 // Default: TransLink's recordings; test on the last 3 complete hours, train on all other complete
 // hours. --subsample replays the live view as if positions had been polled only this often (or on
 // the feed's poll schedule, config/feeds/<feed>/feed.json → realtime.poll, packages/transit-core/src/rt/budget.ts),
-// still scoring it against every recorded fix. Prediction settings: the first region showing the feed.
+// still scoring it against every recorded fix. Prediction settings: the feed's (readFeedConfig).
 //
 // Then replays the test hours as the live view sees them (each fix known only from the snapshot that
 // first carried it) and measures what's displayed: jumps when a snapshot arrives, error against each

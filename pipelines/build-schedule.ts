@@ -32,9 +32,12 @@ import {
   readOperator,
   writeJson,
 } from "@transitopia/data/paths.ts";
-import { readPlanCore, writePlan } from "@transitopia/data/plans.ts";
+import { readPlan, readPlanCore, writePlan } from "@transitopia/data/plans.ts";
 import { shortId } from "@transitopia/transit-core/plan/display.ts";
-import type { FeedInfo } from "@transitopia/transit-core/config.ts";
+import {
+  stripComments,
+  type FeedInfo,
+} from "@transitopia/transit-core/config.ts";
 import { selectRoutes } from "@transitopia/transit-core/plan/routes.ts";
 import {
   cumulativeLengths,
@@ -71,6 +74,8 @@ import type {
 import {
   feedDataPath,
   type FeedManifest,
+  planCoverage,
+  unionBounds,
   type PlanCorridor,
   type PlanPattern,
   type PlanRoute,
@@ -164,7 +169,12 @@ async function inputsHash(feed: string): Promise<string> {
     join(OPERATORS_DIR, info.operator, "operator.json"),
   ];
   files.push(...(await readFerries(feed)).map((f) => f.path));
-  for (const f of files) h.update(await readFile(f));
+  // Without their "$" comments: editing a comment (a cited source, a moved file's path) mustn't
+  // rebuild every plan.
+  for (const f of files)
+    h.update(
+      `${JSON.stringify(stripComments(JSON.parse(await readFile(f, "utf8"))))}\n`,
+    );
   h.update(`roads ${(await roadsStamp(feed)) ?? "none"}\n`);
   return h.digest("hex").slice(0, 16);
 }
@@ -606,15 +616,20 @@ export function interpolateMissing(times: number[], dist: number[]): number[] {
   return out;
 }
 
-/** A feed's manifest: every version built, from its plans. */
+/** A feed's manifest: every version built, and where they run, from its plans. */
 export async function buildManifest(feed: string): Promise<FeedManifest> {
   const out = feedPaths(feed).out;
   const feeds: FeedManifest["feeds"] = [];
+  let coverage: FeedManifest["coverage"] = null;
   const dirs = (await exists(out)) ? await readdir(out) : [];
   for (const v of dirs.sort()) {
     const p = join(out, v, "plan.json");
     if (!(await exists(p))) continue;
     const plan = await readPlanCore(p);
+    coverage = unionBounds(
+      coverage,
+      planCoverage(await readPlan(p, { trips: false })),
+    );
     feeds.push({
       version: plan.feedVersion,
       start: plan.feedStart,
@@ -626,6 +641,7 @@ export async function buildManifest(feed: string): Promise<FeedManifest> {
   const manifest: FeedManifest = {
     schema: 1,
     generatedAt: new Date().toISOString(),
+    coverage,
     feeds,
   };
   await writeJson(feedPaths(feed).manifest, manifest, true);

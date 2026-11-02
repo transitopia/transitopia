@@ -13,14 +13,12 @@ import {
   parseFeed,
   parseNetwork,
   parseOperator,
-  parseRegion,
   resolveKinematics,
   resolveRt,
   type Config,
   type FeedInfo,
   type NetworkInfo,
   type OperatorInfo,
-  type RegionInfo,
 } from "@transitopia/transit-core/config.ts";
 import { cyclingDataPath } from "@transitopia/cycling-core/published.ts";
 import {
@@ -38,13 +36,12 @@ export const ROOT = join(
 
 // Committed, curated inputs (config/, docs/DESIGN.md#feeds-operators-and-rail-networks): global
 // defaults, operators, the feeds they run (feed.json, routes.json, ferry berths and lanes, observations), rail
-// networks (network.json and settings, infrastructure, scenarios, disruptions) and regions (region.json).
+// networks (network.json and settings, infrastructure, scenarios, disruptions).
 export const CONFIG_ROOT = join(ROOT, "config");
 export const DEFAULTS_DIR = join(CONFIG_ROOT, "defaults");
 export const OPERATORS_DIR = join(CONFIG_ROOT, "operators");
 export const FEEDS_DIR = join(CONFIG_ROOT, "feeds");
 export const NETWORKS_DIR = join(CONFIG_ROOT, "networks");
-export const REGIONS_DIR = join(CONFIG_ROOT, "regions");
 /** config/cycling/cycling.json: the cycling map's area and classification (readCyclingConfig). */
 export const CYCLING_CONFIG_DIR = join(CONFIG_ROOT, "cycling");
 
@@ -177,18 +174,6 @@ async function subdirs(dir: string): Promise<string[]> {
     .sort();
 }
 
-/** A region's region.json, checked. */
-export async function readRegion(id: string): Promise<RegionInfo> {
-  return parseRegion(
-    await readJson<unknown>(join(REGIONS_DIR, id, "region.json")),
-  );
-}
-
-/** Every region (config/regions/*), checked. */
-export async function readRegions(): Promise<RegionInfo[]> {
-  return Promise.all((await subdirs(REGIONS_DIR)).map(readRegion));
-}
-
 /** A feed's feed.json, checked. */
 export async function readFeed(id: string): Promise<FeedInfo> {
   return parseFeed(await readJson<unknown>(join(FEEDS_DIR, id, "feed.json")));
@@ -212,10 +197,9 @@ export async function readFerries(
   );
 }
 
-/** Every feed some region shows, checked, in region then listing order. */
+/** Every feed (config/feeds/*), checked. */
 export async function readFeeds(): Promise<FeedInfo[]> {
-  const ids = [...new Set((await readRegions()).flatMap((r) => r.feeds))];
-  return Promise.all(ids.map(readFeed));
+  return Promise.all((await subdirs(FEEDS_DIR)).map(readFeed));
 }
 
 /** A rail network's network.json, checked. */
@@ -234,7 +218,12 @@ export async function readNetworks(): Promise<NetworkInfo[]> {
 export async function readManifest(feed: string): Promise<FeedManifest> {
   const path = feedPaths(feed).manifest;
   if (!(await exists(path)))
-    return { schema: 1, generatedAt: new Date(0).toISOString(), feeds: [] };
+    return {
+      schema: 1,
+      generatedAt: new Date(0).toISOString(),
+      coverage: null,
+      feeds: [],
+    };
   return readJson<FeedManifest>(path);
 }
 

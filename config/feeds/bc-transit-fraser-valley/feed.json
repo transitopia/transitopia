@@ -1,5 +1,5 @@
 {
-  "$comment": "BC Transit's Fraser Valley systems in one export, published by BC Transit through Consat (tmix.se) as operator 13 (https://www.bctransit.com/open-data/, checked 2026-11-01): Central Fraser Valley (Abbotsford and Mission), Chilliwack, Agassiz-Harrison, Hope and the 66 Fraser Valley Express; one agency, every route_id ending in -CFV. Every route is drawn; overrides and exclusions: routes.json. Regions showing it: fraser-valley. Terms: https://www.bctransit.com/open-data/terms-of-use/ (identify BC Transit as the source; no use of its marks).",
+  "$comment": "BC Transit's Fraser Valley systems in one export, published by BC Transit through Consat (tmix.se) as operator 13 (https://www.bctransit.com/open-data/, checked 2026-11-01): Central Fraser Valley (Abbotsford and Mission), Chilliwack, Agassiz-Harrison, Hope and the 66 Fraser Valley Express; one agency, every route_id ending in -CFV. Every route is drawn; overrides and exclusions: routes.json. Terms: https://www.bctransit.com/open-data/terms-of-use/ (identify BC Transit as the source; no use of its marks).",
   "id": "bc-transit-fraser-valley",
   "name": "BC Transit (Fraser Valley)",
   "operator": "bc-transit",
@@ -14,11 +14,11 @@
   ],
   "dataset": "bc-transit-gtfs",
   "static": {
-    "$comment": "Regenerated daily with a new feed_version (e.g. \"202611010/20261031 21:00:00/20261101 04:00:00\") even when the timetable is unchanged, so fetch-gtfs archives a version only when its files differ from the newest archived one. No dated history. Uses calendar_dates.txt only (no calendar.txt), shape_dist_traveled in metres. How often the timetable really changes: config/regions/fraser-valley/OPEN-QUESTIONS.md #1.",
+    "$comment": "Regenerated daily with a new feed_version (e.g. \"202611010/20261031 21:00:00/20261101 04:00:00\") even when the timetable is unchanged, so fetch-gtfs archives a version only when its files differ from the newest archived one. No dated history. Uses calendar_dates.txt only (no calendar.txt), shape_dist_traveled in metres. How often the timetable really changes: config/feeds/bc-transit-fraser-valley/OPEN-QUESTIONS.md #1.",
     "url": "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=13"
   },
   "realtime": {
-    "$comment": "No API key and no stated request limit. Every bus in the four systems, with its trip; 25 buses at 10:00 on Sunday 2026-11-01, fixes 1-26 s old when fetched. Polled within a modest budget all the same: config/regions/fraser-valley/OPEN-QUESTIONS.md #2.",
+    "$comment": "No API key and no stated request limit. Every bus in the four systems, with its trip; 25 buses at 10:00 on Sunday 2026-11-01, fixes 1-26 s old when fetched. Polled within a modest budget all the same: config/feeds/bc-transit-fraser-valley/OPEN-QUESTIONS.md #2.",
     "urls": {
       "positions": "https://bct.tmix.se/gtfs-realtime/vehicleupdates.pb?operatorIds=13",
       "tripUpdates": "https://bct.tmix.se/gtfs-realtime/tripupdates.pb?operatorIds=13",

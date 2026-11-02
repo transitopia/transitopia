@@ -1,5 +1,5 @@
 {
-  "$comment": "Hullo's passenger ferry between Vancouver and Nanaimo (https://hullo.com). One route (routes.json) along berths and a lane traced from AIS (ferries/hullo.json). Regions showing it: metro-vancouver. Terms: none published for the GTFS (DATA-LICENSES.md; OPEN-QUESTIONS #4).",
+  "$comment": "Hullo's passenger ferry between Vancouver and Nanaimo (https://hullo.com). One route (routes.json) along berths and a lane traced from AIS (ferries/hullo.json). Terms: none published for the GTFS (DATA-LICENSES.md; OPEN-QUESTIONS #4).",
   "id": "hullo",
   "name": "Hullo",
   "operator": "hullo",

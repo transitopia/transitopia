@@ -37,6 +37,7 @@ import type {
   PreparedPlan,
   ScheduleCorrections,
   VehicleState,
+  Within,
 } from "@transitopia/transit-core/schedule/engine.ts";
 import {
   delayCorrections,
@@ -280,6 +281,7 @@ export class RtClient {
     pp: PreparedPlan | undefined,
     routes?: Set<string>,
     withDelay?: (id: string) => boolean,
+    within?: Within & { outside: Set<string> },
   ): { mode: RtMode; vehicles?: VehicleState[] } {
     if (!this.available) return { mode: "unavailable" };
     const liveSpan = this.liveSpan();
@@ -300,6 +302,7 @@ export class RtClient {
         t,
         routes,
         withDelay,
+        within,
       ),
     };
   }
