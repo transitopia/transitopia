@@ -40,7 +40,7 @@ import {
   AIS_HISTORY_DIR,
 } from "@transitopia/data/paths.ts";
 import { aisstreamApiKey, secret } from "../secrets.ts";
-import { AisFeed } from "./ais.ts";
+import { AisFeed, AisStream } from "./ais.ts";
 import {
   encodeFixes,
   type AisDayResponse,
@@ -192,12 +192,14 @@ export class RtService {
   readonly dispatcher: LiveDispatcher | undefined;
   /**
    * Feeds whose vessels report AIS (feed.json → ais), by feed id, each with its stream when this
-   * process streams (a key, RT_POLL). aisstream.io allows 3 connections per account: one per feed.
+   * process streams (a key, RT_POLL): its fixes from the one connection they share (`aisStream`).
    */
   readonly aisFeeds = new Map<
     string,
     { cfg: FeedAis; stream: AisFeed | undefined }
   >();
+  /** The one aisstream.io connection every feed's vessels come in on, when this process streams. */
+  private aisStream: AisStream | undefined;
   private log: (msg: string) => void;
   private record: boolean;
   private historyDir: string;
@@ -270,13 +272,16 @@ export class RtService {
       opts.aisApiKey === null || opts.forwardTo || !poll ?
         undefined
       : (opts.aisApiKey ?? aisstreamApiKey());
+    this.aisStream =
+      aisKey ?
+        new AisStream({ apiKey: aisKey, log: (m) => this.log(`AIS: ${m}`) })
+      : undefined;
     for (const feed of opts.feeds ?? [parseFeed(translinkFeed)]) {
       const cfg = feed.ais;
       if (!cfg) continue;
       const stream =
         aisKey ?
           new AisFeed({
-            apiKey: aisKey,
             cfg,
             route: cfg.route,
             timezone: feed.timezone,
@@ -294,6 +299,7 @@ export class RtService {
             : {}),
           })
         : undefined;
+      if (stream) this.aisStream?.add(stream);
       this.aisFeeds.set(feed.id, { cfg, stream });
     }
     // Alert drafts and their history go with the rail feed's recordings.
@@ -397,8 +403,8 @@ export class RtService {
         continue;
       }
       this.log(`Streaming ${id}'s vessel positions from aisstream.io`);
-      await a.stream.start();
     }
+    await this.aisStream?.start();
     // The last alerts, so /rt/alerts and /admin aren't empty until the first alerts poll.
     if (this.alertDrafts)
       this.alerts = await this.alertDrafts.restore().catch((e: Error) => {
@@ -413,7 +419,7 @@ export class RtService {
     this.running = false;
     this.isLeader = false;
     this.dispatcher?.stop();
-    for (const a of this.aisFeeds.values()) a.stream?.stop();
+    this.aisStream?.stop();
     if (this.leaderRetry) clearTimeout(this.leaderRetry);
     void this.leaderLock?.release();
     await Promise.all([...this.pollers.values()].map((p) => p.stop()));

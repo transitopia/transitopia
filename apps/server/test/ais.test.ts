@@ -27,7 +27,7 @@ import {
 } from "@transitopia/transit-core/time.ts";
 import type { ServicePlan } from "@transitopia/transit-core/plan/types.ts";
 import type { KinematicsConfig } from "@transitopia/transit-core/movement/kinematics.ts";
-import { AisFeed } from "../src/rt/ais.ts";
+import { AisFeed, AisStream } from "../src/rt/ais.ts";
 import {
   glideCorrections,
   type GlideConfig,
@@ -449,7 +449,6 @@ describe("AisFeed", () => {
         listeners[type]?.forEach((fn) => fn(ev));
       const recorder = new Recorder(dir, 75_000);
       const feed = new AisFeed({
-        apiKey: "k",
         timezone: "America/Vancouver",
         cfg: {
           vessels: [{ mmsi: "316042365", name: "Burrard Chinook" }],
@@ -463,9 +462,14 @@ describe("AisFeed", () => {
         route: "seabus",
         recorder,
         log: () => {},
+      });
+      const stream = new AisStream({
+        apiKey: "k",
+        log: () => {},
         connect: () => socket as any,
       });
-      await feed.start();
+      stream.add(feed);
+      await stream.start();
       emit("open");
       expect(JSON.parse(sent[0]!)).toMatchObject({
         APIKey: "k",
@@ -524,16 +528,14 @@ describe("AisFeed", () => {
       expect((await feed.dayFile(date)).to).toBeGreaterThan(win.to);
       expect(feed.liveWindow(300_000)).toEqual(win);
       expect(feed.nextBatchAt()).toBeUndefined();
-      feed.stop();
+      stream.stop();
       // A restarted feed resumes the recorded fix.
       const again = new AisFeed({
-        apiKey: "k",
         timezone: "America/Vancouver",
-        cfg: (feed as any).opts.cfg,
+        cfg: feed.cfg,
         route: "seabus",
         recorder: new Recorder(dir, 75_000),
         log: () => {},
-        connect: () => socket as any,
       });
       await again.start();
       expect((await again.dayFile(date)).fixes.map((f) => f.mmsi)).toEqual([
@@ -542,6 +544,90 @@ describe("AisFeed", () => {
       again.stop();
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("shares one connection between feeds, each getting its own vessels' fixes", async () => {
+    const dirs = [
+      await mkdtemp(join(tmpdir(), "ais-a-")),
+      await mkdtemp(join(tmpdir(), "ais-b-")),
+    ];
+    try {
+      const listeners: Record<string, ((ev: any) => void)[]> = {};
+      const sent: string[] = [];
+      let connections = 0;
+      const socket = {
+        send: (s: string) => sent.push(s),
+        close: () => {},
+        addEventListener: (type: string, fn: (ev: any) => void) =>
+          (listeners[type] ??= []).push(fn),
+      };
+      const emit = (type: string, ev: any = {}) =>
+        listeners[type]?.forEach((fn) => fn(ev));
+      const feedOf = (mmsi: string, dir: string, box: number) =>
+        new AisFeed({
+          timezone: "America/Vancouver",
+          cfg: {
+            vessels: [{ mmsi, name: mmsi }],
+            boundingBox: [
+              [box, -124],
+              [box + 1, -123],
+            ],
+            batchS: 3600,
+            maxBackoffS: 60,
+          },
+          route: "ferry",
+          recorder: new Recorder(dir, 75_000),
+          log: () => {},
+        });
+      const a = feedOf("316042365", dirs[0]!, 49);
+      const b = feedOf("316052438", dirs[1]!, 48);
+      const stream = new AisStream({
+        apiKey: "k",
+        log: () => {},
+        connect: () => {
+          connections++;
+          return socket as any;
+        },
+      });
+      stream.add(a);
+      stream.add(b);
+      await stream.start();
+      emit("open");
+      expect(connections).toBe(1);
+      const sub = JSON.parse(sent[0]!);
+      expect(sub.FiltersShipMMSI).toEqual(["316042365", "316052438"]);
+      expect(sub.BoundingBoxes).toHaveLength(2);
+      emit("message", {
+        data: JSON.stringify({ MessageType: "SubscriptionConfirmation" }),
+      });
+      expect(b.status().connected).toBe(true);
+      const utc =
+        new Date().toISOString().replace("T", " ").replace("Z", "")
+        + " +0000 UTC";
+      emit("message", {
+        data: JSON.stringify({
+          MessageType: "PositionReport",
+          MetaData: {
+            MMSI: 316052438,
+            ShipName: "STHUQI",
+            latitude: 49.3,
+            longitude: -123.5,
+            time_utc: utc,
+          },
+          Message: { PositionReport: { Sog: 20, Cog: 270 } },
+        }),
+      });
+      await new Promise((r) => setTimeout(r, 10));
+      await (a as any).flush();
+      await (b as any).flush();
+      expect(a.liveWindow(300_000).fixes).toHaveLength(0);
+      expect(b.liveWindow(300_000).fixes.map((f) => f.mmsi)).toEqual([
+        "316052438",
+      ]);
+      stream.stop();
+    } finally {
+      for (const dir of dirs) await rm(dir, { recursive: true, force: true });
     }
   });
 });
