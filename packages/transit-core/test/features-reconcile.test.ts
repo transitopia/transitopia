@@ -70,10 +70,17 @@ class Registry {
     };
   }
 
+  private readonly routeKey: "name" | "route_id" | undefined;
+
+  constructor(routeKey?: "name" | "route_id") {
+    this.routeKey = routeKey;
+  }
+
   run(seq: number, records: FeedRecords): Decisions {
     const d = reconcile({
       feed: "f",
       operator: "op",
+      routeKey: this.routeKey,
       seq,
       prevSeq: this.prev,
       records,
@@ -380,6 +387,31 @@ describe("reconcile", () => {
     v2.routes[0] = { ...v2.routes[0]!, id: "7000" };
     expect(reg.run(2, v2).mint).toEqual([]);
     expect(reg.at("gtfs-route", "7000", 2)).toBe(r);
+  });
+
+  it("keeps routes by route_id in a feed keyed by it, whatever their names", () => {
+    const reg = new Registry("route_id");
+    const v1 = {
+      stops: [],
+      routes: [
+        { id: "1-COM", shortName: "1", longName: "Comox Mall" },
+        { id: "1-CAM", shortName: "1", longName: "Campbellton" },
+      ],
+    };
+    expect(reg.run(1, v1).mint.map((m) => m.name)).toEqual(["1", "1"]);
+    const com = reg.at("gtfs-route", "1-COM", 1)!;
+    expect(reg.at("gtfs-route", "1-CAM", 1)).not.toBe(com);
+    // Renumbered, the same route_id is the same route; a new route_id is a new one.
+    const v2 = {
+      stops: [],
+      routes: [
+        { id: "1-COM", shortName: "10", longName: "Comox Mall" },
+        { id: "2-CAM", shortName: "1", longName: "Campbellton" },
+      ],
+    };
+    expect(reg.run(2, v2).mint.map((m) => m.name)).toEqual(["1"]);
+    expect(reg.at("gtfs-route", "1-COM", 2)).toBe(com);
+    expect(com.name).toBe("10");
   });
 });
 

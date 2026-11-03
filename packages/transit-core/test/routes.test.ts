@@ -128,6 +128,38 @@ describe("selectRoutes", () => {
   });
 });
 
+describe("keyed by route_id", () => {
+  it("keys a feed's routes by route_id, named by their short name", () => {
+    const { routes } = selectRoutes(
+      [
+        row("1-COM", "1", "Comox Mall / Anfield Centre"),
+        row("1-CAM", "1", "Campbellton / Willow Point"),
+        row("2-COM", "002", "Cumberland"),
+      ],
+      cfg({ routes: [] }),
+      "bc-transit-north-island",
+      undefined,
+      "route_id",
+    );
+    expect(routes.map((r) => [r.key, r.shortName, r.label])).toEqual([
+      ["1-CAM", "1", "1 Campbellton / Willow Point"],
+      ["1-COM", "1", "1 Comox Mall / Anfield Centre"],
+      ["2-COM", "2", "2 Cumberland"],
+    ]);
+  });
+
+  it("names routes keyed by name by their key alone", () => {
+    const { routes } = selectRoutes(
+      [row("6627", "025", "King Edward")],
+      cfg({ routes: [] }),
+      "translink",
+      undefined,
+    );
+    expect(routes[0]!.key).toBe("25");
+    expect("shortName" in routes[0]!).toBe(false);
+  });
+});
+
 describe("merged routes", () => {
   it("draws one route for every GTFS route an entry's match list matches", () => {
     const { routes } = selectRoutes(

@@ -128,7 +128,7 @@ export async function reconcileFeeds(opts: {
 export async function reconcileVersion(
   db: Db,
   v: {
-    feed: Pick<FeedInfo, "id" | "operator">;
+    feed: Pick<FeedInfo, "id" | "operator" | "routeKey">;
     version: string;
     seq: number;
     prevSeq: number | undefined;
@@ -141,6 +141,7 @@ export async function reconcileVersion(
     const decisions = reconcile({
       feed: v.feed.id,
       operator: v.feed.operator,
+      routeKey: v.feed.routeKey,
       seq: v.seq,
       prevSeq: v.prevSeq,
       records: v.records,

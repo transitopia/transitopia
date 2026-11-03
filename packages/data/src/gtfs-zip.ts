@@ -58,6 +58,24 @@ export async function* readCsv(
   }
 }
 
+/** The columns of a CSV file in the zip, from its header; none if the file is absent or empty. */
+export async function csvColumns(
+  zipPath: string,
+  name: string,
+): Promise<string[]> {
+  const opened = await openEntry(zipPath, name);
+  if (!opened) return [];
+  const parser = opened.stream.pipe(
+    parse({ bom: true, trim: true, to_line: 1 }),
+  );
+  try {
+    for await (const header of parser) return header as string[];
+    return [];
+  } finally {
+    opened.zip.close();
+  }
+}
+
 export async function readCsvAll(
   zipPath: string,
   name: string,

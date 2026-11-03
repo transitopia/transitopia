@@ -2,7 +2,7 @@
 // route by default, modelled from its GTFS route_type, with the feed's routes.json overriding some
 // (matched by name, never route_id) and excluding others.
 
-import type { Config, RouteConfig, RouteMatch } from "../config.ts";
+import type { Config, FeedInfo, RouteConfig, RouteMatch } from "../config.ts";
 import type { PlanRoute, RouteKind, RouteMode } from "./types.ts";
 
 /** The routes.txt fields this reads. */
@@ -103,7 +103,8 @@ export interface RouteSelection {
 }
 
 /**
- * The plan's routes from a feed's routes.txt and its routes.json. Sorted by group (rail and
+ * The plan's routes from a feed's routes.txt and its routes.json, keyed as the feed says (feed.json →
+ * routeKey: by name, else by route_id, with the name as `shortName`). Sorted by group (rail and
  * ferries, buses in their own colour, other buses), then as listed in routes.json, then by key, numbers in order. Throws when an
  * entry matches more than one route (unless its `match` lists several: then they're one route, the
  * first one's, with the others in `mergedGtfsRouteIds`), or two routes would share a key.
@@ -113,6 +114,7 @@ export function selectRoutes(
   cfg: Config<"routes">,
   feed: string,
   dataset: string | undefined,
+  keyBy: FeedInfo["routeKey"] = "name",
 ): RouteSelection {
   const routes: PlanRoute[] = [];
   const skipped: RouteSelection["skipped"] = [];
@@ -141,7 +143,8 @@ export function selectRoutes(
       });
       continue;
     }
-    const key = over?.key ?? defaultKey(row);
+    const name = defaultKey(row);
+    const key = over?.key ?? (keyBy === "route_id" ? row.route_id : name);
     if (!key) {
       skipped.push({
         row,
@@ -154,10 +157,12 @@ export function selectRoutes(
         `Two routes have the key ${key} (GTFS route ${row.route_id}): give one a key in routes.json`,
       );
     const mode = over?.mode ?? model!.mode;
+    const shortName = name && name !== key ? name : undefined;
     routes.push({
       feed,
       key,
-      label: over?.label ?? defaultLabel(row, key),
+      ...(shortName ? { shortName } : {}),
+      label: over?.label ?? defaultLabel(row, shortName ?? key),
       kind: over?.kind ?? model!.kind,
       mode,
       brand: over?.brand ?? mode !== "bus",

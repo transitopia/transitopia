@@ -16,7 +16,13 @@ export interface PlanRoute {
    * plan names its feed once, and `decodeCore` sets it.
    */
   feed: string;
+  /** How the plan and everything built from it name the route, unique in its feed (plan/routes.ts). */
   key: string;
+  /**
+   * What riders call it ("1"), where that isn't its key: in a feed keyed by route_id (feed.json →
+   * routeKey), whose systems each have a 1. `routeShortName` gives it either way.
+   */
+  shortName?: string | undefined;
   label: string;
   kind: RouteKind;
   mode: RouteMode;
@@ -52,6 +58,13 @@ export interface PlanRoute {
    * (km/h, schedule/stops.ts → `weekdaySpeedRange`). Set when the plan is published.
    */
   weekdaySpeed?: [number, number] | undefined;
+}
+
+/** What riders call a route: the "99" on a badge or a bus's sign. */
+export function routeShortName(
+  r: Pick<PlanRoute, "key" | "shortName">,
+): string {
+  return r.shortName ?? r.key;
 }
 
 /** Every GTFS route a route is drawn for: its own and any merged into it. */

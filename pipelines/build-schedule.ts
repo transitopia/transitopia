@@ -206,12 +206,13 @@ export async function buildPlan(
         `${feed.id}: agency ${a.agency_name} is in ${a.agency_timezone} and the feed says ${feed.timezone}; only ${TIMEZONE} is supported`,
       );
 
-  // Routes: every one in the feed, as routes.json overrides or excludes them (matched by name).
+  // Routes: every one in the feed, as routes.json overrides or excludes them (matched by name), keyed as feed.json says.
   const selected = selectRoutes(
     await readCsvAll(zipPath, "routes.txt"),
     routeCfg,
     feed.id,
     gtfsDataset,
+    feed.routeKey,
   );
   for (const { row, reason } of selected.skipped)
     log(

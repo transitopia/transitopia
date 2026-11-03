@@ -495,12 +495,28 @@ const feed = z.strictObject({
   ),
   /** The dataset registry id of its schedules (packages/shared/src/datasets.ts); real time is that dataset's `realtime`. */
   dataset: z.string().min(1),
-  static: z.strictObject({
-    /** The latest GTFS feed. */
-    url: httpsUrl,
-    /** A dated snapshot ({date}: YYYY-MM-DD), where the provider keeps them. */
-    historyUrl: z.string().includes("{date}").exactOptional(),
-  }),
+  static: z.union([
+    z.strictObject({
+      /** The latest GTFS feed. */
+      url: httpsUrl,
+      /** A dated snapshot ({date}: YYYY-MM-DD), where the provider keeps them. */
+      historyUrl: z.string().includes("{date}").exactOptional(),
+    }),
+    z.strictObject({
+      /**
+       * The latest GTFS of each of several exports, merged into one feed by fetch-gtfs
+       * (packages/data/src/gtfs-merge.ts): for a provider that publishes its systems one by one
+       * and can't combine them (BC Transit).
+       */
+      merge: z.array(httpsUrl).min(2),
+    }),
+  ]),
+  /**
+   * What its routes are keyed by (packages/transit-core/DESIGN.md#routes): their name, by default,
+   * or their route_id, for a feed whose systems each number their routes from 1, so names clash.
+   * Feature reconciliation matches routes by the same.
+   */
+  routeKey: z.enum(["name", "route_id"]).exactOptional(),
   /** GTFS-realtime, polled by the server's leader only (docs/DESIGN.md#upstream-request-budget). */
   realtime: feedRealtime.exactOptional(),
   /** Its vessels' AIS positions, streamed by the server's leader (aisstream.io). */

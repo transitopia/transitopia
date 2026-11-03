@@ -1,11 +1,14 @@
 import React from "react";
 import type { TransitEngine } from "@transitopia/transit-map/engine.ts";
-import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
+import {
+  routeShortName,
+  type PlanRoute,
+} from "@transitopia/transit-core/plan/types.ts";
 import { bandOf } from "./frequency.ts";
 
 /** A route's badge: buses by number, rail and ferries by initial (E, M, C, S, W). */
 export function badge(r: PlanRoute): string {
-  return r.mode === "bus" ? r.key : r.label[0]!.toUpperCase();
+  return r.mode === "bus" ? routeShortName(r) : r.label[0]!.toUpperCase();
 }
 
 export interface RouteColors {
