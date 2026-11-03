@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addDays,
   checkTimezoneData,
+  firstOffsetDifference,
   dayOfWeek,
   formatServiceTime,
   localDate,
@@ -190,6 +191,37 @@ describe("checkTimezoneData", () => {
     expect(problems).toEqual([
       "America/Los_Angeles at 2026-11-02T20:00:00Z is UTC−8, expected UTC−7: British Columbia's permanent UTC-7",
     ]);
+  });
+});
+
+describe("firstOffsetDifference", () => {
+  const from = Date.parse("2026-11-02T00:00:00Z");
+  const to = Date.parse("2027-12-31T00:00:00Z");
+  it("finds none for zones with the same offsets", () => {
+    // Both permanent UTC-7 since BC's change (tzdata 2026b).
+    expect(
+      firstOffsetDifference(
+        "America/Dawson_Creek",
+        "America/Vancouver",
+        from,
+        to,
+      ),
+    ).toBeUndefined();
+  });
+  it("finds the first hour they differ", () => {
+    // Alberta's permanent UTC-6 (tzdata 2026e) against BC's UTC-7: from the start.
+    expect(
+      firstOffsetDifference("America/Edmonton", "America/Vancouver", from, to),
+    ).toBe(from);
+    // Until BC's change, Dawson Creek's UTC-7 matched Vancouver only in summer.
+    expect(
+      firstOffsetDifference(
+        "America/Dawson_Creek",
+        "America/Vancouver",
+        Date.parse("2025-06-01T00:00:00Z"),
+        to,
+      ),
+    ).toBe(Date.parse("2025-11-02T09:00:00Z"));
   });
 });
 

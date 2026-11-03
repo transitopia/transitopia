@@ -192,7 +192,7 @@ config/
 | `bc-transit-thompson-cariboo` (BC Transit) | Thompson–Cariboo | Every bus route of Kamloops, Merritt, Clearwater, Ashcroft–Cache Creek–Clinton, 100 Mile House, Williams Lake and Quesnel; 7 exports merged |
 | `bc-transit-okanagan-shuswap` (BC Transit) | Okanagan–Shuswap | Every bus route of the North Okanagan and Shuswap, the South Okanagan–Similkameen and Revelstoke; 3 exports merged |
 | `bc-transit-kootenays` (BC Transit) | Kootenays | Every bus route of the West Kootenay and Creston Valley (not the East Kootenay, in another time zone); 2 exports merged |
-| `bc-transit-northern-bc` (BC Transit) | Northern BC | Every bus route of Prince George and the Bulkley-Nechako, Smithers, Terrace–Kitimat–Hazeltons and Prince Rupert (not Dawson Creek or Fort St. John, in another time zone); 4 exports merged |
+| `bc-transit-northern-bc` (BC Transit) | Northern BC | Every bus route of Prince George and the Bulkley-Nechako, Smithers, Terrace–Kitimat–Hazeltons, Prince Rupert, Dawson Creek and Fort St. John (their `America/Dawson_Creek` taken as `America/Vancouver`); 6 exports merged |
 
 | Rail network | Feeds | Track |
 |---|---|---|
@@ -223,7 +223,7 @@ Service dates are `"YYYYMMDD"` strings typed `ServiceDate` (`packages/transit-co
 
 The basemap is a British Columbia extract of Protomaps' daily build for now. It grows to Canada, then Canada and the US, then the planet as feeds are added; only the extract's area changes. Outside the basemap the map has no tiles.
 
-Time zones come from the runtime's tzdata, never hard-coded. BC moved to permanent UTC−7 in 2026 (tzdata 2026b); the server refuses to start on older data (`timezoneChecks` in each `feed.json`). Every feed and rail network so far is in `America/Vancouver`, the default in `packages/transit-core/src/time.ts`. The engine works out each feed's service dates in that feed's time zone ([packages/transit-map → Feeds](../packages/transit-map/README.md#feeds)), but the server's poll schedules and recorded hour files still use the default, so `build-schedule` refuses a feed in another time zone until one needs it.
+Time zones come from the runtime's tzdata, never hard-coded. BC moved to permanent UTC−7 in 2026 (tzdata 2026b); the server refuses to start on older data (`timezoneChecks` in each `feed.json`). Every feed and rail network so far is in `America/Vancouver`, the default in `packages/transit-core/src/time.ts`. The engine works out each feed's service dates in that feed's time zone ([packages/transit-map → Feeds](../packages/transit-map/README.md#feeds)), but the server's poll schedules and recorded hour files still use the default, so `build-schedule` refuses a feed in another time zone until one needs it. A feed can take a zone with the same offsets as its own (`equivalentTimezones` in `feed.json`): BC Transit's Dawson Creek and Fort St. John exports name `America/Dawson_Creek`, which has had `America/Vancouver`'s offsets since BC's change, and `build-schedule` refuses the feed if the runtime's tzdata ever gives the two different offsets on a date of its timetable.
 
 ## Feature IDs
 

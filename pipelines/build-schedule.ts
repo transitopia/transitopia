@@ -49,9 +49,12 @@ import {
   type StopSpurLimits,
 } from "@transitopia/transit-core/geo.ts";
 import {
+  addDays,
+  firstOffsetDifference,
   parseGtfsTime,
-  TIMEZONE,
   serviceDate,
+  serviceDayStart,
+  TIMEZONE,
 } from "@transitopia/transit-core/time.ts";
 import {
   matchShape,
@@ -200,11 +203,28 @@ export async function buildPlan(
   if (!info) throw new Error("feed_info.txt missing");
   // Service days and times are computed in TIMEZONE (packages/transit-core/src/time.ts), so every
   // feed has to be in it until the engine works out service dates per feed (docs/DESIGN.md#feeds-operators-and-rail-networks).
+  // A zone feed.json says is equivalent passes while it has the same offsets on every date of the timetable.
+  const zones = [feed.timezone, ...(feed.equivalentTimezones ?? [])];
   for (const a of await readCsvAll(zipPath, "agency.txt"))
-    if (a.agency_timezone !== feed.timezone || feed.timezone !== TIMEZONE)
+    if (!zones.includes(a.agency_timezone!) || feed.timezone !== TIMEZONE)
       throw new Error(
         `${feed.id}: agency ${a.agency_name} is in ${a.agency_timezone} and the feed says ${feed.timezone}; only ${TIMEZONE} is supported`,
       );
+  for (const z of feed.equivalentTimezones ?? []) {
+    const at = firstOffsetDifference(
+      z,
+      feed.timezone,
+      serviceDayStart(serviceDate(info.feed_start_date!), feed.timezone),
+      serviceDayStart(
+        addDays(serviceDate(info.feed_end_date!), 2),
+        feed.timezone,
+      ),
+    );
+    if (at !== undefined)
+      throw new Error(
+        `${feed.id}: ${z} and ${feed.timezone} have different UTC offsets at ${new Date(at).toISOString()}, so ${z} can no longer be taken as ${feed.timezone} (feed.json → equivalentTimezones)`,
+      );
+  }
 
   // Routes: every one in the feed, as routes.json overrides or excludes them (matched by name), keyed as feed.json says.
   const selected = selectRoutes(

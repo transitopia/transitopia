@@ -164,6 +164,21 @@ export function checkTimezoneData(
   return problems;
 }
 
+/**
+ * The first hour, from `fromMs` up to `toMs`, at which zones `a` and `b` have different UTC offsets
+ * in the runtime's time zone data, or undefined if they agree throughout.
+ */
+export function firstOffsetDifference(
+  a: string,
+  b: string,
+  fromMs: number,
+  toMs: number,
+): number | undefined {
+  for (let t = fromMs; t <= toMs; t += 3_600_000)
+    if (tzOffsetMs(t, a) !== tzOffsetMs(t, b)) return t;
+  return undefined;
+}
+
 function formatOffset(minutes: number): string {
   const sign = minutes < 0 ? "−" : "+";
   const m = Math.abs(minutes);

@@ -1,9 +1,11 @@
 {
-  "$comment": "BC Transit's Northern BC systems in one feed: Prince George and Bulkley-Nechako (22), Terrace, Kitimat and the Hazeltons (26), Smithers (31), Prince Rupert and Port Edward (23), as numbered on https://www.bctransit.com/open-data/ (checked 2026-11-02), each a separate export that fetch-gtfs merges. One agency; route_ids end in -PRG, -PRR, -SMI, -TSK. 48 routes. Every route is drawn; overrides and exclusions: routes.json. Terms: https://www.bctransit.com/open-data/terms-of-use/ (identify BC Transit as the source; no use of its marks).",
+  "$comment": "BC Transit's Northern BC systems in one feed: Prince George and Bulkley-Nechako (22), Terrace, Kitimat and the Hazeltons (26), Smithers (31), Prince Rupert and Port Edward (23), Dawson Creek (27) and Fort St. John (28), as numbered on https://www.bctransit.com/open-data/ (checked 2026-11-02), each a separate export that fetch-gtfs merges. One agency; route_ids end in -PRG, -PRR, -SMI, -TSK, -DAW, -FSJ. 55 routes. Every route is drawn; overrides and exclusions: routes.json. Terms: https://www.bctransit.com/open-data/terms-of-use/ (identify BC Transit as the source; no use of its marks).",
   "id": "bc-transit-northern-bc",
   "name": "BC Transit (Northern BC)",
   "operator": "bc-transit",
   "timezone": "America/Vancouver",
+  "$equivalentTimezones": "Dawson Creek's and Fort St. John's exports (27, 28) are in America/Dawson_Creek, the Peace region's year-round MST (UTC-7), which has had America/Vancouver's offset at all times since BC's permanent UTC-7 (tzdata 2026b), and no change is expected (Braden MacDonald, 2026-11-03). So they are taken as America/Vancouver: fetch-gtfs renames the zone when merging, and build-schedule refuses the feed if the runtime's tzdata ever gives the two zones different offsets on a date of the timetable. Until per-feed time zones; OPEN-QUESTIONS #7.",
+  "equivalentTimezones": ["America/Dawson_Creek"],
   "$timezoneChecks": "Known facts about the feed's time zone that the runtime's time zone data (tzdata, via ICU) must agree with; the server refuses to start otherwise (checkTimezoneData in packages/transit-core/src/time.ts). Times are still always computed from the runtime's data, never from these. BC moved to permanent UTC-7 in 2026 (tzdata 2026b, https://data.iana.org/time-zones/tzdb/NEWS); older data falls back to UTC-8 on 2026-11-01.",
   "timezoneChecks": [
     {
@@ -13,23 +15,25 @@
     }
   ],
   "dataset": "bc-transit-gtfs",
-  "$routeKey": "Its systems each number their routes from 1 (5 numbers are used by more than one: 11, 12, 46, 55, 99), so routes are keyed by route_id (the number and the system, e.g. 1-PRG) and riders see the number (packages/transit-core/DESIGN.md#routes).",
+  "$routeKey": "Its systems each number their routes from 1 (7 numbers are used by more than one: 1, 2, 11, 12, 46, 55, 99), so routes are keyed by route_id (the number and the system, e.g. 1-PRG) and riders see the number (packages/transit-core/DESIGN.md#routes).",
   "routeKey": "route_id",
   "static": {
-    "$comment": "BC Transit's server returns an empty feed for several operatorIds at once (operatorIds=22,26,31,23, in any spelling; checked 2026-11-02), so each system's export is fetched and merged (packages/transit-core/DESIGN.md#timetables). Each is regenerated daily with a new feed_version even when the timetable is unchanged, so fetch-gtfs archives a version only when the merged files differ from the newest archived one. Uses calendar_dates.txt only (no calendar.txt), shape_dist_traveled in metres. How often the timetable really changes: OPEN-QUESTIONS #1; the merge: OPEN-QUESTIONS #6.",
+    "$comment": "BC Transit's server returns an empty feed for several operatorIds at once (operatorIds=22,26,31,23,27,28, in any spelling; checked 2026-11-02), so each system's export is fetched and merged (packages/transit-core/DESIGN.md#timetables). Each is regenerated daily with a new feed_version even when the timetable is unchanged, so fetch-gtfs archives a version only when the merged files differ from the newest archived one. Uses calendar_dates.txt only (no calendar.txt), shape_dist_traveled in metres. How often the timetable really changes: OPEN-QUESTIONS #1; the merge: OPEN-QUESTIONS #6.",
     "merge": [
       "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=22",
       "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=26",
       "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=31",
-      "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=23"
+      "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=23",
+      "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=27",
+      "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=28"
     ]
   },
   "realtime": {
     "$comment": "No API key and no stated request limit. Unlike the static export, GTFS-realtime takes several operatorIds at once and returns every system's buses (checked 2026-11-02). Polled within a modest budget: OPEN-QUESTIONS #2.",
     "urls": {
-      "positions": "https://bct.tmix.se/gtfs-realtime/vehicleupdates.pb?operatorIds=22,26,31,23",
-      "tripUpdates": "https://bct.tmix.se/gtfs-realtime/tripupdates.pb?operatorIds=22,26,31,23",
-      "alerts": "https://bct.tmix.se/gtfs-realtime/alerts.pb?operatorIds=22,26,31,23"
+      "positions": "https://bct.tmix.se/gtfs-realtime/vehicleupdates.pb?operatorIds=22,26,31,23,27,28",
+      "tripUpdates": "https://bct.tmix.se/gtfs-realtime/tripupdates.pb?operatorIds=22,26,31,23,27,28",
+      "alerts": "https://bct.tmix.se/gtfs-realtime/alerts.pb?operatorIds=22,26,31,23,27,28"
     },
     "$poll": "Positions and trip updates every 2 minutes while buses run (05:00-24:00), every 5 overnight; alerts every 5 minutes, 15 overnight: at most every 2 minutes for BC Transit systems other than Victoria and Kelowna (Braden MacDonald, 2026-11-01 and 11-02; config/operators/bc-transit/operator.json). About 1,510 requests a day; dailyCap is a safety net. OPEN-QUESTIONS #2.",
     "poll": {

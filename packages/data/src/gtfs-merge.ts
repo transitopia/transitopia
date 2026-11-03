@@ -3,7 +3,8 @@
 // for several at once (packages/transit-core/DESIGN.md#timetables). Its ids come from one database, so
 // the exports' records never clash, except stops two neighbouring systems share, which each export
 // writes a little differently: the first export listing one wins. Anything else listed twice must
-// be the same in both, or the merge fails.
+// be the same in both, or the merge fails. Exports in a zone the feed takes as its own
+// (feed.json → equivalentTimezones) have it renamed first.
 
 import { createHash, type Hash } from "node:crypto";
 import { createWriteStream } from "node:fs";
@@ -41,6 +42,28 @@ const RULES: Record<string, Rule> = {
 /** Any other file: identical rows are written once. */
 const WHOLE_ROW: Rule = { key: (r) => JSON.stringify(r), differs: "first" };
 
+export interface MergeOptions {
+  /** Time zones renamed wherever a file names one (agency_timezone, stop_timezone): from → to. */
+  timezones?: Readonly<Record<string, string>> | undefined;
+}
+
+/** Column values a merge rewrites before comparing exports. */
+const TIMEZONE_COLUMNS = ["agency_timezone", "stop_timezone"];
+
+/** A row as `options` rewrite it. */
+function rewriter(options: MergeOptions): (r: Row) => Row {
+  const zones = options.timezones ?? {};
+  if (!Object.keys(zones).length) return (r) => r;
+  return (r) => {
+    let out = r;
+    for (const c of TIMEZONE_COLUMNS) {
+      const to = r[c] !== undefined ? zones[r[c]] : undefined;
+      if (to !== undefined) out = { ...out, [c]: to };
+    }
+    return out;
+  };
+}
+
 export interface MergeReport {
   /** Per file, records listed differently by two exports, where the first export's was kept. */
   keptFirst: Record<string, number>;
@@ -55,9 +78,11 @@ async function digests(
   zip: string,
   name: string,
   rule: Rule,
+  fix: (r: Row) => Row,
 ): Promise<Map<string, string>> {
   const hashes = new Map<string, Hash>();
-  for await (const r of readCsv(zip, name)) {
+  for await (const raw of readCsv(zip, name)) {
+    const r = fix(raw);
     const k = rule.key(r);
     let h = hashes.get(k);
     if (!h) hashes.set(k, (h = createHash("sha1")));
@@ -72,6 +97,7 @@ async function mergeFile(
   name: string,
   out: string,
   report: MergeReport,
+  fix: (r: Row) => Row,
 ): Promise<void> {
   const rule = RULES[name] ?? WHOLE_ROW;
   const columns: string[] = [];
@@ -86,7 +112,7 @@ async function mergeFile(
   /** Which export each record is taken from, and its digest there. */
   const owner = new Map<string, { part: number; digest: string }>();
   for (const [i, p] of parts.entries()) {
-    const mine = await digests(p, name, rule);
+    const mine = await digests(p, name, rule, fix);
     const taken = new Set<string>();
     for (const [k, digest] of mine) {
       const o = owner.get(k);
@@ -102,9 +128,11 @@ async function mergeFile(
       }
     }
     if (!taken.size) continue;
-    for await (const r of readCsv(p, name))
+    for await (const raw of readCsv(p, name)) {
+      const r = fix(raw);
       if (taken.has(rule.key(r)))
         await write(columns.map((c) => csvField(r[c] ?? "")).join(","));
+    }
   }
   file.end();
   await once(file, "finish");
@@ -148,7 +176,9 @@ const ENTRY_TIME = new Date("2000-01-01T00:00:00Z");
 export async function mergeGtfs(
   parts: readonly string[],
   dest: string,
+  options: MergeOptions = {},
 ): Promise<MergeReport> {
+  const fix = rewriter(options);
   const names: string[] = [];
   for (const p of parts)
     for (const n of await listEntries(p)) if (!names.includes(n)) names.push(n);
@@ -159,7 +189,7 @@ export async function mergeGtfs(
     for (const name of names) {
       const out = join(dir, name);
       if (name === "feed_info.txt") await mergeFeedInfo(parts, out);
-      else await mergeFile(parts, name, out, report);
+      else await mergeFile(parts, name, out, report, fix);
       zip.addFile(out, name, { mtime: ENTRY_TIME });
     }
     zip.end();

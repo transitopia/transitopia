@@ -483,6 +483,12 @@ const feed = z.strictObject({
   /** Must match the feed's agency_timezone, and the time zone of any rail network it runs on. */
   timezone: z.string().min(1),
   /**
+   * Other zones its GTFS may name, taken as `timezone`: fetch-gtfs renames them in merged exports, and
+   * build-schedule refuses the feed unless the runtime's tzdata gives them `timezone`'s UTC offset on
+   * every date of the timetable.
+   */
+  equivalentTimezones: z.array(z.string().min(1)).min(1).exactOptional(),
+  /**
    * Known facts about the time zone that the runtime's tzdata must agree with: the server refuses to
    * start otherwise (checkTimezoneData in time.ts).
    */
