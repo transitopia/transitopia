@@ -100,7 +100,7 @@ export function departuresAt(
             routeKey: pt.route.key,
             headsign: pt.trip.headsign,
             stopId: stop.id,
-            platform: stop.platform ?? bayNumber(stop.name),
+            platform: bayNumber(stop),
             pattern: pt.pattern.id,
             index: i,
             serviceDate: date,

@@ -1,7 +1,7 @@
 {
   "name": "@transitopia/data",
   "private": true,
-  "description": "Node-side access to the region's data on disk, shared by the pipelines and the server: where data lives, config, GTFS zips, disruption files, the track graph and dispatch contexts.",
+  "description": "Node-side access to the data on disk, shared by the pipelines and the server: where data lives, config, GTFS zips, disruption files, the track graph and dispatch contexts.",
   "type": "module",
   "exports": {
     "./*": "./src/*"

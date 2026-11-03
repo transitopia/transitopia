@@ -434,7 +434,7 @@ const PlaceCardBody: React.FC<{
   const title =
     station ? stationName(place.name)
     : exchange ? place.name
-    : place.partOf ? bayLabel(place.name)
+    : place.partOf ? bayLabel(place)
     : stopName;
   const mainRoute = railRoutes[0];
   const realtime = place.groups.some((g) =>

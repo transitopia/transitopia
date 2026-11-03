@@ -115,6 +115,8 @@ export interface PlaceSnapshot extends Place {
   datasets: string[];
   /** A bus stop's number on its sign (GTFS stop_code), where the plan has it. */
   code?: string | undefined;
+  /** A stop's platform or bay (`PlanStop.platform`), where the plan has one. */
+  platform?: string | undefined;
   /**
    * A station's or exchange's bus bays, by number, its own feed's first: each has its own stop card
    * (in its feed: another feed's bays at the same place are on the card too).
@@ -333,8 +335,8 @@ export function placeSnapshot(
       ),
     ),
   ];
-  const stopName = (fpp: PreparedPlan, id: string) =>
-    fpp.stopById.get(id)?.name ?? id;
+  const bayStop = (fpp: PreparedPlan, id: string) =>
+    fpp.stopById.get(id) ?? { name: id };
   const all = [own, ...foreign.map((x) => x.rows)];
   // Each feed's shared stretches, their `within` pointing into the list as a whole.
   let offset = 0;
@@ -351,11 +353,12 @@ export function placeSnapshot(
     kind: p.kind,
     name: where.name,
     code: "code" in where ? where.code : undefined,
+    platform: "platform" in where ? where.platform : undefined,
     bays: [
       ...(hub?.bays ?? []).map((id) => ({
         id,
         feed: plan.feed,
-        label: bayLabel(stopName(pp, id)),
+        label: bayLabel(bayStop(pp, id)),
       })),
       ...foreign.flatMap(({ f }) =>
         [...f.stops]
@@ -363,7 +366,7 @@ export function placeSnapshot(
           .map((id) => ({
             id,
             feed: f.pp.plan.feed,
-            label: bayLabel(stopName(f.pp, id)),
+            label: bayLabel(bayStop(f.pp, id)),
           })),
       ),
     ],

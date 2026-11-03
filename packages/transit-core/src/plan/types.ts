@@ -70,7 +70,7 @@ export interface PlanStop {
   code?: string;
   /** Parent station stop_id, for platforms. */
   parent?: string;
-  /** Platform code/number parsed from the name, e.g. "2" for "… @ Platform 2". */
+  /** GTFS platform_code, else the platform parsed from the name: "2" for "… @ Platform 2". */
   platform?: string;
 }
 

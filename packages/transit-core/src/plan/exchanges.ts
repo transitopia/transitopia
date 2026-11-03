@@ -27,7 +27,8 @@ const STATION_M = 400;
 // Agencies name bays differently; both forms are read here (generic heuristics, no agency switch):
 //   TransLink:  "UBC Exchange @ Bay 7", "Joyce Station @ Bay 1 Unload Only", "Phibbs Exchange @"
 //   BC Transit: "Langford Exch (Jacklin Rd) Bay D", "UBCO Exchange Bay C", "Legislature Exch",
-//               "Swartz Bay Ferry Terminal Bay A"
+//               "Swartz Bay Ferry Terminal Bay A", "Lougheed Stn Bay 5"
+// GTFS `platform_code` takes precedence for a bay's number; none of our feeds fill it yet.
 
 /**
  * "Bay 7", "Bay 5A", "Bay 1 Unload Only", "Unloading Only", or "" ("Phibbs Exchange @"): a bay, not
@@ -42,6 +43,11 @@ const BAY = /@\s*(Bay\s+(?:[0-9]+[A-Z]?|[A-Z])\b.*|Unload.*)?$/i;
 const SUFFIX_BAY =
   /^(.*\b(?:Exch|Exchange|Terminal))(?:\s*\([^)]*\))?\s+Bay\s+([0-9]+|[A-Z])\s*$/i;
 const SUFFIX_EXCHANGE = /^(.*\b(?:Exch|Exchange))\s*$/i;
+/**
+ * A bay number at the end of a name, whatever the place is called ("Lougheed Stn Bay 5",
+ * "Downtown Chilliwack Bay A"): for its number only, not whether it's a bay.
+ */
+const TRAILING_BAY = /\bBay\s+([0-9]+[A-Z]?|[A-Z])\s*$/i;
 /** A street stop named for the exchange it's beside ("Cooper Rd at Orchard Park Exchange"). */
 const BESIDE = /\bat\b/i;
 /** A direction before the place ("Southbound White Rock Centre @ Bay 11"). */
@@ -55,19 +61,29 @@ export function isBay(name: string): boolean {
   );
 }
 
-/** The bay's number or letter ("7" for "… @ Bay 7", "D" for "… Exch Bay D"), if it has one. */
-export function bayNumber(name: string): string | undefined {
+/** What a bay's number is read from: a plan's stop, or a card's. */
+export interface BayStop {
+  name: string;
+  platform?: string | undefined;
+}
+
+/**
+ * The bay's number or letter: GTFS `platform_code` where the feed gives one, else from the name ("7"
+ * for "… @ Bay 7", "D" for "… Exch Bay D", "5" for "Lougheed Stn Bay 5").
+ */
+export function bayNumber(stop: BayStop): string | undefined {
   return (
-    /@\s*Bay\s+([0-9]+[A-Z]?|[A-Z])\b/i.exec(name)?.[1]
-    ?? SUFFIX_BAY.exec(name)?.[2]
+    stop.platform
+    ?? /@\s*Bay\s+([0-9]+[A-Z]?|[A-Z])\b/i.exec(stop.name)?.[1]
+    ?? TRAILING_BAY.exec(stop.name)?.[1]
   );
 }
 
 /** A bay's short name: "Bay 7", "Unloading Only", or "Bay" where it has none ("Phibbs Exchange @"). */
-export function bayLabel(name: string): string {
-  const n = bayNumber(name);
+export function bayLabel(stop: BayStop): string {
+  const n = bayNumber(stop);
   if (n !== undefined) return `Bay ${n}`;
-  return name.split("@")[1]?.replace(/\s+/g, " ").trim() || "Bay";
+  return stop.name.split("@")[1]?.replace(/\s+/g, " ").trim() || "Bay";
 }
 
 /**
@@ -97,8 +113,8 @@ const slug = (name: string) =>
 
 /** By bay number, numbers numerically; unnumbered (unloading) bays last. */
 export function byBay(a: PlanStop, b: PlanStop): number {
-  const x = bayNumber(a.name);
-  const y = bayNumber(b.name);
+  const x = bayNumber(a);
+  const y = bayNumber(b);
   if (x === undefined || y === undefined)
     return (
       x === y ? a.name.localeCompare(b.name)
