@@ -189,9 +189,17 @@ export function countIn(
 // --- Regular weekdays ---
 
 /**
+ * The days of a feed a regular week is taken from: its first 5 weeks. A holiday or a week's break
+ * is outvoted there, and a later timetable period (winter service from late November, a summer
+ * timetable) doesn't stand for the feed when it has months more dates than the current one.
+ */
+const REGULAR_WEEK_DAYS = 35;
+
+/**
  * A regular week of the feed, Monday to Sunday: for each weekday, the first date with the set of
- * services that weekday most often has over the feed's validity. Holidays and other one-off days
- * have sets of their own (or a weekday's set on another weekday), so they drop out without a list.
+ * services that weekday most often has in the feed's first weeks (REGULAR_WEEK_DAYS). Holidays and
+ * other one-off days have sets of their own (or a weekday's set on another weekday), so they drop
+ * out without a list.
  */
 export function regularWeek(
   servicesOn: ServicesOn,
@@ -202,7 +210,8 @@ export function regularWeek(
     { length: 7 },
     () => new Map(),
   );
-  for (let d = feedStart; d <= feedEnd; d = addDays(d, 1)) {
+  const last = addDays(feedStart, REGULAR_WEEK_DAYS - 1);
+  for (let d = feedStart; d <= feedEnd && d <= last; d = addDays(d, 1)) {
     const key = [...servicesOn(d)].sort().join(",");
     const byKey = seen[dayOfWeek(d)]!;
     const cur = byKey.get(key);

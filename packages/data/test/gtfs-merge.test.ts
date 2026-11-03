@@ -93,7 +93,7 @@ describe("mergeGtfs", () => {
         feed_publisher_name: "Consat",
         feed_version: "202611020/a",
         feed_start_date: "20261029",
-        feed_end_date: "20270905",
+        feed_end_date: "20270331",
       },
     ]);
   });

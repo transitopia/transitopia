@@ -138,7 +138,13 @@ async function mergeFile(
   await once(file, "finish");
 }
 
-/** feed_info.txt: the first export's, with the newest version and the dates all of them cover. */
+/**
+ * feed_info.txt: the first export's, with the newest version, the earliest start and the earliest
+ * end. Past the end of one export's dates its system's services are missing, and over months of
+ * them the most common set of services on a weekday (schedule/frequency.ts → regularWeek,
+ * gtfs/describe.ts) would be one without them; an export starting a day or two after the others
+ * leaves only those days without it.
+ */
 async function mergeFeedInfo(
   parts: readonly string[],
   out: string,
@@ -159,7 +165,7 @@ async function mergeFeedInfo(
     ...infos[0]!,
     feed_version: pick("feed_version", (a, b) => a > b),
     feed_start_date: pick("feed_start_date", (a, b) => a < b),
-    feed_end_date: pick("feed_end_date", (a, b) => a > b),
+    feed_end_date: pick("feed_end_date", (a, b) => a < b),
   };
   const columns = Object.keys(row);
   const file = createWriteStream(out);

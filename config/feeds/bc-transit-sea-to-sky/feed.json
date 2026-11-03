@@ -1,5 +1,5 @@
 {
-  "$comment": "BC Transit's Sea to Sky systems in one feed: Whistler (44), Squamish (43), Pemberton Valley (50), as numbered on https://www.bctransit.com/open-data/ (checked 2026-11-02), each a separate export that fetch-gtfs merges. One agency; route_ids end in -SQU, -WHI. 17 routes. Every route is drawn; overrides and exclusions: routes.json. Terms: https://www.bctransit.com/open-data/terms-of-use/ (identify BC Transit as the source; no use of its marks).",
+  "$comment": "BC Transit's Sea to Sky systems in one feed: Whistler (44), Squamish (43), Pemberton Valley (50), as numbered on https://www.bctransit.com/open-data/ (checked 2026-11-02), each a separate export that fetch-gtfs merges. One agency; route_ids end in -SQU, -WHI. 20 routes on 2026-11-03. Every route is drawn; overrides and exclusions: routes.json. Terms: https://www.bctransit.com/open-data/terms-of-use/ (identify BC Transit as the source; no use of its marks).",
   "id": "bc-transit-sea-to-sky",
   "name": "BC Transit (Sea to Sky)",
   "operator": "bc-transit",
@@ -13,6 +13,8 @@
     }
   ],
   "dataset": "bc-transit-gtfs",
+  "$routeKey": "Its systems each number their routes from 1, and Whistler's winter routes (on 2026-11-03: 4 Marketplace Shuttle, 25, 33) brought a number Squamish also uses (4), so routes are keyed by route_id (the number and the system, e.g. 4-WHI) and riders see the number (packages/transit-core/DESIGN.md#routes).",
+  "routeKey": "route_id",
   "static": {
     "$comment": "BC Transit's server returns an empty feed for several operatorIds at once (operatorIds=44,43,50, in any spelling; checked 2026-11-02), so each system's export is fetched and merged (packages/transit-core/DESIGN.md#timetables). Each is regenerated daily with a new feed_version even when the timetable is unchanged, so fetch-gtfs archives a version only when the merged files differ from the newest archived one. Uses calendar_dates.txt only (no calendar.txt), shape_dist_traveled in metres. How often the timetable really changes: OPEN-QUESTIONS #1; the merge: OPEN-QUESTIONS #6.",
     "merge": [

@@ -123,9 +123,10 @@ const STOP_OFFSET_WARN_M = 150;
  * place of corridor-refs.json. 18: shared stretches compare a bus exchange's bays as one place (two
  * routes into different bays of it share the stretch to it), in the frequency table. 19: routes
  * say whether they're drawn in their own colour (`brand`, in place of `category`), and carry their
- * stops and weekday speeds.
+ * stops and weekday speeds. 20: weekday figures for the regular week in the feed's first 5 weeks
+ * (schedule/frequency.ts → regularWeek), not its longest timetable period.
  */
-const PLAN_FORMAT = 19;
+const PLAN_FORMAT = 20;
 
 const roadsFile = (feed: string) => join(feedPaths(feed).roads, "latest.json");
 
