@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
 import translink from "@transitopia/config/feeds/translink/feed.json" with { type: "json" };
-import victoria from "@transitopia/config/feeds/bc-transit-victoria/feed.json" with { type: "json" };
-import kelowna from "@transitopia/config/feeds/bc-transit-kelowna/feed.json" with { type: "json" };
-import fraserValley from "@transitopia/config/feeds/bc-transit-fraser-valley/feed.json" with { type: "json" };
 import { parseFeed } from "../src/config.ts";
 import {
   bandAt,
@@ -43,8 +41,12 @@ describe("poll schedule", () => {
   });
 
   it("keeps every feed's schedule under its own cap", () => {
-    for (const json of [translink, victoria, kelowna, fraserValley]) {
-      const f = parseFeed(json);
+    const dir = new URL("../../../config/feeds/", import.meta.url);
+    for (const id of readdirSync(dir)) {
+      const f = parseFeed(
+        JSON.parse(readFileSync(new URL(`${id}/feed.json`, dir), "utf8")),
+      );
+      if (!f.realtime) continue;
       for (const start of [at(28, 0), at(28, 13, 7), at(26, 0)])
         expect(
           maxRequestsPer24h(f.realtime!.poll, start, 8),

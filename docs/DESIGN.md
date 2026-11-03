@@ -12,7 +12,7 @@ How Transitopia fits together, and the decisions behind it. Each part has its ow
 | Pipelines and validators | [pipelines/README.md](../pipelines/README.md) |
 | The SkyTrain: what we know about how it runs, and what we don't | [config/networks/skytrain/README.md](../config/networks/skytrain/README.md), [OPEN-QUESTIONS.md](../config/networks/skytrain/OPEN-QUESTIONS.md) |
 | TransLink's SeaBus, West Coast Express and buses | [config/feeds/translink/README.md](../config/feeds/translink/README.md), [OPEN-QUESTIONS.md](../config/feeds/translink/OPEN-QUESTIONS.md) |
-| Greater Victoria, Central Okanagan and the Fraser Valley (BC Transit) | [config/feeds/bc-transit-victoria/README.md](../config/feeds/bc-transit-victoria/README.md), [config/feeds/bc-transit-kelowna/README.md](../config/feeds/bc-transit-kelowna/README.md), [config/feeds/bc-transit-fraser-valley/README.md](../config/feeds/bc-transit-fraser-valley/README.md) |
+| BC Transit's systems | [Greater Victoria](../config/feeds/bc-transit-victoria/README.md), [Central Okanagan](../config/feeds/bc-transit-kelowna/README.md), [Fraser Valley](../config/feeds/bc-transit-fraser-valley/README.md), [Vancouver Island](../config/feeds/bc-transit-vancouver-island/README.md), [Sea to Sky](../config/feeds/bc-transit-sea-to-sky/README.md), [Sunshine Coast](../config/feeds/bc-transit-sunshine-coast/README.md), [Thompson–Cariboo](../config/feeds/bc-transit-thompson-cariboo/README.md), [Okanagan–Shuswap](../config/feeds/bc-transit-okanagan-shuswap/README.md), [Kootenays](../config/feeds/bc-transit-kootenays/README.md), [Northern BC](../config/feeds/bc-transit-northern-bc/README.md) |
 | Hosting, deployment and operations | [deployment/README.md](../deployment/README.md) |
 | Data licenses and sources | [DATA-LICENSES.md](../DATA-LICENSES.md) |
 
@@ -186,6 +186,13 @@ config/
 | `bc-transit-victoria` (BC Transit) | Greater Victoria | Every bus route (95 Blink RapidBus in its own colour) |
 | `bc-transit-kelowna` (BC Transit) | Central Okanagan | Every bus route (97 Okanagan RapidBus in its own colour) |
 | `bc-transit-fraser-valley` (BC Transit) | Fraser Valley | Every bus route of Abbotsford, Mission, Chilliwack, Agassiz-Harrison and Hope, one export |
+| `bc-transit-vancouver-island` (BC Transit) | Vancouver Island | Every bus route outside Greater Victoria: Nanaimo, Cowichan Valley, Comox Valley, Campbell River, Port Alberni, West Coast, Mount Waddington, Salt Spring Island; 8 exports merged |
+| `bc-transit-sea-to-sky` (BC Transit) | Sea to Sky | Every bus route of Squamish, Whistler and the Pemberton Valley; 3 exports merged |
+| `bc-transit-sunshine-coast` (BC Transit) | Sunshine Coast | Every bus route of the Sunshine Coast and Powell River; 2 exports merged |
+| `bc-transit-thompson-cariboo` (BC Transit) | Thompson–Cariboo | Every bus route of Kamloops, Merritt, Clearwater, Ashcroft–Cache Creek–Clinton, 100 Mile House, Williams Lake and Quesnel; 7 exports merged |
+| `bc-transit-okanagan-shuswap` (BC Transit) | Okanagan–Shuswap | Every bus route of the North Okanagan and Shuswap, the South Okanagan–Similkameen and Revelstoke; 3 exports merged |
+| `bc-transit-kootenays` (BC Transit) | Kootenays | Every bus route of the West Kootenay and Creston Valley (not the East Kootenay, in another time zone); 2 exports merged |
+| `bc-transit-northern-bc` (BC Transit) | Northern BC | Every bus route of Prince George and the Bulkley-Nechako, Smithers, Terrace–Kitimat–Hazeltons and Prince Rupert (not Dawson Creek or Fort St. John, in another time zone); 4 exports merged |
 
 | Rail network | Feeds | Track |
 |---|---|---|
