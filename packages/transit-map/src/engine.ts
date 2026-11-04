@@ -553,9 +553,8 @@ export class TransitEngine {
     this.showBrandColors = loadPref("showBrandColors", true);
     this.showStops = loadPref("showStops", true);
     this.liveOnly = loadPref("liveOnly", false);
-    // "night" was a window once; it reads as "now".
     this.busFrequency =
-      loadPref<string>("busFrequency", "now") === "day" ? "day" : "now";
+      loadPref<string>("busFrequency", "day") === "now" ? "now" : "day";
 
     // Vehicles are sized for the first feed's kinematics, and recomputed for the fastest of any.
     this.vehicles = new VehicleLayer(map, opts.feeds[0]!.kinematics.sizing);
