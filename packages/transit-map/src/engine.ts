@@ -420,6 +420,8 @@ export class TransitEngine {
   private pick: PickMenu | undefined;
   /** When something was selected: bring it into view once its card is up (performance.now()). */
   private revealAt: number | undefined;
+  /** A vehicle the URL selected: bring it into view once it's found (its feed may be loaded only for it). */
+  private revealSelected = false;
   /** The time bus frequencies are shown for (FREQUENCY_INTERVAL_MS), and when it was set (performance.now()). */
   private frequencyAt: { t: number; at: number } | undefined;
   private following = false;
@@ -545,6 +547,7 @@ export class TransitEngine {
     // A vehicle is selected at once; a place once its plan (and places file) is in.
     this.selected = url.select ? this.vehicleOf(url.select) : undefined;
     if (this.selected === undefined) this.pendingSelect = url.select;
+    this.revealSelected = this.selected !== undefined;
     this.hiddenGroups = new Set(
       loadPref<string[]>("hiddenGroups", []).filter((g): g is RouteGroup =>
         ROUTE_GROUPS.includes(g as RouteGroup),
@@ -917,6 +920,7 @@ export class TransitEngine {
     this.place = undefined;
     this.pick = undefined;
     this.pendingSelect = this.elsewhere = undefined;
+    this.revealSelected = false;
     this.syncPlaceHighlight();
     this.writeUrl();
     this.publish();
@@ -924,6 +928,7 @@ export class TransitEngine {
 
   private showPlace(place: Place): void {
     this.pendingSelect = this.elsewhere = undefined;
+    this.revealSelected = false;
     this.selected = this.vehicles.selected = undefined;
     this.selectedRoute = undefined;
     this.setFollow(false);
@@ -960,9 +965,10 @@ export class TransitEngine {
   }
 
   /**
-   * Load the feeds whose coverage the view (grown by FEED_MARGIN) overlaps, and unload those that
-   * left it FEED_UNLOAD_MS ago, or, past MAX_FEEDS_LOADED, the ones that left it first; never the
-   * selection's feed (packages/transit-map/README.md#feeds). Hidden, the engine only notes whether
+   * Load the feeds whose coverage the view (grown by FEED_MARGIN) overlaps, and the selected
+   * vehicle's wherever it is, and unload those that left it FEED_UNLOAD_MS ago, or, past
+   * MAX_FEEDS_LOADED, the ones that left it first; never the selection's feed
+   * (packages/transit-map/README.md#feeds). Hidden, the engine only notes whether
    * any feed is in view.
    */
   private syncFeeds(): void {
@@ -979,7 +985,10 @@ export class TransitEngine {
     if (!this.visible) return;
     const now = performance.now();
     for (const f of this.feeds) {
-      if (overlaps(f.coverage, near)) {
+      if (
+        overlaps(f.coverage, near)
+        || f.config.feed.id === this.selected?.feed
+      ) {
         f.leftAt = undefined;
         if (!f.slot) this.loadFeed(f);
       } else if (f.slot) f.leftAt ??= now;
@@ -1837,17 +1846,12 @@ export class TransitEngine {
     };
   }
 
-  /**
-   * The vehicle a `?select=` key names, if it names one: an `rt` key names its feed; a `run` key
-   * (packages/transit-map/src/select.ts) is a train's, of the first feed on a rail network.
-   */
+  /** The vehicle a `?select=` key names, if it names one of a feed here (select.ts → `vehicleKey`). */
   private vehicleOf(key: string): { feed: string; id: string } | undefined {
     for (const { config } of this.feeds) {
       const feed = config.feed.id;
       const id = vehicleOfKey(key, feed);
-      if (id === undefined) continue;
-      if (!id.startsWith("rt:") && !config.rail) continue;
-      return { feed, id };
+      if (id !== undefined) return { feed, id };
     }
     return undefined;
   }
@@ -2302,6 +2306,13 @@ export class TransitEngine {
       if (this.styleReady) {
         if (at) this.keepPointInView({ lon: at[0], lat: at[1] });
         else if (v) this.keepPointInView(v);
+      }
+    }
+    if (this.revealSelected && this.styleReady && !map.isMoving()) {
+      const v = this.selectedVehicle();
+      if (v) {
+        this.revealSelected = false;
+        this.keepPointInView(v);
       }
     }
 

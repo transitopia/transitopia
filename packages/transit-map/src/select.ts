@@ -1,9 +1,9 @@
 // What `?select=` names (apps/web/README.md#modes-and-url-state, docs/DESIGN.md#feature-ids): a
 // feature key, an ID (`sn-k3v9qd7m-waterfront`) or a ref (`stop:translink:50123`), turned into the
 // engine's selection, and back. IDs are found in the plan version's places file; refs in the plan
-// itself. Vehicles are the engine's own refs: `run:<run id>` (inferred runs, timetable vehicles)
-// and `rt:<feed>:<vehicle id>` (GTFS-RT), and so are combined routes: `shared:<from>:<to>`, the keys
-// of the stops or stations where they start and end.
+// itself. Vehicles are the engine's own refs: `run:<feed>:<run id>` (inferred runs, timetable
+// vehicles) and `rt:<feed>:<vehicle id>` (GTFS-RT), and so are combined routes:
+// `shared:<from>:<to>`, the keys of the stops or stations where they start and end.
 
 import {
   formatRef,
@@ -32,20 +32,19 @@ export type Selection = { place: Place } | { vehicle: string };
 /** The engine's id of a GTFS-RT vehicle (`rt:<vehicle id>`) and of everything else (a run id). */
 const RT_PREFIX = "rt:";
 
-/** A vehicle's key: `rt:<feed>:<id>` or `run:<id>`. */
+/** A vehicle's key: `rt:<feed>:<id>` or `run:<feed>:<id>`. */
 export function vehicleKey(feed: string, engineId: string): string {
   return engineId.startsWith(RT_PREFIX) ?
       formatRef("rt", feed, engineId.slice(RT_PREFIX.length))
-    : formatRef("run", "", engineId);
+    : formatRef("run", feed, engineId);
 }
 
-/** A vehicle key's engine id, if the key names a vehicle (of this feed, for `rt`). */
+/** A vehicle key's engine id, if the key names a vehicle of this feed. */
 export function vehicleOfKey(key: string, feed: string): string | undefined {
   const k = parseKey(key);
-  if (k?.form !== "ref") return undefined;
+  if (k?.form !== "ref" || k.namespace !== feed) return undefined;
   if (k.scheme === "run") return k.value;
-  if (k.scheme === "rt" && k.namespace === feed)
-    return `${RT_PREFIX}${k.value}`;
+  if (k.scheme === "rt") return `${RT_PREFIX}${k.value}`;
   return undefined;
 }
 
