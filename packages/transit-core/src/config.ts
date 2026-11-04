@@ -243,6 +243,8 @@ const route = z.strictObject({
     .exactOptional(),
   /** Overrides of its mode's vehicle settings (config/defaults/kinematics.json, then its operator's). */
   kinematics: kinematicsOverride.exactOptional(),
+  /** Its trips' headsigns as shown, by GTFS trip_headsign, where the GTFS's aren't words (Hullo's "VAN"). */
+  headsigns: z.record(z.string(), z.string().min(1)).exactOptional(),
 });
 
 const routes = z.strictObject({

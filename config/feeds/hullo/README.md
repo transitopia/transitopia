@@ -5,7 +5,7 @@ Hullo's passenger ferry between Vancouver (Coal Harbour, beside Waterfront) and 
 | Path | What |
 |---|---|
 | `feed.json` | The feed: its GTFS, its vessels' AIS, time zone checks; its operator (`config/operators/hullo/`) |
-| `routes.json` | Its two GTFS routes (one per direction) drawn as one route, `hullo`, in Hullo's colour, with its vessels' settings |
+| `routes.json` | Its two GTFS routes (one per direction) drawn as one route, `hullo`, in Hullo's colour, with its vessels' settings and headsigns in words (the GTFS's are the destination's stop code: "VAN", "NAN") |
 | `ferries/hullo.json` | The berths and crossing lane drawn instead of the GTFS shapes |
 
 ## The GTFS

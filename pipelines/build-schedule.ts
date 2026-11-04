@@ -255,16 +255,20 @@ export async function buildPlan(
     block: string;
     shape: string;
   }
+  const headsignsByRoute = new Map(
+    routeCfg.routes.flatMap((c) => (c.headsigns ? [[c.key, c.headsigns]] : [])),
+  );
   const rawTrips = new Map<string, RawTrip>();
   for await (const row of readCsv(zipPath, "trips.txt")) {
     const route = routeByGtfsId.get(row.route_id!);
     if (!route) continue;
+    const headsign = row.trip_headsign ?? "";
     rawTrips.set(row.trip_id!, {
       id: row.trip_id!,
       route,
       service: row.service_id!,
       direction: Number(row.direction_id || 0),
-      headsign: row.trip_headsign ?? "",
+      headsign: headsignsByRoute.get(route.key)?.[headsign] ?? headsign,
       block: row.block_id ?? "",
       shape: row.shape_id ?? "",
     });
