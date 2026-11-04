@@ -59,8 +59,9 @@ describe("parseKey", () => {
       namespace: "bc-transit-victoria",
       value: "a:b/c",
     });
-    expect(parseKey("run:expo-005")).toMatchObject({
+    expect(parseKey("run:translink:expo-005")).toMatchObject({
       scheme: "run",
+      namespace: "translink",
       value: "expo-005",
     });
   });
@@ -123,7 +124,7 @@ describe("modeOfKey", () => {
   it("sends cycling features to /cycling and the rest to /transit", () => {
     expect(mode("sn-k3v9qd7m-waterfront")).toBe("transit");
     expect(mode("vh-k3v9qd7m")).toBe("transit");
-    expect(mode("run:expo-005")).toBe("transit");
+    expect(mode("run:translink:expo-005")).toBe("transit");
     expect(mode("stop:translink:50123")).toBe("transit");
     expect(mode("cr-k3v9qd7m-seawall")).toBe("cycling");
     expect(mode("bp-k3v9qd7m")).toBe("cycling");

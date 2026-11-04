@@ -28,7 +28,7 @@ const KIND_OF_PREFIX = new Map<string, FeatureKind>(
 
 /**
  * Ref schemes, and whether each has a namespace (a feed, operator or GBFS system). `run` and
- * `shared` are the engine's own, never the registry's: `run:<run id>`, and `shared:<from>:<to>`, a
+ * `shared` are the engine's own, never the registry's: `run:<feed>:<run id>`, and `shared:<from>:<to>`, a
  * combined route between two stops or stations, each named by its key.
  */
 export const REF_SCHEMES = {
@@ -43,7 +43,7 @@ export const REF_SCHEMES = {
   "osm-relation": false,
   onestop: false,
   "gbfs-station": true,
-  run: false,
+  run: true,
   shared: false,
 } as const;
 

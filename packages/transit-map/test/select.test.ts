@@ -185,12 +185,23 @@ describe("?select=", () => {
   });
 
   it("names vehicles by their engine id", () => {
-    expect(vehicleKey("translink", "expo-005")).toBe("run:expo-005");
+    expect(vehicleKey("translink", "expo-005")).toBe("run:translink:expo-005");
     expect(vehicleKey("translink", "rt:9401")).toBe("rt:translink:9401");
     expect(vehicleOfKey("rt:translink:9401", "translink")).toBe("rt:9401");
-    expect(vehicleOfKey("run:expo-005", "translink")).toBe("expo-005");
+    expect(vehicleOfKey("run:translink:expo-005", "translink")).toBe(
+      "expo-005",
+    );
+    // Run ids may hold colons; the feed is what's before the first.
+    expect(vehicleOfKey("run:hullo:nan-van:trip:VANNAN0311", "hullo")).toBe(
+      "nan-van:trip:VANNAN0311",
+    );
     expect(
       vehicleOfKey("rt:bc-transit-victoria:1", "translink"),
     ).toBeUndefined();
+    expect(
+      vehicleOfKey("run:hullo:nan-van:trip:VANNAN0311", "translink"),
+    ).toBeUndefined();
+    // Without a feed (the old form), a run key names nothing.
+    expect(vehicleOfKey("run:expo-005", "translink")).toBeUndefined();
   });
 });

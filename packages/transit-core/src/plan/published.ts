@@ -459,7 +459,13 @@ export function decodeCore(core: PublishedPlan): ServicePlan {
   return {
     ...rest,
     schema: 1,
-    routes: routes.map((r) => ({ ...r, feed: core.feed })),
+    routes: routes.map((r) => ({
+      ...r,
+      feed: core.feed,
+      ...(r.serviceName === undefined && core.agency ?
+        { serviceName: core.agency }
+      : {}),
+    })),
     stops: decodeStops(stops),
     patterns: patterns.map((p) => ({
       ...p,
