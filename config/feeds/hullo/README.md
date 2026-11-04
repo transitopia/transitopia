@@ -5,8 +5,8 @@ Hullo's passenger ferry between Vancouver (Coal Harbour, beside Waterfront) and 
 | Path | What |
 |---|---|
 | `feed.json` | The feed: its GTFS, its vessels' AIS, time zone checks; its operator (`config/operators/hullo/`) |
-| `routes.json` | Its two GTFS routes (one per direction) drawn as one route, `hullo`, in Hullo's colour, with its vessels' settings and headsigns in words (the GTFS's are the destination's stop code: "VAN", "NAN") |
-| `ferries/hullo.json` | The berths and crossing lane drawn instead of the GTFS shapes |
+| `routes.json` | Its two GTFS routes (one per direction) drawn as one route, `nan-van` ("Vancouver–Nanaimo"), in Hullo's colour, with its vessels' settings and headsigns in words (the GTFS's are the destination's stop code: "VAN", "NAN") |
+| `ferries/nan-van.json` | The berths and crossing lane drawn instead of the GTFS shapes |
 
 ## The GTFS
 
@@ -16,7 +16,7 @@ As checked on 2026-11-01 (version `20261020115220`, 35 KB, `https://hullo.com/gt
 - Two routes, `NAN-VAN` "Nanaimo to Vancouver" and `VAN-NAN` "Vancouver to Nanaimo", both `route_type` 4 (ferry), with no `route_color`. `routes.json` matches both by name and draws them as one route (`mergedGtfsRouteIds`, [packages/transit-core/DESIGN.md → Routes](../../../packages/transit-core/DESIGN.md#routes)).
 - Every service is dated in `calendar_dates.txt`, one `service_id` per date; there is no `calendar.txt`.
 - 2,919 trips of 75–80 minutes with no `block_id`: which vessel runs which trip comes only from AIS matching. Off-season (November) one vessel runs, about three round trips a day.
-- Each direction's shape has six points, cutting across Stanley Park and through First Narrows, so the plan draws `ferries/hullo.json`'s lane instead.
+- Each direction's shape has six points, cutting across Stanley Park and through First Narrows, so the plan draws `ferries/nan-van.json`'s lane instead.
 
 ## Real time
 

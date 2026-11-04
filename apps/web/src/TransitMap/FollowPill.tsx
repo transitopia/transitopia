@@ -18,12 +18,12 @@ export function vehicleName(snap: TransitSnapshot): string {
   return v && r ? vehicleLabel(v, r) : "vehicle";
 }
 
-/** "Expo Line train to Waterfront", "99 bus to UBC". */
+/** "Expo Line train to Waterfront", "99 bus to UBC", "Hullo to Nanaimo". */
 export function vehicleLabel(v: VehicleState, r: PlanRoute): string {
   const to = v.headsign.replace(/^.*?\bTo\s+/i, "to ");
   return (
     r.mode === "bus" ? `${routeShortName(r)} bus ${to}`
-    : r.mode === "ferry" ? `${r.label} ${to}`
+    : r.mode === "ferry" ? `${r.serviceName ?? r.label} ${to}`
     : `${r.label} train ${to}`
   );
 }

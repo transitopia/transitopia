@@ -192,14 +192,14 @@ describe("?select=", () => {
       "expo-005",
     );
     // Run ids may hold colons; the feed is what's before the first.
-    expect(vehicleOfKey("run:hullo:hullo:trip:VANNAN0311", "hullo")).toBe(
-      "hullo:trip:VANNAN0311",
+    expect(vehicleOfKey("run:hullo:nan-van:trip:VANNAN0311", "hullo")).toBe(
+      "nan-van:trip:VANNAN0311",
     );
     expect(
       vehicleOfKey("rt:bc-transit-victoria:1", "translink"),
     ).toBeUndefined();
     expect(
-      vehicleOfKey("run:hullo:hullo:trip:VANNAN0311", "translink"),
+      vehicleOfKey("run:hullo:nan-van:trip:VANNAN0311", "translink"),
     ).toBeUndefined();
     // Without a feed (the old form), a run key names nothing.
     expect(vehicleOfKey("run:expo-005", "translink")).toBeUndefined();

@@ -24,6 +24,12 @@ export interface PlanRoute {
    */
   shortName?: string | undefined;
   label: string;
+  /**
+   * What riders know the service as: routes.json → serviceName (the SeaBus, run by TransLink), else
+   * its operator (Hullo; `ServicePlan.agency`). Published only where routes.json sets it:
+   * `decodeCore` fills in the operator.
+   */
+  serviceName?: string | undefined;
   kind: RouteKind;
   mode: RouteMode;
   /**

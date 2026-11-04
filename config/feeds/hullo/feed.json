@@ -1,5 +1,5 @@
 {
-  "$comment": "Hullo's passenger ferry between Vancouver and Nanaimo (https://hullo.com). One route (routes.json) along berths and a lane traced from AIS (ferries/hullo.json). Terms: none published for the GTFS (DATA-LICENSES.md; OPEN-QUESTIONS #4).",
+  "$comment": "Hullo's passenger ferry between Vancouver and Nanaimo (https://hullo.com). One route (routes.json) along berths and a lane traced from AIS (ferries/nan-van.json). Terms: none published for the GTFS (DATA-LICENSES.md; OPEN-QUESTIONS #4).",
   "id": "hullo",
   "name": "Hullo",
   "operator": "hullo",
@@ -19,7 +19,7 @@
   },
   "ais": {
     "$comment": "No GTFS-realtime found. Its two vessels' positions from aisstream.io (packages/transit-core/DESIGN.md#seabus-ais), on the server leader's one connection with the SeaBus's, recorded to var/ais-history/hullo/; the browser turns them into timetable anchors (packages/transit-core/src/ais/match.ts). With no block_id, which vessel runs which trip comes from matching. Coverage mid-strait is unknown: gaps are filled from the timetable. OPEN-QUESTIONS #5.",
-    "route": "hullo",
+    "route": "nan-van",
     "$vessels": "MMSIs from issue #250 (2026-11-01).",
     "vessels": [
       { "mmsi": "316052439", "name": "spuhéls" },
@@ -35,11 +35,11 @@
     "maxBackoffS": 300,
     "$match": "Matching fixes to trips. Guesses, looser than the SeaBus's for a long crossing along an averaged lane; tune with pipelines/eval-ais.ts --feed hullo. OPEN-QUESTIONS #5.",
     "match": {
-      "$maxOffsetM": "The tracks spread ~1 km either side of the averaged lane mid-strait, one ~2.5 km (ferries/hullo.json).",
+      "$maxOffsetM": "The tracks spread ~1 km either side of the averaged lane mid-strait, one ~2.5 km (ferries/nan-van.json).",
       "maxOffsetM": 3000,
       "maxShiftS": 1800,
       "stationaryKn": 0.5,
-      "$dockRadiusM": "Docks are known to ±150 m (ferries/hullo.json).",
+      "$dockRadiusM": "Docks are known to ±150 m (ferries/nan-van.json).",
       "dockRadiusM": 200,
       "courseToleranceDeg": 60,
       "$minTurnaroundS": "Timetabled layovers are 45 minutes; a late vessel catches up by shortening them to this.",

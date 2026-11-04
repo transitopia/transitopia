@@ -163,6 +163,7 @@ export function selectRoutes(
       key,
       ...(shortName ? { shortName } : {}),
       label: over?.label ?? defaultLabel(row, shortName ?? key),
+      ...(over?.serviceName ? { serviceName: over.serviceName } : {}),
       kind: over?.kind ?? model!.kind,
       mode,
       brand: over?.brand ?? mode !== "bus",

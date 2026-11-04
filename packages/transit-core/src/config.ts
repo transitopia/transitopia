@@ -233,6 +233,8 @@ const route = z.strictObject({
   /** Several: one route drawn for every GTFS route they match (Hullo's one route per direction). */
   match: z.union([routeMatch, z.array(routeMatch).min(2)]),
   label: z.string().min(1).exactOptional(),
+  /** What riders know the service as, where that isn't its operator (`PlanRoute.serviceName`). */
+  serviceName: z.string().min(1).exactOptional(),
   kind: z.enum(routeKinds).exactOptional(),
   mode: z.enum(routeModes).exactOptional(),
   /** Drawn in its own colour (`PlanRoute.brand`): by default rail and ferries, not buses. */

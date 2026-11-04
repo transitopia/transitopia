@@ -39,7 +39,10 @@ export const MODE: Record<
 > = {
   skytrain: { eyebrow: (r) => `SkyTrain · ${r.label}`, icon: "train" },
   rail: { eyebrow: (r) => `Commuter rail · ${r.label}`, icon: "train" },
-  ferry: { eyebrow: (r) => `Ferry · ${r.label}`, icon: "ferry" },
+  ferry: {
+    eyebrow: (r) => `Ferry · ${r.serviceName ?? r.label}`,
+    icon: "ferry",
+  },
   bus: { eyebrow: () => "Bus", icon: "bus-front-fill" },
 };
 

@@ -1,6 +1,6 @@
 {
   "$comment": "Hullo's berths and crossing lane, used instead of the GTFS shapes (six points per direction, cutting across Stanley Park and through First Narrows). Applied by build-schedule (packages/transit-core/src/plan/ferry-berths.ts). OPEN-QUESTIONS #1.",
-  "route": "hullo",
+  "route": "nan-van",
   "$approachM": "Vessels leave and enter a berth straight along its axis for this far before turning into the lane. guess",
   "approachM": 150,
   "terminals": {
