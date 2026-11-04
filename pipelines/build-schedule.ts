@@ -7,7 +7,8 @@
 // Output: var/public/data/feeds/<feed>/<version dir>/plan.json and its parts beside it (shapes,
 //         corridors, trips by service: packages/transit-core/DESIGN.md#published-plans),
 //         var/public/data/feeds/<feed>/manifest.json
-// See packages/transit-core/DESIGN.md#timetables.
+// See packages/transit-core/DESIGN.md#timetables. Versions a newer one covers on every date
+// (shadowedVersions: feedForDate never picks them) aren't built, and their output is removed.
 //
 //   tsx pipelines/build-schedule.ts                     # build versions not yet built, or built from other inputs
 //   tsx pipelines/build-schedule.ts --force             # rebuild all
@@ -17,11 +18,12 @@
 // above), so editing routes.json or changing what this writes rebuilds existing plans too.
 
 import { createHash } from "node:crypto";
-import { open, readdir, readFile } from "node:fs/promises";
+import { open, readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { readCsv, readCsvAll, type Row } from "@transitopia/data/gtfs-zip.ts";
 import {
   OPERATORS_DIR,
+  PUBLIC_DIR,
   exists,
   feedPaths,
   log,
@@ -55,6 +57,7 @@ import {
   serviceDate,
   serviceDayStart,
   TIMEZONE,
+  type ServiceDate,
 } from "@transitopia/transit-core/time.ts";
 import {
   matchShape,
@@ -77,6 +80,7 @@ import type {
 import {
   feedDataPath,
   type FeedManifest,
+  type FeedManifestEntry,
   planCoverage,
   unionBounds,
   type PlanCorridor,
@@ -87,6 +91,7 @@ import {
   type PlanTrip,
   type RouteKind,
   type ServicePlan,
+  shadowedVersions,
 } from "@transitopia/transit-core/plan/types.ts";
 import {
   gtfsRouteIds,
@@ -192,10 +197,11 @@ interface StopTimeRow {
   access: number;
 }
 
+/** `loadRoads`: the feed's road graph, asked for only when it has bus routes to match to it. */
 export async function buildPlan(
   zipPath: string,
   feed: FeedInfo,
-  roads?: RoadGraph,
+  loadRoads?: () => Promise<RoadGraph | undefined>,
 ): Promise<ServicePlan> {
   const routeCfg = await readFeedRoutes(feed.id);
   const gtfsDataset = feed.dataset;
@@ -244,6 +250,10 @@ export async function buildPlan(
   const routeByGtfsId = new Map(
     selected.routes.flatMap((r) => gtfsRouteIds(r).map((id) => [id, r])),
   );
+  const roads =
+    selected.routes.some((r) => r.kind === "bus") ?
+      await loadRoads?.()
+    : undefined;
 
   // Trips on those routes.
   interface RawTrip {
@@ -643,27 +653,45 @@ export function interpolateMissing(times: number[], dist: number[]): number[] {
   return out;
 }
 
-/** A feed's manifest: every version built, and where they run, from its plans. */
+/**
+ * A feed's manifest: every version built, and where they run, from its plans. Versions shadowed by
+ * newer ones (built before one was, or whose GTFS is gone) are removed.
+ */
 export async function buildManifest(feed: string): Promise<FeedManifest> {
   const out = feedPaths(feed).out;
-  const feeds: FeedManifest["feeds"] = [];
-  let coverage: FeedManifest["coverage"] = null;
+  const built: { dir: string; entry: FeedManifestEntry }[] = [];
   const dirs = (await exists(out)) ? await readdir(out) : [];
   for (const v of dirs.sort()) {
     const p = join(out, v, "plan.json");
     if (!(await exists(p))) continue;
     const plan = await readPlanCore(p);
+    built.push({
+      dir: v,
+      entry: {
+        version: plan.feedVersion,
+        start: plan.feedStart,
+        end: plan.feedEnd,
+        path: feedDataPath(feed, plan.feedVersion, "plan.json"),
+        builtAt: plan.builtAt,
+      },
+    });
+  }
+  const shadowed = new Set(shadowedVersions(built.map((b) => b.entry)));
+  const feeds: FeedManifest["feeds"] = [];
+  let coverage: FeedManifest["coverage"] = null;
+  for (const { dir, entry } of built) {
+    if (shadowed.has(entry)) {
+      await rm(join(out, dir), { recursive: true, force: true });
+      log(`${feed}: removed ${dir}, a newer version covers all its dates`);
+      continue;
+    }
     coverage = unionBounds(
       coverage,
-      planCoverage(await readPlan(p, { trips: false })),
+      planCoverage(
+        await readPlan(join(PUBLIC_DIR, entry.path), { trips: false }),
+      ),
     );
-    feeds.push({
-      version: plan.feedVersion,
-      start: plan.feedStart,
-      end: plan.feedEnd,
-      path: feedDataPath(feed, plan.feedVersion, "plan.json"),
-      builtAt: plan.builtAt,
-    });
+    feeds.push(entry);
   }
   const manifest: FeedManifest = {
     schema: 1,
@@ -677,28 +705,54 @@ export async function buildManifest(feed: string): Promise<FeedManifest> {
 
 async function buildFeed(feed: FeedInfo, force: boolean): Promise<void> {
   const raw = feedPaths(feed.id).raw;
-  const versions = (await exists(raw)) ? await readdir(raw) : [];
+  const zips: {
+    dir: string;
+    version: string;
+    start: ServiceDate;
+    end: ServiceDate;
+  }[] = [];
+  for (const v of ((await exists(raw)) ? await readdir(raw) : []).sort()) {
+    const zip = join(raw, v, "google_transit.zip");
+    if (!(await exists(zip))) continue;
+    const [info] = await readCsvAll(zip, "feed_info.txt");
+    if (!info) throw new Error(`${zip}: feed_info.txt missing`);
+    zips.push({
+      dir: v,
+      version: info.feed_version!,
+      start: serviceDate(info.feed_start_date!),
+      end: serviceDate(info.feed_end_date!),
+    });
+  }
+  const shadowed = new Set(shadowedVersions(zips));
   const inputs = await inputsHash(feed.id);
   let built = 0;
   let roads: Promise<RoadGraph | undefined> | undefined;
-  for (const v of versions.sort()) {
-    const zip = join(raw, v, "google_transit.zip");
-    if (!(await exists(zip))) continue;
-    const out = join(feedPaths(feed.id).out, v, "plan.json");
+  for (const z of zips) {
+    if (shadowed.has(z)) {
+      log(
+        `${feed.id}: ${z.dir} not built, a newer version covers all its dates`,
+      );
+      continue;
+    }
+    const zip = join(raw, z.dir, "google_transit.zip");
+    const out = join(feedPaths(feed.id).out, z.dir, "plan.json");
     const was =
       (await exists(out)) ?
         ((await readPlanCore(out)).inputs ?? "none")
       : undefined;
     if (!force && was === inputs) continue;
     log(
-      `${feed.id}: building plan for feed ${v}${
+      `${feed.id}: building plan for feed ${z.dir}${
         force ? ""
         : was === undefined ? " (new)"
         : " (config or plan format changed)"
       }`,
     );
-    roads ??= loadRoads(feed.id);
-    const plan = await buildPlan(zip, feed, await roads);
+    const plan = await buildPlan(
+      zip,
+      feed,
+      () => (roads ??= loadRoads(feed.id)),
+    );
     plan.inputs = inputs;
     const size = await writePlan(out, plan);
     log(`Wrote ${out} and its parts (${(size / 1e6).toFixed(1)} MB)`);

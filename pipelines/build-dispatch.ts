@@ -3,14 +3,20 @@
 //   var/public/data/feeds/<rail feed>/observations/*.json (from build:observations) + config/networks/<network>/disruptions/*.json
 //     → var/public/data/networks/<network>/dispatch/<date>.json + index.json
 //
-//   npm run build:dispatch [-- --network skytrain]
+//   npm run build:dispatch [-- --network skytrain] [--force]
+//
+// A date whose patch was made from the same inputs (its version, dateVersion: the base movement
+// file's builtAt, the dispatch settings, the date's observations and disruptions) keeps it; --force
+// dispatches every date again. Changes to the dispatching code rebuild the base movement files
+// (build-movements), which gives every date a new version.
 
 import { isServiceDate } from "@transitopia/transit-core/time.ts";
-import { rm } from "node:fs/promises";
+import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   PUBLIC_DIR,
   correctionPaths,
+  exists,
   railNetworksArg,
   type RailNetwork,
   log,
@@ -18,7 +24,10 @@ import {
   writeJson,
 } from "@transitopia/data/paths.ts";
 import { DispatchContexts } from "@transitopia/data/dispatch-context.ts";
-import { dispatchDate } from "@transitopia/transit-core/dispatch/date.ts";
+import {
+  dateVersion,
+  dispatchDate,
+} from "@transitopia/transit-core/dispatch/date.ts";
 import type { DispatchIndex } from "@transitopia/transit-core/dispatch/patch.ts";
 import type {
   Observation,
@@ -41,7 +50,12 @@ async function buildNetwork(net: RailNetwork) {
     ),
   ).catch(() => ({ schema: 1, byDate: {} }) as ObservationIndex);
   const contexts = new DispatchContexts(net);
-  await rm(OUT, { recursive: true, force: true });
+  const was =
+    process.argv.includes("--force") ?
+      undefined
+    : await readJson<DispatchIndex>(join(OUT, "index.json")).catch(
+        () => undefined,
+      );
   const index: DispatchIndex = { schema: 1, byDate: {} };
   const builtAt = new Date().toISOString();
   const disruptions = await loadDisruptions(correctionPaths(net).disruptions);
@@ -59,13 +73,20 @@ async function buildNetwork(net: RailNetwork) {
       log(`${date}: no dispatched plan covers this date; skipped`);
       continue;
     }
-    const t0 = performance.now();
-    const patch = await dispatchDate(
-      ctx,
-      { date, observations, disruptions },
-      builtAt,
-    );
+    const inputs = { date, observations, disruptions };
     const path = networkDataPath(net.network, `dispatch/${date}.json`);
+    const kept = was?.byDate[date];
+    if (
+      kept?.path === path
+      && kept.version === dateVersion(ctx, inputs)
+      && (await exists(join(PUBLIC_DIR, path)))
+    ) {
+      index.byDate[date] = kept;
+      log(`${date}: inputs unchanged; patch ${kept.version} kept`);
+      continue;
+    }
+    const t0 = performance.now();
+    const patch = await dispatchDate(ctx, inputs, builtAt);
     await writeJson(join(PUBLIC_DIR, path), patch);
     index.byDate[date] = { version: patch.version, path };
     const changed =
@@ -81,6 +102,13 @@ async function buildNetwork(net: RailNetwork) {
       );
     for (const p of patch.problems ?? []) log(`    disruption problem: ${p}`);
   }
+  // Patches of dates that no longer have inputs.
+  const current = new Set(
+    Object.values(index.byDate).map((e) => e.path.split("/").pop()),
+  );
+  for (const f of await readdir(OUT).catch(() => []))
+    if (f.endsWith(".json") && f !== "index.json" && !current.has(f))
+      await rm(join(OUT, f));
   await writeJson(join(OUT, "index.json"), index, true);
 }
 

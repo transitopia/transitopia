@@ -39,6 +39,8 @@ export interface BuildAllInput {
   outDir: string;
   /** Path of outDir relative to public/, for the index. */
   relDir: string;
+  /** Recorded in the files and the index (build-movements: what they were built from). */
+  inputs?: string | undefined;
   verbose?: boolean;
 }
 
@@ -83,6 +85,7 @@ export async function buildAllMovements(
   const index: MovementsIndex = {
     schema: 1,
     feedVersion: plan.feedVersion,
+    ...(input.inputs ? { inputs: input.inputs } : {}),
     files: {},
   };
   const files = new Map<string, MovementsFile>();
@@ -107,6 +110,7 @@ export async function buildAllMovements(
           debug: dispatchDebugFromEnv(),
         })
       : built;
+    if (input.inputs) file.inputs = input.inputs;
     await writeJson(join(input.outDir, `${key}.json`), file);
     // The inferred runs, for re-dispatching single dates with observations or disruptions.
     if (input.dispatch)

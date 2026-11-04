@@ -176,6 +176,7 @@ const recording = z.strictObject({
   stats,
   afterServiceDayH: pos,
   dataBuildAt: hhmm,
+  initialBuildProfileMaxAgeH: pos,
 });
 
 // --- config/features/reconcile.json ---

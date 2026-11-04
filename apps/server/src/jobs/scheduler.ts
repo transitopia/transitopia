@@ -158,6 +158,10 @@ export class Jobs {
               repo: this.repo,
               env: this.env,
               log: this.log,
+              // Only the day's build learns bus profiles again when they're recent.
+              ...(key === today ?
+                {}
+              : { profileMaxAgeH: recording.initialBuildProfileMaxAgeH }),
             }),
           ),
       });

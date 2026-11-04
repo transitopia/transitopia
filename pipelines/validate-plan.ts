@@ -1,20 +1,27 @@
 // Validate built movement files (packages/transit-core/DESIGN.md#validation): continuity (no teleports), conflicts (two trains on the
 // same piece of track at once), and fleet in service over the day.
 //
-//   npm run validate:plan [-- --key 1+1101] [--step 5] [--network skytrain]
+//   npm run validate:plan [-- --key 1+1101] [--step 5] [--all] [--network skytrain]
+//
+// Each file that passes is recorded (var/validated/<network>.json: its builtAt, under a hash of this
+// script and the step), and files recorded with the builtAt they still have are skipped: they're
+// the ones build-movements kept. --all checks them too.
 
 import { join } from "node:path";
 import { readdir } from "node:fs/promises";
 import {
+  VAR_DIR,
   feedVersionFile,
   readNetworkConfig,
   readJson,
+  writeJson,
   railFeedConfig,
   railNetworksArg,
   type RailNetwork,
 } from "@transitopia/data/paths.ts";
 import { loadAllPlans, loadGraph } from "@transitopia/data/infra.ts";
 import { dispatchSummary } from "./lib/movements.ts";
+import { sourceHash } from "./lib/source-hash.ts";
 import { preparePlan } from "@transitopia/transit-core/schedule/engine.ts";
 import { TrainPlayback } from "@transitopia/transit-core/movement/playback.ts";
 import type { MovementsFile } from "@transitopia/transit-core/movement/types.ts";
@@ -29,21 +36,42 @@ const arg = (name: string) => {
   return i >= 0 ? process.argv[i + 1] : undefined;
 };
 
+/** Files that passed: "<feed version>/<service key>" → their builtAt, for one version of the checks. */
+interface Validated {
+  check: string;
+  files: Record<string, string>;
+}
+
 /** One rail network (railNetworks: a network and a feed with track-level rail on it). */
-async function buildNetwork(net: RailNetwork) {
+async function buildNetwork(net: RailNetwork, code: string) {
   const { graph } = await loadGraph(net.network);
   const kin = (await railFeedConfig(net)).kinematics;
   const ops = await readNetworkConfig("operations", net.network);
   const step = Number(arg("--step") ?? 5);
+  const record = join(VAR_DIR, "validated", `${net.network}.json`);
+  const check = `${code}:${step}`;
+  const before = await readJson<Validated>(record).catch(() => undefined);
+  const passed = before?.check === check ? { ...before.files } : {};
+  const all = process.argv.includes("--all");
+  const versions = new Set<string>();
   let failures = 0;
+  let skipped = 0;
   for (const plan of await loadAllPlans(net.feed)) {
-    const pp = preparePlan(plan, kin);
+    versions.add(plan.feedVersion);
+    let pp: ReturnType<typeof preparePlan> | undefined;
     const dir = feedVersionFile(net.feed, plan.feedVersion, "movements");
     const keys = (await readdir(dir))
       .filter((f) => f.endsWith(".json") && f !== "index.json")
       .map((f) => f.replace(/\.json$/, ""));
     for (const key of keys.filter((k) => !arg("--key") || k === arg("--key"))) {
       const file = await readJson<MovementsFile>(join(dir, `${key}.json`));
+      const id = `${plan.feedVersion}/${key}`;
+      if (!all && passed[id] === file.builtAt) {
+        skipped++;
+        continue;
+      }
+      delete passed[id];
+      pp ??= preparePlan(plan, kin);
       const pb = new TrainPlayback(file, pp, graph, kin, {
         deadheadSpeedFactor: ops.yard.deadheadSpeedFactor,
         turnbackSpeedFactor: ops.turnback.speedFactor,
@@ -141,14 +169,26 @@ async function buildNetwork(net: RailNetwork) {
           );
       }
       failures += jumps.size;
+      if (!jumps.size) passed[id] = file.builtAt;
     }
   }
-  console.log(failures ? `${failures} teleports` : "OK: no teleports");
-  if (failures) process.exit(1);
+  for (const id of Object.keys(passed))
+    if (!versions.has(id.slice(0, id.lastIndexOf("/")))) delete passed[id];
+  await writeJson(record, { check, files: passed } satisfies Validated, true);
+  if (skipped)
+    console.log(
+      `${skipped} files unchanged since they passed; not checked again (--all checks them)`,
+    );
+  return failures;
 }
 
 async function main() {
-  for (const net of await railNetworksArg()) await buildNetwork(net);
+  const code = await sourceHash([import.meta.filename]);
+  let failures = 0;
+  for (const net of await railNetworksArg())
+    failures += await buildNetwork(net, code);
+  console.log(failures ? `${failures} teleports` : "OK: no teleports");
+  if (failures) process.exit(1);
 }
 
 main().catch((e) => {

@@ -1,7 +1,7 @@
 // The service plan: the compact, per-feed-version schedule produced by pipelines/build-schedule.ts and
 // consumed by the browser. See packages/transit-core/DESIGN.md#timetables.
 
-import type { ServiceDate } from "../time.ts";
+import { addDays, type ServiceDate } from "../time.ts";
 import type { ServiceCalendar } from "../gtfs/calendar.ts";
 import type { LonLat } from "../geo.ts";
 import type { RouteStops } from "../schedule/stops.ts";
@@ -510,8 +510,18 @@ export function feedForDate(
   manifest: FeedManifest,
   date: ServiceDate,
 ): FeedManifestEntry | undefined {
-  let best: FeedManifestEntry | undefined;
-  for (const f of manifest.feeds) {
+  return newestCovering(manifest.feeds, date);
+}
+
+/** A feed version's validity range, as feedForDate compares versions. */
+type VersionRange = Pick<FeedManifestEntry, "version" | "start" | "end">;
+
+function newestCovering<T extends VersionRange>(
+  feeds: readonly T[],
+  date: ServiceDate,
+): T | undefined {
+  let best: T | undefined;
+  for (const f of feeds) {
     if (date < f.start || date > f.end) continue;
     if (
       !best
@@ -521,6 +531,21 @@ export function feedForDate(
       best = f;
   }
   return best;
+}
+
+/**
+ * The versions feedForDate never picks: a newer version covers every date of their range (TransLink
+ * publishes a new feed every week with the same range). They're left out of the manifest and not
+ * built (pipelines/build-schedule.ts).
+ */
+export function shadowedVersions<T extends VersionRange>(
+  feeds: readonly T[],
+): T[] {
+  return feeds.filter((f) => {
+    for (let d = f.start; d <= f.end; d = addDays(d, 1))
+      if (newestCovering(feeds, d) === f) return false;
+    return true;
+  });
 }
 
 /** Union of all feed ranges, for bounding the date picker. */
