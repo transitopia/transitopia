@@ -10,7 +10,9 @@
 //   tsx pipelines/fetch-osm-roads.ts --max-age-days 30   (only feeds without roads, or older; the
 //                                                         nightly data build, pipelines/data.ts)
 //
-// The newest KEEP_DATED dated files are kept (TransLink's are about 100 MB each).
+// The newest KEEP_DATED dated files are kept (TransLink's are about 100 MB each). Each feed tries
+// every server in turn, and again after a pause (ATTEMPTS); a feed that still fails keeps its
+// previous roads, the other feeds are fetched anyway, and the script exits non-zero at the end.
 //
 // OSM data © OpenStreetMap contributors, ODbL.
 
@@ -27,10 +29,22 @@ import { archivedFeeds } from "@transitopia/data/gtfs-day.ts";
 import { readCsv } from "@transitopia/data/gtfs-zip.ts";
 import { feedPaths, log, readFeeds } from "@transitopia/data/paths.ts";
 
+/**
+ * Public Overpass servers, tried in order (https://wiki.openstreetmap.org/wiki/Overpass_API#Public_Overpass_API_instances).
+ * Busy, overpass-api.de answers 502 at once and kumi 504 after about 4 minutes (2026-11-02);
+ * private.coffee is a last resort, not yet seen to answer from here (2026-11-03).
+ */
 const ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
 ];
+/**
+ * Rounds over every server before a feed gives up, with a pause between them: a busy server often
+ * answers a few minutes later (Northern BC failed on both, then worked, 2026-11-02).
+ */
+const ATTEMPTS = 2;
+const RETRY_PAUSE_MS = 2 * 60_000;
 const ROAD_CLASSES = [
   "motorway",
   "motorway_link",
@@ -81,36 +95,45 @@ async function fetchFeed(feed: string, area: readonly BBox[]) {
   const dir = feedPaths(feed).roads;
   await mkdir(dir, { recursive: true });
   let lastErr: unknown;
-  for (const url of ENDPOINTS) {
-    try {
-      log(`${feed}: querying ${url}`);
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": "Transitopia (+https://www.transitopia.org)",
-        },
-        body: new URLSearchParams({ data: q }),
-        signal: AbortSignal.timeout(900_000),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const text = await res.text();
-      const data = JSON.parse(text) as { elements: { type: string }[] };
-      const out = join(dir, `${new Date().toISOString().slice(0, 10)}.json`);
-      await writeFile(out, text);
-      await copyFile(out, join(dir, "latest.json"));
-      const counts: Record<string, number> = {};
-      for (const e of data.elements) counts[e.type] = (counts[e.type] ?? 0) + 1;
-      log(`${feed}: saved ${out}: ${JSON.stringify(counts)}`);
-      const dated = (await readdir(dir))
-        .filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f))
-        .sort()
-        .reverse();
-      for (const f of dated.slice(KEEP_DATED)) await rm(join(dir, f));
-      return;
-    } catch (e) {
-      lastErr = e;
-      log(`${feed}: ${url} failed: ${String(e)}`);
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    if (attempt > 1) {
+      log(
+        `${feed}: every server failed; trying again in ${RETRY_PAUSE_MS / 60_000} min`,
+      );
+      await new Promise((r) => setTimeout(r, RETRY_PAUSE_MS));
+    }
+    for (const url of ENDPOINTS) {
+      try {
+        log(`${feed}: querying ${url}`);
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "Transitopia (+https://www.transitopia.org)",
+          },
+          body: new URLSearchParams({ data: q }),
+          signal: AbortSignal.timeout(900_000),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const text = await res.text();
+        const data = JSON.parse(text) as { elements: { type: string }[] };
+        const out = join(dir, `${new Date().toISOString().slice(0, 10)}.json`);
+        await writeFile(out, text);
+        await copyFile(out, join(dir, "latest.json"));
+        const counts: Record<string, number> = {};
+        for (const e of data.elements)
+          counts[e.type] = (counts[e.type] ?? 0) + 1;
+        log(`${feed}: saved ${out}: ${JSON.stringify(counts)}`);
+        const dated = (await readdir(dir))
+          .filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f))
+          .sort()
+          .reverse();
+        for (const f of dated.slice(KEEP_DATED)) await rm(join(dir, f));
+        return;
+      } catch (e) {
+        lastErr = e;
+        log(`${feed}: ${url} failed: ${String(e)}`);
+      }
     }
   }
   throw lastErr;
@@ -179,6 +202,7 @@ async function feedArea(feed: string): Promise<BBox[] | undefined> {
   return boxes.length ? boxes : undefined;
 }
 
+const failed: string[] = [];
 for (const feed of await readFeeds()) {
   if (only && feed.id !== only) continue;
   if (await fresh(feed.id)) {
@@ -188,5 +212,16 @@ for (const feed of await readFeeds()) {
   const area = await feedArea(feed.id);
   if (!area) continue;
   log(`${feed.id}: ${area.length} boxes along its routes`);
-  await fetchFeed(feed.id, area);
+  try {
+    await fetchFeed(feed.id, area);
+  } catch (e) {
+    failed.push(feed.id);
+    log(
+      `${feed.id}: no roads fetched (${String(e)}); keeping the ones fetched before, if any`,
+    );
+  }
+}
+if (failed.length) {
+  log(`Roads not fetched for ${failed.join(", ")}`);
+  process.exitCode = 1;
 }
