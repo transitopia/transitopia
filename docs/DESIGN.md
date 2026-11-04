@@ -12,7 +12,7 @@ How Transitopia fits together, and the decisions behind it. Each part has its ow
 | Pipelines and validators | [pipelines/README.md](../pipelines/README.md) |
 | The SkyTrain: what we know about how it runs, and what we don't | [config/networks/skytrain/README.md](../config/networks/skytrain/README.md), [OPEN-QUESTIONS.md](../config/networks/skytrain/OPEN-QUESTIONS.md) |
 | TransLink's SeaBus, West Coast Express and buses | [config/feeds/translink/README.md](../config/feeds/translink/README.md), [OPEN-QUESTIONS.md](../config/feeds/translink/OPEN-QUESTIONS.md) |
-| Greater Victoria, Central Okanagan and the Fraser Valley (BC Transit) | [config/feeds/bc-transit-victoria/README.md](../config/feeds/bc-transit-victoria/README.md), [config/feeds/bc-transit-kelowna/README.md](../config/feeds/bc-transit-kelowna/README.md), [config/feeds/bc-transit-fraser-valley/README.md](../config/feeds/bc-transit-fraser-valley/README.md) |
+| BC Transit's systems | [Greater Victoria](../config/feeds/bc-transit-victoria/README.md), [Central Okanagan](../config/feeds/bc-transit-kelowna/README.md), [Fraser Valley](../config/feeds/bc-transit-fraser-valley/README.md), [Vancouver Island](../config/feeds/bc-transit-vancouver-island/README.md), [Sea to Sky](../config/feeds/bc-transit-sea-to-sky/README.md), [Sunshine Coast](../config/feeds/bc-transit-sunshine-coast/README.md), [Thompson–Cariboo](../config/feeds/bc-transit-thompson-cariboo/README.md), [Okanagan–Shuswap](../config/feeds/bc-transit-okanagan-shuswap/README.md), [Kootenays](../config/feeds/bc-transit-kootenays/README.md), [Northern BC](../config/feeds/bc-transit-northern-bc/README.md) |
 | Hosting, deployment and operations | [deployment/README.md](../deployment/README.md) |
 | Data licenses and sources | [DATA-LICENSES.md](../DATA-LICENSES.md) |
 
@@ -186,6 +186,13 @@ config/
 | `bc-transit-victoria` (BC Transit) | Greater Victoria | Every bus route (95 Blink RapidBus in its own colour) |
 | `bc-transit-kelowna` (BC Transit) | Central Okanagan | Every bus route (97 Okanagan RapidBus in its own colour) |
 | `bc-transit-fraser-valley` (BC Transit) | Fraser Valley | Every bus route of Abbotsford, Mission, Chilliwack, Agassiz-Harrison and Hope, one export |
+| `bc-transit-vancouver-island` (BC Transit) | Vancouver Island | Every bus route outside Greater Victoria: Nanaimo, Cowichan Valley, Comox Valley, Campbell River, Port Alberni, West Coast, Mount Waddington, Salt Spring Island; 8 exports merged |
+| `bc-transit-sea-to-sky` (BC Transit) | Sea to Sky | Every bus route of Squamish, Whistler and the Pemberton Valley; 3 exports merged |
+| `bc-transit-sunshine-coast` (BC Transit) | Sunshine Coast | Every bus route of the Sunshine Coast and Powell River; 2 exports merged |
+| `bc-transit-thompson-cariboo` (BC Transit) | Thompson–Cariboo | Every bus route of Kamloops, Merritt, Clearwater, Ashcroft–Cache Creek–Clinton, 100 Mile House, Williams Lake and Quesnel; 7 exports merged |
+| `bc-transit-okanagan-shuswap` (BC Transit) | Okanagan–Shuswap | Every bus route of the North Okanagan and Shuswap, the South Okanagan–Similkameen and Revelstoke; 3 exports merged |
+| `bc-transit-kootenays` (BC Transit) | Kootenays | Every bus route of the West Kootenay and Creston Valley (not the East Kootenay, in another time zone); 2 exports merged |
+| `bc-transit-northern-bc` (BC Transit) | Northern BC | Every bus route of Prince George and the Bulkley-Nechako, Smithers, Terrace–Kitimat–Hazeltons, Prince Rupert, Dawson Creek and Fort St. John (their `America/Dawson_Creek` taken as `America/Vancouver`); 6 exports merged |
 
 | Rail network | Feeds | Track |
 |---|---|---|
@@ -216,7 +223,7 @@ Service dates are `"YYYYMMDD"` strings typed `ServiceDate` (`packages/transit-co
 
 The basemap is a British Columbia extract of Protomaps' daily build for now. It grows to Canada, then Canada and the US, then the planet as feeds are added; only the extract's area changes. Outside the basemap the map has no tiles.
 
-Time zones come from the runtime's tzdata, never hard-coded. BC moved to permanent UTC−7 in 2026 (tzdata 2026b); the server refuses to start on older data (`timezoneChecks` in each `feed.json`). Every feed and rail network so far is in `America/Vancouver`, the default in `packages/transit-core/src/time.ts`. The engine works out each feed's service dates in that feed's time zone ([packages/transit-map → Feeds](../packages/transit-map/README.md#feeds)), but the server's poll schedules and recorded hour files still use the default, so `build-schedule` refuses a feed in another time zone until one needs it.
+Time zones come from the runtime's tzdata, never hard-coded. BC moved to permanent UTC−7 in 2026 (tzdata 2026b); the server refuses to start on older data (`timezoneChecks` in each `feed.json`). Every feed and rail network so far is in `America/Vancouver`, the default in `packages/transit-core/src/time.ts`. The engine works out each feed's service dates in that feed's time zone ([packages/transit-map → Feeds](../packages/transit-map/README.md#feeds)), but the server's poll schedules and recorded hour files still use the default, so `build-schedule` refuses a feed in another time zone until one needs it. A feed can take a zone with the same offsets as its own (`equivalentTimezones` in `feed.json`): BC Transit's Dawson Creek and Fort St. John exports name `America/Dawson_Creek`, which has had `America/Vancouver`'s offsets since BC's change, and `build-schedule` refuses the feed if the runtime's tzdata ever gives the two different offsets on a date of its timetable.
 
 ## Feature IDs
 
@@ -249,7 +256,7 @@ Feature reconciliation is the process of matching GTFS features like bus stops t
 |---|---|---|
 | stop | 1. its `stop_id`'s ref, with the same `stop_code`; 2. its `stop_code`'s ref; 3. without a code, an unmatched stop of the same name within 50 m | Mint. Flag it beside a stop that disappeared (`disappeared-nearby`); flag a matched stop that moved over 300 m (`code-moved-far`). |
 | station | a ref of a parent stop in its group (parent stops and standalone rail stops of the same name, merged as the plan merges them); else an unmatched station of the same name within 300 m in the feed | Mint. Flag it when another feed has a station of the same name within 300 m (`cross-feed-name-match`). |
-| route | the same feed and name (`route_short_name` without leading zeros, else `route_long_name`) | Mint. |
+| route | the same feed and name (`route_short_name` without leading zeros, else `route_long_name`); in a feed keyed by `route_id` (`feed.json` → `routeKey`), its `gtfs-route` ref | Mint. |
 
 A new stop gets its parent from the proposal: a platform its GTFS parent's station; a bay the parent most of its group's existing stops have, "none" included (so a new bay at an exchange an admin dissolved stays an ordinary stop); and only when every stop of a group is new, the station the group is beside or a newly minted exchange (flagged `exchange-replaced` beside an exchange that lost all its stops). An existing stop whose parent differs from the proposal is flagged (`grouping-differs`) and kept. A retired stop or station whose `stop_id` or stop code comes back is made active again and flagged (`retired-returned`): retiring one means it's gone, and the feed says it isn't. A feature is flagged once per reason. Names and positions follow the newest version, except where an admin set them.
 

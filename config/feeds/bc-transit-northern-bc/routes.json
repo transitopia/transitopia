@@ -1,0 +1,4 @@
+{
+  "$comment": "How BC Transit's Northern BC routes are drawn where the GTFS alone doesn't say; every route in the feed is drawn by default, and the format is in config/feeds/translink/routes.json. No overrides yet: every route is coloured by frequency.",
+  "routes": []
+}

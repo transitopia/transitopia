@@ -86,6 +86,8 @@ export interface RegistrySnapshot {
 export interface ReconcileInput {
   feed: string;
   operator: string;
+  /** What the feed's routes are keyed by (feed.json → routeKey), and so matched by: name by default. */
+  routeKey?: "name" | "route_id" | undefined;
   /** The version being reconciled (gtfs_feeds.seq). */
   seq: number;
   /** The feed's previous reconciled version, if any. */
@@ -615,23 +617,35 @@ export function reconcile(input: ReconcileInput): Decisions {
       );
   }
 
-  // --- Routes: the same name in the same feed is the same route.
+  // --- Routes: the same name in the same feed is the same route; in a feed keyed by route_id (whose
+  // systems each have a 1), the same route_id is.
+  const byRouteId = input.routeKey === "route_id";
   const routesByName = new Map<string, string>();
-  for (const f of snapshot.features)
-    if (f.kind === "route" && f.feedId === feed && f.status === "active") {
-      const k = normalizeName(f.name);
-      if (!routesByName.has(k)) routesByName.set(k, f.id);
-    }
+  if (!byRouteId)
+    for (const f of snapshot.features)
+      if (f.kind === "route" && f.feedId === feed && f.status === "active") {
+        const k = normalizeName(f.name);
+        if (!routesByName.has(k)) routesByName.set(k, f.id);
+      }
   for (const r of [...records.routes].sort((a, b) =>
     a.id.localeCompare(b.id),
   )) {
     const name = routeName(r);
-    const k = normalizeName(name);
-    let id = routesByName.get(k);
-    if (id === undefined) {
-      id = newFeature("route", name, null, null).id;
-      routesByName.set(k, id);
-    } else refresh(id, name, undefined);
+    let id: string | undefined;
+    if (byRouteId) {
+      const f = refFeature("gtfs-route", r.id, "route");
+      if (f) reactivate(f, `gtfs-route:${feed}:${r.id}`);
+      id = f?.id;
+      if (id === undefined) id = newFeature("route", name, null, null).id;
+      else refresh(id, name, undefined);
+    } else {
+      const k = normalizeName(name);
+      id = routesByName.get(k);
+      if (id === undefined) {
+        id = newFeature("route", name, null, null).id;
+        routesByName.set(k, id);
+      } else refresh(id, name, undefined);
+    }
     ref(id, "gtfs-route", r.id);
   }
   return out;

@@ -1,0 +1,64 @@
+{
+  "$comment": "BC Transit's Thompson–Cariboo systems in one feed: Kamloops (46), Merritt (37), Clearwater (35), Ashcroft-Cache Creek-Clinton (38), 100 Mile House (34), Williams Lake (33), Quesnel (32), as numbered on https://www.bctransit.com/open-data/ (checked 2026-11-02), each a separate export that fetch-gtfs merges. One agency; route_ids end in -100M, -ASH, -CLR, -KAM, -MER, -QUE, -WIL. 49 routes. Every route is drawn; overrides and exclusions: routes.json. Terms: https://www.bctransit.com/open-data/terms-of-use/ (identify BC Transit as the source; no use of its marks).",
+  "id": "bc-transit-thompson-cariboo",
+  "name": "BC Transit (Thompson–Cariboo)",
+  "operator": "bc-transit",
+  "timezone": "America/Vancouver",
+  "$timezoneChecks": "Known facts about the feed's time zone that the runtime's time zone data (tzdata, via ICU) must agree with; the server refuses to start otherwise (checkTimezoneData in packages/transit-core/src/time.ts). Times are still always computed from the runtime's data, never from these. BC moved to permanent UTC-7 in 2026 (tzdata 2026b, https://data.iana.org/time-zones/tzdb/NEWS); older data falls back to UTC-8 on 2026-11-01.",
+  "timezoneChecks": [
+    {
+      "at": "2026-11-02T20:00:00Z",
+      "utcOffsetMinutes": -420,
+      "reason": "British Columbia's permanent UTC-7 (tzdata 2026b or later)"
+    }
+  ],
+  "dataset": "bc-transit-gtfs",
+  "$routeKey": "Its systems each number their routes from 1 (5 numbers are used by more than one: 1, 2, 3, 4, 10), so routes are keyed by route_id (the number and the system, e.g. 1-KAM) and riders see the number (packages/transit-core/DESIGN.md#routes).",
+  "routeKey": "route_id",
+  "static": {
+    "$comment": "BC Transit's server returns an empty feed for several operatorIds at once (operatorIds=46,37,35,38,34,33,32, in any spelling; checked 2026-11-02), so each system's export is fetched and merged (packages/transit-core/DESIGN.md#timetables). Each is regenerated daily with a new feed_version even when the timetable is unchanged, so fetch-gtfs archives a version only when the merged files differ from the newest archived one. Uses calendar_dates.txt only (no calendar.txt), shape_dist_traveled in metres. How often the timetable really changes: OPEN-QUESTIONS #1; the merge: OPEN-QUESTIONS #6.",
+    "merge": [
+      "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=46",
+      "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=37",
+      "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=35",
+      "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=38",
+      "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=34",
+      "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=33",
+      "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=32"
+    ]
+  },
+  "realtime": {
+    "$comment": "No API key and no stated request limit. Unlike the static export, GTFS-realtime takes several operatorIds at once and returns every system's buses (checked 2026-11-02). Polled within a modest budget: OPEN-QUESTIONS #2.",
+    "urls": {
+      "positions": "https://bct.tmix.se/gtfs-realtime/vehicleupdates.pb?operatorIds=46,37,35,38,34,33,32",
+      "tripUpdates": "https://bct.tmix.se/gtfs-realtime/tripupdates.pb?operatorIds=46,37,35,38,34,33,32",
+      "alerts": "https://bct.tmix.se/gtfs-realtime/alerts.pb?operatorIds=46,37,35,38,34,33,32"
+    },
+    "$poll": "Positions and trip updates every 2 minutes while buses run (05:00-24:00), every 5 overnight; alerts every 5 minutes, 15 overnight: at most every 2 minutes for BC Transit systems other than Victoria and Kelowna (Braden MacDonald, 2026-11-01 and 11-02; config/operators/bc-transit/operator.json). About 1,510 requests a day; dailyCap is a safety net. OPEN-QUESTIONS #2.",
+    "poll": {
+      "dailyCap": 2000,
+      "weekday": [
+        { "from": "00:00", "positionsS": 300, "tripUpdatesS": 300, "alertsS": 900 },
+        { "from": "05:00", "positionsS": 120, "tripUpdatesS": 120, "alertsS": 300 }
+      ],
+      "weekend": [
+        { "from": "00:00", "positionsS": 300, "tripUpdatesS": 300, "alertsS": 900 },
+        { "from": "05:00", "positionsS": 120, "tripUpdatesS": 120, "alertsS": 300 }
+      ]
+    },
+    "$staleGraceS": "Clients fall back to schedule estimates once live data is this much older than the positions poll interval: one missed 2-minute poll (guess, OPEN-QUESTIONS #2).",
+    "staleGraceS": 120,
+    "$coverageSlackS": "Recorder coverage breaks when snapshots are further apart than the positions poll interval plus this (guess, as for the Fraser Valley; OPEN-QUESTIONS #2).",
+    "coverageSlackS": 60,
+    "$interpolateSlackS": "Interpolate between two fixes at most the positions poll interval plus this apart: across one missed 2-minute poll (guess, OPEN-QUESTIONS #2).",
+    "interpolateSlackS": 120,
+    "$extrapolateSlackS": "Predict a bus forward for at most the positions poll interval plus this (BC Transit's fixes are fresh when fetched, under 30 s old elsewhere; guess, OPEN-QUESTIONS #2).",
+    "extrapolateSlackS": 45
+  },
+  "display": {
+    "$tripId": "Trip ids are three internal ids, <journey>:<variant>:<block> (e.g. 2102626:14622067:14634975); the journey alone is unique on any date, as in BC Transit's other feeds.",
+    "tripId": "^([^:]+):",
+    "$feedVersion": "Versions look like \"202611020/20261101 21:00:00/20261102 03:00:00\": the export date and a sequence number, then the export window. A merged feed takes the newest of its exports'.",
+    "feedVersion": "^([^/ ]+)"
+  }
+}

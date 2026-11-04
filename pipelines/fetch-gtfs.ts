@@ -1,5 +1,6 @@
-// Download each feed's latest GTFS static zip (config/feeds/<feed>/feed.json → static.url), or a dated
-// snapshot where the provider keeps them, and archive it by feed_version under
+// Download each feed's latest GTFS static zip (config/feeds/<feed>/feed.json → static.url), a dated
+// snapshot where the provider keeps them, or the exports it merges (static.merge,
+// packages/data/src/gtfs-merge.ts), and archive it by feed_version under
 // var/raw/gtfs/<feed>/<version dir>/google_transit.zip. Idempotent: an already-archived version is
 // left alone, and so is a download with the same timetable as the newest archived version's: the
 // same files, or the same minus the dates that have passed (BC Transit re-exports every day, under
@@ -16,6 +17,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
+import { mergeGtfs } from "@transitopia/data/gtfs-merge.ts";
 import { readCsvAll, zipSignature } from "@transitopia/data/gtfs-zip.ts";
 import { archivedFeeds, type FeedZip } from "@transitopia/data/gtfs-day.ts";
 import {
@@ -41,13 +43,12 @@ export interface FetchedFeed {
   isNew: boolean;
 }
 
-export async function fetchGtfs(
+/** Download one GTFS zip to `dest`, refusing one without routes (BC Transit answers an unknown export with an empty feed). */
+async function download(
   feed: FeedInfo,
-  url = feed.static.url,
-): Promise<FetchedFeed> {
-  const raw = feedPaths(feed.id).raw;
-  await mkdir(raw, { recursive: true });
-  const tmp = join(raw, `download-${process.pid}.zip`);
+  url: string,
+  dest: string,
+): Promise<void> {
   log(`${feed.id}: downloading ${url}`);
   const res = await fetch(url, {
     headers: { "User-Agent": "Transitopia (+https://www.transitopia.org)" },
@@ -56,8 +57,43 @@ export async function fetchGtfs(
     throw new Error(`${feed.id}: GTFS download failed: HTTP ${res.status}`);
   await pipeline(
     Readable.fromWeb(res.body as WebReadableStream),
-    createWriteStream(tmp),
+    createWriteStream(dest),
   );
+  if (!(await readCsvAll(dest, "routes.txt")).length)
+    throw new Error(`${feed.id}: ${url} has no routes`);
+}
+
+/** The feed's latest GTFS at `dest`: downloaded, or each export it merges downloaded and merged. */
+async function latest(feed: FeedInfo, dest: string): Promise<void> {
+  if ("url" in feed.static) return download(feed, feed.static.url, dest);
+  const parts = feed.static.merge.map((_, i) =>
+    dest.replace(/\.zip$/, `-part${i}.zip`),
+  );
+  try {
+    for (const [i, url] of feed.static.merge.entries())
+      await download(feed, url, parts[i]!);
+    const report = await mergeGtfs(parts, dest, {
+      timezones: Object.fromEntries(
+        (feed.equivalentTimezones ?? []).map((z) => [z, feed.timezone]),
+      ),
+    });
+    for (const [file, n] of Object.entries(report.keptFirst))
+      log(
+        `${feed.id}: ${file}: ${n} records listed differently by two exports; kept the first's`,
+      );
+  } finally {
+    for (const p of parts) await rm(p, { force: true });
+  }
+}
+
+export async function fetchGtfs(
+  feed: FeedInfo,
+  url?: string,
+): Promise<FetchedFeed> {
+  const raw = feedPaths(feed.id).raw;
+  await mkdir(raw, { recursive: true });
+  const tmp = join(raw, `download-${process.pid}.zip`);
+  await (url ? download(feed, url, tmp) : latest(feed, tmp));
 
   try {
     const [info] = await readCsvAll(tmp, "feed_info.txt");
@@ -140,11 +176,13 @@ async function main() {
   const feeds = only ? [await readFeed(only)] : await readFeeds();
   if (history) {
     const [feed] = feeds;
-    if (!only || !feed?.static.historyUrl)
+    const historyUrl =
+      feed && "historyUrl" in feed.static ? feed.static.historyUrl : undefined;
+    if (!only || !feed || !historyUrl)
       throw new Error(
         "--history needs --feed <id>, for a feed with static.historyUrl",
       );
-    await fetchGtfs(feed, feed.static.historyUrl.replace("{date}", history));
+    await fetchGtfs(feed, historyUrl.replace("{date}", history));
     return;
   }
   // One feed failing (a provider down) doesn't stop the others; the build uses what's archived.

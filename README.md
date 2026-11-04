@@ -4,7 +4,7 @@
 
 Transitopia is a mapping project that aims to provide high-quality **public transit**, **cycling**, and **pedestrian** infrastructure maps. The goal is to promote best practices and celebrate high quality infrastructure, while calling attention to unsafe and low-quality infrastructure.
 
-**Current status** (Oct 2026): We are now showing a **real-time transit map of Metro Vancouver, the Fraser Valley, Kelowna, and Victoria**. Also available is the **cycling / micromobility map** for all of British Columbia.
+**Current status** (Nov 2026): We are now showing a **real-time transit map of Metro Vancouver and most of BC Transit's systems around the province**. Also available is the **cycling / micromobility map** for all of British Columbia.
 
 Online at: **[www.transitopia.org](https://www.transitopia.org/)**.
 

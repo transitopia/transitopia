@@ -1,9 +1,10 @@
 // Download the roads a feed's buses can use from OpenStreetMap via Overpass, for matching bus shapes
 // to streets in build-schedule (packages/transit-core/DESIGN.md#bus-corridors): every public road
 // class, busways, service roads open to buses, and service roads near bus stops (exchange loops are
-// often plain service roads). The area is the bbox of the feed's stops in its newest archived GTFS,
-// with a margin (ROADS_MARGIN_DEG) for shapes that run a little past the outermost stops. Saved with a date
-// so builds are reproducible: var/raw/osm-roads/<feed>/YYYY-MM-DD.json (and latest.json).
+// often plain service roads). The area is where the feed's buses go in its newest archived GTFS: the
+// cells of a grid (CELL_DEG) its shapes and stops are in, and their neighbours, so a feed of towns
+// far apart (BC Transit's Northern BC) doesn't fetch every road between them. Saved with a date so
+// builds are reproducible: var/raw/osm-roads/<feed>/YYYY-MM-DD.json (and latest.json).
 //
 //   tsx pipelines/fetch-osm-roads.ts [--feed <id>]   (default: every feed)
 //   tsx pipelines/fetch-osm-roads.ts --max-age-days 30   (only feeds without roads, or older; the
@@ -53,14 +54,21 @@ const KEEP_DATED = 3;
 /** Service roads this close to a bus stop are included (m): exchange loops and bays. */
 const SERVICE_NEAR_STOP_M = 150;
 
-function query(bbox: string): string {
+function query(boxes: readonly BBox[]): string {
+  const bboxes = boxes.map(([west, south, east, north]) =>
+    [south, west, north, east].join(","),
+  );
+  const each = (statement: (bbox: string) => string) =>
+    bboxes.map(statement).join("\n");
   return `[out:json][timeout:600];
 (
-  way["highway"~"^(${ROAD_CLASSES.join("|")})$"](${bbox});
-  way["highway"="service"]["bus"~"^(yes|designated)$"](${bbox});
-  way["highway"="service"]["psv"~"^(yes|designated)$"](${bbox});
+${each((b) => `  way["highway"~"^(${ROAD_CLASSES.join("|")})$"](${b});`)}
+${each((b) => `  way["highway"="service"]["bus"~"^(yes|designated)$"](${b});`)}
+${each((b) => `  way["highway"="service"]["psv"~"^(yes|designated)$"](${b});`)}
 )->.roads;
-node["highway"="bus_stop"](${bbox})->.stops;
+(
+${each((b) => `  node["highway"="bus_stop"](${b});`)}
+)->.stops;
 way["highway"="service"](around.stops:${SERVICE_NEAR_STOP_M})->.service;
 (.roads; .service;)->.ways;
 .ways out body qt;
@@ -68,9 +76,8 @@ node(w.ways);
 out skel qt;`;
 }
 
-async function fetchFeed(feed: string, bbox: BBox) {
-  const [west, south, east, north] = bbox;
-  const q = query([south, west, north, east].join(","));
+async function fetchFeed(feed: string, area: readonly BBox[]) {
+  const q = query(area);
   const dir = feedPaths(feed).roads;
   await mkdir(dir, { recursive: true });
   let lastErr: unknown;
@@ -130,31 +137,46 @@ async function fresh(feed: string): Promise<boolean> {
 type BBox = [number, number, number, number];
 
 /**
- * Roads are fetched this far (degrees, about 2 km) past the feed's outermost stops: a shape can run
- * on past its last stop to turn or lay over (guess).
+ * Roads are fetched for the cells of a grid this size (degrees: about 5.5 km north-south, 3.5 km
+ * east-west) that a shape or stop is in, and for the cells around those: a margin of at least a cell
+ * for shapes that pass between points or run on past a stop to turn (guess).
  */
-const ROADS_MARGIN_DEG = 0.02;
+const CELL_DEG = 0.05;
 
-/** The bbox of the stops in the feed's newest archived GTFS, if it has one. */
-async function stopsBbox(feed: string): Promise<BBox | undefined> {
+/** Where the buses of the feed's newest archived GTFS go, as boxes: runs of cells, row by row. */
+async function feedArea(feed: string): Promise<BBox[] | undefined> {
   const [newest] = await archivedFeeds(feed);
   if (!newest) return undefined;
-  let b: BBox | undefined;
-  for await (const s of readCsv(newest.path, "stops.txt")) {
-    const lon = Number(s.stop_lon);
-    const lat = Number(s.stop_lat);
-    if (!s.stop_lon || !s.stop_lat || !Number.isFinite(lon + lat)) continue;
-    b =
-      b ?
-        [
-          Math.min(b[0], lon),
-          Math.min(b[1], lat),
-          Math.max(b[2], lon),
-          Math.max(b[3], lat),
-        ]
-      : [lon, lat, lon, lat];
+  const rows = new Map<number, Set<number>>();
+  const add = (lonV: string | undefined, latV: string | undefined) => {
+    const lon = Number(lonV);
+    const lat = Number(latV);
+    if (!lonV || !latV || !Number.isFinite(lon + lat)) return;
+    const i = Math.floor(lon / CELL_DEG);
+    const j = Math.floor(lat / CELL_DEG);
+    for (let dj = -1; dj <= 1; dj++) {
+      let row = rows.get(j + dj);
+      if (!row) rows.set(j + dj, (row = new Set()));
+      for (let di = -1; di <= 1; di++) row.add(i + di);
+    }
+  };
+  for await (const s of readCsv(newest.path, "stops.txt"))
+    add(s.stop_lon, s.stop_lat);
+  for await (const p of readCsv(newest.path, "shapes.txt"))
+    add(p.shape_pt_lon, p.shape_pt_lat);
+  const boxes: BBox[] = [];
+  const at = (n: number) => Math.round(n * CELL_DEG * 1e6) / 1e6;
+  for (const [j, row] of [...rows].sort(([a], [b]) => a - b)) {
+    const cells = [...row].sort((a, b) => a - b);
+    let start = cells[0]!;
+    for (const [k, i] of cells.entries()) {
+      const next = cells[k + 1];
+      if (next === i + 1) continue;
+      boxes.push([at(start), at(j), at(i + 1), at(j + 1)]);
+      if (next !== undefined) start = next;
+    }
   }
-  return b;
+  return boxes.length ? boxes : undefined;
 }
 
 for (const feed of await readFeeds()) {
@@ -163,13 +185,8 @@ for (const feed of await readFeeds()) {
     log(`${feed.id}: roads fetched within ${maxAgeDays} days`);
     continue;
   }
-  const stops = await stopsBbox(feed.id);
-  if (!stops) continue;
-  const m = ROADS_MARGIN_DEG;
-  await fetchFeed(feed.id, [
-    stops[0] - m,
-    stops[1] - m,
-    stops[2] + m,
-    stops[3] + m,
-  ]);
+  const area = await feedArea(feed.id);
+  if (!area) continue;
+  log(`${feed.id}: ${area.length} boxes along its routes`);
+  await fetchFeed(feed.id, area);
 }

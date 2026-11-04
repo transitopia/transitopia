@@ -49,9 +49,12 @@ import {
   type StopSpurLimits,
 } from "@transitopia/transit-core/geo.ts";
 import {
+  addDays,
+  firstOffsetDifference,
   parseGtfsTime,
-  TIMEZONE,
   serviceDate,
+  serviceDayStart,
+  TIMEZONE,
 } from "@transitopia/transit-core/time.ts";
 import {
   matchShape,
@@ -120,9 +123,10 @@ const STOP_OFFSET_WARN_M = 150;
  * place of corridor-refs.json. 18: shared stretches compare a bus exchange's bays as one place (two
  * routes into different bays of it share the stretch to it), in the frequency table. 19: routes
  * say whether they're drawn in their own colour (`brand`, in place of `category`), and carry their
- * stops and weekday speeds.
+ * stops and weekday speeds. 20: weekday figures for the regular week in the feed's first 5 weeks
+ * (schedule/frequency.ts → regularWeek), not its longest timetable period.
  */
-const PLAN_FORMAT = 19;
+const PLAN_FORMAT = 20;
 
 const roadsFile = (feed: string) => join(feedPaths(feed).roads, "latest.json");
 
@@ -200,18 +204,36 @@ export async function buildPlan(
   if (!info) throw new Error("feed_info.txt missing");
   // Service days and times are computed in TIMEZONE (packages/transit-core/src/time.ts), so every
   // feed has to be in it until the engine works out service dates per feed (docs/DESIGN.md#feeds-operators-and-rail-networks).
+  // A zone feed.json says is equivalent passes while it has the same offsets on every date of the timetable.
+  const zones = [feed.timezone, ...(feed.equivalentTimezones ?? [])];
   for (const a of await readCsvAll(zipPath, "agency.txt"))
-    if (a.agency_timezone !== feed.timezone || feed.timezone !== TIMEZONE)
+    if (!zones.includes(a.agency_timezone!) || feed.timezone !== TIMEZONE)
       throw new Error(
         `${feed.id}: agency ${a.agency_name} is in ${a.agency_timezone} and the feed says ${feed.timezone}; only ${TIMEZONE} is supported`,
       );
+  for (const z of feed.equivalentTimezones ?? []) {
+    const at = firstOffsetDifference(
+      z,
+      feed.timezone,
+      serviceDayStart(serviceDate(info.feed_start_date!), feed.timezone),
+      serviceDayStart(
+        addDays(serviceDate(info.feed_end_date!), 2),
+        feed.timezone,
+      ),
+    );
+    if (at !== undefined)
+      throw new Error(
+        `${feed.id}: ${z} and ${feed.timezone} have different UTC offsets at ${new Date(at).toISOString()}, so ${z} can no longer be taken as ${feed.timezone} (feed.json → equivalentTimezones)`,
+      );
+  }
 
-  // Routes: every one in the feed, as routes.json overrides or excludes them (matched by name).
+  // Routes: every one in the feed, as routes.json overrides or excludes them (matched by name), keyed as feed.json says.
   const selected = selectRoutes(
     await readCsvAll(zipPath, "routes.txt"),
     routeCfg,
     feed.id,
     gtfsDataset,
+    feed.routeKey,
   );
   for (const { row, reason } of selected.skipped)
     log(
