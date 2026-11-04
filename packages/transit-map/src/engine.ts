@@ -8,6 +8,7 @@ import type { Theme } from "@transitopia/map-style/basemap.ts";
 import { CardTrail } from "@transitopia/shared/card-trail.ts";
 import { realtimeOf } from "@transitopia/shared/datasets.ts";
 import {
+  addDays,
   serviceDayStart,
   type ServiceDate,
 } from "@transitopia/transit-core/time.ts";
@@ -304,6 +305,12 @@ const IDLE_RECOMPUTE_MS = 1000;
  * them out again took a quarter of the main thread while it was shown for a frame (2026-10-31).
  */
 const FREQUENCY_INTERVAL_MS = 250;
+/**
+ * How far ahead of today a date can be picked: many agencies publish only a few weeks of timetable,
+ * or change it before the dates come, and looking further ahead isn't what the map is for (Braden
+ * MacDonald, 2026-11-03).
+ */
+const DATE_AHEAD_DAYS = 14;
 /**
  * While playing, vehicles are recomputed (and the map repainted) for a new time only once the
  * fastest could have moved this far on screen (px): zoomed out, a train moves about a pixel a
@@ -699,6 +706,8 @@ export class TransitEngine {
 
   /** Jump to another service date at the same time of day. */
   seekDate(date: ServiceDate): void {
+    const last = this.dateRange()?.[1];
+    if (last !== undefined && date > last) date = last;
     const t = this.clock.now();
     const sec = (t - this.dayStart(this.displayDate(t))) / 1000;
     this.clock.seek(this.dayStart(date) + sec * 1000);
@@ -1927,9 +1936,20 @@ export class TransitEngine {
   private notices: string[] = [];
   private datasets: string[] = [];
 
+  /** First and last service dates that can be shown: with a timetable, and at most DATE_AHEAD_DAYS from today. */
+  private dateRange(): [ServiceDate, ServiceDate] | undefined {
+    const feeds = this.feeds.flatMap((f) => playedManifest(f.manifests).feeds);
+    if (!feeds.length) return undefined;
+    const ahead = addDays(this.displayDate(Date.now()), DATE_AHEAD_DAYS);
+    const end = feeds
+      .map((x) => x.end)
+      .sort()
+      .at(-1)!;
+    return [feeds.map((x) => x.start).sort()[0]!, end < ahead ? end : ahead];
+  }
+
   private buildSnapshot(t: number): TransitSnapshot {
     const serviceDate = this.displayDate(t);
-    const feeds = this.feeds.flatMap((f) => playedManifest(f.manifests).feeds);
     const selected =
       this.selected === undefined ?
         undefined
@@ -1960,16 +1980,7 @@ export class TransitEngine {
       rate: this.clock.rate,
       live: this.clock.isLive(),
       sliderRange: this.sliderRange(t),
-      dateRange:
-        feeds.length ?
-          [
-            feeds.map((x) => x.start).sort()[0]!,
-            feeds
-              .map((x) => x.end)
-              .sort()
-              .at(-1)!,
-          ]
-        : undefined,
+      dateRange: this.dateRange(),
       coverage: this.coverage,
       rt: this.rtState,
       notices: this.notices,
