@@ -70,6 +70,11 @@ export interface TimelineOptions {
   changes?: ChangesView;
   /** A detour applies to a bus within this of a stop its alert lists (m); alerts listing none apply route-wide. */
   detourNearM?: number;
+  /**
+   * A standing bus within this of a stop is at it (m; prediction's stopZoneM). Without it, a standing
+   * bus is at its next stop.
+   */
+  stopZoneM?: number;
 }
 
 interface Obs {
@@ -976,6 +981,8 @@ export class RtTimeline {
     const kin =
       trip?.kin ?? kinematicsFor(this.kin, route?.mode ?? "bus", v.routeKey);
     let stop = v.stopId ? this.pp?.stopById.get(v.stopId) : undefined;
+    /** Whether a standing bus is at a stop (else held in traffic, and its stop is the next one). */
+    let atStop = true;
     const wantDelay = this.withDelay?.(`rt:${id}`) ?? true;
     let delay = v.delay;
     const notes: string[] = [];
@@ -1027,7 +1034,18 @@ export class RtTimeline {
       // already passed (86 % of recorded fixes, 2026-10-01 to 10-12), and its delay is from trip
       // updates up to a poll interval old. Without a predictor there's no paced schedule to measure
       // against, so TransLink's delay stays.
-      const actual = trip.pattern.dist.findIndex((d) => d > onRoute.along);
+      const { dist } = trip.pattern;
+      let actual = dist.findIndex((d) => d > onRoute.along);
+      // A standing bus is at the stop it's standing at, which its GPS often puts a few metres past
+      // the stop's point on the shape: the stop behind, when that's the nearer one in the stop zone.
+      const zone = this.opts.stopZoneM;
+      if (speed === 0 && zone !== undefined) {
+        const prev = actual >= 0 ? actual - 1 : dist.length - 1;
+        const behind = prev >= 0 ? onRoute.along - dist[prev]! : Infinity;
+        const ahead = actual >= 0 ? dist[actual]! - onRoute.along : Infinity;
+        if (behind <= zone && behind < ahead) actual = prev;
+        atStop = Math.min(behind, ahead) <= zone;
+      }
       stop =
         actual >= 0 ?
           this.pp.plan.stops[trip.pattern.stops[actual]!]
@@ -1091,7 +1109,7 @@ export class RtTimeline {
       status:
         speed !== undefined && speed > 0 ? "moving"
         : next ? "layover"
-        : speed === 0 ? "dwell"
+        : speed === 0 && atStop ? "dwell"
         : "moving",
       provenance,
       source: this.opts.source,
