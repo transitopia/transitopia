@@ -6,7 +6,7 @@
 
 import { readCsvAll } from "./gtfs-zip.ts";
 import { archivedFeeds } from "./gtfs-day.ts";
-import { readFeed, readFeedRoutes } from "./paths.ts";
+import { log, readFeed, readFeedRoutes } from "./paths.ts";
 import { selectRoutes } from "@transitopia/transit-core/plan/routes.ts";
 import {
   gtfsRouteIds,
@@ -30,9 +30,12 @@ export async function routesByGtfsId(
         info.dataset,
         info.routeKey,
       ).routes;
-    } catch {
-      // An old version today's routes.json no longer fits (two of its routes get one key): its ids
-      // are left out rather than the feed's.
+    } catch (e) {
+      // An old version today's routes.json no longer fits (two of its routes get one key), or a zip
+      // that can't be read: its ids are left out rather than the feed's.
+      log(
+        `${feed} ${z.version}: route ids left out (${e instanceof Error ? e.message : String(e)})`,
+      );
       continue;
     }
     for (const r of routes) for (const id of gtfsRouteIds(r)) out.set(id, r);

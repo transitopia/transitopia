@@ -12,9 +12,10 @@
 // --force rebuilds them anyway.
 
 import { createHash } from "node:crypto";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import {
   ROOT,
+  exists,
   feedVersionFile,
   log,
   readJson,
@@ -35,11 +36,13 @@ import { mapPlatforms } from "@transitopia/transit-core/infra/platforms.ts";
 
 /**
  * The code behind movement files and what's built on them: this script, and dispatching a date
- * (build:dispatch and the live dispatcher), whose patches only fit the base they were made against
- * and are reused while its builtAt and their inputs are the same.
+ * (build:dispatch, the live dispatcher and the contexts both load), whose patches only fit the base
+ * they were made against and are reused while its builtAt and their inputs are the same.
  */
 const CODE = [
   import.meta.filename,
+  join(ROOT, "pipelines/build-dispatch.ts"),
+  join(ROOT, "packages/data/src/dispatch-context.ts"),
   join(ROOT, "packages/transit-core/src/dispatch/date.ts"),
 ];
 
@@ -76,6 +79,21 @@ function railContent(plan: ServicePlan): unknown {
   };
 }
 
+/** Whether every movement file `index` lists is on disk (and its inferred runs, when dispatched). */
+async function filesExist(
+  index: MovementsIndex,
+  outDir: string,
+  dispatched: boolean,
+): Promise<boolean> {
+  for (const path of Object.values(index.files)) {
+    const name = basename(path);
+    if (!(await exists(join(outDir, name)))) return false;
+    if (dispatched && !(await exists(join(outDir, "inferred", name))))
+      return false;
+  }
+  return true;
+}
+
 /** One rail network (railNetworks: a network and a feed with track-level rail on it). */
 async function buildNetwork(net: RailNetwork, code: string) {
   const { graph, overrides, tracks } = await loadGraph(net.network);
@@ -107,7 +125,11 @@ async function buildNetwork(net: RailNetwork, code: string) {
     const was = await readJson<MovementsIndex>(
       join(outDir, "index.json"),
     ).catch(() => undefined);
-    if (!process.argv.includes("--force") && was?.inputs === inputs) {
+    if (
+      !process.argv.includes("--force")
+      && was?.inputs === inputs
+      && (await filesExist(was, outDir, dispatchCfg !== undefined))
+    ) {
       log(`${plan.feedVersion}: movements up to date (use --force to rebuild)`);
       continue;
     }

@@ -5,7 +5,7 @@
 // aren't followed.
 
 import { createHash } from "node:crypto";
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,8 +18,11 @@ const SPECIFIER = /(?:\bfrom|\bimport)\s*\(?\s*["']([^"']+)["']/g;
 function resolveSpecifier(spec: string, from: string): string | undefined {
   if (spec.startsWith(".")) return resolve(dirname(from), spec);
   if (!spec.startsWith("@transitopia/")) return undefined;
-  // Workspaces are linked into node_modules: their real path is in the repo.
-  const path = realpathSync(fileURLToPath(import.meta.resolve(spec)));
+  // Workspaces are linked into node_modules: their real path is in the repo. A specifier in a
+  // comment or string may name no file (resolve doesn't check).
+  const link = fileURLToPath(import.meta.resolve(spec));
+  if (!existsSync(link)) return undefined;
+  const path = realpathSync(link);
   return path.includes("/node_modules/") ? undefined : path;
 }
 
