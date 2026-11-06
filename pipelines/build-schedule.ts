@@ -1,5 +1,7 @@
 // Build the compact service plan for each archived version of each feed, and each feed's manifest.
 // Input:  var/raw/gtfs/<feed>/<version dir>/google_transit.zip, config/feeds/<feed>/{feed,routes}.json,
+//         config/features/osm-stops.json and the feed's OSM bus stops when fetched (bus-stops.json beside
+//         its roads): a bay's letter where the GTFS has none (docs/DESIGN.md#osm-bus-stops),
 //         its operator's config/operators/<id>/operator.json (the name plans record),
 //         and where the feed has ferry berths and lanes: config/feeds/<feed>/ferries/<route>.json,
 //         and the feed's OSM roads when fetched (var/raw/osm-roads/<feed>/latest.json, fetch-osm-roads):
@@ -32,8 +34,15 @@ import {
   readFerries,
   readFeeds,
   readOperator,
+  readOsmBusStops,
+  readOsmStopsConfig,
   writeJson,
 } from "@transitopia/data/paths.ts";
+import {
+  matchOsmStops,
+  type OsmBusStop,
+  type OsmStopSettings,
+} from "@transitopia/transit-core/features/osm-stops.ts";
 import { readPlan, readPlanCore, writePlan } from "@transitopia/data/plans.ts";
 import { shortId } from "@transitopia/transit-core/plan/display.ts";
 import {
@@ -99,7 +108,11 @@ import {
   STOP_NO_DROPOFF,
   STOP_NO_PICKUP,
 } from "@transitopia/transit-core/plan/types.ts";
-import { busHubs } from "@transitopia/transit-core/plan/exchanges.ts";
+import {
+  bayNumber,
+  busHubs,
+  isBay,
+} from "@transitopia/transit-core/plan/exchanges.ts";
 import {
   groupStations,
   stationName,
@@ -129,9 +142,10 @@ const STOP_OFFSET_WARN_M = 150;
  * routes into different bays of it share the stretch to it), in the frequency table. 19: routes
  * say whether they're drawn in their own colour (`brand`, in place of `category`), and carry their
  * stops and weekday speeds. 20: weekday figures for the regular week in the feed's first 5 weeks
- * (schedule/frequency.ts → regularWeek), not its longest timetable period.
+ * (schedule/frequency.ts → regularWeek), not its longest timetable period. 21: bays' letters from
+ * OSM where the GTFS has none.
  */
-const PLAN_FORMAT = 20;
+const PLAN_FORMAT = 21;
 
 const roadsFile = (feed: string) => join(feedPaths(feed).roads, "latest.json");
 
@@ -185,6 +199,9 @@ async function inputsHash(feed: string): Promise<string> {
       `${JSON.stringify(stripComments(JSON.parse(await readFile(f, "utf8"))))}\n`,
     );
   h.update(`roads ${(await roadsStamp(feed)) ?? "none"}\n`);
+  h.update(`osm-stops ${JSON.stringify(await readOsmStopsConfig())}\n`);
+  const osmStops = feedPaths(feed).osmStops;
+  if (await exists(osmStops)) h.update(await readFile(osmStops));
   return h.digest("hex").slice(0, 16);
 }
 
@@ -202,6 +219,7 @@ export async function buildPlan(
   zipPath: string,
   feed: FeedInfo,
   loadRoads?: () => Promise<RoadGraph | undefined>,
+  osm?: { stops: OsmBusStop[]; settings: OsmStopSettings },
 ): Promise<ServicePlan> {
   const routeCfg = await readFeedRoutes(feed.id);
   const gtfsDataset = feed.dataset;
@@ -334,6 +352,27 @@ export async function buildPlan(
     if (platform) s.platform = platform;
     stopIndex.set(id, stops.length);
     stops.push(s);
+  }
+  // A bay's letter from its OSM node where neither the GTFS nor the name has one (Okanagan-Shuswap's
+  // "Downtown Exchange" bays are OSM's "Downtown Exchange A" …). The node itself is the registry's
+  // osm-node ref, not the plan's: every stop's would add 7% to TransLink's plan.
+  if (osm) {
+    const matches = matchOsmStops(stops, osm.stops, osm.settings);
+    let bays = 0;
+    for (const [i, m] of matches.entries()) {
+      const s = stops[i]!;
+      if (!m) continue;
+      // Not where the name says what the bay is ("… @ Unloading Only"): OSM's 22nd Street
+      // Station unloading bay is "9".
+      const named = !!s.name.split("@")[1]?.trim();
+      if (m.bay && isBay(s.name) && bayNumber(s) === undefined && !named) {
+        s.platform = m.bay;
+        bays++;
+      }
+    }
+    log(
+      `Matched ${matches.filter(Boolean).length} of ${stops.length} stops to OSM bus stops; ${bays} bays numbered from them`,
+    );
   }
 
   // Shapes used.
@@ -727,6 +766,11 @@ async function buildFeed(feed: FeedInfo, force: boolean): Promise<void> {
   const inputs = await inputsHash(feed.id);
   let built = 0;
   let roads: Promise<RoadGraph | undefined> | undefined;
+  const osmStops = await readOsmBusStops(feed.id);
+  const osm = osmStops && {
+    stops: osmStops,
+    settings: await readOsmStopsConfig(),
+  };
   for (const z of zips) {
     if (shadowed.has(z)) {
       log(
@@ -752,6 +796,7 @@ async function buildFeed(feed: FeedInfo, force: boolean): Promise<void> {
       zip,
       feed,
       () => (roads ??= loadRoads(feed.id)),
+      osm,
     );
     plan.inputs = inputs;
     const size = await writePlan(out, plan);

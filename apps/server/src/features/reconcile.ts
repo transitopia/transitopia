@@ -8,7 +8,15 @@ import { existsSync } from "node:fs";
 import { sql } from "kysely";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { feedPaths, VAR_DIR } from "@transitopia/data/paths.ts";
+import {
+  feedPaths,
+  readOsmBusStops,
+  VAR_DIR,
+} from "@transitopia/data/paths.ts";
+import type {
+  OsmBusStop,
+  OsmStopSettings,
+} from "@transitopia/transit-core/features/osm-stops.ts";
 import { readFeedRecords } from "@transitopia/data/gtfs-features.ts";
 import type { Db } from "@transitopia/db/connect.ts";
 import type { FeedInfo } from "@transitopia/transit-core/config.ts";
@@ -21,6 +29,7 @@ import { run } from "@transitopia/data/exec.ts";
 import {
   applyDecisions,
   idMinter,
+  linkOsmStops,
   loadSnapshot,
   lockRegistry,
   mergeSharedExchanges,
@@ -38,6 +47,8 @@ export async function reconcileFeeds(opts: {
   db: Db;
   feeds: Pick<FeedInfo, "id" | "operator">[];
   settings: ReconcileSettings;
+  /** Matching stops to OSM's bus stops, for their osm-node refs. */
+  osmStops: OsmStopSettings;
   /** Where archived zips are (ARCHIVE_REMOTE), for versions no longer on disk. */
   archiveRemote?: string | undefined;
   /**
@@ -142,6 +153,22 @@ export async function reconcileFeeds(opts: {
     log(
       `features: merged ${m.from} into ${m.into}, the same stop in another feed (${m.match === "code" ? "same stop code" : "nearby"}, ${m.m} m)`,
     );
+  // Each stop's OSM node (docs/DESIGN.md#osm-bus-stops), from the bus stops fetched with the feed's
+  // roads; after the merges, so twins in two feeds have become one feature that can have it.
+  const osm = new Map<string, OsmBusStop[]>();
+  for (const f of opts.feeds) {
+    const stops = await readOsmBusStops(f.id);
+    if (stops) osm.set(f.id, stops);
+  }
+  if (osm.size) {
+    const r = await db.transaction().execute(async (tx) => {
+      await lockRegistry(tx);
+      return linkOsmStops(tx, osm, opts.osmStops);
+    });
+    log(
+      `features: OSM bus stops of ${osm.size} feeds: ${r.added} osm-node refs added, ${r.removed} removed, ${r.ambiguous} nodes matching several stops left out`,
+    );
+  }
   return out;
 }
 

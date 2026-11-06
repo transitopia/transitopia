@@ -27,7 +27,7 @@ import type { ExportPointer } from "@transitopia/shared/features.ts";
 import { loadRegistry, registryFromDb } from "../features/export.ts";
 import { createDb, databaseUrl, type Db } from "@transitopia/db/connect.ts";
 import { migrate } from "@transitopia/db/migrate.ts";
-import { reconcileConfig } from "../config.ts";
+import { osmStopsConfig, reconcileConfig } from "../config.ts";
 import { loadRoutes, recordFeeds } from "../jobs/data-build.ts";
 import { reconcileFeeds } from "../features/reconcile.ts";
 import {
@@ -122,6 +122,7 @@ async function main(db: Db): Promise<void> {
         db,
         feeds,
         settings: reconcileConfig,
+        osmStops: osmStopsConfig,
         archiveRemote,
         skipMissing: args.includes("--skip-missing"),
         log: console.log,

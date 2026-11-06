@@ -812,6 +812,17 @@ export class TransitEngine {
   }
 
   /**
+   * Select what a key names, as `?select=` does: at once where a loaded feed has it, else it's
+   * `elsewhere` until one does. For the host to name the feature the resolver found for a ref no
+   * plan has (`osm-node:<id>` → its stop's ID).
+   */
+  selectKey(key: string): void {
+    this.pendingSelect = key;
+    this.elsewhere = undefined;
+    this.resolveSelection();
+  }
+
+  /**
    * Select a vehicle (by `vehicleId`, or none). A new selection follows it only when asked (easing
    * over from the one followed before); closing, or choosing another vehicle without asking, stops
    * following. Forgets the cards `open()` came through.

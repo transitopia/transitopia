@@ -89,7 +89,11 @@ export interface PlanStop {
   code?: string;
   /** Parent station stop_id, for platforms. */
   parent?: string;
-  /** GTFS platform_code, else the platform parsed from the name: "2" for "… @ Platform 2". */
+  /**
+   * GTFS platform_code, else the platform parsed from the name: "2" for "… @ Platform 2", else for
+   * a bay whose name has no number, its OpenStreetMap node's ("A" for "Downtown Exchange A",
+   * docs/DESIGN.md#osm-bus-stops).
+   */
   platform?: string;
 }
 

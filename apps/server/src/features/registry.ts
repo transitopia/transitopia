@@ -28,6 +28,11 @@ import {
   type SharedStop,
   type SharedStopMerge,
 } from "@transitopia/transit-core/features/reconcile.ts";
+import {
+  matchOsmStops,
+  type OsmBusStop,
+  type OsmStopSettings,
+} from "@transitopia/transit-core/features/osm-stops.ts";
 
 /** A connection or a transaction (a Transaction is a Kysely). */
 type Tx = Db;
@@ -305,6 +310,110 @@ export async function mergeSharedExchanges(
  * one, different ones, it's flagged `grouping-differs` with the other's as the proposal. In a
  * transaction holding the lock.
  */
+/** What `linkOsmStops` changed. */
+export interface OsmLinkResult {
+  added: number;
+  removed: number;
+  /** OSM nodes whose code matched stops that are still separate features: left without a ref. */
+  ambiguous: number;
+}
+
+/**
+ * Each stop's OpenStreetMap node as an `osm-node:` ref (docs/DESIGN.md#osm-bus-stops): the stops of
+ * each feed's newest reconciled version matched to that feed's OSM bus stops (`matchOsmStops`). A
+ * node is one feature's: one that several features match (twins not yet merged) gets none. Refs
+ * reconciliation wrote that no longer match are removed; an admin's are kept, and their node isn't
+ * given to another feature. Stops in a feed without OSM stops (not fetched) keep the refs they have.
+ */
+export async function linkOsmStops(
+  tx: Tx,
+  osm: ReadonlyMap<string, readonly OsmBusStop[]>,
+  settings: OsmStopSettings,
+): Promise<OsmLinkResult> {
+  const matched = new Map<string, Set<string>>();
+  const considered = new Set<string>();
+  for (const [feed, nodes] of osm) {
+    const stops = await sql<{
+      id: string;
+      code: string;
+      lon: number;
+      lat: number;
+    }>`
+      select f.id, r.ref as code, ST_X(f.geom::geometry) as lon, ST_Y(f.geom::geometry) as lat
+      from feature_refs r join features f on f.id = r.feature_id
+      where r.scheme = 'stop' and r.namespace = ${feed}
+        and f.kind = 'stop' and f.status = 'active' and f.geom is not null
+        and r.versions @> (select max(seq) from gtfs_feeds
+                           where feed_id = ${feed} and reconciled_at is not null)
+      order by f.id`.execute(tx);
+    for (const [i, m] of matchOsmStops(stops.rows, nodes, settings).entries()) {
+      const id = stops.rows[i]!.id;
+      considered.add(id);
+      if (!m) continue;
+      let ids = matched.get(String(m.node));
+      if (!ids) matched.set(String(m.node), (ids = new Set()));
+      ids.add(id);
+    }
+  }
+  // A stop also in a feed without OSM stops here may have its node from that feed: keep its refs.
+  if (considered.size)
+    for (const r of await tx
+      .selectFrom("feature_refs")
+      .select("feature_id")
+      .distinct()
+      .where("scheme", "=", "stop")
+      .where("namespace", "not in", [...osm.keys()])
+      .execute())
+      considered.delete(r.feature_id);
+  const want = new Map<string, string>();
+  let ambiguous = 0;
+  for (const [node, ids] of matched)
+    if (ids.size === 1) want.set(node, [...ids][0]!);
+    else ambiguous++;
+  const have = await tx
+    .selectFrom("feature_refs as r")
+    .innerJoin("features as f", "f.id", "r.feature_id")
+    .select(["r.id", "r.feature_id", "r.ref", "r.origin", "f.kind"])
+    .where("r.scheme", "=", "osm-node")
+    .where("r.namespace", "=", "")
+    .execute();
+  const drop = have.filter(
+    (r) =>
+      r.origin === "reconcile"
+      && r.kind === "stop"
+      && (want.has(r.ref) ?
+        want.get(r.ref) !== r.feature_id
+      : considered.has(r.feature_id)),
+  );
+  const dropped = new Set(drop.map((r) => r.id));
+  const held = new Set(
+    have.filter((r) => !dropped.has(r.id)).map((r) => r.ref),
+  );
+  for (let i = 0; i < drop.length; i += CHUNK)
+    await tx
+      .deleteFrom("feature_refs")
+      .where(
+        "id",
+        "in",
+        drop.slice(i, i + CHUNK).map((r) => r.id),
+      )
+      .execute();
+  const add = [...want].filter(([node]) => !held.has(node));
+  for (let i = 0; i < add.length; i += CHUNK)
+    await tx
+      .insertInto("feature_refs")
+      .values(
+        add.slice(i, i + CHUNK).map(([node, id]) => ({
+          feature_id: id,
+          scheme: "osm-node",
+          ref: node,
+          origin: "reconcile" as const,
+        })),
+      )
+      .execute();
+  return { added: add.length, removed: drop.length, ambiguous };
+}
+
 export async function mergeSharedStops(
   tx: Db,
   settings: Pick<ReconcileSettings, "sharedStopCodeM" | "sharedStopM">,

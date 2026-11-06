@@ -192,6 +192,12 @@ const reconcile = z.strictObject({
   sharedStopM: pos,
 });
 
+// --- config/features/osm-stops.json ---
+
+const osmStops = z.strictObject({
+  matchM: pos,
+});
+
 // --- config/cycling/cycling.json ---
 
 const cycling = z.strictObject({
@@ -694,6 +700,7 @@ export const CONFIG_SCHEMAS = {
   kinematics,
   operations,
   reconcile,
+  "osm-stops": osmStops,
   recording,
   routes,
   rt,

@@ -126,6 +126,8 @@ export interface PlaceSnapshot extends Place {
    * once. Empty for a station or exchange.
    */
   codes: { code: string; agency: string | undefined }[];
+  /** A stop's ID in the registry (docs/DESIGN.md#feature-ids), from its feed's places file. */
+  feature?: string | undefined;
   /** A stop's platform or bay (`PlanStop.platform`), where the plan has one. */
   platform?: string | undefined;
   /**
@@ -391,6 +393,8 @@ export function placeSnapshot(
     code: "code" in where ? where.code : undefined,
     platform: "platform" in where ? where.platform : undefined,
     codes,
+    feature:
+      p.kind === "stop" ? stopFeatures(pp.plan)?.idOf.get(p.id) : undefined,
     bays: [
       ...(hub?.bays ?? [])
         .filter((id) => once(pp, id))

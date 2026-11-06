@@ -15,7 +15,7 @@ import type {
   FeedRecords,
   FeedStop,
 } from "@transitopia/transit-core/features/reconcile.ts";
-import { reconcileConfig } from "../src/config.ts";
+import { osmStopsConfig, reconcileConfig } from "../src/config.ts";
 import { reconcileVersion } from "../src/features/reconcile.ts";
 import {
   childrenOf,
@@ -24,6 +24,7 @@ import {
   mergeFeatures,
   mergeSharedExchanges,
   mergeSharedStops,
+  linkOsmStops,
   newExchange,
   resolveKey,
   retire,
@@ -608,6 +609,95 @@ describe.skipIf(!TEST_DATABASE_URL)(
         .where("feature_id", "=", "st-aaaaaaaa")
         .execute();
       expect(flags.map((f) => f.reason)).toEqual(["shared-stop"]);
+    });
+
+    it("records each stop's OSM node (docs/DESIGN.md#osm-bus-stops)", async () => {
+      const node = (id: number, lat: number, ref: string) => ({
+        id,
+        lon: -123,
+        lat: 49 + lat * M,
+        tags: { ref },
+      });
+      const link = (osm: Map<string, ReturnType<typeof node>[]>) =>
+        t.db.transaction().execute(async (tx) => {
+          await lockRegistry(tx);
+          return linkOsmStops(tx, osm, osmStopsConfig);
+        });
+      const carvolth = (await findFeature(t.db, "stop:translink:61709"))!;
+      const osmRefs = () =>
+        t.db
+          .selectFrom("feature_refs")
+          .select(["feature_id", "ref", "origin"])
+          .where("scheme", "=", "osm-node")
+          .orderBy("ref")
+          .execute();
+      // The node an admin gave Aldergrove's bay 2 stays theirs.
+      const bay2 = (await findFeature(
+        t.db,
+        "stop:bc-transit-fraser-valley:130002",
+      ))!;
+      await t.db
+        .insertInto("feature_refs")
+        .values({
+          feature_id: bay2.id,
+          scheme: "osm-node",
+          ref: "40",
+          origin: "admin",
+        })
+        .execute();
+      // TransLink's street stop beside it, with a stop code.
+      const tlSeq = seq.get("T1")!;
+      await t.db
+        .insertInto("feature_refs")
+        .values({
+          feature_id: "st-aaaaaaaa",
+          scheme: "stop",
+          namespace: "translink",
+          ref: "99999",
+          versions: `[${tlSeq},${tlSeq + 1})`,
+          origin: "reconcile",
+        })
+        .execute();
+      // One node with both codes, between two stops that are still apart: ambiguous.
+      const both = node(50, 3020, "99999;130002");
+      expect(
+        await link(
+          new Map([
+            ["translink", [node(10, 2, "61709"), both]],
+            [
+              "bc-transit-fraser-valley",
+              // Carvolth bay 1 in this feed too; Aldergrove bay 1, now st-aaaaaaaa, matches the
+              // admin's node.
+              [node(30, 8, "120054"), node(40, 3002, "130001"), both],
+            ],
+          ]),
+        ),
+      ).toEqual({ added: 2, removed: 0, ambiguous: 1 });
+      expect(await osmRefs()).toEqual([
+        { feature_id: carvolth.id, ref: "10", origin: "reconcile" },
+        { feature_id: carvolth.id, ref: "30", origin: "reconcile" },
+        { feature_id: bay2.id, ref: "40", origin: "admin" },
+      ]);
+      expect(await findFeature(t.db, "osm-node:10")).toMatchObject({
+        id: carvolth.id,
+      });
+      // TransLink's node moved out of range. Without the Fraser Valley's OSM stops, Carvolth bay 1
+      // (a stop of both) keeps its refs; with them, the moved node's ref goes.
+      const moved = node(10, 500, "61709");
+      expect(await link(new Map([["translink", [moved]]]))).toEqual({
+        added: 0,
+        removed: 0,
+        ambiguous: 0,
+      });
+      expect(
+        await link(
+          new Map([
+            ["translink", [moved]],
+            ["bc-transit-fraser-valley", [node(30, 8, "120054")]],
+          ]),
+        ),
+      ).toEqual({ added: 0, removed: 1, ambiguous: 0 });
+      expect((await osmRefs()).map((r) => r.ref)).toEqual(["30", "40"]);
     });
   },
 );

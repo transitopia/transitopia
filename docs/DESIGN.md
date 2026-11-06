@@ -273,6 +273,13 @@ Never two stops of one feed. A new stop that matches takes the other's feature (
 
 Each feed's places file names the stop by the same ID (with that feed's code as its suffix), so the site shows one card for it: both feeds' departures and routes, and every number on its sign ("Stop #120054 (BC Transit), #61709 (TransLink)"; [packages/transit-map → Feeds](../packages/transit-map/README.md#feeds)).
 
+### OSM bus stops
+
+A stop's OpenStreetMap node is the `highway=bus_stop` node whose `ref` (the number on the sign; several separated by `;`) is the stop's code, the nearest within `matchM` (150 m, `config/features/osm-stops.json`): `matchOsmStops` in `packages/transit-core/src/features/osm-stops.ts`. Matched by code only, since a nearby node without it may be the stop across the street; a node two stops of a feed match goes to the nearer. `fetch-osm-roads` saves each feed's nodes beside its roads (`bus-stops.json`, from the same Overpass query). In November 2026 about 70% of the feeds' stops matched (none of the Kootenays', whose nodes have no refs).
+
+- **Bay letters**: where neither the GTFS nor the name gives a bay its number, `build-schedule` takes the node's `local_ref`, else the letter or number its name ends with ("Downtown Exchange A", "… Exchange Bay F"), as the plan stop's `platform`. Okanagan-Shuswap's Downtown Exchange in Vernon is seven stops all named "Downtown Exchange"; OSM letters them A–G. Not where the name already says what the bay is ("22nd Street Station @ Unloading Only").
+- **`osm-node:` refs**: after reconciling, `linkOsmStops` (`apps/server/src/features/registry.ts`) gives each stop of the feeds' newest versions its node as an unbounded ref. A node stops of two features match (twins not yet merged) gets none; a ref that no longer matches is removed, unless an admin added it or the stop is also in a feed whose OSM stops weren't fetched. The resolver then answers `osm-node:<id>` with the stop, so `?select=osm-node:<id>` opens its card; the stop card asks the resolver for it and links to the node ("View or edit on OpenStreetMap"). Not in the plan: every stop's node would add 7% to TransLink's.
+
 ### Published features
 
 The site resolves IDs from published files, without the server (principle: static first):

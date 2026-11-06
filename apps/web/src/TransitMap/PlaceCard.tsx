@@ -15,6 +15,7 @@ import {
 } from "@transitopia/transit-core/plan/types.ts";
 import { bayLabel } from "@transitopia/transit-core/plan/exchanges.ts";
 import { creditsFor, legendsFor } from "@transitopia/shared/datasets.ts";
+import { transitApi } from "../config.ts";
 
 import {
   CardChips,
@@ -436,11 +437,44 @@ export function stopNumbers(codes: PlaceSnapshot["codes"]): string | undefined {
     .join(", ")}`;
 }
 
+/**
+ * A stop's OpenStreetMap node, from its osm-node ref in the registry (docs/DESIGN.md#osm-bus-stops),
+ * asked of the feature resolver when its card opens: undefined until it answers, and without one.
+ */
+function useOsmNode(feature: string | undefined): string | undefined {
+  const [found, setFound] = React.useState<{
+    feature: string;
+    node?: string;
+  }>();
+  React.useEffect(() => {
+    if (!feature || !transitApi) return;
+    let cancelled = false;
+    fetch(`${transitApi}features/${encodeURIComponent(feature)}`)
+      .then((r) =>
+        r.ok ? (r.json() as Promise<{ refs?: string[] }>) : undefined,
+      )
+      .then((f) => {
+        const ref = f?.refs?.find((r) => r.startsWith(OSM_NODE));
+        if (!cancelled)
+          setFound(
+            ref ? { feature, node: ref.slice(OSM_NODE.length) } : { feature },
+          );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [feature]);
+  return found && found.feature === feature ? found.node : undefined;
+}
+const OSM_NODE = "osm-node:";
+
 const PlaceCardBody: React.FC<{
   engine: TransitEngine;
   snap: TransitSnapshot;
   place: PlaceSnapshot;
 }> = ({ engine, snap, place }) => {
+  const osmNode = useOsmNode(place.feature);
   const state = timeState(snap);
   const colors = routeColorsFor(engine);
   const station = place.kind === "station";
@@ -630,6 +664,15 @@ const PlaceCardBody: React.FC<{
               {l}
             </p>
           ))}
+          {osmNode ?
+            <a
+              href={`https://www.openstreetmap.org/node/${osmNode}`}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1 inline-block font-bold text-(--card-link)">
+              View or edit on OpenStreetMap
+            </a>
+          : null}
         </>
       }>
       {place.partOf ?
