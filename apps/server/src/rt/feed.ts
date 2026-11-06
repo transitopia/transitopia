@@ -12,11 +12,6 @@ import type {
   FeedRealtime,
 } from "@transitopia/transit-core/config.ts";
 import {
-  gtfsRouteIds,
-  type FeedManifest,
-  type ServicePlan,
-} from "@transitopia/transit-core/plan/types.ts";
-import {
   compactSnapshot,
   decodeSnapshot,
   encodeSnapshot,
@@ -45,7 +40,8 @@ import {
   localDate,
   isServiceDate,
 } from "@transitopia/transit-core/time.ts";
-import { PUBLIC_DIR, feedPaths } from "@transitopia/data/paths.ts";
+import { feedPaths } from "@transitopia/data/paths.ts";
+import { routesByGtfsId } from "@transitopia/data/route-ids.ts";
 import type { ProviderStatus } from "@transitopia/shared/admin-api.ts";
 import { Recorder } from "./recorder.ts";
 import { ServiceChanges } from "./changes.ts";
@@ -323,30 +319,19 @@ export class FeedPoller {
   }
 
   /**
-   * GTFS route_id → our route key, from every built version of the feed (route IDs can differ between
-   * versions). Reloaded whenever the feed's manifest changes, so routes added to the feed or its routes.json (and
+   * GTFS route_id → our route key, from every archived version of the feed (route IDs can differ between
+   * versions: routesByGtfsId). Reloaded whenever the feed's manifest changes, so routes added to the feed or its routes.json (and
    * rebuilt with `npm run data`) are picked up without restarting.
    */
   private async loadRoutes(): Promise<void> {
     try {
-      const manifestPath = feedPaths(this.feed.id).manifest;
-      const mtime = (await stat(manifestPath)).mtimeMs;
+      const mtime = (await stat(feedPaths(this.feed.id).manifest)).mtimeMs;
       if (mtime === this.routesLoadedFrom) return;
-      const manifest = JSON.parse(
-        await readFile(manifestPath, "utf8"),
-      ) as FeedManifest;
       const map = new Map<string, string>();
       const rail = new Map<string, string>();
-      for (const f of manifest.feeds) {
-        const plan = JSON.parse(
-          await readFile(join(PUBLIC_DIR, f.path), "utf8"),
-        ) as Pick<ServicePlan, "routes">;
-        for (const r of plan.routes) {
-          for (const id of gtfsRouteIds(r)) {
-            if (r.kind === "bus") map.set(id, r.key);
-            if (r.kind === "skytrain") rail.set(id, r.key);
-          }
-        }
+      for (const [id, r] of await routesByGtfsId(this.feed.id)) {
+        if (r.kind === "bus") map.set(id, r.key);
+        if (r.kind === "skytrain") rail.set(id, r.key);
       }
       if (this.routesLoadedFrom !== undefined)
         this.log(

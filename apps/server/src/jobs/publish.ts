@@ -152,12 +152,13 @@ export async function publishData(
 ): Promise<void> {
   const pointers =
     include ? POINTERS.filter((p) => !BUILD_POINTERS.includes(p)) : POINTERS;
+  const t0 = Date.now();
   const staged = await stageCompressed(PUBLIC_DATA_DIR, PUBLISH_DATA_DIR, {
     include: include && [...include, ...pointers],
     concurrency,
   });
   log?.(
-    `compressed ${staged.compressed} files for upload (${staged.unchanged} unchanged, ${staged.removed} removed)`,
+    `compressed ${staged.compressed} files for upload (${staged.unchanged} unchanged, ${staged.removed} removed; ${((Date.now() - t0) / 1000).toFixed(1)} s)`,
   );
   const dest = `${remote}/data`;
   const filters = (names: string[], flag: string) =>

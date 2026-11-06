@@ -27,5 +27,7 @@
   "$afterServiceDayH": "A service date's observed stop times and statistics are computed once this many hours after its start (the service day runs past midnight: the last trips end around 02:00-03:00).",
   "afterServiceDayH": 29,
   "$dataBuildAt": "Local time of the daily transit data build on the server (GTFS static from gtfs-static.translink.ca, which isn't part of the Open API budget).",
-  "dataBuildAt": "03:30"
+  "dataBuildAt": "03:30",
+  "$initialBuildProfileMaxAgeH": "A data build outside the daily one (the '-initial' build when a feed has nothing published) keeps bus travel-time profiles younger than this many hours instead of learning them again (pipelines/data.ts → TRANSITOPIA_PROFILE_MAX_AGE_H): the daily build made them from the same history. A little over a day, so the day's build's profiles count until the next one's (guess).",
+  "initialBuildProfileMaxAgeH": 26
 }

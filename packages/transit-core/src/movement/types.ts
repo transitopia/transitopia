@@ -119,6 +119,8 @@ export interface MovementsFile {
   /** Sorted active service_ids this file is for. */
   services: string[];
   builtAt: string;
+  /** What build:movements made it from (its inputs hash): it's kept, builtAt included, while they're the same. */
+  inputs?: string | undefined;
   segIds: string[];
   paths: PackedPath[];
   patterns: Record<string, PatternPaths>;
@@ -161,6 +163,8 @@ export interface DispatchSummary {
 export interface MovementsIndex {
   schema: 1;
   feedVersion: string;
+  /** The inputs hash its files were built from (MovementsFile.inputs). */
+  inputs?: string | undefined;
   /** Service-set key ("1+1101") → file path relative to public/. */
   files: Record<string, string>;
 }

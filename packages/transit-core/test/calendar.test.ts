@@ -8,6 +8,7 @@ import {
 import {
   feedForDate,
   manifestRange,
+  shadowedVersions,
   type FeedManifest,
 } from "../src/plan/types.ts";
 
@@ -116,6 +117,38 @@ describe("feedForDate", () => {
       "26DEC",
     );
     expect(feedForDate(manifest, serviceDate("20270501"))).toBeUndefined();
+  });
+  it("finds versions a newer one covers on every date", () => {
+    const v = (version: string, start: string, end: string) => ({
+      version,
+      start: serviceDate(start),
+      end: serviceDate(end),
+    });
+    const weekly = [
+      v("26SEP_20261023", "20260907", "20270103"),
+      v("26SEP_20261030", "20260907", "20270103"),
+      v("26DEC", "20261214", "20270405"),
+    ];
+    expect(shadowedVersions(weekly).map((f) => f.version)).toEqual([
+      "26SEP_20261023",
+    ]);
+    // Two newer versions covering it between them (same start: the higher version is newer).
+    expect(
+      shadowedVersions([
+        v("a", "20260901", "20260930"),
+        v("b", "20260901", "20260915"),
+        v("c", "20260910", "20260930"),
+      ]).map((f) => f.version),
+    ).toEqual(["a"]);
+    // A gap between them: "a" is picked from 21 to 24 September.
+    expect(
+      shadowedVersions([
+        v("a", "20260901", "20260930"),
+        v("b", "20260901", "20260920"),
+        v("c", "20260925", "20261031"),
+      ]).map((f) => f.version),
+    ).toEqual([]);
+    expect(shadowedVersions(manifest.feeds)).toEqual([]);
   });
   it("reports the union of feed ranges", () => {
     expect(manifestRange(manifest)).toEqual({

@@ -10,16 +10,14 @@ import {
   trackedOnly,
   type RtSnapshot,
 } from "@transitopia/transit-core/rt/types.ts";
-import {
-  feedForDate,
-  gtfsRouteIds,
-} from "@transitopia/transit-core/plan/types.ts";
+import { feedForDate } from "@transitopia/transit-core/plan/types.ts";
 import {
   preparePlan,
   type PreparedPlan,
 } from "@transitopia/transit-core/schedule/engine.ts";
 import { localDate } from "@transitopia/transit-core/time.ts";
-import { readPlan, readPlanCore } from "@transitopia/data/plans.ts";
+import { readPlan } from "@transitopia/data/plans.ts";
+import { routesByGtfsId } from "@transitopia/data/route-ids.ts";
 import {
   PUBLIC_DIR,
   feedPaths,
@@ -75,15 +73,13 @@ export async function* eachRecordedHour(
 }
 
 /**
- * GTFS route_id → route key for the buses every built version of the feed draws, so hours recorded
- * before a route was drawn count it too (trackedOnly).
+ * GTFS route_id → route key for the buses drawn, from every archived version of the feed, so hours
+ * recorded before a route was drawn count it too (trackedOnly).
  */
 async function busRouteKeys(feed: string): Promise<Map<string, string>> {
   const out = new Map<string, string>();
-  for (const f of (await readManifest(feed)).feeds)
-    for (const r of (await readPlanCore(join(PUBLIC_DIR, f.path))).routes)
-      if (r.kind === "bus")
-        for (const id of gtfsRouteIds(r)) out.set(id, r.key);
+  for (const [id, r] of await routesByGtfsId(feed))
+    if (r.kind === "bus") out.set(id, r.key);
   return out;
 }
 

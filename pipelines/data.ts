@@ -11,6 +11,9 @@
 // production first when there's none (optional: without them the site names features by ref).
 // The server's data build writes its own after reconciling (TRANSITOPIA_SKIP_PLACES).
 //
+// TRANSITOPIA_PROFILE_MAX_AGE_H=<hours> keeps bus travel-time profiles younger than that
+// (build-rt-profile --max-age-h): the server sets it for builds outside the nightly one.
+//
 // Name targets to build only some of it: transit, cycling, and basemap (pipelines/tiles.ts --region bc,
 // skipped when the extract exists). With none, transit and cycling (what the server's data build runs).
 //
@@ -60,7 +63,15 @@ const transit: Step[] = [
   ["Infer and dispatch train runs", ["pipelines/build-movements.ts"]],
   ["Publish observations", ["pipelines/build-observations.ts"]],
   ["Dispatch dates with observations", ["pipelines/build-dispatch.ts"]],
-  ["Learn bus travel-time profiles", ["pipelines/build-rt-profile.ts"]],
+  [
+    "Learn bus travel-time profiles",
+    [
+      "pipelines/build-rt-profile.ts",
+      ...(process.env.TRANSITOPIA_PROFILE_MAX_AGE_H ?
+        ["--max-age-h", process.env.TRANSITOPIA_PROFILE_MAX_AGE_H]
+      : []),
+    ],
+  ],
   ["Validate movements", ["pipelines/validate-plan.ts"]],
 ];
 

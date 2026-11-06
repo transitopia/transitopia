@@ -8,12 +8,13 @@
 // and its bike routes loaded into the database (apps/server/README.md#cycling-routes).
 
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { createReadStream, existsSync } from "node:fs";
+import { readdir, stat } from "node:fs/promises";
 import {
   CORRECTIONS_EXPORT_DIR,
   ROOT,
   cyclingPaths,
+  feedPaths,
   readCyclingConfig,
   readJson,
 } from "@transitopia/data/paths.ts";
@@ -37,6 +38,7 @@ import { reconcileFeeds } from "../features/reconcile.ts";
 import { registryFromDb } from "../features/export.ts";
 import { writeExport, writeFeedPlaces } from "@transitopia/data/features.ts";
 import { localDate } from "@transitopia/transit-core/time.ts";
+import { feedDataPath } from "@transitopia/transit-core/plan/types.ts";
 import { OVERVIEW_TILES_NAME } from "@transitopia/shared/transit-overview.ts";
 import { OVERVIEW_TILES_FILE } from "@transitopia/data/plan-tiles.ts";
 
@@ -57,13 +59,27 @@ export async function buildData(opts: {
   repo: CorrectionsRepo;
   env: ServerEnv;
   log: (msg: string) => void;
+  /**
+   * Keep bus travel-time profiles younger than this many hours instead of learning them again
+   * (pipelines/data.ts → TRANSITOPIA_PROFILE_MAX_AGE_H): for builds outside the nightly one.
+   */
+  profileMaxAgeH?: number | undefined;
 }): Promise<DataBuildResult> {
   const { db, repo, env, log } = opts;
+  // Each step's time, since the log has none of its own.
+  let t0 = Date.now();
+  const timed = (msg: string) => {
+    const now = Date.now();
+    log(`${msg} (${((now - t0) / 1000).toFixed(1)} s)`);
+    t0 = now;
+  };
   // The server writes the places files itself, after reconciling.
   const childEnv: NodeJS.ProcessEnv = { TRANSITOPIA_SKIP_PLACES: "1" };
+  if (opts.profileMaxAgeH !== undefined)
+    childEnv.TRANSITOPIA_PROFILE_MAX_AGE_H = String(opts.profileMaxAgeH);
   // The pipelines read them from a directory laid out like config/ (correctionPaths).
   const n = await repo.exportFiles(CORRECTIONS_EXPORT_DIR);
-  log(
+  timed(
     `exported ${n.observationSets} observation sets and ${n.disruptions} disruptions for the build`,
   );
   childEnv.TRANSITOPIA_CORRECTIONS_DIR = CORRECTIONS_EXPORT_DIR;
@@ -72,9 +88,11 @@ export async function buildData(opts: {
     env: childEnv,
     log: (l) => log(`data: ${l}`),
   });
+  timed("data pipelines done");
   const newFeeds: string[] = [];
   for (const f of opts.feeds)
     newFeeds.push(...(await recordFeeds(db, f.id, env.archiveRemote, log)));
+  timed(`recorded ${newFeeds.length} new GTFS feeds`);
   // Feature IDs for the new versions (and any not yet reconciled), apps/server/README.md#feature-reconciliation.
   const reconciled: string[] = [];
   let reconcileError: string | undefined;
@@ -91,26 +109,34 @@ export async function buildData(opts: {
     reconcileError = (e as Error).message;
     log(`feature reconciliation failed: ${reconcileError}`);
   }
+  timed("feature reconciliation done");
   // Bike routes and their IDs, before the export so it has them.
   try {
     await loadRoutes(db, log);
   } catch (e) {
     log(`loading bike routes failed: ${(e as Error).message}`);
   }
+  timed("bike routes done");
   // Places files and the public export, from the registry (docs/DESIGN.md#published-features).
   try {
     await writeFeatureData(db, opts.feeds, log);
   } catch (e) {
     log(`writing places files failed: ${(e as Error).message}`);
   }
+  timed("places files and export done");
   let published = false;
   if (env.dataPublishRemote) {
     await publishData(env.dataPublishRemote, { log });
     published = true;
-    log(`published transit data to ${env.dataPublishRemote}`);
+    timed(`published transit data to ${env.dataPublishRemote}`);
     await pruneCycling(env.dataPublishRemote).catch((e: unknown) =>
       log(`removing old cycling files failed: ${(e as Error).message}`),
     );
+    await pruneFeedVersions(env.dataPublishRemote, opts.feeds).catch(
+      (e: unknown) =>
+        log(`removing old feed versions failed: ${(e as Error).message}`),
+    );
+    timed("removed old cycling files and feed versions");
   }
   // The overview replaces the day before's: the tile worker serves its tiles for a day.
   let overviewPublished = false;
@@ -122,7 +148,7 @@ export async function buildData(opts: {
       "--s3-no-check-bucket",
     ]);
     overviewPublished = true;
-    log(`published ${OVERVIEW_TILES_NAME} to ${env.mapsPublishRemote}`);
+    timed(`published ${OVERVIEW_TILES_NAME} to ${env.mapsPublishRemote}`);
   }
   return {
     newFeeds,
@@ -170,6 +196,36 @@ async function pruneCycling(remote: string): Promise<void> {
     "--min-age",
     `${CYCLING_KEEP_DAYS}d`,
   ]);
+}
+
+/**
+ * Remove each feed's published directories that the build no longer has: versions a newer one
+ * shadows (pipelines/build-schedule.ts), now that the manifests just published don't name them.
+ * A tab holding an older manifest finds its plan gone and starts again with the new one
+ * (packages/transit-map/src/plans.ts → checkManifest). Files at the top of a feed's directory are
+ * left alone, and so is a feed with nothing built.
+ */
+async function pruneFeedVersions(
+  remote: string,
+  feeds: Pick<FeedInfo, "id">[],
+): Promise<void> {
+  for (const f of feeds) {
+    const out = feedPaths(f.id).out;
+    if (!existsSync(feedPaths(f.id).manifest)) continue;
+    const kept = (await readdir(out, { withFileTypes: true }))
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name);
+    await run("rclone", [
+      "delete",
+      `${remote}/${feedDataPath(f.id)}`,
+      ...kept.flatMap((d) => ["--filter", `- /${d}/**`]),
+      "--filter",
+      "+ /*/**",
+      "--filter",
+      "- **",
+      "--rmdirs",
+    ]);
+  }
 }
 
 /** Write every feed's places files (those that changed) and the day's public export from the registry. */

@@ -1,12 +1,15 @@
 // Learn bus travel-time profiles from each feed's recorded GTFS-RT positions (packages/transit-core/DESIGN.md#buses):
 //   var/rt-history/<feed>/**  →  var/public/data/feeds/<feed>/<version>/rt-profile.<band>.bin (one per time-of-day band, per version with data)
 //
-//   npm run build:rt-profile [-- --feed <id>]
+//   npm run build:rt-profile [-- --feed <id>] [--max-age-h <hours>]
+//
+// With --max-age-h, a feed whose current version (feedForDate today) has a profile younger than that
+// keeps it: for data builds outside the nightly one, which would learn it again from the same history.
 // Prediction settings are the feed's (readFeedConfig: config/defaults/rt.json → prediction, its operator's and its own).
 // The live view uses the profile to predict buses between fixes; without one it falls back to the
 // timetable. Rebuild as history accumulates. Check the effect with `npx tsx pipelines/eval-rt.ts`.
 
-import { rm } from "node:fs/promises";
+import { rm, stat } from "node:fs/promises";
 import {
   ProfileBuilder,
   type PredictionConfig,
@@ -22,14 +25,34 @@ import {
   log,
   readFeed,
   readFeeds,
+  readManifest,
   writeAtomic,
   readFeedConfig,
 } from "@transitopia/data/paths.ts";
 import type { FeedInfo } from "@transitopia/transit-core/config.ts";
 import { eachRecordedHour, planLoader } from "./lib/rt-history.ts";
 import { addDays, localDate } from "@transitopia/transit-core/time.ts";
+import { feedForDate } from "@transitopia/transit-core/plan/types.ts";
 
-async function buildFeed(feed: FeedInfo): Promise<void> {
+/** How old (h) the current version's profile is, or undefined without one. */
+async function currentProfileAgeH(feed: string): Promise<number | undefined> {
+  const current = feedForDate(await readManifest(feed), localDate(Date.now()));
+  if (!current) return undefined;
+  const file = feedVersionFile(feed, current.version, bandFileName(0));
+  const st = await stat(file).catch(() => undefined);
+  return st && (Date.now() - st.mtimeMs) / 3_600_000;
+}
+
+async function buildFeed(feed: FeedInfo, maxAgeH?: number): Promise<void> {
+  if (maxAgeH !== undefined) {
+    const age = await currentProfileAgeH(feed.id);
+    if (age !== undefined && age < maxAgeH) {
+      log(
+        `${feed.id}: profile ${age.toFixed(1)} h old (under ${maxAgeH} h); kept`,
+      );
+      return;
+    }
+  }
   const rtConfig = (await readFeedConfig(feed.id)).rt;
   const cfg: PredictionConfig = rtConfig.prediction;
   const since = addDays(
@@ -83,8 +106,12 @@ async function buildFeed(feed: FeedInfo): Promise<void> {
 async function main() {
   const i = process.argv.indexOf("--feed");
   const only = i >= 0 ? process.argv[i + 1] : undefined;
+  const a = process.argv.indexOf("--max-age-h");
+  const maxAgeH = a >= 0 ? Number(process.argv[a + 1]) : undefined;
+  if (maxAgeH !== undefined && !(maxAgeH > 0))
+    throw new Error("--max-age-h takes a number of hours");
   for (const feed of only ? [await readFeed(only)] : await readFeeds())
-    if (feed.realtime) await buildFeed(feed);
+    if (feed.realtime) await buildFeed(feed, maxAgeH);
 }
 
 main().catch((e) => {

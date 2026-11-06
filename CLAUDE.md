@@ -41,7 +41,7 @@ npm workspaces ([docs/DESIGN.md → Repository layout](docs/DESIGN.md#repository
 - **Durable data references features by ID**, never by GTFS ids alone (they change between feed versions), and strings that name features take the two forms in `packages/shared/src/features.ts`: an ID (`sn-k3v9qd7m`, with an optional name suffix) or a ref (`gtfs-stop:translink:12034`). See `docs/DESIGN.md#feature-ids`.
 - Select GTFS routes **by name** (`route_long_name` "Expo Line", `route_short_name` "099"/"R1"/"WCE"/"95", etc.), never by `route_id`. IDs change between feeds.
 - **Per feed, per rail network.** What comes from a feed (plans, recordings, raw data, AIS, statistics, observations, SeaBus berths) is keyed by the feed id; what belongs to physical track (infrastructure, operations, dispatch, disruptions, scenarios) by the rail network (`config/networks/<id>/`, `data/networks/<id>/`, `network_id`). Never key data by an area. Settings resolve in layers: `config/defaults/`, the feed's operator, the feed and its routes (vehicles) (`readFeedConfig`). Track-level rail runs on rail networks (`railNetworks()`: each network with each feed on it; rail pipelines take `--network <id>`; the server's dispatcher and corrections take the one `railNetwork()`). Service dates are `ServiceDate` (branded "YYYYMMDD"; `serviceDate()` where they enter). Agency quirks go behind adapters; keep GTFS handling generic.
-- Timetables: support the current feed and every future feed. Pick the feed for a date via the manifest (newest feed covering that date).
+- Timetables: support the current feed and every future feed. Pick the feed for a date via the manifest (newest feed covering that date). Versions a newer one covers on every date are shadowed: not built and not in the manifest (`shadowedVersions`).
 
 ## Track model notes
 
@@ -125,8 +125,8 @@ npm run build:infra      # publish tracks + per-feed platform mapping to var/pub
 npm run build:plan-tiles # each plan's lines as vector tiles (tippecanoe ≥ 2.17: brew install tippecanoe), named in plan.json
 npm run build:overview-tiles # every feed's routes zoomed out → var/public/tiles/transit-overview-v<N>.pmtiles
 npm run validate:infra   # graph / platform / routing / turnback / checklist checks
-npm run build:movements  # infer + dispatch train runs → var/public/data/feeds/translink/<v>/movements/*.json [--verbose] [--no-dispatch]
-npm run validate:plan    # teleports (fail), conflicts, dispatch delays and broken deadlocks (report), fleet peaks
+npm run build:movements  # infer + dispatch train runs → var/public/data/feeds/translink/<v>/movements/*.json [--verbose] [--no-dispatch] [--force] (kept while their inputs hash matches)
+npm run validate:plan    # teleports (fail), conflicts, dispatch delays and broken deadlocks (report), fleet peaks; files that passed unchanged are skipped [--all]
 npm run build:observations # validate + publish config/feeds/translink/observations/*.json (format in its README)
 npm run build:dispatch   # re-dispatch dates with observations or disruptions → var/public/data/networks/skytrain/dispatch/<date>.json + index.json
 npm run build:rt-profile # learn bus travel-time profiles from var/rt-history/<feed> → var/public/data/feeds/<feed>/<v>/rt-profile.json [-- --feed <id>]
