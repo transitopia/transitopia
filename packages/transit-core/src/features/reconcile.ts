@@ -204,6 +204,58 @@ function bestShared(
   return best;
 }
 
+/** An exchange as `sharedExchangeMerges` sees it. */
+export interface SharedExchange {
+  id: string;
+  name: string;
+  lon: number;
+  lat: number;
+  /** The feeds of the stops in it (their gtfs-stop refs'). */
+  feeds: string[];
+  /** How many active stops are in it. */
+  stops: number;
+}
+
+/** A merge of one exchange into another of the same name, from other feeds' stops. */
+export interface SharedExchangeMerge {
+  from: string;
+  into: string;
+  m: number;
+}
+
+/**
+ * Exchanges already in the registry that are one exchange several feeds' buses serve
+ * (docs/DESIGN.md#shared-stops): of the same name within `exchangeMatchM`, with stops from different
+ * feeds (two exchanges of one feed are the operator's to tell apart, and an admin's). Each group
+ * merges into the exchange with the most stops, then the first by ID.
+ */
+export function sharedExchangeMerges(
+  exchanges: readonly SharedExchange[],
+  settings: Pick<ReconcileSettings, "exchangeMatchM">,
+): SharedExchangeMerge[] {
+  const order = [...exchanges]
+    .filter((e) => e.feeds.length)
+    .sort((a, b) => b.stops - a.stops || a.id.localeCompare(b.id));
+  const out: SharedExchangeMerge[] = [];
+  const taken = new Set<string>();
+  for (const into of order) {
+    if (taken.has(into.id)) continue;
+    const feeds = new Set(into.feeds);
+    for (const from of order) {
+      if (from === into || taken.has(from.id)) continue;
+      if (normalizeName(from.name) !== normalizeName(into.name)) continue;
+      const m = distM(at(from), at(into));
+      if (m >= settings.exchangeMatchM) continue;
+      if (from.feeds.some((f) => feeds.has(f))) continue;
+      for (const f of from.feeds) feeds.add(f);
+      taken.add(from.id);
+      out.push({ from: from.id, into: into.id, m: Math.round(m) });
+    }
+    taken.add(into.id);
+  }
+  return out;
+}
+
 /** A merge of one stop into another that's the same physical stop. */
 export interface SharedStopMerge {
   from: string;
@@ -737,8 +789,25 @@ export function reconcile(input: ReconcileInput): Decisions {
     let parent = g.station;
     if (!parent) {
       const pos = centroid(g.bays.map((id) => stopById.get(id)!));
-      parent = newFeature("exchange", g.name, pos, null).id;
-      mintedExchanges.push({ id: parent, pos, name: g.name });
+      // Another feed's exchange of the same name here is this one (docs/DESIGN.md#shared-stops):
+      // Okanagan-Shuswap's buses at Kelowna's Westbank Exchange.
+      parent = nearest(
+        snapshot.features.filter(
+          (f) =>
+            f.kind === "exchange"
+            && f.status === "active"
+            && f.feedId !== undefined
+            && f.feedId !== feed
+            && located(f)
+            && normalizeName(f.name) === normalizeName(g.name)
+            && distM(at(f), pos) < settings.exchangeMatchM,
+        ),
+        pos,
+      )?.id;
+      if (!parent) {
+        parent = newFeature("exchange", g.name, pos, null).id;
+        mintedExchanges.push({ id: parent, pos, name: g.name });
+      }
     }
     for (const id of g.bays) bayParent.set(id, parent);
   }
@@ -837,10 +906,13 @@ export function reconcile(input: ReconcileInput): Decisions {
     refresh(f.id, name, centroid(inIt));
   }
   for (const n of mintedExchanges) {
+    // This feed's own exchanges (`present` only has this feed's stops: another feed's exchange
+    // always looks empty), or ones with no stops at all.
     const lost = snapshot.features.filter(
       (f) =>
         f.kind === "exchange"
         && f.status === "active"
+        && (f.feedId === undefined || f.feedId === feed)
         && located(f)
         && !present.get(f.id)?.length
         && distM(at(f), n.pos) < settings.exchangeReplacedM,

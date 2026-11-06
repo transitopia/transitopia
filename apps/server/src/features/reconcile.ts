@@ -23,6 +23,7 @@ import {
   idMinter,
   loadSnapshot,
   lockRegistry,
+  mergeSharedExchanges,
   mergeSharedStops,
   type ApplyResult,
 } from "./registry.ts";
@@ -122,13 +123,21 @@ export async function reconcileFeeds(opts: {
   // statistics, or the statistics views join as if the tables were empty.
   if (out.some((r) => r.minted || r.refsAdded))
     await sql`analyze features, feature_refs`.execute(db);
-  // Stops several feeds serve that were minted apart (docs/DESIGN.md#shared-stops): new versions
-  // match them as they come, but a stop minted before its twin in another feed was, or before the
-  // rule existed, is only found here.
-  const merges = await db.transaction().execute(async (tx) => {
+  // Stops and exchanges several feeds serve that were minted apart (docs/DESIGN.md#shared-stops):
+  // new versions match them as they come, but one minted before its twin in another feed was, or
+  // before the rule existed, is only found here.
+  // Exchanges first, so stops at an exchange minted twice end up in one, not flagged apart.
+  const { exchanges, merges } = await db.transaction().execute(async (tx) => {
     await lockRegistry(tx);
-    return mergeSharedStops(tx, settings);
+    return {
+      exchanges: await mergeSharedExchanges(tx, settings),
+      merges: await mergeSharedStops(tx, settings),
+    };
   });
+  for (const m of exchanges)
+    log(
+      `features: merged exchange ${m.from} into ${m.into}, the same exchange in another feed (${m.m} m)`,
+    );
   for (const m of merges)
     log(
       `features: merged ${m.from} into ${m.into}, the same stop in another feed (${m.match === "code" ? "same stop code" : "nearby"}, ${m.m} m)`,

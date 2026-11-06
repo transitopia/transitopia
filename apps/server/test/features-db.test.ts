@@ -22,6 +22,7 @@ import {
   findFeature,
   lockRegistry,
   mergeFeatures,
+  mergeSharedExchanges,
   mergeSharedStops,
   newExchange,
   resolveKey,
@@ -445,7 +446,12 @@ describe.skipIf(!TEST_DATABASE_URL)(
 
     it("merges stops minted apart into the older, and later versions keep them together", async () => {
       // Matching off, as before the rule: two features.
-      const off = { ...reconcileConfig, sharedStopM: 0, sharedStopCodeM: 0 };
+      const off = {
+        ...reconcileConfig,
+        sharedStopM: 0,
+        sharedStopCodeM: 0,
+        exchangeMatchM: 0,
+      };
       await reconcileVersion(t.db, {
         feed: FEED,
         version: "T1",
@@ -468,11 +474,32 @@ describe.skipIf(!TEST_DATABASE_URL)(
         "stop:bc-transit-fraser-valley:120054",
       ))!;
       expect(a.id).not.toBe(b.id);
+      // Each feed minted a Carvolth Exchange of its own.
+      expect(a.parentId).not.toBe(b.parentId);
 
-      const merges = await t.db.transaction().execute(async (tx) => {
-        await lockRegistry(tx);
-        return mergeSharedStops(tx, reconcileConfig);
-      });
+      const { exchanges, merges } = await t.db
+        .transaction()
+        .execute(async (tx) => {
+          await lockRegistry(tx);
+          return {
+            exchanges: await mergeSharedExchanges(tx, reconcileConfig),
+            merges: await mergeSharedStops(tx, reconcileConfig),
+          };
+        });
+      // One bay each: the survivor is the first by ID.
+      const [kept, gone] = [a.parentId!, b.parentId!].sort();
+      expect(exchanges).toEqual([
+        { from: gone, into: kept, m: expect.any(Number) },
+      ]);
+      expect((await findFeature(t.db, gone!))!.id).toBe(kept);
+      // In one exchange now: no grouping flag.
+      expect(
+        await t.db
+          .selectFrom("feature_flags")
+          .select("reason")
+          .where("reason", "=", "grouping-differs")
+          .execute(),
+      ).toEqual([]);
       expect(merges).toEqual([{ from: b.id, into: a.id, match: "near", m: 7 }]);
       expect(
         (await findFeature(t.db, "stop:bc-transit-fraser-valley:120054"))!.id,
@@ -510,6 +537,77 @@ describe.skipIf(!TEST_DATABASE_URL)(
         return mergeSharedStops(tx, reconcileConfig);
       });
       expect(again).toEqual([]);
+    });
+
+    it("puts a merged stop in the exchange its twin was in, when it was in none", async () => {
+      const off = {
+        ...reconcileConfig,
+        sharedStopM: 0,
+        sharedStopCodeM: 0,
+        exchangeMatchM: 0,
+      };
+      // F2's version: TransLink's street stop is older than the Fraser Valley's bay beside it.
+      await reconcileVersion(t.db, {
+        feed: FV,
+        version: "F2",
+        seq: seq.get("F2")!,
+        prevSeq: seq.get("F1"),
+        records: {
+          stops: [
+            fvBay(8),
+            stop("130001", "Aldergrove Exch Bay 1", 3000, { code: "130001" }),
+            stop("130002", "Aldergrove Exch Bay 2", 3030, { code: "130002" }),
+          ],
+          routes: [],
+        },
+        settings: off,
+      });
+      const bay = (await findFeature(
+        t.db,
+        "stop:bc-transit-fraser-valley:130001",
+      ))!;
+      expect(bay.parentId).not.toBeNull();
+      // A TransLink street stop 5 m away, minted (by hand here) in an earlier version.
+      const tlSeq = seq.get("T1")!;
+      await t.db
+        .insertInto("features")
+        .values({
+          id: "st-aaaaaaaa",
+          kind: "stop",
+          operator_id: "translink",
+          feed_id: "translink",
+          parent_id: null,
+          name: "Westbound Aldergrove @ 1st",
+          geom: sql`ST_SetSRID(ST_MakePoint(-123, ${49 + 3005 * M}), 4326)::geography`,
+        })
+        .execute();
+      await t.db
+        .insertInto("feature_refs")
+        .values({
+          feature_id: "st-aaaaaaaa",
+          scheme: "gtfs-stop",
+          namespace: "translink",
+          ref: "99999",
+          versions: `[${tlSeq},${tlSeq + 1})`,
+          origin: "reconcile",
+        })
+        .execute();
+      const merges = await t.db.transaction().execute(async (tx) => {
+        await lockRegistry(tx);
+        return mergeSharedStops(tx, reconcileConfig);
+      });
+      expect(merges).toEqual([
+        { from: bay.id, into: "st-aaaaaaaa", match: "near", m: 5 },
+      ]);
+      expect(await findFeature(t.db, "st-aaaaaaaa")).toMatchObject({
+        parentId: bay.parentId,
+      });
+      const flags = await t.db
+        .selectFrom("feature_flags")
+        .select("reason")
+        .where("feature_id", "=", "st-aaaaaaaa")
+        .execute();
+      expect(flags.map((f) => f.reason)).toEqual(["shared-stop"]);
     });
   },
 );

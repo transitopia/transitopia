@@ -3,6 +3,7 @@ import {
   reconcile,
   routeName,
   sharedStopMatch,
+  sharedExchangeMerges,
   sharedStopMerges,
   type SharedStop,
   type Decisions,
@@ -20,6 +21,7 @@ const settings = {
   disappearedNearM: 50,
   stationMatchM: 300,
   exchangeReplacedM: 250,
+  exchangeMatchM: 250,
   sharedStopCodeM: 150,
   sharedStopM: 10,
 };
@@ -599,5 +601,67 @@ describe("shared stops (docs/DESIGN.md#shared-stops)", () => {
     expect(d.flags).toEqual([
       expect.objectContaining({ featureId: "st-tl", reason: "shared-stop" }),
     ]);
+  });
+
+  it("puts a feed's new bays in another feed's exchange of the same name, without an exchange-replaced flag", () => {
+    const d = reconcile({
+      feed: "bc-transit-okanagan-shuswap",
+      operator: "bc-transit",
+      seq: 5,
+      records: {
+        stops: [
+          stop("140213", "Westbank Exch", 0, { code: "140213" }),
+          stop("103606", "Westbank Exch", 150, { code: "103606" }),
+        ],
+        routes: [],
+      },
+      snapshot: {
+        features: [
+          {
+            id: "ex-kelowna",
+            kind: "exchange",
+            name: "Westbank Exchange",
+            lon: -123,
+            lat: 49 + 60 * M,
+            status: "active",
+            feedId: "bc-transit-kelowna",
+          },
+        ],
+        refs: [],
+        shared: [],
+      },
+      settings,
+      mint: (kind) => `${kind}-${Math.random()}`,
+    });
+    expect(d.mint.map((m) => [m.kind, m.parentId])).toEqual([
+      ["stop", "ex-kelowna"],
+      ["stop", "ex-kelowna"],
+    ]);
+    expect(d.update.find((u) => u.id === "ex-kelowna")).toBeUndefined();
+    expect(d.flags).toEqual([]);
+  });
+
+  it("plans merges of exchanges of the same name with stops from different feeds", () => {
+    const ex = (
+      id: string,
+      lat: number,
+      feeds: string[],
+      stops: number,
+      name = "Westbank Exchange",
+    ) => ({ id, name, lon: -123, lat: 49 + lat * M, feeds, stops });
+    expect(
+      sharedExchangeMerges(
+        [
+          ex("ex-os", 23, ["bc-transit-okanagan-shuswap"], 2),
+          ex("ex-kel", 0, ["bc-transit-kelowna"], 4),
+          // Another of Kelowna's: the operator's, or an admin's, to tell apart.
+          ex("ex-kel2", 30, ["bc-transit-kelowna"], 1),
+          ex("ex-far", 1000, ["bc-transit-vancouver-island"], 3),
+          ex("ex-other", 10, ["bc-transit-victoria"], 3, "UBCO Exchange"),
+          ex("ex-empty", 5, [], 0),
+        ],
+        settings,
+      ),
+    ).toEqual([{ from: "ex-os", into: "ex-kel", m: 23 }]);
   });
 });

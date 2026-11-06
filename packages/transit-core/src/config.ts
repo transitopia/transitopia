@@ -187,6 +187,7 @@ const reconcile = z.strictObject({
   disappearedNearM: pos,
   stationMatchM: pos,
   exchangeReplacedM: pos,
+  exchangeMatchM: pos,
   sharedStopCodeM: pos,
   sharedStopM: pos,
 });

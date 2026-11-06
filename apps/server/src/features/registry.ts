@@ -15,6 +15,7 @@ import {
 } from "@transitopia/shared/features.ts";
 import { FLAG_RESOLUTION } from "@transitopia/shared/admin-api.ts";
 import {
+  sharedExchangeMerges,
   sharedStopMerges,
   type Decisions,
   type Flag,
@@ -23,6 +24,7 @@ import {
   type ReconcileSettings,
   type RegistryFeature,
   type RegistrySnapshot,
+  type SharedExchangeMerge,
   type SharedStop,
   type SharedStopMerge,
 } from "@transitopia/transit-core/features/reconcile.ts";
@@ -170,8 +172,8 @@ export async function loadSnapshot(
 }
 
 /**
- * The active stops as shared-stop matching sees them (docs/DESIGN.md#shared-stops), oldest first:
- * each with the feeds of its gtfs-stop refs, their operators and its newest code in each. Without
+ * The active stops as shared-stop matching sees them (docs/DESIGN.md#shared-stops), oldest first (by
+ * the first feed version of their gtfs-stop refs, which the public export has too, then ID): each with the feeds of its gtfs-stop refs, their operators and its newest code in each. Without
  * the stops that have a gtfs-stop ref in `exceptFeed`.
  */
 async function sharedStops(
@@ -204,6 +206,9 @@ async function sharedStops(
   }>`
     with feeds_of as (
       select distinct feature_id, namespace from feature_refs where scheme = 'gtfs-stop'
+    ), first_seen as (
+      select feature_id, min(lower(versions)) as seq from feature_refs
+      where scheme = 'gtfs-stop' group by feature_id
     ), codes as (
       select distinct on (feature_id, namespace) feature_id, namespace, ref
       from feature_refs where scheme = 'stop'
@@ -216,6 +221,7 @@ async function sharedStops(
     join feeds_of r on r.feature_id = f.id
     join feeds d on d.id = r.namespace
     left join codes c on c.feature_id = f.id and c.namespace = r.namespace
+    left join first_seen s on s.feature_id = f.id
     where f.kind = 'stop' and f.status = 'active' and f.geom is not null
       ${
         exceptFeed === undefined ?
@@ -223,7 +229,7 @@ async function sharedStops(
         : sql`and not exists (select 1 from feeds_of x
                               where x.feature_id = f.id and x.namespace = ${exceptFeed})`
       }
-    order by f.created_at, f.id, r.namespace`.execute(db);
+    order by s.seq nulls last, f.id, r.namespace`.execute(db);
   const out = new Map<
     string,
     { stop: SharedStop; row: Awaited<ReturnType<typeof sharedStops>>[0]["row"] }
@@ -256,11 +262,48 @@ async function sharedStops(
 }
 
 /**
+ * Merge the exchanges minted once per feed that are one exchange (docs/DESIGN.md#shared-stops,
+ * `sharedExchangeMerges`): each into the one with the most stops, its stops moving with it, recorded
+ * in feature_changes like an admin's merge. In a transaction holding the lock.
+ */
+export async function mergeSharedExchanges(
+  tx: Db,
+  settings: Pick<ReconcileSettings, "exchangeMatchM">,
+): Promise<SharedExchangeMerge[]> {
+  const rows = await sql<{
+    id: string;
+    name: string;
+    lon: number;
+    lat: number;
+    feeds: string[] | null;
+    stops: number;
+  }>`
+    select e.id, e.name, ST_X(e.geom::geometry) as lon, ST_Y(e.geom::geometry) as lat,
+           (select array_agg(distinct r.namespace) from features s
+            join feature_refs r on r.feature_id = s.id and r.scheme = 'gtfs-stop'
+            where s.parent_id = e.id and s.status = 'active') as feeds,
+           (select count(*)::int from features s
+            where s.parent_id = e.id and s.status = 'active') as stops
+    from features e
+    where e.kind = 'exchange' and e.status = 'active' and e.geom is not null`.execute(
+    tx,
+  );
+  const merges = sharedExchangeMerges(
+    rows.rows.map((r) => ({ ...r, feeds: r.feeds ?? [] })),
+    settings,
+  );
+  for (const m of merges)
+    await mergeInto(tx, m.from, m.into, null, { shared: "exchange", m: m.m });
+  return merges;
+}
+
+/**
  * Merge the stops that are the same physical stop in several feeds (docs/DESIGN.md#shared-stops)
  * but were minted apart: each into the oldest of its group, recorded in feature_changes like an
- * admin's merge. A pair matched by nearness is flagged (`shared-stop`), and one whose stops were in
- * different stations or exchanges `grouping-differs`, for an admin to check. In a transaction holding
- * the lock.
+ * admin's merge. A pair matched by nearness is flagged (`shared-stop`). The merged stop is in its
+ * own station or exchange, else the other's (unless an admin left it in none); where both were in
+ * one, different ones, it's flagged `grouping-differs` with the other's as the proposal. In a
+ * transaction holding the lock.
  */
 export async function mergeSharedStops(
   tx: Db,
@@ -272,6 +315,17 @@ export async function mergeSharedStops(
     settings,
   );
   const parentOf = new Map(stops.map((s) => [s.row.id, s.row.parent_id]));
+  // Stops whose containment an admin set: theirs to keep, "none" included.
+  const adminSet = new Set(
+    (
+      await tx
+        .selectFrom("feature_changes")
+        .select("feature_id")
+        .distinct()
+        .where("action", "=", "set-parent")
+        .execute()
+    ).map((c) => c.feature_id),
+  );
   const flags: Flag[] = [];
   for (const m of merges) {
     await mergeInto(tx, m.from, m.into, null, { shared: m.match, m: m.m });
@@ -284,13 +338,31 @@ export async function mergeSharedStops(
       });
     const from = parentOf.get(m.from) ?? null;
     const into = parentOf.get(m.into) ?? null;
-    if (from !== into)
-      flags.push({
-        featureId: m.into,
-        reason: "grouping-differs",
-        candidates: from ? [from] : [],
-        detail: { proposed: from, parent: into, merged: m.from },
-      });
+    if (from === null || from === into) continue;
+    if (into === null && !adminSet.has(m.into)) {
+      // One feed puts it in a station or exchange and the other in none: it's in that one.
+      await tx
+        .updateTable("features")
+        .set({ parent_id: from, updated_at: new Date() })
+        .where("id", "=", m.into)
+        .execute();
+      await recordChange(
+        tx,
+        m.into,
+        "set-parent",
+        { parent: null },
+        { parent: from, merged: m.from },
+        null,
+      );
+      parentOf.set(m.into, from);
+      continue;
+    }
+    flags.push({
+      featureId: m.into,
+      reason: "grouping-differs",
+      candidates: [from],
+      detail: { proposed: from, parent: into, merged: m.from },
+    });
   }
   await insertFlags(tx, flags);
   return merges;

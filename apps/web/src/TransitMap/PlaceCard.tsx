@@ -449,10 +449,17 @@ const PlaceCardBody: React.FC<{
   const railRoutes = place.routes.filter((r) => !isBus(r));
   const rail = railRoutes.length > 0;
   const [direction, stopName] = splitDirection(place.name);
+  // A bay by its number ("Bay 7"); one whose name has none ("Westbank Exch") by its name, since its
+  // stop number is under the title.
+  const bayName =
+    place.partOf ?
+      bayLabel({ name: place.name, platform: place.platform })
+    : undefined;
+  const bay = bayName === "Bay" ? undefined : bayName;
   const title =
     station ? stationName(place.name)
     : exchange ? place.name
-    : place.partOf ? bayLabel(place)
+    : bay !== undefined ? bay
     : stopName;
   const mainRoute = railRoutes[0];
   const realtime = place.groups.some((g) =>

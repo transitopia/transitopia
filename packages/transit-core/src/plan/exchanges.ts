@@ -65,6 +65,8 @@ export function isBay(name: string): boolean {
 export interface BayStop {
   name: string;
   platform?: string | undefined;
+  /** Its number on the sign (GTFS stop_code), for a bay whose name has no bay number. */
+  code?: string | undefined;
 }
 
 /**
@@ -79,11 +81,18 @@ export function bayNumber(stop: BayStop): string | undefined {
   );
 }
 
-/** A bay's short name: "Bay 7", "Unloading Only", or "Bay" where it has none ("Phibbs Exchange @"). */
+/**
+ * A bay's short name: "Bay 7", "Unloading Only", or where it has neither, its stop number ("Stop
+ * #140213": Okanagan-Shuswap's bays at Westbank Exchange are all "Westbank Exch"), else "Bay"
+ * ("Phibbs Exchange @").
+ */
 export function bayLabel(stop: BayStop): string {
   const n = bayNumber(stop);
   if (n !== undefined) return `Bay ${n}`;
-  return stop.name.split("@")[1]?.replace(/\s+/g, " ").trim() || "Bay";
+  return (
+    stop.name.split("@")[1]?.replace(/\s+/g, " ").trim()
+    || (stop.code ? `Stop #${stop.code}` : "Bay")
+  );
 }
 
 /**
