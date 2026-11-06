@@ -1044,9 +1044,10 @@ export class TransitEngine {
       for (const off of offs) off();
     };
     slot.loadTracks(() => {
-      if (!this.disposed && f.slot === slot) this.syncStatic(true);
+      if (!this.disposed && f.slot === slot) this.syncStatic(slot);
     });
-    this.syncStatic(true);
+    // Only the new feed: forcing the others would clear their corridors' state (a flash).
+    this.syncStatic(slot);
     this.mergeHidden();
     this.invalidate();
     this.dirty = true;
@@ -2162,15 +2163,16 @@ export class TransitEngine {
           : { kind: "exchange", feed: slot.feed, id: now.id }
         : undefined;
     }
-    this.syncStatic(true);
+    this.syncStatic(slot);
   }
 
   /**
    * Static layers follow each feed's plan for the displayed date (FeedSlot.drawStatic); whenever a
    * feed's are redrawn, what's map-wide goes with them: the brand colour switch, the selected
-   * place's ring and the focus, and the vehicles' place beneath the labels.
+   * place's ring and the focus, and the vehicles' place beneath the labels. `force` redraws every
+   * feed's (a new style) or one feed's even if its plan is unchanged.
    */
-  private syncStatic(force = false): void {
+  private syncStatic(force: boolean | FeedSlot = false): void {
     const { map } = this;
     if (!this.visible || !this.styleReady || this.disposed) return;
     const t = this.clock.now();
@@ -2179,7 +2181,7 @@ export class TransitEngine {
       const shown = slot.shown?.plan;
       const r = slot.drawStatic(map, t, {
         theme: this.theme,
-        force,
+        force: force === true || force === slot,
         hiddenGroups: this.hiddenGroups,
         showStops: this.showStops,
         debug: this.debug,
