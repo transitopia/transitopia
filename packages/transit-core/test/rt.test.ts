@@ -1068,6 +1068,38 @@ describe("service changes (GTFS-RT)", () => {
     expect(past.vehiclesAt(T0)[0]!.note).toBeUndefined();
   });
 
+  it("shows a standing bus at the stop it's standing at", () => {
+    const three = {
+      ...plan,
+      stops: [
+        ...plan.stops,
+        { id: "mid", name: "Mid", lon: pt(1000)[0], lat: pt(1000)[1] },
+      ],
+    };
+    three.patterns = [
+      { ...plan.patterns[0]!, stops: [0, 2, 1], dist: [0, 1000, 2000] },
+    ];
+    three.trips = [{ ...plan.trips[0]!, arr: [0, 200, 400] }];
+    const pp3 = preparePlan(three, kin);
+    const standing = (along: number) =>
+      new RtTimeline(
+        [fix(0, pt(along), "mid"), fix(30, pt(along), "mid")],
+        pp3,
+        kin,
+        { ...opts, stopZoneM: 60 },
+      ).vehiclesAt(T0 + 15_000)[0]!;
+    // Its GPS a few metres past the stop: at it, not at the next one.
+    for (const along of [990, 1008]) {
+      const v = standing(along);
+      expect(v.status).toBe("dwell");
+      expect(v.stopName).toBe("Mid");
+    }
+    // Standing away from any stop (in traffic): its next stop.
+    const held = standing(1500);
+    expect(held.status).toBe("moving");
+    expect(held.stopName).toBe("End");
+  });
+
   it("labels a bus still reporting a cancelled trip", () => {
     const tl = new RtTimeline([fix(0, pt(500), "s2")], pp, kin, {
       ...opts,

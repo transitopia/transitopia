@@ -334,6 +334,7 @@ export class RtClient {
         timezone: this.tz,
         changes: this.changesView(),
         detourNearM: this.config.rt.detourNearM,
+        stopZoneM: this.prediction.stopZoneM,
         ...(predictor ?
           { prediction: { cfg: this.prediction, predictor } }
         : {}),
