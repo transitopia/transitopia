@@ -7,8 +7,10 @@ import defaultRt from "@transitopia/config/defaults/rt.json" with { type: "json"
 import serverJson from "@transitopia/config/server/server.json" with { type: "json" };
 import recordingJson from "@transitopia/config/server/recording.json" with { type: "json" };
 import reconcileJson from "@transitopia/config/features/reconcile.json" with { type: "json" };
+import osmStopsJson from "@transitopia/config/features/osm-stops.json" with { type: "json" };
 
 export const serverConfig = parseConfig("server", serverJson);
 export const recordingConfig = parseConfig("recording", recordingJson);
 export const rtDefaults = parseConfig("rt", defaultRt);
 export const reconcileConfig = parseConfig("reconcile", reconcileJson);
+export const osmStopsConfig = parseConfig("osm-stops", osmStopsJson);

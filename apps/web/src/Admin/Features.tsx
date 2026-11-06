@@ -300,6 +300,8 @@ type FlagRow = FeatureFlagsResponse["flags"][number];
 
 /** What each flag means, for the admin deciding it. */
 const REASONS: Record<string, string> = {
+  "shared-stop":
+    "Another operator's stop this close was taken to be the same stop: check it is",
   "code-moved-far": "Its stop_id or stop code is the same, but it moved far",
   "disappeared-nearby": "New, beside a stop that disappeared: the same stop?",
   "cross-feed-name-match": "Another feed has a station of this name nearby",

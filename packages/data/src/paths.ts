@@ -22,6 +22,10 @@ import {
 } from "@transitopia/transit-core/config.ts";
 import { cyclingDataPath } from "@transitopia/cycling-core/published.ts";
 import {
+  osmBusStops,
+  type OsmBusStop,
+} from "@transitopia/transit-core/features/osm-stops.ts";
+import {
   feedDataPath,
   networkDataPath,
   type FeedManifest,
@@ -136,6 +140,8 @@ export function feedPaths(feed: string): {
   aisHistory: string;
   /** OSM roads its buses run on (fetch-osm-roads), for matching bus shapes to streets. */
   roads: string;
+  /** OSM bus stops in the same area (fetch-osm-roads), for matching its stops (features/osm-stops.ts). */
+  osmStops: string;
 } {
   return {
     dir: join(FEEDS_DIR, feed),
@@ -146,6 +152,7 @@ export function feedPaths(feed: string): {
     rtHistory: join(RT_HISTORY_DIR, feed),
     aisHistory: join(AIS_HISTORY_DIR, feed),
     roads: join(RAW_DIR, "osm-roads", feed),
+    osmStops: join(RAW_DIR, "osm-roads", feed, "bus-stops.json"),
   };
 }
 
@@ -247,6 +254,29 @@ export async function readNetworkConfig<N extends "dispatch" | "operations">(
   return parseConfig(
     name,
     await readJson<unknown>(join(NETWORKS_DIR, network, `${name}.json`)),
+  );
+}
+
+/** Matching stops to OSM's (config/features/osm-stops.json), checked. */
+export async function readOsmStopsConfig(): Promise<Config<"osm-stops">> {
+  return parseConfig(
+    "osm-stops",
+    await readJson<unknown>(join(CONFIG_ROOT, "features", "osm-stops.json")),
+  );
+}
+
+/**
+ * A feed's OSM bus stops (fetch-osm-roads), or undefined where they haven't been fetched. Saved
+ * as Overpass elements; read through `osmBusStops`.
+ */
+export async function readOsmBusStops(
+  feed: string,
+): Promise<OsmBusStop[] | undefined> {
+  const path = feedPaths(feed).osmStops;
+  if (!(await exists(path))) return undefined;
+  return osmBusStops(
+    (await readJson<{ elements: Parameters<typeof osmBusStops>[0] }>(path))
+      .elements,
   );
 }
 

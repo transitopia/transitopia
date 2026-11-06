@@ -14,13 +14,25 @@ import {
   type FeatureKind,
 } from "@transitopia/shared/features.ts";
 import { FLAG_RESOLUTION } from "@transitopia/shared/admin-api.ts";
-import type {
-  Decisions,
-  GtfsFeatureKind,
-  GtfsScheme,
-  RegistryFeature,
-  RegistrySnapshot,
+import {
+  sharedExchangeMerges,
+  sharedStopMerges,
+  type Decisions,
+  type Flag,
+  type GtfsFeatureKind,
+  type GtfsScheme,
+  type ReconcileSettings,
+  type RegistryFeature,
+  type RegistrySnapshot,
+  type SharedExchangeMerge,
+  type SharedStop,
+  type SharedStopMerge,
 } from "@transitopia/transit-core/features/reconcile.ts";
+import {
+  matchOsmStops,
+  type OsmBusStop,
+  type OsmStopSettings,
+} from "@transitopia/transit-core/features/osm-stops.ts";
 
 /** A connection or a transaction (a Transaction is a Kysely). */
 type Tx = Db;
@@ -61,9 +73,27 @@ export async function loadSnapshot(
       eb.or([
         eb.and([eb("feed_id", "=", feed), eb("kind", "in", ["stop", "route"])]),
         eb("kind", "in", ["station", "exchange"]),
+        // Stops other feeds share with this one (docs/DESIGN.md#shared-stops).
+        eb.and([
+          eb("kind", "=", "stop"),
+          eb(
+            "id",
+            "in",
+            eb
+              .selectFrom("feature_refs")
+              .select("feature_id")
+              .where("namespace", "=", feed)
+              .where("scheme", "=", "gtfs-stop"),
+          ),
+        ]),
       ]),
     )
     .execute();
+  // Other feeds' stops a new stop of this one may be.
+  const shared = await sharedStops(db, feed);
+  const loaded = new Set(rows.map((r) => r.id));
+  for (const { row } of shared)
+    if (!loaded.has(row.id)) rows.push({ ...row, kind: "stop" as const });
   // A station's feeds: its parent stops' refs, and the stops inside it. A station of standalone
   // rail or ferry stops (West Coast Express) has no ref of its own, and must still be found by name
   // in its feed when their ids change.
@@ -81,6 +111,17 @@ export async function loadSnapshot(
     if (!l) stationFeeds.set(r.id, (l = []));
     l.push(r.feed);
   }
+  // An exchange's home feed: the one most of its stops are from (by their home feeds), the first
+  // by id on a tie. Only it sets the exchange's name and position.
+  const exchangeHome = new Map<string, string>();
+  const homeRows = await sql<{ id: string; feed: string; n: number }>`
+    select s.parent_id as id, s.feed_id as feed, count(*)::int as n
+    from features s join features p on p.id = s.parent_id
+    where p.kind = 'exchange' and s.status = 'active' and s.feed_id is not null
+    group by s.parent_id, s.feed_id
+    order by s.parent_id, n desc, s.feed_id`.execute(db);
+  for (const r of homeRows.rows)
+    if (!exchangeHome.has(r.id)) exchangeHome.set(r.id, r.feed);
   const locked = new Map<string, Set<string>>();
   for (const c of await db
     .selectFrom("feature_changes")
@@ -100,6 +141,9 @@ export async function loadSnapshot(
     ...(r.lon !== null && r.lat !== null ? { lon: r.lon, lat: r.lat } : {}),
     ...(r.parent_id ? { parentId: r.parent_id } : {}),
     ...(r.feed_id ? { feedId: r.feed_id } : {}),
+    ...(r.kind === "exchange" && exchangeHome.has(r.id) ?
+      { feedId: exchangeHome.get(r.id)! }
+    : {}),
     ...(r.kind === "station" ? { feeds: stationFeeds.get(r.id) ?? [] } : {}),
     ...(locked.get(r.id)?.has("rename") ? { nameLocked: true } : {}),
     ...(locked.get(r.id)?.has("set-position") ? { geomLocked: true } : {}),
@@ -120,6 +164,7 @@ export async function loadSnapshot(
     order by scheme, ref, upper(versions) desc`.execute(db);
   return {
     features,
+    shared: shared.map((x) => x.stop),
     refs: refs.rows.map((r) => ({
       rowId: Number(r.id),
       featureId: r.feature_id,
@@ -129,6 +174,307 @@ export async function loadSnapshot(
       upper: r.upper,
     })),
   };
+}
+
+/**
+ * The active stops as shared-stop matching sees them (docs/DESIGN.md#shared-stops), oldest first (by
+ * the first feed version of their gtfs-stop refs, which the public export has too, then ID): each with the feeds of its gtfs-stop refs, their operators and its newest code in each. Without
+ * the stops that have a gtfs-stop ref in `exceptFeed`.
+ */
+async function sharedStops(
+  db: Db,
+  exceptFeed?: string,
+): Promise<
+  {
+    stop: SharedStop;
+    row: {
+      id: string;
+      name: string;
+      parent_id: string | null;
+      status: "active";
+      feed_id: string | null;
+      lon: number;
+      lat: number;
+    };
+  }[]
+> {
+  const rows = await sql<{
+    id: string;
+    name: string;
+    parent_id: string | null;
+    feed_id: string | null;
+    lon: number;
+    lat: number;
+    feed: string;
+    operator: string;
+    code: string | null;
+  }>`
+    with feeds_of as (
+      select distinct feature_id, namespace from feature_refs where scheme = 'gtfs-stop'
+    ), first_seen as (
+      select feature_id, min(lower(versions)) as seq from feature_refs
+      where scheme = 'gtfs-stop' group by feature_id
+    ), codes as (
+      select distinct on (feature_id, namespace) feature_id, namespace, ref
+      from feature_refs where scheme = 'stop'
+      order by feature_id, namespace, upper(versions) desc nulls first
+    )
+    select f.id, f.name, f.parent_id, f.feed_id,
+           ST_X(f.geom::geometry) as lon, ST_Y(f.geom::geometry) as lat,
+           r.namespace as feed, d.operator_id as operator, c.ref as code
+    from features f
+    join feeds_of r on r.feature_id = f.id
+    join feeds d on d.id = r.namespace
+    left join codes c on c.feature_id = f.id and c.namespace = r.namespace
+    left join first_seen s on s.feature_id = f.id
+    where f.kind = 'stop' and f.status = 'active' and f.geom is not null
+      ${
+        exceptFeed === undefined ?
+          sql``
+        : sql`and not exists (select 1 from feeds_of x
+                              where x.feature_id = f.id and x.namespace = ${exceptFeed})`
+      }
+    order by s.seq nulls last, f.id, r.namespace`.execute(db);
+  const out = new Map<
+    string,
+    { stop: SharedStop; row: Awaited<ReturnType<typeof sharedStops>>[0]["row"] }
+  >();
+  for (const r of rows.rows) {
+    let x = out.get(r.id);
+    if (!x)
+      out.set(
+        r.id,
+        (x = {
+          stop: { id: r.id, name: r.name, lon: r.lon, lat: r.lat, feeds: [] },
+          row: {
+            id: r.id,
+            name: r.name,
+            parent_id: r.parent_id,
+            status: "active",
+            feed_id: r.feed_id,
+            lon: r.lon,
+            lat: r.lat,
+          },
+        }),
+      );
+    x.stop.feeds.push({
+      feed: r.feed,
+      operator: r.operator,
+      ...(r.code !== null ? { code: r.code } : {}),
+    });
+  }
+  return [...out.values()];
+}
+
+/**
+ * Merge the exchanges minted once per feed that are one exchange (docs/DESIGN.md#shared-stops,
+ * `sharedExchangeMerges`): each into the one with the most stops, its stops moving with it, recorded
+ * in feature_changes like an admin's merge. In a transaction holding the lock.
+ */
+export async function mergeSharedExchanges(
+  tx: Db,
+  settings: Pick<ReconcileSettings, "exchangeMatchM">,
+): Promise<SharedExchangeMerge[]> {
+  const rows = await sql<{
+    id: string;
+    name: string;
+    lon: number;
+    lat: number;
+    feeds: string[] | null;
+    stops: number;
+  }>`
+    select e.id, e.name, ST_X(e.geom::geometry) as lon, ST_Y(e.geom::geometry) as lat,
+           (select array_agg(distinct r.namespace) from features s
+            join feature_refs r on r.feature_id = s.id and r.scheme = 'gtfs-stop'
+            where s.parent_id = e.id and s.status = 'active') as feeds,
+           (select count(*)::int from features s
+            where s.parent_id = e.id and s.status = 'active') as stops
+    from features e
+    where e.kind = 'exchange' and e.status = 'active' and e.geom is not null`.execute(
+    tx,
+  );
+  const merges = sharedExchangeMerges(
+    rows.rows.map((r) => ({ ...r, feeds: r.feeds ?? [] })),
+    settings,
+  );
+  for (const m of merges)
+    await mergeInto(tx, m.from, m.into, null, { shared: "exchange", m: m.m });
+  return merges;
+}
+
+/**
+ * Merge the stops that are the same physical stop in several feeds (docs/DESIGN.md#shared-stops)
+ * but were minted apart: each into the oldest of its group, recorded in feature_changes like an
+ * admin's merge. A pair matched by nearness is flagged (`shared-stop`). The merged stop is in its
+ * own station or exchange, else the other's (unless an admin left it in none); where both were in
+ * one, different ones, it's flagged `grouping-differs` with the other's as the proposal. In a
+ * transaction holding the lock.
+ */
+/** What `linkOsmStops` changed. */
+export interface OsmLinkResult {
+  added: number;
+  removed: number;
+  /** OSM nodes whose code matched stops that are still separate features: left without a ref. */
+  ambiguous: number;
+}
+
+/**
+ * Each stop's OpenStreetMap node as an `osm-node:` ref (docs/DESIGN.md#osm-bus-stops): the stops of
+ * each feed's newest reconciled version matched to that feed's OSM bus stops (`matchOsmStops`). A
+ * node is one feature's: one that several features match (twins not yet merged) gets none. Refs
+ * reconciliation wrote that no longer match are removed; an admin's are kept, and their node isn't
+ * given to another feature. Stops in a feed without OSM stops (not fetched) keep the refs they have.
+ */
+export async function linkOsmStops(
+  tx: Tx,
+  osm: ReadonlyMap<string, readonly OsmBusStop[]>,
+  settings: OsmStopSettings,
+): Promise<OsmLinkResult> {
+  const matched = new Map<string, Set<string>>();
+  const considered = new Set<string>();
+  for (const [feed, nodes] of osm) {
+    const stops = await sql<{
+      id: string;
+      code: string;
+      lon: number;
+      lat: number;
+    }>`
+      select f.id, r.ref as code, ST_X(f.geom::geometry) as lon, ST_Y(f.geom::geometry) as lat
+      from feature_refs r join features f on f.id = r.feature_id
+      where r.scheme = 'stop' and r.namespace = ${feed}
+        and f.kind = 'stop' and f.status = 'active' and f.geom is not null
+        and r.versions @> (select max(seq) from gtfs_feeds
+                           where feed_id = ${feed} and reconciled_at is not null)
+      order by f.id`.execute(tx);
+    for (const [i, m] of matchOsmStops(stops.rows, nodes, settings).entries()) {
+      const id = stops.rows[i]!.id;
+      considered.add(id);
+      if (!m) continue;
+      let ids = matched.get(String(m.node));
+      if (!ids) matched.set(String(m.node), (ids = new Set()));
+      ids.add(id);
+    }
+  }
+  // A stop also in a feed without OSM stops here may have its node from that feed: keep its refs.
+  if (considered.size)
+    for (const r of await tx
+      .selectFrom("feature_refs")
+      .select("feature_id")
+      .distinct()
+      .where("scheme", "=", "stop")
+      .where("namespace", "not in", [...osm.keys()])
+      .execute())
+      considered.delete(r.feature_id);
+  const want = new Map<string, string>();
+  let ambiguous = 0;
+  for (const [node, ids] of matched)
+    if (ids.size === 1) want.set(node, [...ids][0]!);
+    else ambiguous++;
+  const have = await tx
+    .selectFrom("feature_refs as r")
+    .innerJoin("features as f", "f.id", "r.feature_id")
+    .select(["r.id", "r.feature_id", "r.ref", "r.origin", "f.kind"])
+    .where("r.scheme", "=", "osm-node")
+    .where("r.namespace", "=", "")
+    .execute();
+  const drop = have.filter(
+    (r) =>
+      r.origin === "reconcile"
+      && r.kind === "stop"
+      && (want.has(r.ref) ?
+        want.get(r.ref) !== r.feature_id
+      : considered.has(r.feature_id)),
+  );
+  const dropped = new Set(drop.map((r) => r.id));
+  const held = new Set(
+    have.filter((r) => !dropped.has(r.id)).map((r) => r.ref),
+  );
+  for (let i = 0; i < drop.length; i += CHUNK)
+    await tx
+      .deleteFrom("feature_refs")
+      .where(
+        "id",
+        "in",
+        drop.slice(i, i + CHUNK).map((r) => r.id),
+      )
+      .execute();
+  const add = [...want].filter(([node]) => !held.has(node));
+  for (let i = 0; i < add.length; i += CHUNK)
+    await tx
+      .insertInto("feature_refs")
+      .values(
+        add.slice(i, i + CHUNK).map(([node, id]) => ({
+          feature_id: id,
+          scheme: "osm-node",
+          ref: node,
+          origin: "reconcile" as const,
+        })),
+      )
+      .execute();
+  return { added: add.length, removed: drop.length, ambiguous };
+}
+
+export async function mergeSharedStops(
+  tx: Db,
+  settings: Pick<ReconcileSettings, "sharedStopCodeM" | "sharedStopM">,
+): Promise<SharedStopMerge[]> {
+  const stops = await sharedStops(tx);
+  const merges = sharedStopMerges(
+    stops.map((s) => s.stop),
+    settings,
+  );
+  const parentOf = new Map(stops.map((s) => [s.row.id, s.row.parent_id]));
+  // Stops whose containment an admin set: theirs to keep, "none" included.
+  const adminSet = new Set(
+    (
+      await tx
+        .selectFrom("feature_changes")
+        .select("feature_id")
+        .distinct()
+        .where("action", "=", "set-parent")
+        .execute()
+    ).map((c) => c.feature_id),
+  );
+  const flags: Flag[] = [];
+  for (const m of merges) {
+    await mergeInto(tx, m.from, m.into, null, { shared: m.match, m: m.m });
+    if (m.match === "near")
+      flags.push({
+        featureId: m.into,
+        reason: "shared-stop",
+        candidates: [m.from],
+        detail: { merged: m.from, m: m.m },
+      });
+    const from = parentOf.get(m.from) ?? null;
+    const into = parentOf.get(m.into) ?? null;
+    if (from === null || from === into) continue;
+    if (into === null && !adminSet.has(m.into)) {
+      // One feed puts it in a station or exchange and the other in none: it's in that one.
+      await tx
+        .updateTable("features")
+        .set({ parent_id: from, updated_at: new Date() })
+        .where("id", "=", m.into)
+        .execute();
+      await recordChange(
+        tx,
+        m.into,
+        "set-parent",
+        { parent: null },
+        { parent: from, merged: m.from },
+        null,
+      );
+      parentOf.set(m.into, from);
+      continue;
+    }
+    flags.push({
+      featureId: m.into,
+      reason: "grouping-differs",
+      candidates: [from],
+      detail: { proposed: from, parent: into, merged: m.from },
+    });
+  }
+  await insertFlags(tx, flags);
+  return merges;
 }
 
 /**
@@ -252,38 +598,7 @@ export async function applyDecisions(
         })),
       )
       .execute();
-  // A feature is flagged once for a reason: an admin who resolved it isn't asked again.
-  let flagged = 0;
-  if (d.flags.length) {
-    const seen = new Set(
-      (
-        await tx
-          .selectFrom("feature_flags")
-          .select(["feature_id", "reason"])
-          .where(
-            "feature_id",
-            "in",
-            d.flags.map((f) => f.featureId),
-          )
-          .execute()
-      ).map((f) => `${f.feature_id} ${f.reason}`),
-    );
-    for (const f of d.flags) {
-      const k = `${f.featureId} ${f.reason}`;
-      if (seen.has(k)) continue;
-      seen.add(k);
-      await tx
-        .insertInto("feature_flags")
-        .values({
-          feature_id: f.featureId,
-          reason: f.reason,
-          candidates: f.candidates,
-          detail: JSON.stringify(f.detail),
-        })
-        .execute();
-      flagged++;
-    }
-  }
+  const flagged = await insertFlags(tx, d.flags);
   return {
     minted: d.mint.length,
     updated: d.update.length,
@@ -292,6 +607,44 @@ export async function applyDecisions(
     reactivated: d.reactivate.length,
     flagged,
   };
+}
+
+/**
+ * Record flags, each feature once for a reason: an admin who resolved it isn't asked again. Returns
+ * how many were new.
+ */
+async function insertFlags(tx: Db, flags: readonly Flag[]): Promise<number> {
+  if (!flags.length) return 0;
+  let flagged = 0;
+  const seen = new Set(
+    (
+      await tx
+        .selectFrom("feature_flags")
+        .select(["feature_id", "reason"])
+        .where(
+          "feature_id",
+          "in",
+          flags.map((f) => f.featureId),
+        )
+        .execute()
+    ).map((f) => `${f.feature_id} ${f.reason}`),
+  );
+  for (const f of flags) {
+    const k = `${f.featureId} ${f.reason}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    await tx
+      .insertInto("feature_flags")
+      .values({
+        feature_id: f.featureId,
+        reason: f.reason,
+        candidates: f.candidates,
+        detail: JSON.stringify(f.detail),
+      })
+      .execute();
+    flagged++;
+  }
+  return flagged;
 }
 
 export interface FeatureRow {
@@ -674,55 +1027,66 @@ export async function mergeFeatures(
 ): Promise<void> {
   await db.transaction().execute(async (tx) => {
     await lockRegistry(tx);
-    const from = await featureById(tx, fromId);
-    const into = await featureById(tx, intoId);
-    if (!from) throw new Error(`no feature ${fromId}`);
-    if (!into) throw new Error(`no feature ${intoId}`);
-    if (fromId === intoId) throw new Error("a feature can't merge into itself");
-    if (from.kind !== into.kind)
-      throw new Error(`${fromId} is a ${from.kind}, ${intoId} a ${into.kind}`);
-    if (from.status === "merged")
-      throw new Error(`${fromId} is already merged`);
-    if (into.status === "merged")
-      throw new Error(
-        `${intoId} was merged into ${into.mergedInto}: merge into that`,
-      );
-    if (into.status === "retired")
-      throw new Error(`${intoId} is retired: merge into an active feature`);
-    const refs = await tx
-      .updateTable("feature_refs")
-      .set({ feature_id: intoId })
-      .where("feature_id", "=", fromId)
-      .executeTakeFirst();
-    const children = await tx
-      .updateTable("features")
-      .set({ parent_id: intoId, updated_at: new Date() })
-      .where("parent_id", "=", fromId)
-      .executeTakeFirst();
-    // Earlier redirects to it now go straight to `intoId`.
-    await tx
-      .updateTable("features")
-      .set({ merged_into: intoId, updated_at: new Date() })
-      .where("merged_into", "=", fromId)
-      .execute();
-    await tx
-      .updateTable("features")
-      .set({ status: "merged", merged_into: intoId, updated_at: new Date() })
-      .where("id", "=", fromId)
-      .execute();
-    await recordChange(
-      tx,
-      fromId,
-      "merge",
-      { status: from.status },
-      {
-        mergedInto: intoId,
-        refs: Number(refs.numUpdatedRows),
-        stops: Number(children.numUpdatedRows),
-      },
-      userId,
-    );
+    await mergeInto(tx, fromId, intoId, userId);
   });
+}
+
+/** `mergeFeatures` in a transaction holding the lock; `detail` goes in the change's record. */
+async function mergeInto(
+  tx: Db,
+  fromId: string,
+  intoId: string,
+  userId: number | null,
+  detail: Record<string, unknown> = {},
+): Promise<void> {
+  const from = await featureById(tx, fromId);
+  const into = await featureById(tx, intoId);
+  if (!from) throw new Error(`no feature ${fromId}`);
+  if (!into) throw new Error(`no feature ${intoId}`);
+  if (fromId === intoId) throw new Error("a feature can't merge into itself");
+  if (from.kind !== into.kind)
+    throw new Error(`${fromId} is a ${from.kind}, ${intoId} a ${into.kind}`);
+  if (from.status === "merged") throw new Error(`${fromId} is already merged`);
+  if (into.status === "merged")
+    throw new Error(
+      `${intoId} was merged into ${into.mergedInto}: merge into that`,
+    );
+  if (into.status === "retired")
+    throw new Error(`${intoId} is retired: merge into an active feature`);
+  const refs = await tx
+    .updateTable("feature_refs")
+    .set({ feature_id: intoId })
+    .where("feature_id", "=", fromId)
+    .executeTakeFirst();
+  const children = await tx
+    .updateTable("features")
+    .set({ parent_id: intoId, updated_at: new Date() })
+    .where("parent_id", "=", fromId)
+    .executeTakeFirst();
+  // Earlier redirects to it now go straight to `intoId`.
+  await tx
+    .updateTable("features")
+    .set({ merged_into: intoId, updated_at: new Date() })
+    .where("merged_into", "=", fromId)
+    .execute();
+  await tx
+    .updateTable("features")
+    .set({ status: "merged", merged_into: intoId, updated_at: new Date() })
+    .where("id", "=", fromId)
+    .execute();
+  await recordChange(
+    tx,
+    fromId,
+    "merge",
+    { status: from.status },
+    {
+      mergedInto: intoId,
+      refs: Number(refs.numUpdatedRows),
+      stops: Number(children.numUpdatedRows),
+      ...detail,
+    },
+    userId,
+  );
 }
 
 /** Make a new exchange of some stops (taken out of whatever they were in). Returns its ID. */

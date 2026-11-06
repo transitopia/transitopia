@@ -1,0 +1,5 @@
+{
+  "$comment": "Feeds' stops matched to OpenStreetMap's bus stops (docs/DESIGN.md#osm-bus-stops), by the node's ref (the stop code) and distance: the plan build takes a bay's letter from it where the GTFS has none, and the registry records it as an osm-node ref.",
+  "$matchM": "An OSM bus stop whose ref is a stop's code is the same stop within this distance (m). In November 2026, 99% of BC's feeds' stops with a node of their code were within 55–180 m of it, depending on the feed (Sunshine Coast's the furthest), and the ones beyond a few hundred metres were wrong refs. Guess.",
+  "matchM": 150
+}

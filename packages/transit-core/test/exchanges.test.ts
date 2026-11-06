@@ -39,6 +39,9 @@ describe("isBay", () => {
     expect(bayNumber(named("Royal Oak Exch Bay H"))).toBe("H");
     expect(bayLabel(named("Langford Exch (Jacklin Rd) Bay D"))).toBe("Bay D");
     expect(bayLabel(named("Legislature Exch"))).toBe("Bay");
+    expect(bayLabel({ name: "Westbank Exch", code: "140213" })).toBe(
+      "Stop #140213",
+    );
     expect(baseName("Langford Exch (Jacklin Rd) Bay D")).toBe(
       "Langford Exchange",
     );

@@ -9,5 +9,11 @@
   "$stationMatchM": "A station is the same as an unmatched one of the same name in its feed within this distance, and flagged when another feed has one of the same name within it (cross-feed-name-match) (m). Guess.",
   "stationMatchM": 300,
   "$exchangeReplacedM": "A new exchange within this distance of an exchange that has lost all its stops is flagged (exchange-replaced): the operator may have renumbered every bay (m). Guess; the bays' own merge distance (MERGE_M in packages/transit-core/src/plan/exchanges.ts).",
-  "exchangeReplacedM": 250
+  "exchangeReplacedM": 250,
+  "$exchangeMatchM": "Another feed's exchange of the same name within this distance is the same exchange (m): a new group of bays joins it rather than minting a duplicate, and two already minted are merged. Westbank and UBCO exchanges were minted once per BC Transit feed, 23 m and 45 m apart (November 2026). Guess; the bays' own merge distance, as exchangeReplacedM.",
+  "exchangeMatchM": 250,
+  "$sharedStopCodeM": "A stop of another feed of the same operator with the same stop_code is the same physical stop within this distance (m): BC Transit's merged feeds repeat its stops (100076 in both bc-transit-victoria and bc-transit-vancouver-island), the furthest pair 61 m apart in November 2026, while its depots share a placeholder code (990000) hundreds of km apart. Guess.",
+  "sharedStopCodeM": 150,
+  "$sharedStopM": "A stop of another operator's feed within this distance is the same physical stop, unless both are bays with different numbers (m): TransLink's and BC Transit's shared stops (Mission City Station Bay 1, Carvolth Exchange Bay 1) were 4–7 m apart in November 2026, the nearest different stops 15 m. Guess.",
+  "sharedStopM": 10
 }

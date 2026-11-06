@@ -286,7 +286,7 @@ const EngineControls: React.FC<{
     engine.getSnapshot,
   );
   useDatasets(snap.datasets);
-  useElsewhere(snap.elsewhere, onElsewhere);
+  useElsewhere(snap.elsewhere, onElsewhere, (key) => engine.selectKey(key));
   useOverlayPadding(engine);
   return (
     <>
@@ -307,15 +307,19 @@ const EngineControls: React.FC<{
 
 /**
  * A `?select=` key no loaded feed has: ask the feature resolver where it is
- * (apps/server/README.md#feature-resolver), so the map can move there. An OSM ref that no transit
- * feature has goes to /cycling.
+ * (apps/server/README.md#feature-resolver), so the map can move there. A ref is selected by the
+ * feature's ID instead (a stop's `osm-node:` ref, which no plan has; the ID then comes back here
+ * while its feed isn't loaded). An OSM ref that no transit feature has goes to /cycling.
  */
 function useElsewhere(
   key: string | undefined,
   onFound: (bounds: [number, number, number, number]) => void,
+  onFeature: (key: string) => void,
 ): void {
   const found = React.useRef(onFound);
   found.current = onFound;
+  const feature = React.useRef(onFeature);
+  feature.current = onFeature;
   const [, navigate] = useLocation();
   React.useEffect(() => {
     if (!key) return;
@@ -332,6 +336,8 @@ function useElsewhere(
       .then((r) =>
         r.ok || r.status === 404 ?
           (r.json() as Promise<{
+            id?: string;
+            suffix?: string;
             kind?: FeatureKind;
             bbox?: [number, number, number, number] | null;
           }>)
@@ -340,6 +346,8 @@ function useElsewhere(
       .then((f) => {
         if (cancelled || !f) return;
         if (f.kind ? modeOfKind(f.kind) === "cycling" : osm) toCycling();
+        else if (k?.form === "ref" && f.id)
+          feature.current(f.suffix ? `${f.id}-${f.suffix}` : f.id);
         else if (f.bbox) found.current(f.bbox);
       })
       .catch(() => {});

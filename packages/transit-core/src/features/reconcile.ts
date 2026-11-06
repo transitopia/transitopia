@@ -7,10 +7,14 @@
 // Containment is the registry's (docs/DESIGN.md#relationships-between-features): the station and
 // bay heuristics only propose a parent for a stop when it's first minted, and an existing stop's
 // parent is never changed here, even when it has none.
+//
+// A stop several feeds serve is one feature (docs/DESIGN.md#shared-stops): a new stop that's another
+// feed's stop (`sharedStopMatch`) takes that feature, and `sharedStopMerges` finds the pairs minted
+// apart before, for the server to merge.
 
 import type { Config } from "../config.ts";
 import { distM, type LonLat } from "../geo.ts";
-import { baseName, groupBays, isBay } from "../plan/exchanges.ts";
+import { baseName, bayNumber, groupBays, isBay } from "../plan/exchanges.ts";
 import { groupStations, stationName } from "../plan/stations.ts";
 
 export type ReconcileSettings = Config<"reconcile">;
@@ -57,7 +61,11 @@ export interface RegistryFeature {
   lat?: number | undefined;
   parentId?: string | undefined;
   status: "active" | "retired" | "merged";
-  /** The feed a stop or route comes from. */
+  /**
+   * The feed a route comes from, and a stop's home feed: the one it was first minted from, whose
+   * versions set its name and position (a stop other feeds share has their refs too). For an
+   * exchange, the feed most of its stops are from, which likewise sets its name and position.
+   */
   feedId?: string | undefined;
   /** For stations: the feeds of their gtfs-stop refs. */
   feeds?: string[] | undefined;
@@ -77,10 +85,247 @@ export interface RegistryRef {
 }
 
 export interface RegistrySnapshot {
-  /** This feed's stops and routes, and every station and exchange. */
+  /**
+   * This feed's stops (those it's the home feed of, and those with a ref in it) and routes, every
+   * station and exchange, and the `shared` stops.
+   */
   features: RegistryFeature[];
   /** The newest range of each of this feed's refs. */
   refs: RegistryRef[];
+  /**
+   * Other feeds' active stops, none with a gtfs-stop ref in this feed: those a new stop of this feed
+   * may be (`sharedStopMatch`). Each is in `features` too.
+   */
+  shared: SharedStop[];
+}
+
+/**
+ * A stop as shared-stop matching sees it (docs/DESIGN.md#shared-stops): where it is, its name, and
+ * the feeds it's in (a gtfs-stop ref there) with their operators and its newest code in each.
+ */
+export interface SharedStop {
+  id: string;
+  name: string;
+  lon: number;
+  lat: number;
+  feeds: { feed: string; operator: string; code?: string | undefined }[];
+}
+
+/** How two stops were found to be the same physical stop: by an operator's stop code, or nearness. */
+export type SharedMatch = "code" | "near";
+
+/**
+ * Whether two stops of different feeds are the same physical stop (docs/DESIGN.md#shared-stops):
+ * of the same operator, when they have the same stop code within `sharedStopCodeM` (its codes are
+ * its own: two of its codes are two stops, however close); of different operators, when they're
+ * within `sharedStopM` and aren't bays with different numbers. Never two stops of one feed.
+ */
+export function sharedStopMatch(
+  a: SharedStop,
+  b: SharedStop,
+  settings: Pick<ReconcileSettings, "sharedStopCodeM" | "sharedStopM">,
+): SharedMatch | undefined {
+  if (a.feeds.some((x) => b.feeds.some((y) => y.feed === x.feed)))
+    return undefined;
+  const d = distM(at(a), at(b));
+  const sameOperator = a.feeds.some((x) =>
+    b.feeds.some((y) => y.operator === x.operator),
+  );
+  if (sameOperator)
+    return (
+        d < settings.sharedStopCodeM
+          && a.feeds.some(
+            (x) =>
+              x.code !== undefined
+              && b.feeds.some(
+                (y) => y.operator === x.operator && y.code === x.code,
+              ),
+          )
+      ) ?
+        "code"
+      : undefined;
+  if (d >= settings.sharedStopM) return undefined;
+  const na = bayNumber({ name: a.name });
+  const nb = bayNumber({ name: b.name });
+  return na !== undefined && nb !== undefined && na !== nb ? undefined : "near";
+}
+
+/** Metres in a degree of latitude, for the grid `sharedStopIndex` buckets stops in. */
+const M_PER_DEG = 111_320;
+/** The grid's cells are this much wider in longitude, so they're wide enough as far north as 70°. */
+const LON_CELL_FACTOR = 3;
+
+/** The stops that may match a stop (within the larger of the two distances), by a grid. */
+function sharedStopIndex(
+  stops: readonly SharedStop[],
+  settings: Pick<ReconcileSettings, "sharedStopCodeM" | "sharedStopM">,
+): (s: { lon: number; lat: number }) => SharedStop[] {
+  const cell =
+    Math.max(settings.sharedStopCodeM, settings.sharedStopM) / M_PER_DEG;
+  const key = (x: number, y: number) => `${x},${y}`;
+  const cx = (lon: number) => Math.floor(lon / (cell * LON_CELL_FACTOR));
+  const cy = (lat: number) => Math.floor(lat / cell);
+  const grid = new Map<string, SharedStop[]>();
+  for (const s of stops) {
+    const k = key(cx(s.lon), cy(s.lat));
+    let l = grid.get(k);
+    if (!l) grid.set(k, (l = []));
+    l.push(s);
+  }
+  return (s) => {
+    const out: SharedStop[] = [];
+    const x = cx(s.lon);
+    const y = cy(s.lat);
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dy = -1; dy <= 1; dy++)
+        out.push(...(grid.get(key(x + dx, y + dy)) ?? []));
+    return out;
+  };
+}
+
+/** The best match for a stop among candidates: by code before by nearness, then the nearest. */
+function bestShared(
+  s: SharedStop,
+  candidates: readonly SharedStop[],
+  settings: Pick<ReconcileSettings, "sharedStopCodeM" | "sharedStopM">,
+): { stop: SharedStop; match: SharedMatch; m: number } | undefined {
+  let best: { stop: SharedStop; match: SharedMatch; m: number } | undefined;
+  for (const c of candidates) {
+    const match = sharedStopMatch(s, c, settings);
+    if (!match) continue;
+    const m = distM(at(s), at(c));
+    if (
+      !best
+      || (match === "code" && best.match === "near")
+      || (match === best.match && m < best.m)
+    )
+      best = { stop: c, match, m };
+  }
+  return best;
+}
+
+/** An exchange as `sharedExchangeMerges` sees it. */
+export interface SharedExchange {
+  id: string;
+  name: string;
+  lon: number;
+  lat: number;
+  /** The feeds of the stops in it (their gtfs-stop refs'). */
+  feeds: string[];
+  /** How many active stops are in it. */
+  stops: number;
+}
+
+/** A merge of one exchange into another of the same name, from other feeds' stops. */
+export interface SharedExchangeMerge {
+  from: string;
+  into: string;
+  m: number;
+}
+
+/**
+ * Exchanges already in the registry that are one exchange several feeds' buses serve
+ * (docs/DESIGN.md#shared-stops): of the same name within `exchangeMatchM`, with stops from different
+ * feeds (two exchanges of one feed are the operator's to tell apart, and an admin's). Each group
+ * merges into the exchange with the most stops, then the first by ID.
+ */
+export function sharedExchangeMerges(
+  exchanges: readonly SharedExchange[],
+  settings: Pick<ReconcileSettings, "exchangeMatchM">,
+): SharedExchangeMerge[] {
+  const order = [...exchanges]
+    .filter((e) => e.feeds.length)
+    .sort((a, b) => b.stops - a.stops || a.id.localeCompare(b.id));
+  const out: SharedExchangeMerge[] = [];
+  const taken = new Set<string>();
+  for (const into of order) {
+    if (taken.has(into.id)) continue;
+    const feeds = new Set(into.feeds);
+    for (const from of order) {
+      if (from === into || taken.has(from.id)) continue;
+      if (normalizeName(from.name) !== normalizeName(into.name)) continue;
+      const m = distM(at(from), at(into));
+      if (m >= settings.exchangeMatchM) continue;
+      if (from.feeds.some((f) => feeds.has(f))) continue;
+      for (const f of from.feeds) feeds.add(f);
+      taken.add(from.id);
+      out.push({ from: from.id, into: into.id, m: Math.round(m) });
+    }
+    taken.add(into.id);
+  }
+  return out;
+}
+
+/** A merge of one stop into another that's the same physical stop. */
+export interface SharedStopMerge {
+  from: string;
+  into: string;
+  match: SharedMatch;
+  /** How far apart they are (m). */
+  m: number;
+}
+
+/**
+ * The stops already in the registry that are the same physical stop (docs/DESIGN.md#shared-stops),
+ * as merges: pairs by code before pairs by nearness, nearest first, never joining two stops of one
+ * feed. Each group merges into the stop listed first (the caller lists the oldest first).
+ */
+export function sharedStopMerges(
+  stops: readonly SharedStop[],
+  settings: Pick<ReconcileSettings, "sharedStopCodeM" | "sharedStopM">,
+): SharedStopMerge[] {
+  const order = new Map(stops.map((s, i) => [s.id, i]));
+  const near = sharedStopIndex(stops, settings);
+  const pairs: {
+    a: SharedStop;
+    b: SharedStop;
+    match: SharedMatch;
+    m: number;
+  }[] = [];
+  for (const a of stops)
+    for (const b of near(a)) {
+      if (order.get(b.id)! <= order.get(a.id)!) continue;
+      const match = sharedStopMatch(a, b, settings);
+      if (match) pairs.push({ a, b, match, m: distM(at(a), at(b)) });
+    }
+  pairs.sort(
+    (x, y) =>
+      Number(x.match === "near") - Number(y.match === "near") || x.m - y.m,
+  );
+  // Groups as union-find, each with its feeds: a group never takes in a second stop of a feed.
+  const root = new Map<string, string>();
+  const find = (id: string): string => {
+    const r = root.get(id) ?? id;
+    if (r === id) return id;
+    const top = find(r);
+    root.set(id, top);
+    return top;
+  };
+  const feeds = new Map(
+    stops.map((s) => [s.id, new Set(s.feeds.map((f) => f.feed))]),
+  );
+  const how = new Map<string, { match: SharedMatch; m: number }>();
+  for (const { a, b, match, m } of pairs) {
+    let ra = find(a.id);
+    let rb = find(b.id);
+    if (ra === rb) continue;
+    const fa = feeds.get(ra)!;
+    const fb = feeds.get(rb)!;
+    if ([...fb].some((f) => fa.has(f))) continue;
+    if (order.get(rb)! < order.get(ra)!) [ra, rb] = [rb, ra];
+    root.set(rb, ra);
+    for (const f of fb) feeds.get(ra)!.add(f);
+    how.set(rb, { match, m });
+  }
+  const out: SharedStopMerge[] = [];
+  for (const s of stops) {
+    const into = find(s.id);
+    if (into === s.id) continue;
+    // How it joined: set when it stopped being its group's root.
+    const h = how.get(s.id)!;
+    out.push({ from: s.id, into, match: h.match, m: Math.round(h.m) });
+  }
+  return out;
 }
 
 export interface ReconcileInput {
@@ -119,6 +364,7 @@ export interface FeatureUpdate {
 }
 
 export type FlagReason =
+  | "shared-stop"
   | "code-moved-far"
   | "disappeared-nearby"
   | "cross-feed-name-match"
@@ -297,6 +543,13 @@ export function reconcile(input: ReconcileInput): Decisions {
   const refresh = (id: string, name: string, pos: LonLat | undefined) => {
     const f = features.get(id);
     if (!f) return;
+    // A stop or exchange other feeds share follows its home feed only.
+    if (
+      (f.kind === "stop" || f.kind === "exchange")
+      && f.feedId !== undefined
+      && f.feedId !== feed
+    )
+      return;
     const u: FeatureUpdate = { id };
     if (!f.nameLocked && f.name !== name) u.name = name;
     if (pos && !f.geomLocked && (!located(f) || distM(at(f), pos) > MOVED_M)) {
@@ -422,8 +675,8 @@ export function reconcile(input: ReconcileInput): Decisions {
   const claimed = new Set<string>();
   const featureOf = new Map<string, string>();
   const existing = new Set<string>();
-  const byRule = new Map<string, 1 | 2 | 3>();
-  const claim = (s: FeedStop, f: RegistryFeature, rule: 1 | 2 | 3) => {
+  const byRule = new Map<string, 1 | 2 | 3 | 4>();
+  const claim = (s: FeedStop, f: RegistryFeature, rule: 1 | 2 | 3 | 4) => {
     reactivate(
       f,
       rule === 2 ? `stop:${feed}:${s.code}` : `gtfs-stop:${feed}:${s.id}`,
@@ -443,9 +696,13 @@ export function reconcile(input: ReconcileInput): Decisions {
     const f = refFeature("stop", s.code, "stop");
     if (f && !claimed.has(f.id)) claim(s, f, 2);
   }
+  // This feed's stops: those it's the home feed of, and those other feeds share with it.
+  const withRefs = new Set(snapshot.refs.map((r) => r.featureId));
   const feedStops = snapshot.features.filter(
     (f): f is RegistryFeature & { lon: number; lat: number } =>
-      f.kind === "stop" && f.feedId === feed && located(f),
+      f.kind === "stop"
+      && (f.feedId === feed || withRefs.has(f.id))
+      && located(f),
   );
   const byName = new Map<
     string,
@@ -468,6 +725,29 @@ export function reconcile(input: ReconcileInput): Decisions {
       at(s),
     );
     if (f) claim(s, f, 3);
+  }
+  // 4. Another feed's stop that's the same physical stop (docs/DESIGN.md#shared-stops).
+  const sharedNear = sharedStopIndex(snapshot.shared, settings);
+  /** How each stop claimed by rule 4 matched, for its flag. */
+  const sharedHow = new Map<string, { match: SharedMatch; m: number }>();
+  for (const s of stops) {
+    if (featureOf.has(s.id)) continue;
+    const best = bestShared(
+      {
+        id: s.id,
+        name: s.name,
+        lon: s.lon,
+        lat: s.lat,
+        feeds: [{ feed, operator, code: s.code }],
+      },
+      sharedNear(s).filter(
+        (c) => !claimed.has(c.id) && features.get(c.id)?.status === "active",
+      ),
+      settings,
+    );
+    if (!best) continue;
+    claim(s, features.get(best.stop.id)!, 4);
+    sharedHow.set(s.id, { match: best.match, m: best.m });
   }
 
   // --- Containment proposed for the stops: platforms and standalone stops their station's; bays
@@ -509,8 +789,25 @@ export function reconcile(input: ReconcileInput): Decisions {
     let parent = g.station;
     if (!parent) {
       const pos = centroid(g.bays.map((id) => stopById.get(id)!));
-      parent = newFeature("exchange", g.name, pos, null).id;
-      mintedExchanges.push({ id: parent, pos, name: g.name });
+      // Another feed's exchange of the same name here is this one (docs/DESIGN.md#shared-stops):
+      // Okanagan-Shuswap's buses at Kelowna's Westbank Exchange.
+      parent = nearest(
+        snapshot.features.filter(
+          (f) =>
+            f.kind === "exchange"
+            && f.status === "active"
+            && f.feedId !== undefined
+            && f.feedId !== feed
+            && located(f)
+            && normalizeName(f.name) === normalizeName(g.name)
+            && distM(at(f), pos) < settings.exchangeMatchM,
+        ),
+        pos,
+      )?.id;
+      if (!parent) {
+        parent = newFeature("exchange", g.name, pos, null).id;
+        mintedExchanges.push({ id: parent, pos, name: g.name });
+      }
     }
     for (const id of g.bays) bayParent.set(id, parent);
   }
@@ -525,8 +822,17 @@ export function reconcile(input: ReconcileInput): Decisions {
     } else {
       const f = features.get(id)!;
       const rule = byRule.get(s.id)!;
+      const how = sharedHow.get(s.id);
+      // Matched by nearness to another operator's stop: an admin can check it's the same.
+      if (how?.match === "near")
+        flag(id, "shared-stop", [], {
+          feed,
+          stopId: s.id,
+          code: s.code ?? null,
+          m: Math.round(how.m),
+        });
       if (
-        rule !== 3
+        (rule === 1 || rule === 2)
         && located(f)
         && distM(at(f), at(s)) > settings.stopMovedFarM
       )
@@ -600,10 +906,13 @@ export function reconcile(input: ReconcileInput): Decisions {
     refresh(f.id, name, centroid(inIt));
   }
   for (const n of mintedExchanges) {
+    // This feed's own exchanges (`present` only has this feed's stops: another feed's exchange
+    // always looks empty), or ones with no stops at all.
     const lost = snapshot.features.filter(
       (f) =>
         f.kind === "exchange"
         && f.status === "active"
+        && (f.feedId === undefined || f.feedId === feed)
         && located(f)
         && !present.get(f.id)?.length
         && distM(at(f), n.pos) < settings.exchangeReplacedM,

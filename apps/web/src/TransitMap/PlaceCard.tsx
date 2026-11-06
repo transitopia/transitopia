@@ -15,8 +15,10 @@ import {
 } from "@transitopia/transit-core/plan/types.ts";
 import { bayLabel } from "@transitopia/transit-core/plan/exchanges.ts";
 import { creditsFor, legendsFor } from "@transitopia/shared/datasets.ts";
+import { transitApi } from "../config.ts";
 
 import {
+  CardChips,
   CardSection,
   InfoCard,
   TimeMark,
@@ -423,11 +425,56 @@ const DepartureList: React.FC<{
   );
 };
 
+/**
+ * A stop's numbers on its sign: "Stop #50913", or for a stop several operators serve, each with
+ * its operator ("Stop #120092 (BC Transit), #60979 (TransLink)", docs/DESIGN.md#shared-stops).
+ */
+export function stopNumbers(codes: PlaceSnapshot["codes"]): string | undefined {
+  if (!codes.length) return undefined;
+  const named = new Set(codes.map((c) => c.agency)).size > 1;
+  return `Stop ${codes
+    .map((c) => `#${c.code}${named && c.agency ? ` (${c.agency})` : ""}`)
+    .join(", ")}`;
+}
+
+/**
+ * A stop's OpenStreetMap node, from its osm-node ref in the registry (docs/DESIGN.md#osm-bus-stops),
+ * asked of the feature resolver when its card opens: undefined until it answers, and without one.
+ */
+function useOsmNode(feature: string | undefined): string | undefined {
+  const [found, setFound] = React.useState<{
+    feature: string;
+    node?: string;
+  }>();
+  React.useEffect(() => {
+    if (!feature || !transitApi) return;
+    let cancelled = false;
+    fetch(`${transitApi}features/${encodeURIComponent(feature)}`)
+      .then((r) =>
+        r.ok ? (r.json() as Promise<{ refs?: string[] }>) : undefined,
+      )
+      .then((f) => {
+        const ref = f?.refs?.find((r) => r.startsWith(OSM_NODE));
+        if (!cancelled)
+          setFound(
+            ref ? { feature, node: ref.slice(OSM_NODE.length) } : { feature },
+          );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [feature]);
+  return found && found.feature === feature ? found.node : undefined;
+}
+const OSM_NODE = "osm-node:";
+
 const PlaceCardBody: React.FC<{
   engine: TransitEngine;
   snap: TransitSnapshot;
   place: PlaceSnapshot;
 }> = ({ engine, snap, place }) => {
+  const osmNode = useOsmNode(place.feature);
   const state = timeState(snap);
   const colors = routeColorsFor(engine);
   const station = place.kind === "station";
@@ -436,10 +483,17 @@ const PlaceCardBody: React.FC<{
   const railRoutes = place.routes.filter((r) => !isBus(r));
   const rail = railRoutes.length > 0;
   const [direction, stopName] = splitDirection(place.name);
+  // A bay by its number ("Bay 7"); one whose name has none ("Westbank Exch") by its name, since its
+  // stop number is under the title.
+  const bayName =
+    place.partOf ?
+      bayLabel({ name: place.name, platform: place.platform })
+    : undefined;
+  const bay = bayName === "Bay" ? undefined : bayName;
   const title =
     station ? stationName(place.name)
     : exchange ? place.name
-    : place.partOf ? bayLabel(place)
+    : bay !== undefined ? bay
     : stopName;
   const mainRoute = railRoutes[0];
   const realtime = place.groups.some((g) =>
@@ -522,16 +576,6 @@ const PlaceCardBody: React.FC<{
       icon: "crosshair",
       onSelect: () => engine.locateSelected(),
     },
-    ...(place.partOf ?
-      [
-        {
-          id: "part-of",
-          label: `All of ${stationName(place.partOf.name)}`,
-          icon: place.partOf.kind === "station" ? "station" : "bus-stop",
-          onSelect: go(place.partOf),
-        } satisfies CardAction,
-      ]
-    : []),
     ...place.bays.map((b): CardAction => ({
       id: `bay-${b.id}`,
       label: `Only ${b.label}`,
@@ -572,10 +616,9 @@ const PlaceCardBody: React.FC<{
       eyebrow={eyebrow}
       title={title}
       subtitle={
-        station ? railRoutes.map((r) => r.label).join(" · ")
-        : place.code ?
-          `Stop #${place.code}`
-        : undefined
+        station ?
+          railRoutes.map((r) => r.label).join(" · ")
+        : stopNumbers(place.codes)
       }
       status={
         state.future ?
@@ -621,8 +664,32 @@ const PlaceCardBody: React.FC<{
               {l}
             </p>
           ))}
+          {osmNode ?
+            <a
+              href={`https://www.openstreetmap.org/node/${osmNode}`}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1 inline-block font-bold text-(--card-link)">
+              View or edit on OpenStreetMap
+            </a>
+          : null}
         </>
       }>
+      {place.partOf ?
+        <CardSection title="Part of">
+          <CardChips
+            className="py-1.5"
+            chips={[
+              {
+                label: stationName(place.partOf.name),
+                icon: place.partOf.kind === "station" ? "station" : "bus-stop",
+                onSelect: go(place.partOf),
+                action: `View ${place.partOf.kind}: ${stationName(place.partOf.name)}`,
+              },
+            ]}
+          />
+        </CardSection>
+      : null}
       {sections.map((x) => (
         <DepartureList
           key={x.kind}

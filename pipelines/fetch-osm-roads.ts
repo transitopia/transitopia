@@ -4,7 +4,10 @@
 // often plain service roads). The area is where the feed's buses go in its newest archived GTFS: the
 // cells of a grid (CELL_DEG) its shapes and stops are in, and their neighbours, so a feed of towns
 // far apart (BC Transit's Northern BC) doesn't fetch every road between them. Saved with a date so
-// builds are reproducible: var/raw/osm-roads/<feed>/YYYY-MM-DD.json (and latest.json).
+// builds are reproducible: var/raw/osm-roads/<feed>/YYYY-MM-DD.json (and latest.json). The same
+// query's bus stop nodes, with the tags read from them, go to bus-stops.json beside them, for matching
+// the feed's stops to OSM's (packages/transit-core/src/features/osm-stops.ts): a bay's letter where
+// the GTFS has none, and the registry's osm-node refs.
 //
 //   tsx pipelines/fetch-osm-roads.ts [--feed <id>]   (default: every feed)
 //   tsx pipelines/fetch-osm-roads.ts --max-age-days 30   (only feeds without roads, or older; the
@@ -28,6 +31,7 @@ import { join } from "node:path";
 import { archivedFeeds } from "@transitopia/data/gtfs-day.ts";
 import { readCsv } from "@transitopia/data/gtfs-zip.ts";
 import { feedPaths, log, readFeeds } from "@transitopia/data/paths.ts";
+import { osmBusStops } from "@transitopia/transit-core/features/osm-stops.ts";
 
 /**
  * Public Overpass servers, tried in order (https://wiki.openstreetmap.org/wiki/Overpass_API#Public_Overpass_API_instances).
@@ -85,6 +89,7 @@ ${each((b) => `  node["highway"="bus_stop"](${b});`)}
 )->.stops;
 way["highway"="service"](around.stops:${SERVICE_NEAR_STOP_M})->.service;
 (.roads; .service;)->.ways;
+.stops out body qt;
 .ways out body qt;
 node(w.ways);
 out skel qt;`;
@@ -116,14 +121,31 @@ async function fetchFeed(feed: string, area: readonly BBox[]) {
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const text = await res.text();
-        const data = JSON.parse(text) as { elements: { type: string }[] };
+        const data = JSON.parse(text) as {
+          osm3s?: unknown;
+          elements: Parameters<typeof osmBusStops>[0];
+        };
         const out = join(dir, `${new Date().toISOString().slice(0, 10)}.json`);
         await writeFile(out, text);
         await copyFile(out, join(dir, "latest.json"));
+        const stops = osmBusStops(data.elements);
+        await writeFile(
+          feedPaths(feed).osmStops,
+          JSON.stringify({
+            osm3s: data.osm3s,
+            elements: stops.map((n) => ({
+              type: "node",
+              ...n,
+              tags: { highway: "bus_stop", ...n.tags },
+            })),
+          }),
+        );
         const counts: Record<string, number> = {};
         for (const e of data.elements)
           counts[e.type] = (counts[e.type] ?? 0) + 1;
-        log(`${feed}: saved ${out}: ${JSON.stringify(counts)}`);
+        log(
+          `${feed}: saved ${out}: ${JSON.stringify(counts)}, ${stops.length} bus stops`,
+        );
         const dated = (await readdir(dir))
           .filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f))
           .sort()
@@ -146,10 +168,14 @@ const arg = (name: string) => {
 const only = arg("--feed");
 const maxAgeDays = arg("--max-age-days");
 
-/** Whether the feed's roads were fetched within --max-age-days (always false without it). */
+/**
+ * Whether the feed's roads were fetched within --max-age-days (always false without it), with its
+ * bus stops (fetched with them since November 2026).
+ */
 async function fresh(feed: string): Promise<boolean> {
   if (maxAgeDays === undefined) return false;
   try {
+    await stat(feedPaths(feed).osmStops);
     const { mtimeMs } = await stat(join(feedPaths(feed).roads, "latest.json"));
     return Date.now() - mtimeMs < Number(maxAgeDays) * 86_400_000;
   } catch {
