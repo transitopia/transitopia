@@ -189,4 +189,19 @@ describe("RtClient recorded hours", () => {
     expect(await show(t)).toEqual(["loading", "recorded"]);
     expect(requested).toEqual([id, id]);
   });
+
+  it("loads the hour for a time just before the live buffer starts", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const now = at(9);
+    vi.setSystemTime(now);
+    const { client, requested, show } = await setup();
+    // The page opened a few seconds ago, on a link to a minute before then.
+    client.acceptLive(live(now - 5_000, [{ ...bus, ts: now - 5_000 }]), now);
+    const t = now - 60_000;
+    expect(await show(t)).toEqual(["loading", "recorded"]);
+    expect(requested).toEqual([hourId(t)]);
+    // Times the live buffer covers don't load recorded hours.
+    expect(await show(now)).toEqual(["live", "live"]);
+    expect(requested).toEqual([hourId(t)]);
+  });
 });

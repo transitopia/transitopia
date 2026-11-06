@@ -246,7 +246,14 @@ export class RtClient {
       this.prefetchRequested = false;
     }
     const nearNow = Math.abs(t - Date.now()) < LIVE_WINDOW_MS;
-    if (!nearNow || t < Date.now() - this.cadence.maxInterpolateLimitS * 1000)
+    // The live buffer serves times from its first snapshot on (vehiclesAt), which is only when the
+    // page opened: a time just before that, linked to or paused on, needs its recorded hour too.
+    const liveStart = this.live[0]?.fetchedAt;
+    if (
+      !nearNow
+      || t < Date.now() - this.cadence.maxInterpolateLimitS * 1000
+      || (liveStart !== undefined && t < liveStart)
+    )
       this.ensureHours(t);
     if (this.available) this.ensureChanges(t, nearNow);
   }
