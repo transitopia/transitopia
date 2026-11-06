@@ -187,6 +187,8 @@ const reconcile = z.strictObject({
   disappearedNearM: pos,
   stationMatchM: pos,
   exchangeReplacedM: pos,
+  sharedStopCodeM: pos,
+  sharedStopM: pos,
 });
 
 // --- config/cycling/cycling.json ---

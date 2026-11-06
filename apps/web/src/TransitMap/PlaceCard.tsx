@@ -17,6 +17,7 @@ import { bayLabel } from "@transitopia/transit-core/plan/exchanges.ts";
 import { creditsFor, legendsFor } from "@transitopia/shared/datasets.ts";
 
 import {
+  CardChips,
   CardSection,
   InfoCard,
   TimeMark,
@@ -423,6 +424,18 @@ const DepartureList: React.FC<{
   );
 };
 
+/**
+ * A stop's numbers on its sign: "Stop #50913", or for a stop several operators serve, each with
+ * its operator ("Stop #120092 (BC Transit), #60979 (TransLink)", docs/DESIGN.md#shared-stops).
+ */
+export function stopNumbers(codes: PlaceSnapshot["codes"]): string | undefined {
+  if (!codes.length) return undefined;
+  const named = new Set(codes.map((c) => c.agency)).size > 1;
+  return `Stop ${codes
+    .map((c) => `#${c.code}${named && c.agency ? ` (${c.agency})` : ""}`)
+    .join(", ")}`;
+}
+
 const PlaceCardBody: React.FC<{
   engine: TransitEngine;
   snap: TransitSnapshot;
@@ -522,16 +535,6 @@ const PlaceCardBody: React.FC<{
       icon: "crosshair",
       onSelect: () => engine.locateSelected(),
     },
-    ...(place.partOf ?
-      [
-        {
-          id: "part-of",
-          label: `All of ${stationName(place.partOf.name)}`,
-          icon: place.partOf.kind === "station" ? "station" : "bus-stop",
-          onSelect: go(place.partOf),
-        } satisfies CardAction,
-      ]
-    : []),
     ...place.bays.map((b): CardAction => ({
       id: `bay-${b.id}`,
       label: `Only ${b.label}`,
@@ -572,10 +575,9 @@ const PlaceCardBody: React.FC<{
       eyebrow={eyebrow}
       title={title}
       subtitle={
-        station ? railRoutes.map((r) => r.label).join(" · ")
-        : place.code ?
-          `Stop #${place.code}`
-        : undefined
+        station ?
+          railRoutes.map((r) => r.label).join(" · ")
+        : stopNumbers(place.codes)
       }
       status={
         state.future ?
@@ -623,6 +625,21 @@ const PlaceCardBody: React.FC<{
           ))}
         </>
       }>
+      {place.partOf ?
+        <CardSection title="Part of">
+          <CardChips
+            className="py-1.5"
+            chips={[
+              {
+                label: stationName(place.partOf.name),
+                icon: place.partOf.kind === "station" ? "station" : "bus-stop",
+                onSelect: go(place.partOf),
+                action: `View ${place.partOf.kind}: ${stationName(place.partOf.name)}`,
+              },
+            ]}
+          />
+        </CardSection>
+      : null}
       {sections.map((x) => (
         <DepartureList
           key={x.kind}

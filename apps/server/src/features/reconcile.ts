@@ -23,6 +23,7 @@ import {
   idMinter,
   loadSnapshot,
   lockRegistry,
+  mergeSharedStops,
   type ApplyResult,
 } from "./registry.ts";
 
@@ -121,6 +122,17 @@ export async function reconcileFeeds(opts: {
   // statistics, or the statistics views join as if the tables were empty.
   if (out.some((r) => r.minted || r.refsAdded))
     await sql`analyze features, feature_refs`.execute(db);
+  // Stops several feeds serve that were minted apart (docs/DESIGN.md#shared-stops): new versions
+  // match them as they come, but a stop minted before its twin in another feed was, or before the
+  // rule existed, is only found here.
+  const merges = await db.transaction().execute(async (tx) => {
+    await lockRegistry(tx);
+    return mergeSharedStops(tx, settings);
+  });
+  for (const m of merges)
+    log(
+      `features: merged ${m.from} into ${m.into}, the same stop in another feed (${m.match === "code" ? "same stop code" : "nearby"}, ${m.m} m)`,
+    );
   return out;
 }
 

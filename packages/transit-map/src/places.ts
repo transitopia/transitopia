@@ -42,7 +42,12 @@ import {
   segmentFrequency,
   sharedStart,
 } from "@transitopia/transit-core/schedule/shared-segment.ts";
-import { displayServiceDate, hubsOf, placeOfStop } from "./plans.ts";
+import {
+  displayServiceDate,
+  hubsOf,
+  placeOfStop,
+  stopFeatures,
+} from "./plans.ts";
 import { sharedPlace, type Place } from "./url.ts";
 import { feedKey, vehicleId } from "./keys.ts";
 
@@ -115,6 +120,12 @@ export interface PlaceSnapshot extends Place {
   datasets: string[];
   /** A bus stop's number on its sign (GTFS stop_code), where the plan has it. */
   code?: string | undefined;
+  /**
+   * A stop's numbers in every loaded feed that serves it (docs/DESIGN.md#shared-stops), its own
+   * feed's first, each with who runs that feed ("BC Transit"); one number the feeds share is listed
+   * once. Empty for a station or exchange.
+   */
+  codes: { code: string; agency: string | undefined }[];
   /** A stop's platform or bay (`PlanStop.platform`), where the plan has one. */
   platform?: string | undefined;
   /**
@@ -217,7 +228,9 @@ export interface PlaceContext {
   segment: (p: Place) => SegmentContext | undefined;
   /**
    * Other loaded feeds' stops in this station or exchange (the registry puts them in it): their
-   * departures, routes and bays join its card (packages/transit-map/README.md#feeds).
+   * departures, routes and bays join its card (packages/transit-map/README.md#feeds). For a stop,
+   * the same stop in other feeds (docs/DESIGN.md#shared-stops): their departures, routes and stop
+   * numbers join its card.
    */
   foreign?: ForeignBays[] | undefined;
   /** For a stop in no station or exchange of its own feed's: another feed's that the registry puts it in. */
@@ -337,6 +350,29 @@ export function placeSnapshot(
   ];
   const bayStop = (fpp: PreparedPlan, id: string) =>
     fpp.stopById.get(id) ?? { name: id };
+  // A bay is listed once, however many feeds serve it: by its feature, where the registry has one.
+  const listed = new Set<string>();
+  const once = (fpp: PreparedPlan, id: string) => {
+    const k = stopFeatures(fpp.plan)?.idOf.get(id) ?? `${fpp.plan.feed}:${id}`;
+    if (listed.has(k)) return false;
+    listed.add(k);
+    return true;
+  };
+  const codes: PlaceSnapshot["codes"] = [];
+  if (p.kind === "stop")
+    for (const [fpp, ids] of [
+      [pp, [p.id]] as const,
+      ...foreign.map(({ f }) => [f.pp, f.stops] as const),
+    ])
+      for (const id of ids) {
+        const code = fpp.stopById.get(id)?.code;
+        const agency = fpp.plan.agency;
+        if (
+          code !== undefined
+          && !codes.some((c) => c.code === code && c.agency === agency)
+        )
+          codes.push({ code, agency });
+      }
   const all = [own, ...foreign.map((x) => x.rows)];
   // Each feed's shared stretches, their `within` pointing into the list as a whole.
   let offset = 0;
@@ -354,15 +390,20 @@ export function placeSnapshot(
     name: where.name,
     code: "code" in where ? where.code : undefined,
     platform: "platform" in where ? where.platform : undefined,
+    codes,
     bays: [
-      ...(hub?.bays ?? []).map((id) => ({
-        id,
-        feed: plan.feed,
-        label: bayLabel(bayStop(pp, id)),
-      })),
-      ...foreign.flatMap(({ f }) =>
+      ...(hub?.bays ?? [])
+        .filter((id) => once(pp, id))
+        .map((id) => ({
+          id,
+          feed: plan.feed,
+          label: bayLabel(bayStop(pp, id)),
+        })),
+      // Another feed's copies of a stop are the stop itself, not bays.
+      ...(p.kind === "stop" ? [] : foreign).flatMap(({ f }) =>
         [...f.stops]
           .sort((a, b) => byBay(f.pp.stopById.get(a)!, f.pp.stopById.get(b)!))
+          .filter((id) => once(f.pp, id))
           .map((id) => ({
             id,
             feed: f.pp.plan.feed,

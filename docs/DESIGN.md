@@ -254,11 +254,22 @@ Feature reconciliation is the process of matching GTFS features like bus stops t
 
 | Kind | The same feature when (first match wins) | Otherwise |
 |---|---|---|
-| stop | 1. its `stop_id`'s ref, with the same `stop_code`; 2. its `stop_code`'s ref; 3. without a code, an unmatched stop of the same name within 50 m | Mint. Flag it beside a stop that disappeared (`disappeared-nearby`); flag a matched stop that moved over 300 m (`code-moved-far`). |
+| stop | 1. its `stop_id`'s ref, with the same `stop_code`; 2. its `stop_code`'s ref; 3. without a code, an unmatched stop of the same name within 50 m; 4. another feed's stop that's the same physical stop ([below](#shared-stops)) | Mint. Flag it beside a stop that disappeared (`disappeared-nearby`); flag a matched stop that moved over 300 m (`code-moved-far`). |
 | station | a ref of a parent stop in its group (parent stops and standalone rail stops of the same name, merged as the plan merges them); else an unmatched station of the same name within 300 m in the feed | Mint. Flag it when another feed has a station of the same name within 300 m (`cross-feed-name-match`). |
 | route | the same feed and name (`route_short_name` without leading zeros, else `route_long_name`); in a feed keyed by `route_id` (`feed.json` → `routeKey`), its `gtfs-route` ref | Mint. |
 
 A new stop gets its parent from the proposal: a platform its GTFS parent's station; a bay the parent most of its group's existing stops have, "none" included (so a new bay at an exchange an admin dissolved stays an ordinary stop); and only when every stop of a group is new, the station the group is beside or a newly minted exchange (flagged `exchange-replaced` beside an exchange that lost all its stops). An existing stop whose parent differs from the proposal is flagged (`grouping-differs`) and kept. A retired stop or station whose `stop_id` or stop code comes back is made active again and flagged (`retired-returned`): retiring one means it's gone, and the feed says it isn't. A feature is flagged once per reason. Names and positions follow the newest version, except where an admin set them.
+
+### Shared stops
+
+A stop several feeds serve is one feature with refs in each (issue #266): TransLink's and the Fraser Valley's Bay 1 at Carvolth Exchange is `st-cetfp8g4`, with `stop:translink:61709` and `stop:bc-transit-fraser-valley:120054`. Two stops of different feeds are the same (`sharedStopMatch` in `packages/transit-core/src/features/reconcile.ts`, distances in `config/features/reconcile.json`):
+
+- **One operator's feeds** (BC Transit's merged feeds repeat its stops: 100076 is in both `bc-transit-victoria` and `bc-transit-vancouver-island`): the same stop code within `sharedStopCodeM` (150 m; its depots share a placeholder code hundreds of km apart). Its codes are its own, so two of its codes are two stops however close.
+- **Different operators**: within `sharedStopM` (10 m), unless both are bays with different numbers. Each such match is flagged (`shared-stop`) for an admin to check.
+
+Never two stops of one feed. A new stop that matches takes the other's feature (reconciliation's rule 4), and after every reconciliation `mergeSharedStops` (`apps/server/src/features/registry.ts`) merges stops minted apart (before the rule, or before the other feed's twin existed) into the oldest, recorded in `feature_changes` like an admin's merge, flagging `grouping-differs` where they were in different stations or exchanges. A stop's `feed_id` and `operator_id` are its **home feed**'s, the one it was first minted from: only its versions set the stop's name and position. Likewise an exchange's name and position follow the feed most of its stops are from.
+
+Each feed's places file names the stop by the same ID (with that feed's code as its suffix), so the site shows one card for it: both feeds' departures and routes, and every number on its sign ("Stop #120054 (BC Transit), #61709 (TransLink)"; [packages/transit-map → Feeds](../packages/transit-map/README.md#feeds)).
 
 ### Published features
 

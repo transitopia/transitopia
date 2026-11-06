@@ -42,6 +42,7 @@ import {
   displayServiceDate,
   hubsOf,
   placesOf,
+  stopFeatures,
   manifestInstants,
   playedManifest,
   type FeedManifests,
@@ -1267,11 +1268,17 @@ export class TransitEngine {
       if (placeIds.has(id)) found.delete(k);
       placeIds.add(id);
     }
+    const stopIds = new Set<string>();
     for (const [k, place] of found) {
       if (place.kind !== "stop") continue;
       const plan = this.slotOf(place.feed)?.shown?.plan;
       const parent = plan && placesOf(plan)?.parents[place.id];
       if (parent !== undefined && placeIds.has(parent)) found.delete(k);
+      // A stop several feeds serve is one card (docs/DESIGN.md#shared-stops): the first feed's.
+      const id = plan && stopFeatures(plan)?.idOf.get(place.id);
+      if (id === undefined) continue;
+      if (stopIds.has(id)) found.delete(k);
+      stopIds.add(id);
     }
     // A station's or exchange's bays are on its card.
     for (const slot of this.slots) {
@@ -2076,8 +2083,8 @@ export class TransitEngine {
   }
 
   /**
-   * A station's or exchange's ID in the registry (docs/DESIGN.md#feature-ids), from its feed's
-   * places file: the same place in every feed.
+   * A station's, exchange's or stop's ID in the registry (docs/DESIGN.md#feature-ids), from its
+   * feed's places file: the same place in every feed.
    */
   private featureIdOf(slot: FeedSlot, place: Place): string | undefined {
     const places = slot.shown && placesOf(slot.shown.plan);
@@ -2085,20 +2092,26 @@ export class TransitEngine {
     if (place.kind === "station") return stationFeatureId(places, place.id);
     if (place.kind === "exchange")
       return places.places[place.id] ? place.id : undefined;
+    if (place.kind === "stop")
+      return stopFeatures(slot.shown!.plan)?.idOf.get(place.id);
     return undefined;
   }
 
   /**
    * Other loaded feeds' stops in a station or exchange: those their places files put in it (the
    * Fraser Valley's 66 at Lougheed Station), whose departures join its card
-   * (packages/transit-map/README.md#feeds).
+   * (packages/transit-map/README.md#feeds). For a stop, the same stop in other feeds
+   * (docs/DESIGN.md#shared-stops).
    */
   private foreignBays(slot: FeedSlot, place: Place): ForeignBays[] {
     const id = this.featureIdOf(slot, place);
     if (id === undefined) return [];
     return this.slots.flatMap((s) => {
       const pp = s.shown;
-      const stops = s !== slot && pp ? baysOf(pp.plan)?.get(id) : undefined;
+      const stops =
+        s === slot || !pp ? undefined
+        : place.kind === "stop" ? stopFeatures(pp.plan)?.stopsOf.get(id)
+        : baysOf(pp.plan)?.get(id);
       return stops?.length ?
           [{ pp: pp!, stops, corrections: (d) => s.correctionsOn(d) }]
         : [];

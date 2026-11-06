@@ -234,7 +234,7 @@ export const featureFlag = z.object({
   id: z.number(),
   featureId: z.string(),
   candidates: z.array(z.string()),
-  /** code-moved-far, disappeared-nearby, cross-feed-name-match, exchange-replaced, grouping-differs. */
+  /** shared-stop, code-moved-far, disappeared-nearby, cross-feed-name-match, exchange-replaced, grouping-differs, retired-returned. */
   reason: z.string(),
   detail: z.record(z.string(), z.unknown()).nullable(),
   state: z.enum(["open", "resolved"]),

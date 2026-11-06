@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   reconcile,
   routeName,
+  sharedStopMatch,
+  sharedStopMerges,
+  type SharedStop,
   type Decisions,
   type FeedRecords,
   type FeedStop,
@@ -17,6 +20,8 @@ const settings = {
   disappearedNearM: 50,
   stationMatchM: 300,
   exchangeReplacedM: 250,
+  sharedStopCodeM: 150,
+  sharedStopM: 10,
 };
 
 /** About 1 m of latitude, in degrees. */
@@ -67,6 +72,7 @@ class Registry {
         f.kind === "station" ? { ...f, feeds: feeds(f.id) } : { ...f },
       ),
       refs: [...latest.values()].map((r) => ({ ...r })),
+      shared: [],
     };
   }
 
@@ -422,5 +428,176 @@ describe("routeName", () => {
     expect(routeName({ id: "1", shortName: "", longName: "Expo Line" })).toBe(
       "Expo Line",
     );
+  });
+});
+
+describe("shared stops (docs/DESIGN.md#shared-stops)", () => {
+  const at = (
+    id: string,
+    name: string,
+    lat: number,
+    feeds: SharedStop["feeds"],
+  ): SharedStop => ({ id, name, lon: -123, lat: 49 + lat * M, feeds });
+  const tl = (code: string) => ({
+    feed: "translink",
+    operator: "translink",
+    code,
+  });
+  const fv = (code: string) => ({
+    feed: "bc-transit-fraser-valley",
+    operator: "bc-transit",
+    code,
+  });
+  const vic = (code: string) => ({
+    feed: "bc-transit-victoria",
+    operator: "bc-transit",
+    code,
+  });
+
+  it("matches another operator's stop within sharedStopM, unless their bay numbers differ", () => {
+    const a = at("a", "Mission City Station @ Bay 1", 0, [tl("60979")]);
+    expect(
+      sharedStopMatch(
+        a,
+        at("b", "Mission City Stn Bay 1", 4, [fv("120092")]),
+        settings,
+      ),
+    ).toBe("near");
+    // Not a bay at all: the same stop.
+    expect(
+      sharedStopMatch(
+        a,
+        at("b", "Gatineau Pl at Lougheed Stn", 5, [fv("1")]),
+        settings,
+      ),
+    ).toBe("near");
+    expect(
+      sharedStopMatch(
+        a,
+        at("b", "Mission City Stn Bay 2", 4, [fv("120093")]),
+        settings,
+      ),
+    ).toBeUndefined();
+    expect(
+      sharedStopMatch(
+        a,
+        at("b", "Mission City Stn Bay 1", 15, [fv("120092")]),
+        settings,
+      ),
+    ).toBeUndefined();
+  });
+
+  it("matches the same operator's stop only by its stop code, within sharedStopCodeM", () => {
+    const a = at("a", "Douglas & Pandora", 0, [
+      {
+        feed: "bc-transit-vancouver-island",
+        operator: "bc-transit",
+        code: "100076",
+      },
+    ]);
+    expect(
+      sharedStopMatch(
+        a,
+        at("b", "Douglas St at Pandora Ave", 60, [vic("100076")]),
+        settings,
+      ),
+    ).toBe("code");
+    // Another of its codes is another stop, however close.
+    expect(
+      sharedStopMatch(
+        a,
+        at("b", "Douglas St at Pandora Ave", 1, [vic("100082")]),
+        settings,
+      ),
+    ).toBeUndefined();
+    // A placeholder code far away.
+    expect(
+      sharedStopMatch(a, at("b", "Garage", 2000, [vic("100076")]), settings),
+    ).toBeUndefined();
+    // Never two stops of one feed.
+    expect(
+      sharedStopMatch(
+        at("a", "X", 0, [vic("1")]),
+        at("b", "X", 0, [vic("1")]),
+        settings,
+      ),
+    ).toBeUndefined();
+  });
+
+  it("plans merges into the first-listed stop, never joining two stops of one feed", () => {
+    const merges = sharedStopMerges(
+      [
+        at("old", "Carvolth Exchange @ Bay 1", 0, [tl("61709")]),
+        at("new", "Carvolth Exch Bay 1", 7, [fv("120054")]),
+        // Also near the TransLink stop, but the group has a Fraser Valley stop already.
+        at("other", "Carvolth Exch Bay 1", 3, [fv("120055")]),
+        at("far", "Somewhere else", 5000, [fv("1")]),
+      ],
+      settings,
+    );
+    expect(merges).toEqual([
+      { from: "other", into: "old", match: "near", m: 3 },
+    ]);
+  });
+
+  it("gives a new stop the feature of another feed's stop it's the same as", () => {
+    const shared = at("st-tl", "Carvolth Exchange @ Bay 1", 0, [tl("61709")]);
+    const d = reconcile({
+      feed: "bc-transit-fraser-valley",
+      operator: "bc-transit",
+      seq: 5,
+      records: {
+        stops: [
+          stop("120054", "Carvolth Exch Bay 1", 4, { code: "120054" }),
+          stop("120055", "Carvolth Exch Bay 2", 40, { code: "120055" }),
+        ],
+        routes: [],
+      },
+      snapshot: {
+        features: [
+          {
+            id: "st-tl",
+            kind: "stop",
+            name: shared.name,
+            lon: shared.lon,
+            lat: shared.lat,
+            parentId: "ex-tl",
+            status: "active",
+            feedId: "translink",
+          },
+          {
+            id: "ex-tl",
+            kind: "exchange",
+            name: "Carvolth Exchange",
+            lon: -123,
+            lat: 49,
+            status: "active",
+            feedId: "translink",
+          },
+        ],
+        refs: [],
+        shared: [shared],
+      },
+      settings,
+      mint: (kind) => `${kind}-new`,
+    });
+    // Its refs go to the TransLink stop, whose name and position stay TransLink's.
+    expect(d.insertRefs.filter((r) => r.value === "120054")).toEqual([
+      expect.objectContaining({ featureId: "st-tl", scheme: "gtfs-stop" }),
+      expect.objectContaining({ featureId: "st-tl", scheme: "stop" }),
+    ]);
+    expect(d.update.find((u) => u.id === "st-tl")).toBeUndefined();
+    // Bay 2 joins the exchange its group's existing stop is in; the exchange keeps TransLink's name.
+    expect(d.mint).toEqual([
+      expect.objectContaining({
+        kind: "stop",
+        name: "Carvolth Exch Bay 2",
+        parentId: "ex-tl",
+      }),
+    ]);
+    expect(d.update.find((u) => u.id === "ex-tl")).toBeUndefined();
+    expect(d.flags).toEqual([
+      expect.objectContaining({ featureId: "st-tl", reason: "shared-stop" }),
+    ]);
   });
 });

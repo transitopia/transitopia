@@ -20,7 +20,9 @@ import { reconcileVersion } from "../src/features/reconcile.ts";
 import {
   childrenOf,
   findFeature,
+  lockRegistry,
   mergeFeatures,
+  mergeSharedStops,
   newExchange,
   resolveKey,
   retire,
@@ -397,6 +399,117 @@ describe.skipIf(!TEST_DATABASE_URL)(
       await mergeFeatures(t.db, renumbered.id, old.id);
       const resolved = await resolveKey(t.db, old.id);
       expect(resolved).toMatchObject({ suffix: "70200" });
+    });
+  },
+);
+
+describe.skipIf(!TEST_DATABASE_URL)(
+  "stops several feeds share (docs/DESIGN.md#shared-stops)",
+  () => {
+    let t: TestDb;
+    const seq = new Map<string, number>();
+    const FV = { id: "bc-transit-fraser-valley", operator: "bc-transit" };
+
+    beforeAll(async () => {
+      t = await createTestDb();
+      await syncSources(t.db);
+      for (const [feed, version] of [
+        ["translink", "T1"],
+        ["bc-transit-fraser-valley", "F1"],
+        ["bc-transit-fraser-valley", "F2"],
+      ] as const) {
+        const r = await t.db
+          .insertInto("gtfs_feeds")
+          .values({
+            feed_id: feed,
+            version,
+            start_date: "2026-11-01",
+            end_date: "2026-12-31",
+            fetched_at: new Date(),
+            sha256: "x",
+            bytes: 1,
+            object_key: null,
+          })
+          .returning("seq")
+          .executeTakeFirstOrThrow();
+        seq.set(version, r.seq);
+      }
+    });
+    afterAll(() => t?.drop());
+
+    const translinkBay = stop("11805", "Carvolth Exchange @ Bay 1", 0, {
+      code: "61709",
+    });
+    const fvBay = (lat = 7) =>
+      stop("120054", "Carvolth Exch Bay 1", lat, { code: "120054" });
+
+    it("merges stops minted apart into the older, and later versions keep them together", async () => {
+      // Matching off, as before the rule: two features.
+      const off = { ...reconcileConfig, sharedStopM: 0, sharedStopCodeM: 0 };
+      await reconcileVersion(t.db, {
+        feed: FEED,
+        version: "T1",
+        seq: seq.get("T1")!,
+        prevSeq: undefined,
+        records: { stops: [translinkBay], routes: [] },
+        settings: off,
+      });
+      await reconcileVersion(t.db, {
+        feed: FV,
+        version: "F1",
+        seq: seq.get("F1")!,
+        prevSeq: undefined,
+        records: { stops: [fvBay()], routes: [] },
+        settings: off,
+      });
+      const a = (await findFeature(t.db, "stop:translink:61709"))!;
+      const b = (await findFeature(
+        t.db,
+        "stop:bc-transit-fraser-valley:120054",
+      ))!;
+      expect(a.id).not.toBe(b.id);
+
+      const merges = await t.db.transaction().execute(async (tx) => {
+        await lockRegistry(tx);
+        return mergeSharedStops(tx, reconcileConfig);
+      });
+      expect(merges).toEqual([{ from: b.id, into: a.id, match: "near", m: 7 }]);
+      expect(
+        (await findFeature(t.db, "stop:bc-transit-fraser-valley:120054"))!.id,
+      ).toBe(a.id);
+      expect(await findFeature(t.db, b.id)).toMatchObject({
+        id: a.id,
+        redirectedFrom: b.id,
+      });
+      const resolved = await resolveKey(t.db, a.id);
+      expect(resolved && resolved !== "unminted" && resolved.refs).toEqual([
+        "gtfs-stop:bc-transit-fraser-valley:120054",
+        "gtfs-stop:translink:11805",
+        "stop:bc-transit-fraser-valley:120054",
+        "stop:translink:61709",
+      ]);
+
+      // The Fraser Valley's next version finds it by its refs, and leaves its name and position
+      // to TransLink's, its home feed.
+      const r = await reconcileVersion(t.db, {
+        feed: FV,
+        version: "F2",
+        seq: seq.get("F2")!,
+        prevSeq: seq.get("F1"),
+        records: { stops: [fvBay(8)], routes: [] },
+        settings: reconcileConfig,
+      });
+      expect(r).toMatchObject({ minted: 0, updated: 0 });
+      expect(await findFeature(t.db, "stop:translink:61709")).toMatchObject({
+        name: "Carvolth Exchange @ Bay 1",
+        feedId: "translink",
+      });
+      // Nothing more to merge.
+      const again = await t.db.transaction().execute(async (tx) => {
+        await lockRegistry(tx);
+        return mergeSharedStops(tx, reconcileConfig);
+      });
+      expect(again).toEqual([]);
     });
   },
 );

@@ -23,7 +23,11 @@ import type {
   ObservationFile,
   ObservationIndex,
 } from "@transitopia/transit-core/corrections/types.ts";
-import type { PlacesFile, PlacesIndex } from "@transitopia/shared/features.ts";
+import {
+  parseKey,
+  type PlacesFile,
+  type PlacesIndex,
+} from "@transitopia/shared/features.ts";
 import { baysFromPlaces, hubsFromPlaces } from "./hubs.ts";
 import { type BusHub } from "@transitopia/transit-core/plan/exchanges.ts";
 import type { ScenarioManifest } from "@transitopia/transit-core/scenario/types.ts";
@@ -921,6 +925,38 @@ export function baysOf(plan: ServicePlan): Map<string, string[]> | undefined {
 /** The plan's places file, once loaded (`PlanStore.placesFor`). */
 export function placesOf(plan: ServicePlan): PlacesFile | undefined {
   return placesOfPlan.get(plan);
+}
+
+/** A plan's stops by their registry features: each stop's ID, and each ID's stops. */
+export interface StopFeatures {
+  /** stop_id → its feature's ID. */
+  idOf: Map<string, string>;
+  /** Feature ID → its stop_ids here (one, unless a feature has two stops in a version). */
+  stopsOf: Map<string, string[]>;
+}
+
+const stopFeaturesCache = new WeakMap<PlacesFile, StopFeatures>();
+/**
+ * A plan's stops by their registry features, from its places file (none without one). A stop
+ * several feeds serve has the same ID in each feed's places file (docs/DESIGN.md#shared-stops).
+ */
+export function stopFeatures(plan: ServicePlan): StopFeatures | undefined {
+  const places = placesOfPlan.get(plan);
+  if (!places) return undefined;
+  let c = stopFeaturesCache.get(places);
+  if (!c) {
+    c = { idOf: new Map(), stopsOf: new Map() };
+    for (const [stop, key] of Object.entries(places.stops)) {
+      const k = parseKey(key);
+      if (k?.form !== "id") continue;
+      c.idOf.set(stop, k.id);
+      let l = c.stopsOf.get(k.id);
+      if (!l) c.stopsOf.set(k.id, (l = []));
+      l.push(stop);
+    }
+    stopFeaturesCache.set(places, c);
+  }
+  return c;
 }
 
 const placeOfCache = new WeakMap<BusHub[], PlaceOf>();
