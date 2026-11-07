@@ -533,6 +533,7 @@ export function addStaticLayers(
   tiles: string,
   theme: Theme,
   hiddenRoutes: ReadonlySet<string>,
+  hiddenStops: ReadonlySet<string>,
 ): boolean {
   const L = ids.layer;
   const stations: GeoJSONSourceSpecification = {
@@ -553,7 +554,7 @@ export function addStaticLayers(
     void (map.getSource(ids.busTicks) as GeoJSONSource).setData(
       busTicksGeoJson(plan),
     );
-    applyRouteFilter(map, ids, hiddenRoutes);
+    applyRouteFilter(map, ids, hiddenRoutes, hiddenStops);
     return false;
   }
   removeSources(map, staticSources(ids));
@@ -1132,7 +1133,7 @@ export function addStaticLayers(
       "text-halo-width": 1.5,
     },
   });
-  applyRouteFilter(map, ids, hiddenRoutes);
+  applyRouteFilter(map, ids, hiddenRoutes, hiddenStops);
   return true;
 }
 
@@ -1163,6 +1164,7 @@ export function applyRouteFilter(
   map: MlMap,
   ids: FeedIds,
   hidden: ReadonlySet<string>,
+  hiddenStops: ReadonlySet<string> = new Set(),
 ): void {
   const L = ids.layer;
   const visible: ExpressionSpecification = [
@@ -1199,14 +1201,19 @@ export function applyRouteFilter(
     hiddenAtStop,
     ["get", "n"],
   ];
-  for (const name of [
-    VEHICLES_BEFORE_LAYER,
-    "exchanges",
-    "exchanges-label",
-    "bus-stops",
-    "bus-stops-focus",
-  ])
+  for (const name of ["exchanges", "exchanges-label"])
     if (map.getLayer(L(name))) map.setFilter(L(name), stopVisible);
+  // Nor a stop another loaded feed draws (FeedSlot.hiddenStops).
+  const ownStop: ExpressionSpecification = [
+    "!",
+    ["in", ["get", "stop"], ["literal", [...hiddenStops]]],
+  ];
+  for (const name of [VEHICLES_BEFORE_LAYER, "bus-stops", "bus-stops-focus"])
+    if (map.getLayer(L(name)))
+      map.setFilter(
+        L(name),
+        hiddenStops.size ? ["all", stopVisible, ownStop] : stopVisible,
+      );
 }
 
 /** A feed's station, exchange and bus stop markers and their labels (the layers panel's "Stations & stops"). */

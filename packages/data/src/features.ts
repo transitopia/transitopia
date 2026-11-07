@@ -148,6 +148,7 @@ export function buildPlaces(
     stops: {},
     routes: {},
     parents: {},
+    homes: {},
     places: {},
     redirects: {},
   };
@@ -186,6 +187,7 @@ export function buildPlaces(
     if (f?.kind !== "stop") continue;
     used.add(f.id);
     out.stops[s.id] = featureKey(f, v.codes.get(f.id));
+    if (f.feed && f.feed !== feed) out.homes![s.id] = f.feed;
     const p = place(f.parent);
     if (p) out.parents[s.id] = p;
   }

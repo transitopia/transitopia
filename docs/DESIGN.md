@@ -271,7 +271,7 @@ Never two stops of one feed. A new stop that matches takes the other's feature (
 
 **Exchanges** work the same way, by name: a feed's group of new bays joins another feed's exchange of the same name within `exchangeMatchM` (250 m) rather than minting its own, and `mergeSharedExchanges` (run first) merges exchanges of the same name that close, with stops from different feeds, into the one with the most stops (Westbank and UBCO exchanges had been minted once by Kelowna's feed and once by Okanagan-Shuswap's). An exchange's name and position follow the feed most of its stops are from.
 
-Each feed's places file names the stop by the same ID (with that feed's code as its suffix), so the site shows one card for it: both feeds' departures and routes, and every number on its sign ("Stop #120054 (BC Transit), #61709 (TransLink)"; [packages/transit-map → Feeds](../packages/transit-map/README.md#feeds)).
+Each feed's places file names the stop by the same ID (with that feed's code as its suffix), so the site shows one card for it: both feeds' departures and routes, and every number on its sign ("Stop #120054 (BC Transit), #61709 (TransLink)"; [packages/transit-map → Feeds](../packages/transit-map/README.md#feeds)). The map draws it once, as its home feed has it (its name and position: the feeds' copies can differ by a few metres and in wording, "Innovation Dr at University Way" and "Innovation Dr & University"): each places file names the home feed of the stops it shares whose home is another feed (`homes`), and the engine filters out the other feeds' copies while that feed is loaded, else every copy but the first loaded feed's (`sharedStopOwners` in `packages/transit-map/src/plans.ts`).
 
 ### OSM bus stops
 

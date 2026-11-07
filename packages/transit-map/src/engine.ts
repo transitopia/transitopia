@@ -15,7 +15,9 @@ import {
 import type {
   Bounds,
   PlanRoute,
+  ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
+import type { PlacesFile } from "@transitopia/shared/features.ts";
 import {
   firstBoarding,
   placeName,
@@ -42,6 +44,7 @@ import {
   displayServiceDate,
   hubsOf,
   placesOf,
+  sharedStopOwners,
   stopFeatures,
   manifestInstants,
   playedManifest,
@@ -444,6 +447,14 @@ export class TransitEngine {
   private pendingSelect: string | undefined;
   /** A `?select=` key no feed shown has (TransitSnapshot.elsewhere). */
   private elsewhere: string | undefined;
+  /** What `syncSharedStops` last worked out, and from which plans and places files. */
+  private sharedFor:
+    | {
+        plans: ServicePlan[];
+        places: (PlacesFile | undefined)[];
+        owners: ReturnType<typeof sharedStopOwners>;
+      }
+    | undefined;
   /** False from a style swap until 'style.load': our layers are gone until then. */
   private styleReady = true;
   /** Every feed's vehicles at the time last computed. */
@@ -939,6 +950,7 @@ export class TransitEngine {
   }
 
   private showPlace(place: Place): void {
+    place = this.drawnStop(place);
     this.pendingSelect = this.elsewhere = undefined;
     this.revealSelected = false;
     this.selected = this.vehicles.selected = undefined;
@@ -1080,6 +1092,8 @@ export class TransitEngine {
     this.lastVehicles = this.lastVehicles.filter((v) => v.feed !== slot.feed);
     this.computed.delete(slot.feed);
     this.mergeHidden();
+    // Stops it drew for other feeds are theirs to draw again.
+    this.syncSharedStops();
     this.pickPrimary();
     this.invalidate();
     this.dirty = true;
@@ -2215,6 +2229,7 @@ export class TransitEngine {
       if (slot.shown?.plan !== shown) this.mergeHidden();
       drawn ||= r === true;
     }
+    this.syncSharedStops();
     if (!drawn) return;
     // A plan drawn for the first time: its stops count towards the primary feed.
     this.pickPrimary();
@@ -2224,6 +2239,46 @@ export class TransitEngine {
     this.attachVehicles();
     // Published with the rest at the end (invalidate).
     this.invalidate();
+  }
+
+  /**
+   * A stop several loaded feeds serve is drawn by one of them (`sharedStopOwners`): the others'
+   * copies are filtered out, and a card open on one of those moves to the drawn stop, whose name
+   * and position it then shows.
+   */
+  private syncSharedStops(): void {
+    const slots = this.slots.filter((s) => s.shown);
+    const plans = slots.map((s) => s.shown!.plan);
+    if (
+      this.sharedFor
+      && plans.length === this.sharedFor.plans.length
+      && plans.every((p, i) => p === this.sharedFor!.plans[i])
+      && plans.every((p, i) => placesOf(p) === this.sharedFor!.places[i])
+    )
+      return;
+    const owners = sharedStopOwners(
+      slots.map((s) => ({ feed: s.feed, places: placesOf(s.shown!.plan) })),
+    );
+    this.sharedFor = { plans, places: plans.map((p) => placesOf(p)), owners };
+    for (const slot of this.slots)
+      slot.setHiddenStops(
+        new Set(owners.get(slot.feed)?.keys()),
+        this.styleReady ? this.map : undefined,
+      );
+    const place = this.place && this.drawnStop(this.place);
+    if (place && place !== this.place) {
+      this.place = place;
+      this.syncPlaceHighlight();
+      this.writeUrl();
+      this.publish();
+    }
+  }
+
+  /** The stop the map draws for a stop place another loaded feed draws (else the place itself). */
+  private drawnStop(place: Place): Place {
+    if (place.kind !== "stop") return place;
+    const owner = this.sharedFor?.owners.get(place.feed)?.get(place.id);
+    return owner ? { kind: "stop", feed: owner.feed, id: owner.stop } : place;
   }
 
   /** Vehicles go beneath every feed's stop labels, above their focused routes (layers/order.ts). */

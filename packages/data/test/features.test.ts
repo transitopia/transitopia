@@ -65,6 +65,8 @@ const registry: Registry = {
     }),
     feature("st-00000004", "stop", "UBC Exchange @ Bay 1", {
       parent: "ex-00000002",
+      // Shared with another feed, its home (docs/DESIGN.md#shared-stops).
+      feed: "bc-transit-fraser-valley",
     }),
     feature("st-00000005", "stop", "UBC Exchange @ Bay 2 (old)", {
       status: "merged",
@@ -138,6 +140,8 @@ describe("places files", () => {
       "sn-00000001",
     ]);
     expect(p.redirects).toEqual({ "st-00000005": "st-00000004" });
+    // The stop whose home is another feed.
+    expect(p.homes).toEqual({ "13001": "bc-transit-fraser-valley" });
     // V1's route_id was 6612: 7000 names nothing there.
     expect(
       buildPlaces(registry, plan("7000"), "translink", "V1")!.routes,
