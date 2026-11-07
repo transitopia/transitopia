@@ -2354,6 +2354,8 @@ export class TransitEngine {
     this.pickPrimary();
     // A new style (a theme switch) has no global state: set it again.
     applyBrandColors(map, this.showBrandColors);
+    // The basemap as chosen: at start-up too, when the style was loaded before the engine.
+    this.syncBasemap();
     this.syncPlaceHighlight();
     this.attachVehicles();
     // Published with the rest at the end (invalidate).
