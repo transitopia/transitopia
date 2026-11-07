@@ -28,6 +28,8 @@
 //  - where it can't be moved along its route (a fix back along its trip, or on another trip),
 //    it moves in a straight line only over a short distance: further, it stays put and jumps at
 //    the next fix, rather than being drawn across water;
+//  - a bus on a trip the timetable doesn't have (BC Transit reports runs to and from the depot
+//    under a route, with trip ids no static feed has) isn't in service, so it isn't drawn;
 //  - otherwise the vehicle is not shown (the caller falls back to schedule estimates when the
 //    instant isn't covered by RT data at all).
 // Pure given its inputs: the same snapshots and t always give the same answer. A fix counts as
@@ -671,8 +673,14 @@ export class RtTimeline {
     });
   }
 
-  /** Between trips and not at its next trip's first stop: not drawn. */
+  /**
+   * Not drawn: on a trip the timetable doesn't have (not in service: e.g. BC Transit's runs to and
+   * from the depot, reported under a route), or between trips and not at its next trip's first stop.
+   */
   private hidden(tr: Track, k: number): boolean {
+    const { tripId } = tr.obs[k]!.v;
+    if (this.pp && tripId !== undefined && !this.pp.tripIndex.has(tripId))
+      return true;
     return this.isBetween(tr, k) && Number.isNaN(this.alongOf(tr, k));
   }
 

@@ -944,6 +944,35 @@ describe("headings of standing buses", () => {
   });
 });
 
+describe("trips the timetable doesn't have", () => {
+  it("doesn't draw a bus on one: it isn't in service (e.g. to the depot)", () => {
+    const fixes = (tripId: string) =>
+      [snap(0, [[-123.09, 49.25]]), snap(30, [[-123.089, 49.25]])].map((s) => ({
+        ...s,
+        vehicles: s.vehicles.map((v) => ({ ...v, tripId })),
+      }));
+    const ghost = new RtTimeline(
+      fixes("12307439:14539558:14592516"),
+      pp,
+      kin,
+      opts,
+    );
+    expect(ghost.vehiclesAt(T0 + 15_000)).toEqual([]);
+    expect(ghost.vehiclesAt(T0 + 40_000)).toEqual([]);
+    // Without a plan to tell, it's drawn as reported.
+    const unplanned = new RtTimeline(
+      fixes("12307439:14539558:14592516"),
+      undefined,
+      kin,
+      opts,
+    );
+    expect(unplanned.vehiclesAt(T0 + 15_000)).toHaveLength(1);
+    expect(
+      new RtTimeline(fixes("trip1"), pp, kin, opts).vehiclesAt(T0 + 15_000),
+    ).toHaveLength(1);
+  });
+});
+
 describe("between trips", () => {
   // The same route, but the trip departs 09:30 local; fixes from 09:00 are before it starts.
   const later = preparePlan(
