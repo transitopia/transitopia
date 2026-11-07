@@ -35,6 +35,14 @@ const MODE_GROUP: Record<RouteMode, number> = {
   rail: 1,
   ferry: 2,
 };
+
+/** A mode's trail colour (RGB 0–255): vehicles take it too while route lines aren't drawn. */
+export function modeColor(
+  mode: RouteMode,
+  dark: boolean,
+): readonly [number, number, number] {
+  return COLORS[dark ? "dark" : "light"][MODE_GROUP[mode]]!;
+}
 const TRAIL_OPACITY = 0.1;
 /** Line width, CSS px. */
 const WIDTH_PX = 1.25;

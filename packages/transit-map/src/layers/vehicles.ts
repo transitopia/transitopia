@@ -8,6 +8,7 @@ import type { VehicleState } from "@transitopia/transit-core/schedule/engine.ts"
 import type { KinematicsConfig } from "@transitopia/transit-core/movement/kinematics.ts";
 import { GlPolygonLayer, VERTEX_BYTES } from "./gl-polygons.ts";
 import { DIM_OPACITY } from "./static.ts";
+import { modeColor } from "./trace.ts";
 import {
   EARTH_CIRCUMFERENCE,
   distToPolyline,
@@ -56,6 +57,8 @@ export class VehicleLayer {
    * the rest are dimmed (static.ts → setFocus). Undefined when nothing is focused.
    */
   focus: ((v: VehicleState) => boolean) | undefined;
+  /** Colour vehicles by mode, as their trails (trace.ts), not by route: while route lines are hidden. */
+  byMode = false;
 
   private map: MlMap;
   private sizing: KinematicsConfig["sizing"];
@@ -147,7 +150,10 @@ export class VehicleLayer {
       }
     };
     for (const v of ordered) {
-      const rgb = this.colors.get(v.feed)?.get(v.routeKey) ?? [110, 110, 110];
+      const rgb =
+        this.byMode ?
+          modeColor(v.mode, dark)
+        : (this.colors.get(v.feed)?.get(v.routeKey) ?? [110, 110, 110]);
       const estimated = v.provenance === "estimated";
       const selected = this.isSelected(v);
       dim = !this.focus || this.focus(v) ? 1 : DIM_OPACITY;

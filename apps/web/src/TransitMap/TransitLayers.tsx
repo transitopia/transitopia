@@ -166,7 +166,8 @@ export const OverviewLayers: React.FC<{
 
 /**
  * The transit layers panel (apps/web/README.md#header-and-layers): route groups; route lines (on,
- * off, or trails), stations and stops and brand colours; which vehicles to draw, and the key. Choices are remembered per browser by the engine.
+ * off, or trails) with stations and stops and brand colours, or without lines the basemap's
+ * streets and labels; which vehicles to draw, and the key. Choices are remembered per browser by the engine.
  */
 export const TransitLayers: React.FC<{
   engine: TransitEngine;
@@ -217,18 +218,34 @@ export const TransitLayers: React.FC<{
       />
       {snap.routeLines === "trace" ?
         <p className="px-4 pb-1 text-[12.5px] text-gray-600 max-sm:text-[13px] dark:text-gray-400">
-          Vehicles in view leave trails as they move.
+          Vehicles in view leave trails as they move. For best results, turn on
+          dark mode (fourth button down at the top right) and play at{" "}
+          <strong>60x</strong> or <strong>300x</strong> speed.
         </p>
       : null}
-      <SwitchRow
-        title="Stations & stops"
-        on={snap.showStops}
-        onChange={(on) => engine.setStopsShown(on)}
-      />
-      <BrandColorsRow
-        on={snap.showBrandColors}
-        onChange={(on) => engine.setBrandColors(on)}
-      />
+      {
+        snap.routeLines === "on" ?
+          <>
+            <SwitchRow
+              title="Stations & stops"
+              on={snap.showStops}
+              onChange={(on) => engine.setStopsShown(on)}
+            />
+            <BrandColorsRow
+              on={snap.showBrandColors}
+              onChange={(on) => engine.setBrandColors(on)}
+            />
+          </>
+          // Without lines, stations, stops and route colours aren't drawn (vehicles are coloured by
+          // mode, as their trails): the basemap's streets and labels can go too.
+        : <SwitchRow
+            title="Streets & labels"
+            description="Streets and place names on the map"
+            on={snap.showStreets}
+            onChange={(on) => engine.setStreetsShown(on)}
+          />
+
+      }
       <PanelDivider />
       <SegmentedChoice
         label="Vehicles"

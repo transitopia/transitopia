@@ -66,6 +66,7 @@ import { VEHICLES_LAYER, VehicleLayer } from "./layers/vehicles.ts";
 import { metresPerPixel } from "./layers/vehicle-geometry.ts";
 import { nowWindowStart, type Focus } from "./layers/bus-frequency.ts";
 import { PICKABLE_TRACK_LAYERS } from "./layers/tracks.ts";
+import { isStreetOrLabelLayer } from "@transitopia/map-style/basemap.ts";
 import { applyLineVisibility, firstFeedLayer } from "./layers/order.ts";
 import { TraceLayer } from "./layers/trace.ts";
 import {
@@ -207,8 +208,10 @@ export interface TransitSnapshot {
   hidden: ReadonlySet<string>;
   /** Routes with their own colour are drawn in it; otherwise every route is coloured by frequency. */
   showBrandColors: boolean;
-  /** Station and bus stop markers and labels are drawn. */
+  /** Station and bus stop markers and labels are drawn, when route lines are (`routeLines` "on"). */
   showStops: boolean;
+  /** The basemap's streets and labels are drawn, when route lines aren't (`routeLines` not "on"). */
+  showStreets: boolean;
   /** Which vehicles are drawn: none, only those with real positions, or every one (estimates too). */
   vehicles: VehicleChoice;
   /** Route lines drawn, hidden, or hidden with the trails vehicles leave drawn instead. */
@@ -430,6 +433,9 @@ export class TransitEngine {
     | undefined;
   private showBrandColors: boolean;
   private showStops: boolean;
+  private showStreets: boolean;
+  /** Basemap layers the engine hid (streets and labels), to show again. */
+  private hiddenBasemap: string[] = [];
   private vehicleChoice: VehicleChoice;
   private routeLines: RouteLinesChoice;
   private busFrequency: FrequencyWindow;
@@ -584,6 +590,7 @@ export class TransitEngine {
     );
     this.showBrandColors = loadPref("showBrandColors", true);
     this.showStops = loadPref("showStops", true);
+    this.showStreets = loadPref("showStreets", true);
     this.vehicleChoice = oneOf(VEHICLE_CHOICES, loadPref("vehicles", "all"));
     this.routeLines = oneOf(ROUTE_LINES_CHOICES, loadPref("routeLines", "on"));
     this.busFrequency =
@@ -592,12 +599,16 @@ export class TransitEngine {
     // Vehicles are sized for the first feed's kinematics, and recomputed for the fastest of any.
     this.vehicles = new VehicleLayer(map, opts.feeds[0]!.kinematics.sizing);
     this.vehicles.selected = this.selected;
+    this.vehicles.byMode = this.routeLines !== "on";
     this.trace = new TraceLayer(map);
     this.snapshot = this.buildSnapshot(this.clock.now());
 
     const onStyleLoad = () => {
       this.styleReady = true;
       for (const slot of this.slots) slot.ferryPair = undefined;
+      // A new style has every basemap layer shown.
+      this.hiddenBasemap = [];
+      this.syncBasemap();
       this.syncStatic(true);
     };
     // A new style (theme switch) replaces our sources and layers: wait for it to load. Only a new
@@ -825,10 +836,57 @@ export class TransitEngine {
   setStopsShown(shown: boolean): void {
     this.showStops = shown;
     savePref("showStops", shown);
-    if (this.styleReady)
-      for (const slot of this.slots)
-        applyStopsVisibility(this.map, slot.ids, shown);
+    this.syncStops();
     this.publish();
+  }
+
+  /** Stations and stops are drawn only with the route lines, and then as the viewer chose. */
+  private stopsShown(): boolean {
+    return this.showStops && this.routeLines === "on";
+  }
+
+  private syncStops(): void {
+    if (!this.styleReady) return;
+    for (const slot of this.slots)
+      applyStopsVisibility(this.map, slot.ids, this.stopsShown());
+  }
+
+  /** Show or hide the basemap's streets and labels (while route lines are off or traced). */
+  setStreetsShown(shown: boolean): void {
+    this.showStreets = shown;
+    savePref("showStreets", shown);
+    this.syncBasemap();
+    this.publish();
+  }
+
+  /**
+   * The basemap's streets and labels are hidden while the engine is shown with route lines off or
+   * traced and the viewer turned them off; otherwise those the engine hid are shown again.
+   */
+  private syncBasemap(): void {
+    const { map } = this;
+    if (!this.styleReady) return;
+    const hide =
+      this.visible
+      && !this.disposed
+      && this.routeLines !== "on"
+      && !this.showStreets;
+    if (!hide) {
+      for (const id of this.hiddenBasemap)
+        if (map.getLayer(id))
+          map.setLayoutProperty(id, "visibility", "visible");
+      this.hiddenBasemap = [];
+      return;
+    }
+    if (this.hiddenBasemap.length) return;
+    for (const layer of map.getStyle()?.layers ?? [])
+      if (
+        isStreetOrLabelLayer(layer)
+        && map.getLayoutProperty(layer.id, "visibility") !== "none"
+      ) {
+        this.hiddenBasemap.push(layer.id);
+        map.setLayoutProperty(layer.id, "visibility", "none");
+      }
   }
 
   /** What bus corridors and stops are coloured by: the hour from the shown time, or the day's average. */
@@ -860,6 +918,9 @@ export class TransitEngine {
     if (this.visible && this.styleReady)
       for (const slot of this.slots)
         applyLineVisibility(this.map, slot.ids.layer, choice === "on");
+    this.syncStops();
+    this.syncBasemap();
+    this.vehicles.byMode = choice !== "on";
     this.attachVehicles();
     this.inputsChanged = true;
     this.publish();
@@ -1835,6 +1896,7 @@ export class TransitEngine {
       this.vehicles.update([], this.theme === "dark");
       this.vehicles.detach();
       this.trace.detach();
+      this.syncBasemap();
       this.hiddenLayers = [];
       const sources = this.sources();
       for (const layer of map.getStyle()?.layers ?? [])
@@ -1851,6 +1913,7 @@ export class TransitEngine {
     for (const id of this.hiddenLayers)
       if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
     this.hiddenLayers = [];
+    this.syncBasemap();
     // Feeds that came into view while hidden.
     this.syncFeeds();
     // Its tiles in the new view load from now on (MapLibre loads none for hidden layers).
@@ -1889,6 +1952,7 @@ export class TransitEngine {
     this.stopLive();
     this.vehicles.detach();
     this.trace.detach();
+    this.syncBasemap();
     removeSources(this.map, this.sources());
     this.listeners.clear();
   }
@@ -2083,6 +2147,7 @@ export class TransitEngine {
       hidden: this.hidden,
       showBrandColors: this.showBrandColors,
       showStops: this.showStops,
+      showStreets: this.showStreets,
       vehicles: this.vehicleChoice,
       routeLines: this.routeLines,
       corridors: this.slots.some((s) => Boolean(s.shown?.plan.corridorInfo)),
@@ -2274,7 +2339,7 @@ export class TransitEngine {
         theme: this.theme,
         force: force === true || force === slot,
         hiddenGroups: this.hiddenGroups,
-        showStops: this.showStops,
+        showStops: this.stopsShown(),
         showLines: this.routeLines === "on",
         debug: this.debug,
         vehicles: this.vehicles,
