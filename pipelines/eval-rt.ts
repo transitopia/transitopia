@@ -304,6 +304,8 @@ function liveReplay(
     source: "eval",
     feed: FEED,
     timezone: pp.plan.timezone,
+    frozenGps: rtConfig.frozenGps,
+    maxJumpLineM: rtConfig.maxJumpLineM,
   };
   const variants = {
     old: base,

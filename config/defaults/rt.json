@@ -8,6 +8,13 @@
   "clientPollSlackS": 3,
   "$detourNearM": "A bus off its route while a TransLink detour alert covers it counts as on detour only within this distance of a stop the alert lists (guess; long-running detours would otherwise switch off shifted-GPS handling route-wide). See config/feeds/translink/OPEN-QUESTIONS.md #28.",
   "detourNearM": 3000,
+  "$frozenGps": "TransLink sometimes repeats a bus's position exactly while its reported stop moves on (packages/transit-core/src/rt/stale.ts): such a run is suspect once the stop is further than stopFarM away (guess), and frozen once the bus reappears further than movedM away (measured on 2026-10-20, 11-06 and 11-07: within 150 m it really stood there, else beyond 300 m). See config/feeds/translink/OPEN-QUESTIONS.md #32.",
+  "frozenGps": {
+    "stopFarM": 1000,
+    "movedM": 300
+  },
+  "$maxJumpLineM": "Where a bus can't be moved along its route (a fix back along its trip, or on another trip), it moves in a straight line from or to its place on the route only up to this far; further, it stays put and jumps at the next fix. Between two fixes off any route the straight line stays (packages/transit-core/src/rt/timeline.ts; guess). See config/feeds/translink/OPEN-QUESTIONS.md #32.",
+  "maxJumpLineM": 300,
   "$prediction": "Live bus prediction and learned travel-time profiles (packages/transit-core/src/rt/profile.ts, packages/transit-core/DESIGN.md#buses). Values are guesses tuned against recorded data with pipelines/eval-rt.ts unless noted; see config/feeds/translink/OPEN-QUESTIONS.md #25.",
   "prediction": {
     "binM": 50,

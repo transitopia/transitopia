@@ -22,6 +22,12 @@
 //    detour alert covers it is labelled as on detour (and never taken for shifted GPS); stops its trip
 //    skips aren't its next stop and get no dwell (see Predictor); a bus still reporting a cancelled
 //    trip is labelled so;
+//  - frozen GPS (the same position repeated while TransLink's stop moves on: packages/transit-core/src/rt/stale.ts)
+//    is dropped, so the bus is predicted from its last real fix and then estimated with its delay
+//    (packages/transit-core/src/rt/carry.ts) until its GPS comes back;
+//  - where it can't be moved along its route (a fix back along its trip, or on another trip),
+//    it moves in a straight line only over a short distance: further, it stays put and jumps at
+//    the next fix, rather than being drawn across water;
 //  - otherwise the vehicle is not shown (the caller falls back to schedule estimates when the
 //    instant isn't covered by RT data at all).
 // Pure given its inputs: the same snapshots and t always give the same answer. A fix counts as
@@ -52,6 +58,7 @@ import {
 } from "./profile.ts";
 import type { ChangesView, RtRouteAlert } from "./changes.ts";
 import type { RtSnapshot, RtVehicle } from "./types.ts";
+import { frozenFixes, type FrozenGpsConfig } from "./stale.ts";
 import { localDate, serviceDayStart, type ServiceDate } from "../time.ts";
 import type { TripDelay } from "./carry.ts";
 
@@ -75,6 +82,13 @@ export interface TimelineOptions {
    * bus is at its next stop.
    */
   stopZoneM?: number;
+  /** Repeated positions that are frozen GPS are dropped (packages/transit-core/src/rt/stale.ts); without it, none are. */
+  frozenGps?: FrozenGpsConfig | undefined;
+  /**
+   * A bus is drawn in a straight line from or to a place on a route (e.g. onto another trip) at most
+   * this far (m); further, it stays put and jumps at its next fix. Without it, any distance.
+   */
+  maxJumpLineM?: number | undefined;
 }
 
 interface Obs {
@@ -248,11 +262,42 @@ export class RtTimeline {
         const last = tr.obs[tr.obs.length - 1];
         if (last && last.v.ts === v.ts) continue; // unchanged fix repeated across polls
         if (last && v.ts < last.v.ts) continue; // out-of-order fix
-        if (!plausible(v, last?.v)) continue;
         tr.obs.push({ v, knownAt: s.receivedAt ?? s.fetchedAt });
       }
     }
-    for (const tr of this.tracks.values()) this.dropSpikes(tr);
+    for (const tr of this.tracks.values()) {
+      // Frozen GPS first, so the fix after a freeze is checked against where the bus really was.
+      this.dropFrozen(tr);
+      const kept: Obs[] = [];
+      for (const o of tr.obs)
+        if (plausible(o.v, kept[kept.length - 1]?.v)) kept.push(o);
+      tr.obs = kept;
+      this.dropSpikes(tr);
+    }
+  }
+
+  /**
+   * Drops fixes whose position is frozen GPS (packages/transit-core/src/rt/stale.ts). It looks at
+   * the fixes that follow, as dropSpikes does: live, a freeze still going on is taken as one.
+   */
+  private dropFrozen(tr: Track): void {
+    const cfg = this.opts.frozenGps;
+    const pp = this.pp;
+    if (!cfg || !pp || tr.obs.length < 2) return;
+    const frozen = frozenFixes(
+      tr.obs.map(({ v }) => {
+        const st = v.stopId ? pp.stopById.get(v.stopId) : undefined;
+        return {
+          lat: v.lat,
+          lon: v.lon,
+          tripId: v.tripId,
+          stop: v.stopId,
+          stopAt: st ? [st.lon, st.lat] : undefined,
+        };
+      }),
+      cfg,
+    );
+    if (frozen.size) tr.obs = tr.obs.filter((_, k) => !frozen.has(k));
   }
 
   /**
@@ -733,7 +778,7 @@ export class RtTimeline {
   ): VehicleState {
     const o0 = tr.obs[i]!;
     const o1 = tr.obs[i + 1]!;
-    const f = (t - o0.v.ts) / (o1.v.ts - o0.v.ts);
+    let f = (t - o0.v.ts) / (o1.v.ts - o0.v.ts);
     const sameTrip = o0.v.tripId !== undefined && o0.v.tripId === o1.v.tripId;
     const s = sameTrip ? this.shape(o0.v.tripId) : null;
     if (s) {
@@ -785,9 +830,26 @@ export class RtTimeline {
       }
     }
     // Straight line between where each fix is shown (on its route where it can be placed), so e.g.
-    // a bus switching trips moves from where it was drawn rather than jumping to the raw fix.
-    const [lon0, lat0] = this.shownPoint(tr, i) ?? [o0.v.lon, o0.v.lat];
-    const [lon1, lat1] = this.shownPoint(tr, i + 1) ?? [o1.v.lon, o1.v.lat];
+    // a bus switching trips moves from where it was drawn rather than jumping to the raw fix. But
+    // a straight line from or to a place on a route is no way a bus drives once it's long (e.g. a
+    // stale fix near the end of its trip, then one back at its start, which isn't placed on the
+    // route since buses don't go back along it: drawn over Burrard Inlet), nor back along its trip
+    // at all: it stays put and jumps at the next fix instead. Between two fixes off any route
+    // (e.g. to or from the depot), the straight line stays.
+    const p0 = this.shownPoint(tr, i);
+    const p1 = this.shownPoint(tr, i + 1);
+    const [lon0, lat0] = p0 ?? [o0.v.lon, o0.v.lat];
+    const [lon1, lat1] = p1 ?? [o1.v.lon, o1.v.lat];
+    if (
+      (sameTrip && p0 && p1)
+      || ((p0 || p1)
+        && distM([lon0, lat0], [lon1, lat1])
+          > (this.opts.maxJumpLineM ?? Number.POSITIVE_INFINITY))
+    ) {
+      const st = p0 && this.standing(id, tr, i, t);
+      if (st) return st;
+      f = 0;
+    }
     const lon = lon0 + (lon1 - lon0) * f;
     const lat = lat0 + (lat1 - lat0) * f;
     // E.g. a bus switching trips while laying over: fixes metres apart say nothing about heading.

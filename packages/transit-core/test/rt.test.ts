@@ -641,6 +641,137 @@ describe("carrying RT delays into schedule estimates", () => {
   });
 });
 
+describe("frozen GPS", () => {
+  // Bus 9735 on the 240, 2026-11-07 (issue #273): its GPS stuck on Marine Dr while TransLink's stop
+  // ran on to the end of its trip and into the next, back the other way, whose start is where its
+  // GPS came back. Here: out along the L (trip1), back along it (trip2).
+  const cfg = rtConfig.prediction as unknown as PredictionConfig;
+  const L = plan.shapes.L as LonLat[];
+  const cum = cumulativeLengths(L);
+  const at = (along: number): [number, number] => {
+    const p = pointAlong(L, cum, along);
+    return [p.lon, p.lat];
+  };
+  const offL = (v: { lon: number; lat: number }) =>
+    projectOnto(L, cum, [v.lon, v.lat]).offset;
+  const alongOf = (v: { lon: number; lat: number }) =>
+    projectOnto(L, cum, [v.lon, v.lat]).along;
+  const T = 30000;
+  const two: ServicePlan = {
+    ...plan,
+    shapes: { ...plan.shapes, R: [...L].reverse() },
+    patterns: [
+      plan.patterns[0]!,
+      { ...plan.patterns[0]!, id: 1, direction: 1, shape: "R", stops: [1, 0] },
+    ],
+    trips: [
+      { ...plan.trips[0]!, start: T },
+      { ...plan.trips[0]!, id: "trip2", pattern: 1, start: T + 600 },
+    ],
+    calendar: {
+      calendar: [
+        {
+          serviceId: "wk",
+          days: [true, true, true, true, true, true, true],
+          start: serviceDate("20260901"),
+          end: serviceDate("20261231"),
+        },
+      ],
+      exceptions: [],
+    },
+  };
+  const pp2 = preparePlan(two, kin);
+  const predictor = new Predictor(pp2, cfg);
+  const day0 = Date.UTC(2026, 8, 28, 7, 0, 0); // service day start (00:00 PDT)
+  const ms = (sec: number) => day0 + (T + sec) * 1000;
+  type Fix = [sec: number, along: number, trip: string, stop: string];
+  const snaps = (fixes: Fix[]): RtSnapshot[] =>
+    fixes.map(([sec, along, tripId, stopId]) => ({
+      fetchedAt: ms(sec) + 3000,
+      headerTs: ms(sec),
+      vehicles: [
+        {
+          id: "bus1",
+          routeKey: "99",
+          tripId,
+          stopId,
+          lon: at(along)[0],
+          lat: at(along)[1],
+          ts: ms(sec),
+        },
+      ],
+    }));
+  const fopts = {
+    ...opts,
+    prediction: { cfg, predictor },
+    frozenGps: rtConfig.frozenGps,
+    maxJumpLineM: rtConfig.maxJumpLineM,
+  };
+  const frozen: Fix[] = [
+    [20, 100, "trip1", "s1"],
+    [60, 200, "trip1", "s1"], // the GPS's last real position
+    [120, 200, "trip1", "s2"], // TransLink's stop runs on to the end, 1.8 km away
+    [300, 200, "trip1", "s2"],
+    [590, 200, "trip2", "s2"], // ... and into the next trip, whose start is at the end
+    // The GPS is back, at the start of trip2: 1.2 km from the frozen point 20 s ago (implausible
+    // from there, not from where the bus last really was).
+    [610, 2000, "trip2", "s2"],
+    [700, 1600, "trip2", "s1"],
+  ];
+
+  it("drops the frozen fixes, so the bus is never drawn parked or off its route", () => {
+    const tl = new RtTimeline(snaps(frozen), pp2, kin, fopts);
+    // Predicted from its last real fix for maxExtrapolateS, then not drawn from RT.
+    expect(alongOf(tl.vehiclesAt(ms(100))[0]!)).toBeGreaterThan(200);
+    expect(tl.vehiclesAt(ms(400))).toEqual([]);
+    // Back at the start of trip2 when its GPS is.
+    const [back] = tl.vehiclesAt(ms(610));
+    expect(back!.tripId).toBe("trip2");
+    expect(alongOf(back!)).toBeCloseTo(2000, -1);
+    for (let s = 0; s <= 700; s += 5)
+      for (const v of tl.vehiclesAt(ms(s))) expect(offL(v)).toBeLessThan(5);
+  });
+
+  it("estimates it meanwhile from its delay at its last real fix", () => {
+    const tl = new RtTimeline(snaps(frozen), pp2, kin, fopts);
+    const delays = tl.tripDelays(ms(400));
+    expect(delays.map((d) => [d.tripId, d.fixTs])).toEqual([["trip1", ms(60)]]);
+  });
+
+  it("drops a freeze still going on (live)", () => {
+    const tl = new RtTimeline(snaps(frozen.slice(0, 4)), pp2, kin, fopts);
+    expect(tl.vehiclesAt(ms(310))).toEqual([]);
+    // Without frozen GPS handling, it would be predicted on from the frozen point.
+    const plain = new RtTimeline(snaps(frozen.slice(0, 4)), pp2, kin, {
+      ...fopts,
+      frozenGps: undefined,
+    });
+    expect(alongOf(plain.vehiclesAt(ms(310))[0]!)).toBeLessThan(300);
+  });
+
+  it("keeps a bus that really stood there while its reported stop ran on", () => {
+    // It moves off from where it stood: its GPS was right.
+    const stood: Fix[] = [...frozen.slice(0, 4), [360, 260, "trip1", "s2"]];
+    const tl = new RtTimeline(snaps(stood), pp2, kin, fopts);
+    expect(alongOf(tl.vehiclesAt(ms(250))[0]!)).toBeCloseTo(200, -1);
+  });
+
+  it("jumps rather than moving back along its trip in a straight line", () => {
+    // Without frozen GPS handling: the stale fix near the end of trip2, then the real one near its
+    // start (trip2 runs back along the L: from 2000 to 0).
+    const back: Fix[] = [
+      [620, 500, "trip2", "s1"],
+      [680, 1900, "trip2", "s1"],
+    ];
+    const tl = new RtTimeline(snaps(back), pp2, kin, {
+      ...fopts,
+      frozenGps: undefined,
+    });
+    expect(alongOf(tl.vehiclesAt(ms(650))[0]!)).toBeCloseTo(500, -1);
+    expect(alongOf(tl.vehiclesAt(ms(680))[0]!)).toBeCloseTo(1900, -1);
+  });
+});
+
 describe("shifted GPS", () => {
   const cfg = rtConfig.prediction as unknown as PredictionConfig;
   const L = plan.shapes.L as LonLat[];
