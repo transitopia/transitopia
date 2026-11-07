@@ -1,6 +1,7 @@
 /**
- * A labelled choice between a few options, shown as a segmented control (e.g. Vehicles: "All" or
- * "Live only"). Each option is a toggle button; the chosen one is pressed.
+ * A labelled choice between a few options, shown as a segmented control (e.g. Vehicles: "None",
+ * "Live only" or "All"). Each option is a toggle button; the chosen one is pressed. The default
+ * option goes last, on the right.
  */
 export function SegmentedChoice<T extends string>({
   label,

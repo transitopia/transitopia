@@ -57,6 +57,37 @@ const LAYER_ORDER = [
   "debug-platforms",
 ];
 const RANK = new Map(LAYER_ORDER.map((name, i) => [name, i]));
+/** Layers that draw no route line: places, their labels and stop ticks, and ?debug=1's markers. */
+const NOT_LINES = new Set([
+  "bus-stops",
+  "bus-stops-focus",
+  "exchanges",
+  "stations",
+  "bus-stops-label",
+  "exchanges-label",
+  "stations-label",
+  "tracks-nodes",
+  "debug-seg-labels",
+  "debug-platforms",
+]);
+
+/**
+ * Show or hide a feed's route lines (bus corridors and shapes, SkyTrain's lines and track): the
+ * layers panel's Route lines. Stations, stops and labels stay.
+ */
+export function applyLineVisibility(
+  map: MlMap,
+  feedLayer: (name: string) => string,
+  shown: boolean,
+): void {
+  for (const name of LAYER_ORDER) {
+    const id = feedLayer(name);
+    if (NOT_LINES.has(name) || !map.getLayer(id)) continue;
+    const visibility = shown ? "visible" : "none";
+    if (map.getLayoutProperty(id, "visibility") !== visibility)
+      map.setLayoutProperty(id, "visibility", visibility);
+  }
+}
 
 /** A feed's layer's rank ("<feed>/<name>"), or undefined for any other layer. */
 function rankOf(layerId: string): number | undefined {

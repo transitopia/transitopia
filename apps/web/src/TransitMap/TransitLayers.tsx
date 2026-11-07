@@ -165,8 +165,8 @@ export const OverviewLayers: React.FC<{
 };
 
 /**
- * The transit layers panel (apps/web/README.md#header-and-layers): route groups, stations and stops,
- * brand colours, which vehicles to draw, and the key. Choices are remembered per browser by the engine.
+ * The transit layers panel (apps/web/README.md#header-and-layers): route groups; route lines (on,
+ * off, or trails), stations and stops and brand colours; which vehicles to draw, and the key. Choices are remembered per browser by the engine.
  */
 export const TransitLayers: React.FC<{
   engine: TransitEngine;
@@ -204,6 +204,22 @@ export const TransitLayers: React.FC<{
           />
         );
       })}
+      <PanelDivider />
+      <SegmentedChoice
+        label="Route lines"
+        value={snap.routeLines}
+        options={[
+          { value: "off", label: "Off" },
+          { value: "trace", label: "Trace" },
+          { value: "on", label: "On" },
+        ]}
+        onChange={(v) => engine.setRouteLines(v)}
+      />
+      {snap.routeLines === "trace" ?
+        <p className="px-4 pb-1 text-[12.5px] text-gray-600 max-sm:text-[13px] dark:text-gray-400">
+          Vehicles in view leave trails as they move.
+        </p>
+      : null}
       <SwitchRow
         title="Stations & stops"
         on={snap.showStops}
@@ -216,12 +232,13 @@ export const TransitLayers: React.FC<{
       <PanelDivider />
       <SegmentedChoice
         label="Vehicles"
-        value={snap.liveOnly ? "live" : "all"}
+        value={snap.vehicles}
         options={[
-          { value: "all", label: "All" },
+          { value: "none", label: "None" },
           { value: "live", label: "Live only" },
+          { value: "all", label: "All" },
         ]}
-        onChange={(v) => engine.setLiveOnly(v === "live")}
+        onChange={(v) => engine.setVehicles(v)}
       />
       <dl className="grid grid-cols-[2.125rem_1fr] items-center gap-x-2 gap-y-2 px-4 pt-1 text-[13px] text-gray-700 dark:text-gray-300">
         <dt>

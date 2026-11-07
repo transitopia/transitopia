@@ -25,7 +25,9 @@ import {
 
 type RGBA = [number, number, number, number];
 
-const LAYER_ID = "vehicles";
+/** The vehicles' layer id (the trails go beneath it). */
+export const VEHICLES_LAYER = "vehicles";
+const LAYER_ID = VEHICLES_LAYER;
 const SELECTED: RGBA = [255, 64, 129, 255];
 /** Estimated vehicles are filled with the route colour at this opacity. */
 const ESTIMATED_OPACITY = 0.62;
