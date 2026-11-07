@@ -237,6 +237,12 @@ export interface PlacesFile {
   routes: Record<string, string>;
   /** stop_id → the ID of the station or exchange it's in. */
   parents: Record<string, string>;
+  /**
+   * stop_id → its home feed, for a stop several feeds serve whose home is another feed
+   * (docs/DESIGN.md#shared-stops): the feed whose copy of it the map draws, and names and places
+   * its card by, while that feed is loaded. Absent in places files written before it.
+   */
+  homes?: Record<string, string>;
   /** Each station and exchange its stops are in, by ID. */
   places: Record<
     string,

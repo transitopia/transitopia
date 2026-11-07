@@ -942,7 +942,11 @@ const stopFeaturesCache = new WeakMap<PlacesFile, StopFeatures>();
  */
 export function stopFeatures(plan: ServicePlan): StopFeatures | undefined {
   const places = placesOfPlan.get(plan);
-  if (!places) return undefined;
+  return places && stopFeaturesOf(places);
+}
+
+/** A places file's stops by their features (`stopFeatures`). */
+export function stopFeaturesOf(places: PlacesFile): StopFeatures {
   let c = stopFeaturesCache.get(places);
   if (!c) {
     c = { idOf: new Map(), stopsOf: new Map() };
@@ -957,6 +961,41 @@ export function stopFeatures(plan: ServicePlan): StopFeatures | undefined {
     stopFeaturesCache.set(places, c);
   }
   return c;
+}
+
+/**
+ * Which loaded feed draws each stop that several of them serve (docs/DESIGN.md#shared-stops): its
+ * home feed (the places files' `homes`) where that feed's version has it, else the first feed with
+ * it, from each loaded feed's shown version's places file, in the engine's order. Returns, for each
+ * feed, its stops another feed draws, and for each of those the stop drawn instead.
+ */
+export function sharedStopOwners(
+  feeds: readonly { feed: string; places: PlacesFile | undefined }[],
+): Map<string, Map<string, { feed: string; stop: string }>> {
+  const out = new Map<string, Map<string, { feed: string; stop: string }>>(
+    feeds.map((f) => [f.feed, new Map()]),
+  );
+  const seen = new Map<
+    string,
+    { home: string; copies: { feed: string; stop: string }[] }
+  >();
+  for (const { feed, places } of feeds) {
+    if (!places) continue;
+    const homes = places.homes ?? {};
+    for (const [stop, id] of stopFeaturesOf(places).idOf) {
+      const copy = { feed, stop };
+      const s = seen.get(id);
+      if (s) s.copies.push(copy);
+      else seen.set(id, { home: homes[stop] ?? feed, copies: [copy] });
+    }
+  }
+  for (const { home, copies } of seen.values()) {
+    if (new Set(copies.map((c) => c.feed)).size < 2) continue;
+    const owner = copies.find((c) => c.feed === home) ?? copies[0]!;
+    for (const c of copies)
+      if (c.feed !== owner.feed) out.get(c.feed)!.set(c.stop, owner);
+  }
+  return out;
 }
 
 const placeOfCache = new WeakMap<BusHub[], PlaceOf>();
