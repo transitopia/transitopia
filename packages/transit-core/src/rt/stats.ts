@@ -8,7 +8,8 @@
 
 import { coverageContains } from "./types.ts";
 
-export const STATS_VERSION = 1;
+/** 2: observed stop times leave out frozen GPS (packages/transit-core/src/rt/stale.ts). */
+export const STATS_VERSION = 2;
 
 export interface StatsConfig {
   /** Early and late limits for "on time" at timepoints (s; decided: −60 to +180). */
