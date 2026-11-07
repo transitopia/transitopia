@@ -156,6 +156,11 @@ export class FeedSlot {
   frequencyLayer: BusFrequencyLayer | undefined;
   /** Its routes (keys) whose every group is hidden. */
   hidden: ReadonlySet<string> = new Set();
+  /**
+   * Its stops (stop_ids) another loaded feed draws: a stop several feeds serve is drawn once
+   * (docs/DESIGN.md#shared-stops; the engine's `syncSharedStops`).
+   */
+  hiddenStops: ReadonlySet<string> = new Set();
   /** Its plan's tiles in view have loaded since its lines' source was (re)added. */
   linesReady = false;
   /** The ferry berth pair last applied to the map (re-applied after the style reloads). */
@@ -301,10 +306,21 @@ export class FeedSlot {
       return false;
     this.hidden = hidden;
     if (map) {
-      applyRouteFilter(map, this.ids, this.hidden);
+      applyRouteFilter(map, this.ids, this.hidden, this.hiddenStops);
       applyTrackFilter(map, this.ids, this.hidden);
     }
     return true;
+  }
+
+  /** Set the stops another feed draws, and filter them out on the map (when `map` is given). */
+  setHiddenStops(stops: ReadonlySet<string>, map: MlMap | undefined): void {
+    if (
+      stops.size === this.hiddenStops.size
+      && [...stops].every((s) => this.hiddenStops.has(s))
+    )
+      return;
+    this.hiddenStops = stops;
+    if (map) applyRouteFilter(map, this.ids, this.hidden, this.hiddenStops);
   }
 
   /**
@@ -514,7 +530,17 @@ export class FeedSlot {
     // Start loading its places file, whose grouping replaces the plan's (syncHubs).
     store.placesFor(pp);
     this.shownHubs = hubsOf(pp.plan);
-    if (addStaticLayers(map, ids, pp.plan, tiles, opts.theme, this.hidden))
+    if (
+      addStaticLayers(
+        map,
+        ids,
+        pp.plan,
+        tiles,
+        opts.theme,
+        this.hidden,
+        this.hiddenStops,
+      )
+    )
       this.linesReady = false;
     applyStopsVisibility(map, ids, opts.showStops);
     if (!pp.plan.corridorInfo) this.frequencyLayer = undefined;
