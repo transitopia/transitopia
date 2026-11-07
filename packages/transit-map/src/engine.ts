@@ -62,11 +62,13 @@ import {
   setSelectedPlace,
 } from "./layers/static.ts";
 import { applyBrandColors } from "./overview.ts";
-import { VehicleLayer } from "./layers/vehicles.ts";
+import { VEHICLES_LAYER, VehicleLayer } from "./layers/vehicles.ts";
 import { metresPerPixel } from "./layers/vehicle-geometry.ts";
 import { nowWindowStart, type Focus } from "./layers/bus-frequency.ts";
 import { PICKABLE_TRACK_LAYERS } from "./layers/tracks.ts";
-import { firstFeedLayer } from "./layers/order.ts";
+import { isStreetOrLabelLayer } from "@transitopia/map-style/basemap.ts";
+import { applyLineVisibility, firstFeedLayer } from "./layers/order.ts";
+import { TraceLayer } from "./layers/trace.ts";
 import {
   brandedRoutes,
   PLAN_TILE_LAYERS,
@@ -206,10 +208,14 @@ export interface TransitSnapshot {
   hidden: ReadonlySet<string>;
   /** Routes with their own colour are drawn in it; otherwise every route is coloured by frequency. */
   showBrandColors: boolean;
-  /** Station and bus stop markers and labels are drawn. */
+  /** Station and bus stop markers and labels are drawn, when route lines are (`routeLines` "on"). */
   showStops: boolean;
-  /** Only vehicles with real positions are drawn (estimates hidden). */
-  liveOnly: boolean;
+  /** The basemap's streets and labels are drawn, when route lines aren't (`routeLines` not "on"). */
+  showStreets: boolean;
+  /** Which vehicles are drawn: none, only those with real positions, or every one (estimates too). */
+  vehicles: VehicleChoice;
+  /** Route lines drawn, hidden, or hidden with the trails vehicles leave drawn instead. */
+  routeLines: RouteLinesChoice;
   /** A shown plan draws bus corridors (packages/transit-map/README.md#bus-corridors). */
   corridors: boolean;
   /**
@@ -242,6 +248,17 @@ export interface TransitSnapshot {
   /** Some feed's coverage is in view (zoomed out too, while the engine is hidden). */
   inCoverage: boolean;
 }
+
+/** The layers panel's Vehicles: which are drawn (the selected vehicle always is). */
+export type VehicleChoice = "none" | "live" | "all";
+const VEHICLE_CHOICES: readonly VehicleChoice[] = ["none", "live", "all"];
+
+/**
+ * The layers panel's Route lines: drawn, hidden, or hidden while the vehicles in view leave trails
+ * (`TraceLayer`).
+ */
+export type RouteLinesChoice = "off" | "trace" | "on";
+const ROUTE_LINES_CHOICES: readonly RouteLinesChoice[] = ["off", "trace", "on"];
 
 /** A feed the engine may show (TransitEngineOptions.feeds), loaded while it's in view. */
 interface FeedEntry {
@@ -398,6 +415,8 @@ export class TransitEngine {
     { poll: LivePoller; versions: LiveDispatchVersions | undefined }
   >();
   private readonly vehicles: VehicleLayer;
+  /** The trails vehicles leave while Route lines is "trace". */
+  private readonly trace: TraceLayer;
   private readonly debug: boolean;
   /** The time zone the clock's times and dates are shown in: the first feed's. */
   private readonly tz: string;
@@ -414,7 +433,11 @@ export class TransitEngine {
     | undefined;
   private showBrandColors: boolean;
   private showStops: boolean;
-  private liveOnly: boolean;
+  private showStreets: boolean;
+  /** Basemap layers the engine hid (streets and labels), to show again. */
+  private hiddenBasemap: string[] = [];
+  private vehicleChoice: VehicleChoice;
+  private routeLines: RouteLinesChoice;
   private busFrequency: FrequencyWindow;
   /** The selected vehicle: its feed and id. */
   private selected: { feed: string; id: string } | undefined;
@@ -567,18 +590,25 @@ export class TransitEngine {
     );
     this.showBrandColors = loadPref("showBrandColors", true);
     this.showStops = loadPref("showStops", true);
-    this.liveOnly = loadPref("liveOnly", false);
+    this.showStreets = loadPref("showStreets", true);
+    this.vehicleChoice = oneOf(VEHICLE_CHOICES, loadPref("vehicles", "all"));
+    this.routeLines = oneOf(ROUTE_LINES_CHOICES, loadPref("routeLines", "on"));
     this.busFrequency =
       loadPref<string>("busFrequency", "day") === "now" ? "now" : "day";
 
     // Vehicles are sized for the first feed's kinematics, and recomputed for the fastest of any.
     this.vehicles = new VehicleLayer(map, opts.feeds[0]!.kinematics.sizing);
     this.vehicles.selected = this.selected;
+    this.vehicles.byMode = this.routeLines !== "on";
+    this.trace = new TraceLayer(map);
     this.snapshot = this.buildSnapshot(this.clock.now());
 
     const onStyleLoad = () => {
       this.styleReady = true;
       for (const slot of this.slots) slot.ferryPair = undefined;
+      // A new style has every basemap layer shown.
+      this.hiddenBasemap = [];
+      this.syncBasemap();
       this.syncStatic(true);
     };
     // A new style (theme switch) replaces our sources and layers: wait for it to load. Only a new
@@ -708,13 +738,16 @@ export class TransitEngine {
     this.clock.setRate(rate);
   }
 
+  // A jump in time starts the trails again.
   goLive(): void {
     this.clock.goLive();
+    this.trace.clear();
   }
 
   /** Seek to t: scrubbing, so the day's recorded buses start loading. */
   seek(t: number): void {
     this.clock.seek(t);
+    this.trace.clear();
     for (const slot of this.slots) slot.rt.prefetchDay();
   }
 
@@ -725,6 +758,7 @@ export class TransitEngine {
     const t = this.clock.now();
     const sec = (t - this.dayStart(this.displayDate(t))) / 1000;
     this.clock.seek(this.dayStart(date) + sec * 1000);
+    this.trace.clear();
   }
 
   /** Seconds since the start of the displayed service day (the slider's value). */
@@ -802,10 +836,57 @@ export class TransitEngine {
   setStopsShown(shown: boolean): void {
     this.showStops = shown;
     savePref("showStops", shown);
-    if (this.styleReady)
-      for (const slot of this.slots)
-        applyStopsVisibility(this.map, slot.ids, shown);
+    this.syncStops();
     this.publish();
+  }
+
+  /** Stations and stops are drawn only with the route lines, and then as the viewer chose. */
+  private stopsShown(): boolean {
+    return this.showStops && this.routeLines === "on";
+  }
+
+  private syncStops(): void {
+    if (!this.styleReady) return;
+    for (const slot of this.slots)
+      applyStopsVisibility(this.map, slot.ids, this.stopsShown());
+  }
+
+  /** Show or hide the basemap's streets and labels (while route lines are off or traced). */
+  setStreetsShown(shown: boolean): void {
+    this.showStreets = shown;
+    savePref("showStreets", shown);
+    this.syncBasemap();
+    this.publish();
+  }
+
+  /**
+   * The basemap's streets and labels are hidden while the engine is shown with route lines off or
+   * traced and the viewer turned them off; otherwise those the engine hid are shown again.
+   */
+  private syncBasemap(): void {
+    const { map } = this;
+    if (!this.styleReady) return;
+    const hide =
+      this.visible
+      && !this.disposed
+      && this.routeLines !== "on"
+      && !this.showStreets;
+    if (!hide) {
+      for (const id of this.hiddenBasemap)
+        if (map.getLayer(id))
+          map.setLayoutProperty(id, "visibility", "visible");
+      this.hiddenBasemap = [];
+      return;
+    }
+    if (this.hiddenBasemap.length) return;
+    for (const layer of map.getStyle()?.layers ?? [])
+      if (
+        isStreetOrLabelLayer(layer)
+        && map.getLayoutProperty(layer.id, "visibility") !== "none"
+      ) {
+        this.hiddenBasemap.push(layer.id);
+        map.setLayoutProperty(layer.id, "visibility", "none");
+      }
   }
 
   /** What bus corridors and stops are coloured by: the hour from the shown time, or the day's average. */
@@ -815,11 +896,42 @@ export class TransitEngine {
     this.publish();
   }
 
-  /** Draw only vehicles with real positions (observed or interpolated), or every vehicle. */
-  setLiveOnly(liveOnly: boolean): void {
-    this.liveOnly = liveOnly;
-    savePref("liveOnly", liveOnly);
+  /** Draw no vehicles, only those with real positions (observed or interpolated), or every one. */
+  setVehicles(choice: VehicleChoice): void {
+    this.vehicleChoice = choice;
+    savePref("vehicles", choice);
+    this.inputsChanged = true;
     this.publish();
+  }
+
+  /**
+   * Draw the route lines, or hide them, or hide them while vehicles in view leave trails (which
+   * start afresh each time Trace is chosen).
+   */
+  setRouteLines(choice: RouteLinesChoice): void {
+    if (choice === this.routeLines) return;
+    this.routeLines = choice;
+    savePref("routeLines", choice);
+    this.trace.clear();
+    // Tiles aren't loaded for hidden layers: the lines in view load again from now on.
+    if (choice === "on") for (const slot of this.slots) slot.linesReady = false;
+    if (this.visible && this.styleReady)
+      for (const slot of this.slots)
+        applyLineVisibility(this.map, slot.ids.layer, choice === "on");
+    this.syncStops();
+    this.syncBasemap();
+    this.vehicles.byMode = choice !== "on";
+    this.attachVehicles();
+    this.inputsChanged = true;
+    this.publish();
+  }
+
+  /** Whether a vehicle the filters leave is drawn as the Vehicles choice says. */
+  private vehicleShown(v: VehicleState): boolean {
+    return (
+      this.vehicleChoice === "all"
+      || (this.vehicleChoice === "live" && v.provenance !== "estimated")
+    );
   }
 
   /**
@@ -1783,6 +1895,8 @@ export class TransitEngine {
       // frame, at another when shown again.
       this.vehicles.update([], this.theme === "dark");
       this.vehicles.detach();
+      this.trace.detach();
+      this.syncBasemap();
       this.hiddenLayers = [];
       const sources = this.sources();
       for (const layer of map.getStyle()?.layers ?? [])
@@ -1799,6 +1913,7 @@ export class TransitEngine {
     for (const id of this.hiddenLayers)
       if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
     this.hiddenLayers = [];
+    this.syncBasemap();
     // Feeds that came into view while hidden.
     this.syncFeeds();
     // Its tiles in the new view load from now on (MapLibre loads none for hidden layers).
@@ -1836,6 +1951,8 @@ export class TransitEngine {
     for (const fn of this.cleanups) fn();
     this.stopLive();
     this.vehicles.detach();
+    this.trace.detach();
+    this.syncBasemap();
     removeSources(this.map, this.sources());
     this.listeners.clear();
   }
@@ -2030,9 +2147,12 @@ export class TransitEngine {
       hidden: this.hidden,
       showBrandColors: this.showBrandColors,
       showStops: this.showStops,
-      liveOnly: this.liveOnly,
+      showStreets: this.showStreets,
+      vehicles: this.vehicleChoice,
+      routeLines: this.routeLines,
       corridors: this.slots.some((s) => Boolean(s.shown?.plan.corridorInfo)),
-      linesReady: this.linesReady(),
+      // With the lines hidden there are none to wait for.
+      linesReady: this.routeLines !== "on" || this.linesReady(),
       busFrequency: this.busFrequency,
       busFrequencyHour: (() => {
         const ft = this.frequencyTime();
@@ -2096,9 +2216,7 @@ export class TransitEngine {
       pp,
       t,
       vehicles: this.lastVehicles,
-      drawn: (v) =>
-        !this.hiddenRoute(v)
-        && !(this.liveOnly && v.provenance === "estimated"),
+      drawn: (v) => !this.hiddenRoute(v) && this.vehicleShown(v),
       corrections: (d) => slot.correctionsOn(d),
       datasetsOf: (routes) => this.datasetsOf(routes),
       segment: () => this.segmentInfo(),
@@ -2221,7 +2339,8 @@ export class TransitEngine {
         theme: this.theme,
         force: force === true || force === slot,
         hiddenGroups: this.hiddenGroups,
-        showStops: this.showStops,
+        showStops: this.stopsShown(),
+        showLines: this.routeLines === "on",
         debug: this.debug,
         vehicles: this.vehicles,
         isDisposed: () => this.disposed,
@@ -2235,6 +2354,8 @@ export class TransitEngine {
     this.pickPrimary();
     // A new style (a theme switch) has no global state: set it again.
     applyBrandColors(map, this.showBrandColors);
+    // The basemap as chosen: at start-up too, when the style was loaded before the engine.
+    this.syncBasemap();
     this.syncPlaceHighlight();
     this.attachVehicles();
     // Published with the rest at the end (invalidate).
@@ -2283,7 +2404,12 @@ export class TransitEngine {
 
   /** Vehicles go beneath every feed's stop labels, above their focused routes (layers/order.ts). */
   private attachVehicles(): void {
+    if (!this.visible || !this.styleReady) return;
     this.vehicles.attach(firstFeedLayer(this.map, VEHICLES_BEFORE_LAYER));
+    // Trails beneath the vehicles.
+    this.trace.dark = this.theme === "dark";
+    if (this.routeLines === "trace") this.trace.attach(VEHICLES_LAYER);
+    else this.trace.detach();
   }
 
   private frame = (): void => {
@@ -2556,19 +2682,30 @@ export class TransitEngine {
       ),
     );
 
-    if (this.styleReady)
-      this.vehicles.update(
-        // The selected vehicle stays, so its card (and follow) still point at something; those
-        // worked out off the area for a card aren't drawn.
-        this.lastVehicles.filter(
-          (v) =>
-            this.isSelected(v)
-            || (!this.hiddenRoute(v)
-              && !(this.liveOnly && v.provenance === "estimated")
-              && (!area || contains(area, v.lon, v.lat))),
-        ),
-        this.theme === "dark",
-      );
+    if (!this.styleReady) return;
+    // Vehicles on routes drawn, and live ones only if so chosen: those in view leave trails, even
+    // while Vehicles is "none".
+    const listed = this.lastVehicles.filter(
+      (v) =>
+        !this.hiddenRoute(v)
+        && !(this.vehicleChoice === "live" && v.provenance === "estimated"),
+    );
+    this.vehicles.update(
+      // The selected vehicle stays, so its card (and follow) still point at something; those
+      // worked out off the area for a card aren't drawn.
+      this.lastVehicles.filter(
+        (v) =>
+          this.isSelected(v)
+          || (this.vehicleShown(v)
+            && !this.hiddenRoute(v)
+            && (!area || contains(area, v.lon, v.lat))),
+      ),
+      this.theme === "dark",
+    );
+    if (this.routeLines === "trace") {
+      const view = viewBounds(this.map);
+      this.trace.record(listed, t, (v) => contains(view, v.lon, v.lat));
+    }
   }
 
   /**
@@ -2685,4 +2822,9 @@ function sameRoutes(a: PlanRoute[], b: PlanRoute[]): boolean {
         && r.label === b[i]!.label,
     )
   );
+}
+
+/** A saved choice, if it's still one of `choices`, else the last (the default). */
+function oneOf<T extends string>(choices: readonly T[], saved: string): T {
+  return choices.includes(saved as T) ? (saved as T) : choices.at(-1)!;
 }

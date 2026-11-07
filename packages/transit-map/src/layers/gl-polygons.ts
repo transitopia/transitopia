@@ -31,7 +31,7 @@ void main() {
 /** Interleaved vertex: x, y (float32 mercator offsets) + rgba (uint8, premultiplied). */
 export const VERTEX_BYTES = 12;
 
-function compile(
+export function compile(
   gl: WebGL2RenderingContext,
   type: number,
   src: string,
@@ -45,7 +45,10 @@ function compile(
 }
 
 /** out = a × b for column-major 4×4 matrices, in float64. */
-function multiply(a: ArrayLike<number>, b: ArrayLike<number>): Float64Array {
+export function multiply(
+  a: ArrayLike<number>,
+  b: ArrayLike<number>,
+): Float64Array {
   const out = new Float64Array(16);
   for (let c = 0; c < 4; c++) {
     for (let r = 0; r < 4; r++) {

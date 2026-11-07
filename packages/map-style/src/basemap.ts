@@ -111,6 +111,22 @@ export function basemapStyle(o: BasemapOptions): StyleSpecification {
   };
 }
 
+/**
+ * Whether a basemap layer draws streets (every road, path and railway line) or text and icons
+ * (place, street, water and POI labels): what a host can hide to leave only land, water, parks
+ * and buildings under its own layers.
+ */
+export function isStreetOrLabelLayer(layer: {
+  type: string;
+  source?: unknown;
+  "source-layer"?: unknown;
+}): boolean {
+  return (
+    layer.source === BASEMAP_SOURCE
+    && (layer.type === "symbol" || layer["source-layer"] === "roads")
+  );
+}
+
 /** Theme for a preference, following the system setting for "auto". */
 export function resolveTheme(pref: Theme | "auto"): Theme {
   if (pref !== "auto") return pref;

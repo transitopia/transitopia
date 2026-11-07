@@ -87,6 +87,7 @@ import {
   setDebugPlatforms,
   setRailFocus,
 } from "./layers/tracks.ts";
+import { applyLineVisibility } from "./layers/order.ts";
 import { BusFrequencyLayer, nowWindowStart } from "./layers/bus-frequency.ts";
 import type { VehicleLayer } from "./layers/vehicles.ts";
 import { sharedEnds, type Place } from "./url.ts";
@@ -512,6 +513,8 @@ export class FeedSlot {
       force: boolean;
       hiddenGroups: ReadonlySet<RouteGroup>;
       showStops: boolean;
+      /** Route lines are drawn (the layers panel's Route lines "on"). */
+      showLines: boolean;
       debug: boolean;
       vehicles: VehicleLayer;
       isDisposed: () => boolean;
@@ -552,6 +555,7 @@ export class FeedSlot {
     // SkyTrain's track, in the tiles of a feed with track-level rail (they replace its GTFS shapes).
     addTrackLayers(map, ids, pp.plan, opts.theme);
     applyTrackFilter(map, ids, this.hidden);
+    applyLineVisibility(map, ids.layer, opts.showLines);
     if (opts.debug && this.tracks) {
       addTrackDebugLayers(map, ids, this.tracks, opts.theme);
       const plan = pp.plan;

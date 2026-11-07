@@ -8,6 +8,7 @@ import type { VehicleState } from "@transitopia/transit-core/schedule/engine.ts"
 import type { KinematicsConfig } from "@transitopia/transit-core/movement/kinematics.ts";
 import { GlPolygonLayer, VERTEX_BYTES } from "./gl-polygons.ts";
 import { DIM_OPACITY } from "./static.ts";
+import { modeColor } from "./trace.ts";
 import {
   EARTH_CIRCUMFERENCE,
   distToPolyline,
@@ -25,7 +26,9 @@ import {
 
 type RGBA = [number, number, number, number];
 
-const LAYER_ID = "vehicles";
+/** The vehicles' layer id (the trails go beneath it). */
+export const VEHICLES_LAYER = "vehicles";
+const LAYER_ID = VEHICLES_LAYER;
 const SELECTED: RGBA = [255, 64, 129, 255];
 /** Estimated vehicles are filled with the route colour at this opacity. */
 const ESTIMATED_OPACITY = 0.62;
@@ -54,6 +57,8 @@ export class VehicleLayer {
    * the rest are dimmed (static.ts → setFocus). Undefined when nothing is focused.
    */
   focus: ((v: VehicleState) => boolean) | undefined;
+  /** Colour vehicles by mode, as their trails (trace.ts), not by route: while route lines are hidden. */
+  byMode = false;
 
   private map: MlMap;
   private sizing: KinematicsConfig["sizing"];
@@ -145,7 +150,10 @@ export class VehicleLayer {
       }
     };
     for (const v of ordered) {
-      const rgb = this.colors.get(v.feed)?.get(v.routeKey) ?? [110, 110, 110];
+      const rgb =
+        this.byMode ?
+          modeColor(v.mode, dark)
+        : (this.colors.get(v.feed)?.get(v.routeKey) ?? [110, 110, 110]);
       const estimated = v.provenance === "estimated";
       const selected = this.isSelected(v);
       dim = !this.focus || this.focus(v) ? 1 : DIM_OPACITY;
@@ -176,12 +184,16 @@ export class VehicleLayer {
         });
         const perM =
           1 / (EARTH_CIRCUMFERENCE * Math.cos((v.lat * Math.PI) / 180));
-        const hw = (Math.max(v.width, minW) / 2) * perM;
-        const nose = Math.max(v.width, minW) * 0.9 * perM;
-        const inner = ribbon(line, hw, nose);
         // The edge is a ring around the fill (the fill may be translucent): the outer ribbon runs
-        // edgeW past both ends of the train.
-        const outer = ribbon(extendEnds(line, edgeW), hw + edgeW, nose);
+        // edgeW past both ends of the train. To scale, the edge is outside the train's width; at the
+        // minimum width it's inside it, as a glyph's is, so a train long enough for a ribbon is no
+        // wider than one drawn as a glyph at the same zoom.
+        const trueHw = (v.width / 2) * perM;
+        const outerHw = Math.max(trueHw + edgeW, (minW / 2) * perM);
+        const hw = Math.max(outerHw - edgeW, trueHw);
+        const nose = 2 * outerHw * 0.9;
+        const inner = ribbon(line, hw, nose);
+        const outer = ribbon(extendEnds(line, edgeW), outerHw, nose);
         quadStrip(outer.left, inner.left, edge);
         quadStrip(inner.right, outer.right, edge);
         const last = inner.left.length - 2;
@@ -202,7 +214,7 @@ export class VehicleLayer {
             edge,
           );
         quadStrip(inner.left, inner.right, fill);
-        this.hits.push({ v, line, hw: hw + edgeW });
+        this.hits.push({ v, line, hw: outerHw });
         continue;
       }
       const scale = Math.max(1, minL / v.length);
