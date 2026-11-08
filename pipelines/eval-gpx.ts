@@ -274,7 +274,7 @@ async function evalFile(
     )
       .toISOString()
       .slice(0, 10);
-    const builder = new ProfileBuilder(pp, cfg);
+    const builder = new ProfileBuilder(pp, cfg, rtConfig.frozenGps);
     for (const h of hoursAll)
       if (!h.open && h.label < day && h.label >= since)
         builder.add(h.snapshots, h.label);

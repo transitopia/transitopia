@@ -20,6 +20,7 @@ const profile: RtProfile = {
         { pace: [null, null, null, null], dwell: {} },
       ],
       all: { pace: [0.1, 0.2, null, 0.08], dwell: { s1: 20, s2: 400 } },
+      holds: ["s3"],
     },
   },
 };
@@ -61,6 +62,8 @@ describe("profile bands", () => {
     expect(b.stops).toEqual(["s1", "s2"]);
     // Dwells are whole seconds up to 255.
     expect([...b.dwell]).toEqual([40, 255]);
+    // Stops where buses hold, whether or not they have a dwell.
+    expect([...b.holds]).toEqual(["s3"]);
   });
 
   it("clamp paces outside the encoding's range", () => {

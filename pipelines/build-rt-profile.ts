@@ -75,7 +75,8 @@ async function buildFeed(feed: FeedInfo, maxAgeH?: number): Promise<void> {
     }
     for (const [pp, snaps] of byPlan) {
       let b = builders.get(pp);
-      if (!b) builders.set(pp, (b = new ProfileBuilder(pp, cfg)));
+      if (!b)
+        builders.set(pp, (b = new ProfileBuilder(pp, cfg, rtConfig.frozenGps)));
       b.add(snaps, h.label);
     }
   }

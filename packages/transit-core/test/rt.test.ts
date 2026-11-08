@@ -282,6 +282,225 @@ describe("prediction", () => {
     });
   });
 
+  /** The L route with a stop at 1000 m, 10 m/s and a 10 s dwell there; `holds`: buses hold at it. */
+  const midStop = (trips: ServicePlan["trips"], holds: boolean) => {
+    const withStop: ServicePlan = {
+      ...plan,
+      stops: [
+        ...plan.stops,
+        { id: "mid", name: "Mid", lon: at(1000)[0], lat: at(1000)[1] },
+      ],
+      patterns: [
+        { ...plan.patterns[0]!, stops: [0, 2, 1], dist: [0, 1000, 2000] },
+        // Back from the end, for a next trip in the block.
+        { ...plan.patterns[0]!, id: 1, stops: [1, 0], dist: [0, 2000] },
+      ],
+      trips,
+    };
+    const pp2 = preparePlan(withStop, kin);
+    const profile = new ProfileBuilder(pp2, cfg).build();
+    profile.shapes.L = {
+      bands: [],
+      all: { pace: Array(40).fill(0.1), dwell: { mid: 10 } },
+      ...(holds ? { holds: ["mid"] } : {}),
+    };
+    return { pp2, p: new Predictor(pp2, cfg, bandProfiles(profile)) };
+  };
+
+  it("holds at a timing point until its departure time; a late bus doesn't wait", () => {
+    // Due at the stop at 30200.
+    const { pp2, p } = midStop(
+      [{ ...plan.trips[0]!, arr: [0, 200, 400] }],
+      true,
+    );
+    const c = p.course(pp2.tripIndex.get("trip1")!, T0);
+    // At 900 m at 30000: early, it arrives at 30010 and waits until 30200.
+    expect(p.walk(c, 900, 100, 1, 30000)).toEqual({ along: 1000, speed: 0 });
+    expect(p.walk(c, 900, 205, 1, 30000).along).toBeCloseTo(1050, 5);
+    // Late (at 900 m at 30300): its dwell only.
+    expect(p.walk(c, 900, 25, 1, 30300).along).toBeCloseTo(1050, 5);
+    // Without the time (fitting a walk between two fixes): the dwell only.
+    expect(p.walk(c, 900, 25).along).toBeCloseTo(1050, 5);
+  });
+
+  it("doesn't hold where buses don't", () => {
+    const { pp2, p } = midStop(
+      [{ ...plan.trips[0]!, arr: [0, 200, 400] }],
+      false,
+    );
+    const c = p.course(pp2.tripIndex.get("trip1")!, T0);
+    expect(p.walk(c, 900, 25, 1, 30000).along).toBeCloseTo(1050, 5);
+  });
+
+  it("holds a bus seen before its trip's start until its departure from where it is", () => {
+    const { pp2, p } = midStop(
+      [{ ...plan.trips[0]!, arr: [0, 200, 400] }],
+      false,
+    );
+    const c = p.course(pp2.tripIndex.get("trip1")!, T0);
+    // At the first stop 100 s early: leaves at 30000.
+    expect(p.walk(c, 0, 90, 1, 29900)).toEqual({ along: 0, speed: 0 });
+    expect(p.walk(c, 0, 150, 1, 29900).along).toBeCloseTo(500, 3);
+    // Laying over at the second stop (R1 at Newton Exchange): leaves at its time there, 30200,
+    // without a dwell on top.
+    expect(p.walk(c, 1000, 250, 1, 29900)).toEqual({ along: 1000, speed: 0 });
+    expect(p.walk(c, 1000, 305, 1, 29900).along).toBeCloseTo(1050, 3);
+  });
+
+  it("holds a bus laying over at the second-to-last stop until it's due to reach the end for its next trip", () => {
+    // Due at 1000 m at 30200 and at the end at 30400; its next trip leaves the end at 31000.
+    const { pp2, p } = midStop(
+      [
+        { ...plan.trips[0]!, block: "b1", arr: [0, 200, 400] },
+        {
+          id: "trip2",
+          pattern: 1,
+          service: "wk",
+          headsign: "To Start",
+          block: "b1",
+          start: 31000,
+          arr: [0, 400],
+        },
+      ],
+      true,
+    );
+    const trip = pp2.tripIndex.get("trip1")!;
+    expect(trip.next?.trip.id).toBe("trip2");
+    const c = p.course(trip, T0);
+    // Leaves 1000 m at 30800: 31000 less the timetable's 200 s from there to the end.
+    expect(p.walk(c, 990, 690, 1, 30100)).toEqual({ along: 1000, speed: 0 });
+    expect(p.walk(c, 990, 715, 1, 30100).along).toBeCloseTo(1150, 3);
+  });
+
+  describe("learning dwells and holds", () => {
+    const dayStart = serviceDayStart(serviceDate("20260928"), plan.timezone);
+    /** A bus on one trip: fixes at [s after the trip's start, along] (with its reported stop). */
+    const run = (
+      vehicle: string,
+      tripId: string,
+      start: number,
+      path: [number, number, string?][],
+    ): RtSnapshot[] =>
+      path.map(([s, along, stopId]) => ({
+        fetchedAt: dayStart + (start + s) * 1000,
+        headerTs: dayStart + (start + s) * 1000,
+        vehicles: [
+          {
+            id: vehicle,
+            routeKey: "99",
+            tripId,
+            lon: at(along)[0],
+            lat: at(along)[1],
+            ts: dayStart + (start + s) * 1000,
+            ...(stopId ? { stopId } : {}),
+          },
+        ],
+      }));
+    /** 10 m/s, standing at the 1000 m stop from `arrive` to `leave` (s after the start) with fixes every 30 s. */
+    const stand = (arrive: number, leave: number, gap = 30) => {
+      const path: [number, number][] = [];
+      for (let a = 0; a < 1000; a += 300)
+        path.push([arrive - (1000 - a) / 10, a]);
+      for (let t = arrive; t <= leave; t += 30) path.push([t, 1000]);
+      if (path.at(-1)![0] < leave) path.push([leave, 1000]);
+      const out = path.at(-1)![0] + gap;
+      path.push([out, 1000 + gap * 10], [out + 30, 1000 + gap * 10 + 300]);
+      return path.filter(([, a]) => a <= 2000);
+    };
+    const trips = (n: number, arr: number[]) =>
+      Array.from({ length: n }, (_, k) => ({
+        ...plan.trips[0]!,
+        id: `t${k}`,
+        start: 30000 + k * 3600,
+        arr,
+      }));
+    const build = (
+      n: number,
+      arr: number[],
+      runs: (pp2: ReturnType<typeof preparePlan>) => RtSnapshot[],
+      frozen?: { stopFarM: number; movedM: number },
+    ) => {
+      const pp2 = preparePlan(
+        {
+          ...plan,
+          stops: [
+            ...plan.stops,
+            { id: "mid", name: "Mid", lon: at(1000)[0], lat: at(1000)[1] },
+          ],
+          patterns: [
+            { ...plan.patterns[0]!, stops: [0, 2, 1], dist: [0, 1000, 2000] },
+          ],
+          trips: trips(n, arr),
+        },
+        kin,
+      );
+      const b = new ProfileBuilder(pp2, cfg, frozen);
+      b.add(runs(pp2));
+      return b.build().shapes.L!;
+    };
+
+    it("count each visit once, and its stand only when the bus was seen leaving", () => {
+      const L = build(4, [0, 200, 400], () => [
+        ...run("a", "t0", 30000, stand(100, 160)),
+        ...run("b", "t1", 33600, stand(100, 160)),
+        ...run("c", "t2", 37200, stand(100, 160)),
+        // Stood 10 minutes, but the next fix is 2 minutes later: its stand isn't known.
+        ...run("d", "t3", 40800, stand(100, 700, 120)),
+      ]);
+      expect(L.all.dwell.mid).toBe(60);
+      expect(L.holds).toBeUndefined();
+    });
+
+    it("leave out frozen GPS", () => {
+      const frozenRun = (pp2: ReturnType<typeof preparePlan>) => {
+        expect(pp2.stopById.get("s2")).toBeDefined();
+        return run("d", "t3", 40800, [
+          [0, 0],
+          [30, 300],
+          [60, 600],
+          [90, 900],
+          [100, 1000, "mid"],
+          // The same position while its reported stop runs on to the end...
+          ...[130, 160, 190, 220, 250, 280, 310, 340, 370, 400].map(
+            (t): [number, number, string] => [t, 1000, "s2"],
+          ),
+          // ...and back 900 m further on.
+          [430, 1900, "s2"],
+        ]);
+      };
+      const runs = (pp2: ReturnType<typeof preparePlan>) => [
+        ...run("a", "t0", 30000, stand(100, 160)),
+        ...run("b", "t1", 33600, stand(100, 160)),
+        ...run("c", "t2", 37200, stand(100, 160)),
+        ...frozenRun(pp2),
+      ];
+      const frozen = { stopFarM: 500, movedM: 300 };
+      expect(build(4, [0, 200, 400], runs, frozen).all.dwell.mid).toBe(60);
+      // Taken as standing, it would have stood 5 minutes.
+      expect(build(4, [0, 200, 400], runs).all.dwell.mid).toBe(120);
+    });
+
+    it("learn a timing point, and its dwell from buses arriving after its time", () => {
+      // Due at the stop 300 s after the start: 10 buses arrive at 100 s and wait until 310 s; 3 late
+      // ones arrive at 400 s and stand 20 s.
+      const L = build(13, [0, 300, 500], () => [
+        ...Array.from({ length: 10 }, (_, k) =>
+          run(`e${k}`, `t${k}`, 30000 + k * 3600, stand(100, 310)),
+        ).flat(),
+        ...Array.from({ length: 3 }, (_, k) =>
+          run(
+            `l${k}`,
+            `t${10 + k}`,
+            30000 + (10 + k) * 3600,
+            stand(400, 420).map(([t, a]): [number, number] => [t, a]),
+          ),
+        ).flat(),
+      ]);
+      expect(L.holds).toEqual(["mid"]);
+      expect(L.all.dwell.mid).toBe(20);
+    });
+  });
+
   it("measures delays against the paced schedule, across a change of band", () => {
     // 08:50–09:10: 10 m/s in the AM peak, 2 m/s from 09:00 (midday), a 30 s dwell at 1000 m.
     const withStop = {

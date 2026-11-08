@@ -1081,11 +1081,13 @@ export class RtTimeline {
         const a = this.alongOf(tr, k);
         if (!Number.isNaN(a)) recent.unshift({ along: a, ts: tr.obs[k]!.v.ts });
       }
+      // Holding to the timetable where buses do (timing points, layovers, before the trip starts).
       const w = pr.predictor.walk(
         c,
         d0,
         dt,
         pr.predictor.paceFactor(c, recent),
+        this.serviceTime(trip, o0.v.ts).sec,
       );
       return { along: Math.min(length, w.along), speed: w.speed };
     }

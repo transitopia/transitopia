@@ -5,7 +5,10 @@
 // (distance along the trip shape). Methods:
 //   constant — last speed between the two previous fixes (the old live behaviour)
 //   timetable — the timetable's running times with default stop dwells, adapted to the bus's pace
-//   profile — learned profile (falling back to timetable), adapted to the bus's pace
+//   profile — learned profile (falling back to timetable), adapted to the bus's pace, holding to the
+//             timetable where buses do (timing points, layovers, before the trip's start)
+// Each also by where the bus goes: "via holds" when it passes a stop where buses hold (or starts
+// before its trip's start), else "elsewhere".
 //
 //   npx tsx pipelines/eval-rt.ts [--feed translink] [--test 2026-09-26T16,2026-09-26T17] [--test-last 3] [--set paceWeight=0.3]
 //                              [--no-live] [--subsample <seconds>|schedule] [--train-days weekday|weekend]
@@ -26,8 +29,10 @@ import {
 import {
   Predictor,
   ProfileBuilder,
+  tripServiceDate,
   type PredictionConfig,
 } from "@transitopia/transit-core/rt/profile.ts";
+import { serviceDayStart } from "@transitopia/transit-core/time.ts";
 import { publishedBandProfiles } from "@transitopia/transit-core/rt/profile-bands.ts";
 import { RtTimeline } from "@transitopia/transit-core/rt/timeline.ts";
 import { distM } from "@transitopia/transit-core/geo.ts";
@@ -151,7 +156,7 @@ async function main() {
   const pp = await plans.forTime(test[0]!.snapshots[0]!.fetchedAt);
   if (!pp) throw new Error("No feed for the test hours");
 
-  const builder = new ProfileBuilder(pp, cfg);
+  const builder = new ProfileBuilder(pp, cfg, rtConfig.frozenGps);
   for (const h of train) builder.add(h.snapshots, h.label);
   const profile = builder.build();
   log(
@@ -174,11 +179,19 @@ async function main() {
     constant: {},
     timetable: {},
     profile: {},
+    "constant, via holds": {},
+    "profile, via holds": {},
+    "constant, elsewhere": {},
+    "profile, elsewhere": {},
   };
   for (const run of tracks(test, pp)) {
     const trip = pp.tripIndex.get(run[0]!.v.tripId!)!;
+    const holds = bands[0]?.shapes.get(trip.pattern.shape)?.holds;
+    const date = tripServiceDate(trip, run[0]!.v.ts, pp.plan.timezone);
+    const dayStart = serviceDayStart(date, pp.plan.timezone);
     for (let k = 0; k < run.length; k++) {
       const f = run[k]!;
+      const sec = (f.v.ts - dayStart) / 1000;
       const prev = k > 0 ? run[k - 1] : undefined;
       // Recent fixes within the pace window, for the pace factor.
       const recent = run
@@ -212,9 +225,22 @@ async function main() {
         if (!b) continue;
         const add = (m: string, pred: number) =>
           (err[m]![b[0]] ??= []).push(Math.abs(pred - g.along));
-        add("constant", Math.min(cP.length, f.along + speed * h));
+        const constant = Math.min(cP.length, f.along + speed * h);
+        const profile = withProfile.walk(cP, f.along, h, fP, sec).along;
+        add("constant", constant);
         add("timetable", timetable.walk(cT, f.along, h, fT).along);
-        add("profile", withProfile.walk(cP, f.along, h, fP).along);
+        add("profile", profile);
+        const via =
+          sec < trip.dep[0]!
+          || trip.pattern.stops.some(
+            (si, i) =>
+              trip.pattern.dist[i]! > f.along
+              && trip.pattern.dist[i]! <= Math.max(g.along, profile)
+              && holds?.has(pp.plan.stops[si]!.id),
+          );
+        const where = via ? "via holds" : "elsewhere";
+        add(`constant, ${where}`, constant);
+        add(`profile, ${where}`, profile);
       }
     }
   }
@@ -233,7 +259,7 @@ function printPrediction(
   for (const [name] of buckets) {
     console.log(`  ${name} ahead`);
     for (const m of Object.keys(err))
-      console.log(`    ${m.padEnd(10)} ${fmt(err[m]![name] ?? [])}`);
+      console.log(`    ${m.padEnd(20)} ${fmt(err[m]![name] ?? [])}`);
   }
 }
 
