@@ -231,6 +231,8 @@ export class RtTimeline {
   /** `${id}#${i}` → along shown when obs i became known, using fixes before it. */
   private shownAtFetch = new Map<string, number>();
   private delaysMemo: TripDelay[] | undefined;
+  /** Every trip a fix reports (reports()), filled lazily. */
+  private reported: Set<string> | undefined;
   /** During vehiclesAt: which vehicles (`rt:<id>`) get a delay (undefined: every one). */
   private withDelay: ((id: string) => boolean) | undefined;
   /**
@@ -310,6 +312,8 @@ export class RtTimeline {
         };
       }),
       cfg,
+      // In the first snapshot: it was there before these snapshots begin.
+      tr.seenAt[0] === this.fetchTimes[0],
     );
     if (frozen.size) tr.obs = tr.obs.filter((_, k) => !frozen.has(k));
   }
@@ -379,7 +383,10 @@ export class RtTimeline {
     return delays;
   }
 
-  /** A bus's delay as of its fix i (tripDelays). */
+  /**
+   * A bus's delay as of its fix i (tripDelays), with its next fix's (`next`), when this timeline has
+   * one: in recorded playback, what the bus did after t.
+   */
   private delayOf(
     id: string,
     tr: Track,
@@ -387,14 +394,56 @@ export class RtTimeline {
     pr: NonNullable<TimelineOptions["prediction"]>,
   ): TripDelay | null {
     const o = tr.obs[i]!;
+    const d = this.measureDelay(tr, i, pr, true);
+    if (!d) return null;
+    const n =
+      i + 1 < tr.obs.length ? this.measureDelay(tr, i + 1, pr, false) : null;
+    return {
+      ...d,
+      fixTs: o.v.ts,
+      vehicle: { id: `rt:${id}`, label: o.v.label },
+      ...(n ? { next: { ...n, fixTs: tr.obs[i + 1]!.v.ts } } : {}),
+    };
+  }
+
+  /**
+   * Fix k's delay against its trip's paced schedule: at the fix, or (`atHandover`) where this
+   * timeline shows the bus when its prediction runs out (see tripDelays). A bus between trips is
+   * waiting for its departure, not early: late only by how far past its departure time it still
+   * waits (seen: bus 2281 laying over at UBC Exchange, 2026-11-07, measured 12 min early against its
+   * 12:22 departure, so an estimate ran its trip from 12:10).
+   */
+  private measureDelay(
+    tr: Track,
+    k: number,
+    pr: NonNullable<TimelineOptions["prediction"]>,
+    atHandover: boolean,
+  ): Pick<TripDelay, "tripId" | "serviceDate" | "delay" | "schedSec"> | null {
+    const o = tr.obs[k]!;
     const trip = this.trip(o.v.tripId);
-    const along = this.alongOf(tr, i);
-    if (!trip || trip.route.kind !== "bus" || Number.isNaN(along)) return null;
+    const along = this.alongOf(tr, k);
+    if (
+      !trip
+      || trip.route.kind !== "bus"
+      || Number.isNaN(along)
+      || this.hidden(tr, k)
+    )
+      return null;
     const { date } = this.serviceTime(trip, o.v.ts);
     const secOf = (ms: number) =>
       (ms - serviceDayStart(date, this.opts.timezone)) / 1000;
+    if (this.isBetween(tr, k)) {
+      const dep = trip.dep[0]!;
+      return {
+        tripId: trip.trip.id,
+        serviceDate: date,
+        delay: Math.max(0, secOf(o.v.ts) - dep),
+        schedSec: dep,
+      };
+    }
     const handover = o.v.ts + this.extrapolateS(o.v.ts) * 1000;
-    const shown = this.shownAlong(tr, i, handover)?.along;
+    const shown =
+      atHandover ? this.shownAlong(tr, k, handover)?.along : undefined;
     const end = trip.pattern.dist[trip.pattern.dist.length - 1]!;
     const [ms, a] =
       shown !== undefined && shown < end - 1 ?
@@ -406,9 +455,17 @@ export class RtTimeline {
       serviceDate: date,
       delay,
       schedSec: secOf(ms) - delay,
-      fixTs: o.v.ts,
-      vehicle: { id: `rt:${id}`, label: o.v.label },
     };
+  }
+
+  /** Whether any fix in this timeline reports `tripId` (in recorded playback: the trip ran). */
+  reports(tripId: string): boolean {
+    if (!this.reported) {
+      this.reported = new Set();
+      for (const tr of this.tracks.values())
+        for (const o of tr.obs) if (o.v.tripId) this.reported.add(o.v.tripId);
+    }
+    return this.reported.has(tripId);
   }
 
   get size(): number {
@@ -491,15 +548,21 @@ export class RtTimeline {
         out.push(this.interpolate(id, tr, i, t));
         continue;
       }
-      // No usable later fix: predict, but only while the vehicle is still being reported.
-      if ((t - o0.v.ts) / 1000 > this.extrapolateS(o0.v.ts)) continue;
       const lastSeen = floorValue(tr.seenAt, t);
-      if (
+      // Absent from the latest snapshot: it has left service.
+      const gone =
         latestFetch !== undefined
         && lastSeen !== undefined
-        && latestFetch > lastSeen
-      )
-        continue;
+        && latestFetch > lastSeen;
+      if (!gone && this.waiting(tr, i, t)) {
+        const st = this.standing(id, tr, i, t);
+        if (st) {
+          out.push(st);
+          continue;
+        }
+      }
+      // No usable later fix: predict, but only while the vehicle is still being reported.
+      if ((t - o0.v.ts) / 1000 > this.extrapolateS(o0.v.ts) || gone) continue;
       out.push(this.extrapolate(id, tr, i, t));
     }
     return out;
@@ -656,6 +719,28 @@ export class RtTimeline {
     }
     tr.between[k] = between;
     return between;
+  }
+
+  /**
+   * Whether obs i's bus, between trips, is still waiting at t however long since that fix: its next
+   * fix finds it in the same place, waiting for the same trip (it stood there: seen, bus 2281 at UBC
+   * Exchange, 2026-11-07, reported the same fix for 10 min of its layover), or, with no next fix yet,
+   * its trip isn't due to leave until after t.
+   */
+  private waiting(tr: Track, i: number, t: number): boolean {
+    if (!this.isBetween(tr, i)) return false;
+    const o = tr.obs[i]!;
+    const next = tr.obs[i + 1];
+    if (next)
+      return (
+        next.v.tripId === o.v.tripId
+        && this.isBetween(tr, i + 1)
+        && distM([o.v.lon, o.v.lat], [next.v.lon, next.v.lat]) < STILL_M
+      );
+    const trip = this.trip(o.v.tripId);
+    if (!trip) return false;
+    const { date } = this.serviceTime(trip, o.v.ts);
+    return t < serviceDayStart(date, this.opts.timezone) + trip.dep[0]! * 1000;
   }
 
   /** Obs i's bus standing where it's drawn for that fix (on its route), or undefined if it can't be placed. */

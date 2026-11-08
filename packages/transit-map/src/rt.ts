@@ -375,10 +375,8 @@ export class RtClient {
       : undefined;
     const snapshots = fromLive ? this.live : recorded;
     if (!snapshots) return undefined;
-    const delays = this.timelineFor(snapshots, fromLive, pp).tripDelays(
-      t,
-      skip,
-    );
+    const timeline = this.timelineFor(snapshots, fromLive, pp);
+    const delays = timeline.tripDelays(t, skip);
     if (
       this.carryMemo?.delays !== delays
       || this.carryMemo.pp !== pp
@@ -393,6 +391,8 @@ export class RtClient {
           delays,
           this.config.rt.carry,
           this.changesView().cancelled,
+          // Recorded: a trip no fix reports didn't run (live: it may yet).
+          fromLive ? undefined : (id) => timeline.reports(id),
         ),
       };
     }

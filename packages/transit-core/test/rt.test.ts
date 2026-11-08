@@ -639,6 +639,108 @@ describe("carrying RT delays into schedule estimates", () => {
     );
     expect(own.carried.size).toBe(0);
   });
+
+  const timeline = (fixes: [ts: number, along: number, trip: string][]) =>
+    new RtTimeline(
+      fixes.map(([ts, along, tripId]) => {
+        const s = snapAt(ts, along);
+        return { ...s, vehicles: s.vehicles.map((v) => ({ ...v, tripId })) };
+      }),
+      pp2,
+      kin,
+      { ...opts, prediction: { cfg, predictor } },
+    );
+  const dep2 = pp2.tripIndex.get("trip2")!.dep[0]!;
+  const sec = (s: number) => day0 + s * 1000;
+
+  it("doesn't take a bus waiting for its next trip as early (bus 2281, 2026-11-07)", () => {
+    // Laying over at trip2's first stop (the L's end) 150 s before it leaves.
+    const [d] = timeline([[sec(dep2 - 150), 2000, "trip2"]]).tripDelays(
+      sec(dep2 - 140),
+    );
+    expect(d!.tripId).toBe("trip2");
+    expect(d!.delay).toBe(0);
+    expect(d!.schedSec).toBe(dep2);
+    // Still there 90 s after its departure time: 90 s late.
+    const [late] = timeline([[sec(dep2 + 90), 2000, "trip2"]]).tripDelays(
+      sec(dep2 + 100),
+    );
+    expect(late!.delay).toBeCloseTo(90, 0);
+  });
+
+  it("keeps a bus waiting for its next trip standing there between far-apart fixes", () => {
+    // Seen at trip2's first stop 10 min before it leaves, and next in the same place as it's due.
+    const tl = timeline([
+      [sec(dep2 - 600), 2000, "trip2"],
+      [sec(dep2 - 10), 2000, "trip2"],
+    ]);
+    for (const s of [dep2 - 500, dep2 - 300, dep2 - 60]) {
+      const [v] = tl.vehiclesAt(sec(s));
+      expect(v?.status).toBe("layover");
+      expect(alongOf(v!)).toBeCloseTo(2000, -1);
+    }
+    // With no later fix: until its departure time, then no longer from that fix.
+    const last = timeline([[sec(dep2 - 600), 2000, "trip2"]]);
+    expect(last.vehiclesAt(sec(dep2 - 30))).toHaveLength(1);
+    expect(last.vehiclesAt(sec(dep2 + 30))).toEqual([]);
+  });
+
+  it("in playback, holds a late leaver at its first stop until its next fix says it left", () => {
+    // Waiting at 08:27:30; next seen still there at 08:34:00, 240 s after it was due to leave.
+    const tl = timeline([
+      [sec(dep2 - 150), 2000, "trip2"],
+      [sec(dep2 + 240), 2000, "trip2"],
+    ]);
+    const delays = tl.tripDelays(sec(dep2 + 60));
+    expect(delays[0]!.next?.delay).toBe(240);
+    const c = delayCorrections(pp2, delays, rtConfig.carry);
+    const corr = c.byDate.get(date)!.trips.get("trip2")!;
+    expect(corr.anchors).toEqual([{ sched: dep2, shift: 240 }]);
+    expect(corr.estimate).toMatch(/then GTFS-RT delay \(\+4 min/);
+  });
+
+  it("in playback, carries into the next trip at the delay its next fix shows there", () => {
+    // 5 min late on trip1; next seen on trip2, 1000 m along it (the L's 1000 m) at 08:40.
+    const tl = timeline([
+      [fixTs, 200, "trip1"],
+      [sec(T + 2400), 1000, "trip2"],
+    ]);
+    const delays = tl.tripDelays(fixTs + 1000);
+    const n = delays[0]!.next!;
+    expect(n.tripId).toBe("trip2");
+    const c = delayCorrections(pp2, delays, rtConfig.carry);
+    expect([...c.carried.keys()]).toEqual(["trip1", "trip2"]);
+    expect(c.byDate.get(date)!.trips.get("trip2")!.anchors).toEqual([
+      { sched: n.schedSec, shift: n.delay },
+    ]);
+    // Next seen still on trip1: nothing carries on.
+    const still = timeline([
+      [fixTs, 200, "trip1"],
+      [fixTs + 600_000, 900, "trip1"],
+    ]).tripDelays(fixTs + 1000);
+    expect([
+      ...delayCorrections(pp2, still, rtConfig.carry).carried.keys(),
+    ]).toEqual(["trip1"]);
+  });
+
+  it("in playback, carries nothing into a trip no fix reports: it didn't run", () => {
+    const none = delayCorrections(
+      pp2,
+      delays,
+      rtConfig.carry,
+      undefined,
+      () => false,
+    );
+    expect([...none.carried.keys()]).toEqual(["trip1"]);
+    const ran = delayCorrections(
+      pp2,
+      delays,
+      rtConfig.carry,
+      undefined,
+      () => true,
+    );
+    expect([...ran.carried.keys()]).toEqual(["trip1", "trip2"]);
+  });
 });
 
 describe("frozen GPS", () => {
@@ -747,6 +849,14 @@ describe("frozen GPS", () => {
       frozenGps: undefined,
     });
     expect(alongOf(plain.vehiclesAt(ms(310))[0]!)).toBeLessThan(300);
+  });
+
+  it("doesn't draw a bus whose fixes start partway through a freeze (a page opened then)", () => {
+    // The live buffer since 60 s: already at the frozen spot, and nothing says it got there then.
+    const tl = new RtTimeline(snaps(frozen.slice(1, 4)), pp2, kin, fopts);
+    expect(tl.vehiclesAt(ms(70))).toEqual([]);
+    expect(tl.vehiclesAt(ms(130))).toEqual([]);
+    expect(tl.vehiclesAt(ms(310))).toEqual([]);
   });
 
   it("keeps a bus that really stood there while its reported stop ran on", () => {

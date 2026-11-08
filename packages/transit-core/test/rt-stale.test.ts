@@ -61,6 +61,24 @@ describe("frozenFixes", () => {
     ).toEqual([]);
   });
 
+  it("drops a run's first fix too when the fixes start partway through it (openStart)", () => {
+    const fixes = [
+      fix(49.324, "t1", "c", near),
+      fix(49.324, "t1", "d", far),
+      fix(49.281, "t1", "e", far),
+    ];
+    expect(frozen(fixes)).toEqual([1]);
+    expect([...frozenFixes(fixes, cfg, true)]).toEqual([0, 1]);
+    // Only the run they start in: a later one keeps its first fix.
+    expect([
+      ...frozenFixes(
+        [fix(49.32, "t1", "a", near), ...fixes.map((f) => ({ ...f }))],
+        cfg,
+        true,
+      ),
+    ]).toEqual([2]);
+  });
+
   it("only takes exact repeats as a run: a working GPS jitters", () => {
     expect(
       frozen([
