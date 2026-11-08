@@ -14,6 +14,7 @@ Drawn routes: every route in the feed, with **95 Langford / Downtown Blink** as 
 
 - **Exchanges**: the drawn routes use Legislature, Langford, Colwood, UVic, Royal Oak and McTavish exchanges and Swartz Bay Ferry Terminal. BC Transit names bays without `@` ("Langford Exch (Jacklin Rd) Bay D"); a group of bays on a side street is the same exchange (feed of 2026-10-14).
 - **Real-time data** (sampled 2026-10-14 15:00): 185 buses reporting, every one on a trip; trip updates covered 85 % of them; 33 trips marked `CANCELED`. Fixes were p50 ~8 s old when fetched.
+- **Trips not in the timetable** (2026-10-15 and 11-04): some buses report trips no static feed has, with ids starting `1230…` (e.g. `12307439:14539558:14592516`), on real routes, often with a transit centre (`900001` Victoria, `930002` Langford) as the next stop and no trip update: runs to and from the depot. On 2026-11-04, 24 trips, 23 buses and 4 % of fixes. They aren't drawn (issue #184).
 
 ### Static timetable
 

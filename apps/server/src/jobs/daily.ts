@@ -8,6 +8,7 @@ import type {
   FeedRealtime,
 } from "@transitopia/transit-core/config.ts";
 import type { Db } from "@transitopia/db/connect.ts";
+import { sql } from "kysely";
 import { ensurePartitionsFor } from "@transitopia/db/partitions.ts";
 import { isoDate } from "../dates.ts";
 import {
@@ -15,7 +16,14 @@ import {
   loadDayTimetable,
   type DayTrip,
 } from "@transitopia/data/gtfs-day.ts";
+import { readFeedConfig } from "@transitopia/data/paths.ts";
+import type { LonLat } from "@transitopia/transit-core/geo.ts";
 import { cadence } from "@transitopia/transit-core/rt/budget.ts";
+import {
+  frozenFixes,
+  type FreezeFix,
+  type FrozenGpsConfig,
+} from "@transitopia/transit-core/rt/stale.ts";
 import { extendCoverage } from "@transitopia/transit-core/rt/types.ts";
 import {
   observeTrip,
@@ -69,6 +77,14 @@ export async function dailyStats(
     if (!l) byRoute.set(t.routeId, (l = []));
     l.push(t);
   }
+  const frozen = await frozenPositions(
+    db,
+    feed.id,
+    from,
+    to,
+    tt.trips.values(),
+    (await readFeedConfig(feed.id)).rt.frozenGps,
+  );
   const observed: (ObservedRow & {
     routeId: string;
     directionId: number;
@@ -100,6 +116,7 @@ export async function dailyStats(
       .execute();
     const fixes = new Map<string, TripFix[]>();
     for (const r of rows) {
+      if (frozen.has(`${r.vehicle_id}@${r.ts.getTime()}`)) continue;
       let l = fixes.get(r.trip_id!);
       if (!l) fixes.set(r.trip_id!, (l = []));
       l.push({
@@ -132,7 +149,7 @@ export async function dailyStats(
     }
   }
   log(
-    `${feed.id} ${date}: ${observed.length} observed stop times from ${tripsWithFixes} trips (feed ${tt.feedVersion})`,
+    `${feed.id} ${date}: ${observed.length} observed stop times from ${tripsWithFixes} trips (feed ${tt.feedVersion}; ${frozen.size} frozen fixes left out)`,
   );
 
   await ensurePartitionsFor(db, dayStart, dayStart);
@@ -269,4 +286,82 @@ export async function hasRecording(
     .limit(1)
     .executeTakeFirst();
   return Boolean(row);
+}
+
+/**
+ * The day's fixes whose position is frozen GPS (packages/transit-core/src/rt/stale.ts), as
+ * `<vehicle id>@<epoch ms>`. Per vehicle over all its trips, since a freeze can run from one trip
+ * into the next: only fixes repeating a neighbour's position come back from the database, each with
+ * its row number (where runs break) and the next fix's position (where the bus reappeared).
+ */
+async function frozenPositions(
+  db: Db,
+  feedId: string,
+  from: Date,
+  to: Date,
+  trips: Iterable<DayTrip>,
+  cfg: FrozenGpsConfig,
+): Promise<Set<string>> {
+  const stopAt = new Map<string, LonLat>();
+  for (const t of trips)
+    for (const s of t.stops) stopAt.set(s.stopId, [s.lon, s.lat]);
+  const { rows } = await sql<{
+    vehicle_id: string;
+    ts: Date;
+    lat: number;
+    lon: number;
+    trip_id: string | null;
+    stop_id: string | null;
+    rn: number;
+    next_lat: number | null;
+    next_lon: number | null;
+  }>`
+    select vehicle_id, ts, lat, lon, trip_id, stop_id, rn, next_lat, next_lon from (
+      select *,
+        row_number() over w as rn,
+        lag(lat) over w as prev_lat, lag(lon) over w as prev_lon,
+        lead(lat) over w as next_lat, lead(lon) over w as next_lon
+      from (
+        select distinct on (vehicle_id, ts) vehicle_id, ts, lat, lon, trip_id, stop_id
+        from rt_positions
+        where feed_id = ${feedId} and fetched_at >= ${from} and fetched_at < ${to}
+        order by vehicle_id, ts, fetched_at
+      ) fixes
+      window w as (partition by vehicle_id order by ts)
+    ) runs
+    where (lat = prev_lat and lon = prev_lon) or (lat = next_lat and lon = next_lon)
+    order by vehicle_id, ts`.execute(db);
+  const out = new Set<string>();
+  let seg: typeof rows = [];
+  const flush = () => {
+    if (!seg.length) return;
+    const last = seg[seg.length - 1]!;
+    const fixes: FreezeFix[] = seg.map((r) => ({
+      lat: r.lat,
+      lon: r.lon,
+      tripId: r.trip_id ?? undefined,
+      stop: r.stop_id ?? undefined,
+      stopAt: r.stop_id ? stopAt.get(r.stop_id) : undefined,
+    }));
+    // Where the bus reappeared, if it did: it ends the last run.
+    if (last.next_lat !== null && last.next_lon !== null)
+      fixes.push({
+        lat: last.next_lat,
+        lon: last.next_lon,
+        tripId: undefined,
+        stop: undefined,
+        stopAt: undefined,
+      });
+    for (const k of frozenFixes(fixes, cfg))
+      out.add(`${seg[k]!.vehicle_id}@${seg[k]!.ts.getTime()}`);
+    seg = [];
+  };
+  for (const r of rows) {
+    const prev = seg[seg.length - 1];
+    if (prev && (prev.vehicle_id !== r.vehicle_id || prev.rn + 1 !== r.rn))
+      flush();
+    seg.push(r);
+  }
+  flush();
+  return out;
 }

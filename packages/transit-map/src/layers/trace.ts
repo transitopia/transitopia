@@ -48,9 +48,19 @@ const TRAIL_OPACITY = 0.1;
 const WIDTH_PX = 1.25;
 /** A vehicle adds a segment once it has moved this far (px at the zoom then)… */
 const MIN_STEP_PX = 2;
-/** …and starts a new trail after a jump further than this, or a gap in time longer than MAX_GAP_MS. */
+/** …and starts a new trail after a jump further than this, or a gap in time longer than MAX_GAP_MS… */
 const MAX_STEP_PX = 250;
 const MAX_GAP_MS = 10 * 60_000;
+/**
+ * …or a step faster than this since it was last seen (m/s; a guess: 144 km/h, well above any bus,
+ * train or ferry here), give or take JUMP_SLACK_M: a vehicle put somewhere new (a real-time fix
+ * after an estimate, a correction) jumps there, and a trail joining the two would cross what's
+ * between them.
+ */
+const MAX_SPEED_MS = 40;
+const JUMP_SLACK_M = 20;
+/** Metres per mercator unit at the equator. */
+const EARTH_CIRCUMFERENCE_M = 40_075_016.686;
 /** The wobble: up to this far either side of the path (px), in waves of these lengths (px). */
 const WOBBLE_PX = 4;
 const WOBBLE_WAVES_PX = [170, 61];
@@ -113,6 +123,13 @@ interface Trail {
   phase: number[];
   /** When it was last there (epoch ms, the shown time). */
   t: number;
+  /** Where (mercator) and when it was last seen, whether or not that added a segment. */
+  seenX: number;
+  seenY: number;
+  seenT: number;
+  /** Its trip and whether it was estimated then: a change of either starts a new trail. */
+  tripId: string;
+  estimated: boolean;
 }
 
 export class TraceLayer implements CustomLayerInterface {
@@ -175,8 +192,8 @@ export class TraceLayer implements CustomLayerInterface {
       const x = mercX(v.lon);
       const y = mercY(v.lat);
       const was = this.trails.get(key);
-      const px = was ? Math.hypot(x - was.x, y - was.y) / mercPerPx : 0;
-      if (!was || px > MAX_STEP_PX || Math.abs(t - was.t) > MAX_GAP_MS) {
+      const estimated = v.provenance === "estimated";
+      if (!was || this.breaks(was, v, x, y, t, mercPerPx)) {
         const phase = Array.from(
           { length: WOBBLE_WAVES_PX.length * 2 },
           () => Math.random() * 2 * Math.PI,
@@ -190,10 +207,17 @@ export class TraceLayer implements CustomLayerInterface {
           s: 0,
           phase,
           t,
+          seenX: x,
+          seenY: y,
+          seenT: t,
+          tripId: v.tripId,
+          estimated,
         });
         continue;
       }
+      Object.assign(was, { seenX: x, seenY: y, seenT: t });
       seen.set(key, was);
+      const px = Math.hypot(x - was.x, y - was.y) / mercPerPx;
       if (px < MIN_STEP_PX) continue;
       const s = was.s + px;
       const [dx, dy] = wobble(s, was.phase);
@@ -204,6 +228,30 @@ export class TraceLayer implements CustomLayerInterface {
     }
     this.trails = seen;
     if (this.added !== before) this.map.triggerRepaint();
+  }
+
+  /**
+   * Whether `v`, now at mercator `x`, `y`, starts a new trail rather than extending `was`: it has
+   * jumped, been out of sight too long, or become a different trip, or switched between estimated
+   * and observed (packages/transit-map/README.md#rendering).
+   */
+  private breaks(
+    was: Trail,
+    v: VehicleState,
+    x: number,
+    y: number,
+    t: number,
+    mercPerPx: number,
+  ): boolean {
+    if (Math.hypot(x - was.x, y - was.y) / mercPerPx > MAX_STEP_PX) return true;
+    if (Math.abs(t - was.t) > MAX_GAP_MS) return true;
+    if (v.tripId !== was.tripId) return true;
+    if ((v.provenance === "estimated") !== was.estimated) return true;
+    // Mercator units to metres here: 1 / cos(lat) wider than at the equator.
+    const mPerMerc = EARTH_CIRCUMFERENCE_M * Math.cos((v.lat * Math.PI) / 180);
+    const m = Math.hypot(x - was.seenX, y - was.seenY) * mPerMerc;
+    const s = Math.abs(t - was.seenT) / 1000;
+    return m > MAX_SPEED_MS * s + JUMP_SLACK_M;
   }
 
   private push(

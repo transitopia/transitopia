@@ -335,6 +335,8 @@ export class RtClient {
         changes: this.changesView(),
         detourNearM: this.config.rt.detourNearM,
         stopZoneM: this.prediction.stopZoneM,
+        frozenGps: this.config.rt.frozenGps,
+        maxJumpLineM: this.config.rt.maxJumpLineM,
         ...(predictor ?
           { prediction: { cfg: this.prediction, predictor } }
         : {}),

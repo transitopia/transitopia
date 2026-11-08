@@ -15,6 +15,7 @@ import type { StatsConfig } from "./rt/stats.ts";
 import type { CadenceConfig, PollBand, PollSchedule } from "./rt/budget.ts";
 import type { PredictionConfig } from "./rt/profile.ts";
 import type { CarryConfig } from "./rt/carry.ts";
+import type { FrozenGpsConfig } from "./rt/stale.ts";
 import type { AisMatchConfig } from "./ais/match.ts";
 import type { GlideConfig } from "./ais/glide.ts";
 import type { RouteKind, RouteMode } from "./plan/types.ts";
@@ -337,6 +338,12 @@ const carryShape = z.strictObject({
 });
 const carry: z.ZodType<CarryConfig> = carryShape;
 
+const frozenGpsShape = z.strictObject({
+  stopFarM: pos,
+  movedM: pos,
+});
+const frozenGps: z.ZodType<FrozenGpsConfig> = frozenGpsShape;
+
 // How the map uses real-time data, resolved from config/defaults/rt.json and a feed's operator's
 // and its own overrides (resolveRt). How often each feed is polled, and the thresholds that follow from it,
 // are the feed's (feed.json → realtime).
@@ -345,6 +352,8 @@ const rt = z.strictObject({
   clientPollMaxS: pos,
   clientPollSlackS: nonNeg,
   detourNearM: pos,
+  frozenGps,
+  maxJumpLineM: pos,
   prediction,
   carry,
 });
@@ -437,6 +446,8 @@ const rtLayer = z.strictObject({
   prediction: prediction.partial().exactOptional(),
   carry: carryShape.partial().exactOptional(),
   detourNearM: pos.exactOptional(),
+  frozenGps: frozenGpsShape.partial().exactOptional(),
+  maxJumpLineM: pos.exactOptional(),
 });
 
 // --- config/feeds/<feed>/feed.json ---
