@@ -312,6 +312,8 @@ export class RtTimeline {
         };
       }),
       cfg,
+      // In the first snapshot: it was there before these snapshots begin.
+      tr.seenAt[0] === this.fetchTimes[0],
     );
     if (frozen.size) tr.obs = tr.obs.filter((_, k) => !frozen.has(k));
   }

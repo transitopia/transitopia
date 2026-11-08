@@ -18,7 +18,11 @@
 // 2026-10-20, 11-06 and 11-07, buses after a suspect run reappeared either within 150 m (it stood
 // there) or further than 300 m. A run still going on (live, the latest fixes) is taken as frozen.
 // Every fix after a frozen run's first is dropped, including those before the one that gave it
-// away; the first is kept: it was where the bus was then.
+// away; the first is kept: it was where the bus was then. Unless the fixes start in the middle of
+// the run (`openStart`: the data begins with the bus already there, e.g. the live buffer since the
+// page opened, or a loaded recorded hour): then where the run began is unknown, and its first fix
+// may be frozen too, so it goes as well (seen: bus 8127, 2026-11-08, frozen from 10:38, jumped back
+// to its frozen spot when a page opened at 10:51 switched to live data).
 
 import { distM, type LonLat } from "../geo.ts";
 
@@ -40,10 +44,14 @@ export interface FreezeFix {
   stopAt: LonLat | undefined;
 }
 
-/** Indexes of one vehicle's fixes (in time order, one per fix time) whose position is frozen. */
+/**
+ * Indexes of one vehicle's fixes (in time order, one per fix time) whose position is frozen.
+ * `openStart`: the first fix may be partway through a run (see above).
+ */
 export function frozenFixes(
   fixes: readonly FreezeFix[],
   cfg: FrozenGpsConfig,
+  openStart = false,
 ): Set<number> {
   const out = new Set<number>();
   let start = 0;
@@ -65,7 +73,8 @@ export function frozenFixes(
       continue;
     }
     if (suspect && (!f || distM([a.lon, a.lat], [f.lon, f.lat]) > cfg.movedM))
-      for (let j = start + 1; j < k; j++) out.add(j);
+      for (let j = start === 0 && openStart ? 0 : start + 1; j < k; j++)
+        out.add(j);
     start = k;
     suspect = false;
   }

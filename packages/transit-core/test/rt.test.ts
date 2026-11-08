@@ -851,6 +851,14 @@ describe("frozen GPS", () => {
     expect(alongOf(plain.vehiclesAt(ms(310))[0]!)).toBeLessThan(300);
   });
 
+  it("doesn't draw a bus whose fixes start partway through a freeze (a page opened then)", () => {
+    // The live buffer since 60 s: already at the frozen spot, and nothing says it got there then.
+    const tl = new RtTimeline(snaps(frozen.slice(1, 4)), pp2, kin, fopts);
+    expect(tl.vehiclesAt(ms(70))).toEqual([]);
+    expect(tl.vehiclesAt(ms(130))).toEqual([]);
+    expect(tl.vehiclesAt(ms(310))).toEqual([]);
+  });
+
   it("keeps a bus that really stood there while its reported stop ran on", () => {
     // It moves off from where it stood: its GPS was right.
     const stood: Fix[] = [...frozen.slice(0, 4), [360, 260, "trip1", "s2"]];
