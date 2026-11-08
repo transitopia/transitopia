@@ -770,6 +770,40 @@ describe("frozen GPS", () => {
     expect(alongOf(tl.vehiclesAt(ms(650))[0]!)).toBeCloseTo(500, -1);
     expect(alongOf(tl.vehiclesAt(ms(680))[0]!)).toBeCloseTo(1900, -1);
   });
+
+  // Out along trip1 to near its end.
+  const out: Fix[] = [
+    [20, 300, "trip1", "s1"],
+    [60, 700, "trip1", "s1"],
+    [100, 1100, "trip1", "s1"],
+    [140, 1500, "trip1", "s1"],
+    [180, 1900, "trip1", "s2"],
+  ];
+
+  it("doesn't draw a bus driving back along a trip it still reports (bus 9640, 2026-11-07)", () => {
+    const back: Fix[] = [
+      ...out,
+      [220, 1500, "trip1", "s2"],
+      [260, 1000, "trip1", "s2"],
+      [300, 500, "trip1", "s2"],
+    ];
+    const tl = new RtTimeline(snaps(back), pp2, kin, fopts);
+    // Standing where it got to until it's seen driving back, then gone.
+    expect(alongOf(tl.vehiclesAt(ms(200))[0]!)).toBeCloseTo(1900, -1);
+    for (const s of [220, 240, 270, 300, 320])
+      expect(tl.vehiclesAt(ms(s))).toEqual([]);
+  });
+
+  it("still takes one fix back as a correction", () => {
+    const corrected: Fix[] = [
+      ...out,
+      [220, 1500, "trip1", "s2"],
+      [260, 1560, "trip1", "s2"],
+      [300, 1620, "trip1", "s2"],
+    ];
+    const tl = new RtTimeline(snaps(corrected), pp2, kin, fopts);
+    expect(alongOf(tl.vehiclesAt(ms(260))[0]!)).toBeCloseTo(1560, -1);
+  });
 });
 
 describe("shifted GPS", () => {

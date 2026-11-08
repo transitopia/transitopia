@@ -30,6 +30,9 @@
 //    the next fix, rather than being drawn across water;
 //  - a bus on a trip the timetable doesn't have (BC Transit reports runs to and from the depot
 //    under a route, with trip ids no static feed has) isn't in service, so it isn't drawn;
+//  - nor is a bus driving back along its trip, well behind where it has been: it has finished or
+//    left that trip while TransLink still reports it (seen: bus 9640 on the 240, 2026-11-07, reported
+//    its trip's last stops for half an hour while driving back to North Vancouver);
 //  - otherwise the vehicle is not shown (the caller falls back to schedule estimates when the
 //    instant isn't covered by RT data at all).
 // Pure given its inputs: the same snapshots and t always give the same answer. A fix counts as
@@ -107,6 +110,13 @@ interface Track {
   shift: ({ n: number; e: number } | undefined)[];
   /** Per obs: the furthest along its trip reached so far (buses don't reverse), filled lazily. */
   held: number[];
+  /**
+   * Per obs: the furthest along its trip its bus had got before it (NaN: nowhere yet), not counting
+   * fixes driving back, filled lazily.
+   */
+  reached: number[];
+  /** Per obs: whether its bus is driving back along its trip (see reversing()), filled lazily. */
+  reversing: boolean[];
   /** Per obs: whether its bus is between trips (not yet running the trip), filled lazily. */
   between: boolean[];
   /** Fetch times of snapshots that included this vehicle, sorted. */
@@ -255,6 +265,8 @@ export class RtTimeline {
               along: [],
               shift: [],
               held: [],
+              reached: [],
+              reversing: [],
               between: [],
               seenAt: [],
               delays: [],
@@ -681,7 +693,72 @@ export class RtTimeline {
     const { tripId } = tr.obs[k]!.v;
     if (this.pp && tripId !== undefined && !this.pp.tripIndex.has(tripId))
       return true;
+    if (this.isReversing(tr, k)) return true;
     return this.isBetween(tr, k) && Number.isNaN(this.alongOf(tr, k));
+  }
+
+  /**
+   * Where obs k is on its trip's route (wherever along it: unlike alongOf, not only ahead of the
+   * last fix) when that's more than BACKTRACK_MAX_M behind `reached`, the furthest its bus had got;
+   * NaN when it isn't on its route, isn't that far behind, or is between trips.
+   */
+  private behindAlong(tr: Track, k: number, reached: number): number {
+    if (Number.isNaN(reached) || this.isBetween(tr, k)) return NaN;
+    const a = this.alongOf(tr, k);
+    if (!Number.isNaN(a) && a >= reached - BACKTRACK_MAX_M) return NaN;
+    const o = tr.obs[k]!;
+    const s = this.shape(o.v.tripId);
+    if (!s) return NaN;
+    const p = projectOnto(s.coords, s.cum, [o.v.lon, o.v.lat]);
+    return p.offset < MAX_SNAP_OFFSET && p.along < reached - BACKTRACK_MAX_M ?
+        p.along
+      : NaN;
+  }
+
+  /**
+   * Whether obs k's bus is driving back along its trip: more than BACKTRACK_MAX_M behind where it
+   * had got, and further back than the fix before it was (when that was driving back too) or than
+   * the fix after it is (by more than JITTER_M). Its trip is over, whatever TransLink says, so it
+   * isn't drawn (hidden()). One fix back on its own is a correction (heldAlong), not this.
+   */
+  private isReversing(tr: Track, k: number): boolean {
+    for (let j = tr.reversing.length; j <= k; j++) {
+      const o = tr.obs[j]!;
+      const prev = j > 0 ? tr.obs[j - 1] : undefined;
+      const sameAsPrev = prev !== undefined && prev.v.tripId === o.v.tripId;
+      let reached = NaN;
+      if (sameAsPrev) {
+        const r = tr.reached[j - 1]!;
+        if (tr.reversing[j - 1]) reached = r;
+        else {
+          // A fix back that isn't driving back is a correction: progress counts from there.
+          const back = this.behindAlong(tr, j - 1, r);
+          const a = this.alongOf(tr, j - 1);
+          reached =
+            !Number.isNaN(back) ? back
+            : Number.isNaN(a) ? r
+            : Number.isNaN(r) ? a
+            : Math.max(r, a);
+        }
+      }
+      tr.reached.push(reached);
+      const b = this.behindAlong(tr, j, reached);
+      let reversing = false;
+      if (!Number.isNaN(b)) {
+        if (sameAsPrev && tr.reversing[j - 1]) {
+          const pb = this.behindAlong(tr, j - 1, tr.reached[j - 1]!);
+          reversing = b <= pb + JITTER_M;
+        }
+        const next = tr.obs[j + 1];
+        if (!reversing && next && next.v.tripId === o.v.tripId) {
+          // The next fix's furthest point is this one's: this one is behind it.
+          const nb = this.behindAlong(tr, j + 1, reached);
+          reversing = nb < b - JITTER_M;
+        }
+      }
+      tr.reversing.push(reversing);
+    }
+    return tr.reversing[k]!;
   }
 
   /** Where obs k is drawn on its route (at its held along), if it can be placed there. */
