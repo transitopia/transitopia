@@ -40,8 +40,14 @@ import {
   localDate,
   isServiceDate,
 } from "@transitopia/transit-core/time.ts";
-import { feedPaths } from "@transitopia/data/paths.ts";
+import { feedPaths, readFeedConfig } from "@transitopia/data/paths.ts";
 import { routesByGtfsId } from "@transitopia/data/route-ids.ts";
+import { stopPositions } from "@transitopia/data/gtfs-day.ts";
+import type { LonLat } from "@transitopia/transit-core/geo.ts";
+import {
+  FreezeWatch,
+  type FreezeFix,
+} from "@transitopia/transit-core/rt/stale.ts";
 import type { ProviderStatus } from "@transitopia/shared/admin-api.ts";
 import { Recorder } from "./recorder.ts";
 import { ServiceChanges } from "./changes.ts";
@@ -95,6 +101,10 @@ export class FeedPoller {
   /** GTFS route_id → our key for SkyTrain lines (alerts). */
   private railKeyById = new Map<string, string>();
   private routesLoadedFrom: number | undefined;
+  /** Where each stop is, by GTFS stop_id (frozen GPS checks). */
+  private stopAt = new Map<string, LonLat>();
+  /** Each bus's current run of repeated positions (packages/transit-core/src/rt/stale.ts); none until the config is read. */
+  private freeze: FreezeWatch<RtVehicle> | undefined;
   /** Each endpoint's pending poll (one per endpoint: a tick schedules the next). */
   private timers: Partial<Record<PollFeed, ReturnType<typeof setTimeout>>> = {};
   /** Polls under way, which `stop` waits for. */
@@ -189,6 +199,9 @@ export class FeedPoller {
   async start(): Promise<void> {
     if (this.running) return;
     this.running = true;
+    this.freeze = new FreezeWatch(
+      (await readFeedConfig(this.feed.id)).rt.frozenGps,
+    );
     await this.loadRoutes();
     if (!this.polling) {
       if (this.opts.poll)
@@ -202,6 +215,12 @@ export class FeedPoller {
     if (this.opts.record) {
       const last = await this.recorder.lastSnapshot();
       this.latest = last ? trackedOnly(last, this.routeKeyById) : null;
+      // Freezes under way carry on from the recording; other runs began at an unknown time.
+      if (last && this.freeze) {
+        const lastReal = new Map(last.frozen?.map((v) => [v.id, v]));
+        for (const v of last.vehicles)
+          this.freeze.resume(v.id, v.ts, this.freezeFix(v), lastReal.get(v.id));
+      }
     }
     const now = Date.now();
     const s = this.schedule;
@@ -339,6 +358,11 @@ export class FeedPoller {
         );
       this.routeKeyById = map;
       this.railKeyById = rail;
+      // Fixes can report yesterday's trips' stops after midnight.
+      this.stopAt = await stopPositions(
+        this.feed.id,
+        addDays(localDate(Date.now()), -1),
+      );
       this.routesLoadedFrom = mtime;
       // Filtered hours depend on the routes drawn (trackedOnly).
       this.historyCache.clear();
@@ -466,6 +490,8 @@ export class FeedPoller {
       vehicles.push(v);
     }
     const all: RtSnapshot = { fetchedAt, headerTs: decoded.headerTs, vehicles };
+    const frozen = this.watchFreezes(vehicles);
+    if (frozen.length) all.frozen = frozen;
     this.latest = trackedOnly(all);
     this.busTrips = busTrips;
     // Not before trip updates have been read at all (positions may come back first after a start).
@@ -495,6 +521,32 @@ export class FeedPoller {
       })),
     );
     return decoded.bytes;
+  }
+
+  /**
+   * Adds a poll's fixes to the freeze watch, and returns the last real fix of each bus whose
+   * position is now frozen (RtSnapshot.frozen).
+   */
+  private watchFreezes(vehicles: RtVehicle[]): RtVehicle[] {
+    const w = this.freeze;
+    if (!w) return [];
+    const out: RtVehicle[] = [];
+    for (const v of vehicles) {
+      w.add(v.id, v.ts, this.freezeFix(v), v);
+      const real = w.lastReal(v.id);
+      if (real) out.push(real);
+    }
+    return out;
+  }
+
+  private freezeFix(v: RtVehicle): FreezeFix {
+    return {
+      lat: v.lat,
+      lon: v.lon,
+      tripId: v.tripId,
+      stop: v.stopId,
+      stopAt: v.stopId ? this.stopAt.get(v.stopId) : undefined,
+    };
   }
 
   // --- what clients get ---
