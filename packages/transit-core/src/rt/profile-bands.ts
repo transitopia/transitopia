@@ -3,8 +3,9 @@
 // shape's pace and dwells in that band, with the all-day profile's filled in where the band has
 // none, so a client loads only the bands it shows and needs no fallback of its own.
 //
-// Format: the header's length (u32, little-endian), the header (JSON, BandFileHeader), then per
-// shape in the header's order one byte per bin of pace and one byte per listed stop of dwell.
+// Format: the header's length (u32, little-endian), the header (JSON, BandFileHeader: with each
+// shape's stops where buses hold, from every band), then per shape in the header's order one byte per
+// bin of pace and one byte per listed stop of dwell.
 //  - Pace: 0 where unknown, else 1 + round(ln(pace / PACE_MIN) / ln(PACE_STEP)), clamped to 1–255:
 //    3% steps, from 0.02 s/m (50 m/s) to ~37 s/m. Each byte is stored as its difference from the
 //    one before (mod 256), which brotli compresses better: neighbouring bins have similar paces.
@@ -18,6 +19,8 @@ export interface ShapeBand {
   /** The stops with an expected dwell, and their dwells (s) in the same order. */
   stops: readonly string[];
   dwell: Float32Array;
+  /** Stops where buses hold to the timetable (holdDeparture in profile.ts). */
+  holds: ReadonlySet<string>;
 }
 
 export interface RtBandProfile {
@@ -30,14 +33,14 @@ export interface RtBandProfile {
 }
 
 interface BandFileHeader {
-  format: 1;
+  format: 2;
   feedVersion: string;
   builtAt: string;
   binM: number;
   bandStartHours: number[];
   band: number;
-  /** Per shape: its id, its bins, and the ids of its stops with a dwell. */
-  shapes: [string, number, string[]][];
+  /** Per shape: its id, its bins, the ids of its stops with a dwell, and its holds (if any). */
+  shapes: [string, number, string[], string[]?][];
 }
 
 const PACE_MIN = 0.02;
@@ -65,6 +68,7 @@ export function bandProfile(profile: RtProfile, band: number): RtBandProfile {
       pace,
       stops,
       dwell: Float32Array.from(stops, (k) => dwells[k]!),
+      holds: new Set(s.holds),
     });
   }
   return {
@@ -87,13 +91,17 @@ export const publishedBandProfiles = (profile: RtProfile): RtBandProfile[] =>
 
 export function encodeBandProfile(p: RtBandProfile): Uint8Array {
   const header: BandFileHeader = {
-    format: 1,
+    format: 2,
     feedVersion: p.feedVersion,
     builtAt: p.builtAt,
     binM: p.binM,
     bandStartHours: p.bandStartHours,
     band: p.band,
-    shapes: [...p.shapes].map(([id, s]) => [id, s.pace.length, [...s.stops]]),
+    shapes: [...p.shapes].map(([id, s]) =>
+      s.holds.size ?
+        [id, s.pace.length, [...s.stops], [...s.holds]]
+      : [id, s.pace.length, [...s.stops]],
+    ),
   };
   const json = new TextEncoder().encode(JSON.stringify(header));
   let size = 4 + json.length;
@@ -129,11 +137,11 @@ export function decodeBandProfile(bytes: Uint8Array): RtBandProfile {
   const header = JSON.parse(
     new TextDecoder().decode(bytes.subarray(4, 4 + length)),
   ) as BandFileHeader;
-  if (header.format !== 1)
+  if (header.format !== 2)
     throw new Error(`Unknown profile format ${String(header.format)}`);
   let o = 4 + length;
   const shapes = new Map<string, ShapeBand>();
-  for (const [id, bins, stops] of header.shapes) {
+  for (const [id, bins, stops, holds] of header.shapes) {
     const pace = new Float32Array(bins);
     let code = 0;
     for (let b = 0; b < bins; b++) {
@@ -142,7 +150,12 @@ export function decodeBandProfile(bytes: Uint8Array): RtBandProfile {
     }
     const dwell = Float32Array.from(bytes.subarray(o, o + stops.length));
     o += stops.length;
-    shapes.set(id, { pace, stops, dwell });
+    shapes.set(id, {
+      pace,
+      stops,
+      dwell,
+      holds: new Set(holds),
+    });
   }
   if (o !== bytes.length) throw new Error("Malformed profile file");
   return {

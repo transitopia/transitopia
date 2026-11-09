@@ -6,19 +6,24 @@
 //    fixes is spread over the bins between them in proportion to distance; a bus that didn't move
 //    (< stationaryM) near a stop is dwelling there, elsewhere it is held in traffic or at a signal
 //    and that time stays in the bin's pace.
-//  - expected dwell (s) per stop: dwell time seen / passes, plus the extra time spent around the stop
-//    compared with the pace nearby. With fixes ~30 s apart most dwells aren't seen as standing still:
-//    they show up as slow bins around the stop instead, so that excess is moved into the dwell (and
-//    those bins get the nearby pace), which is what makes predicted buses visibly stop.
-// Totals are preserved: pace × distance + dwells ≈ observed running time.
+//  - expected dwell (s) per stop: the mean time buses stood at it per visit (ProfileBuilder), plus
+//    the extra time spent around the stop compared with the pace nearby. With fixes ~30-60 s apart
+//    most dwells aren't seen as standing still: they show up as slow bins around the stop instead,
+//    so that excess is moved into the dwell (and those bins get the nearby pace), which is what
+//    makes predicted buses visibly stop.
+//  - the stops where a route's buses hold to the timetable (timing points, and layovers at a
+//    second-to-last stop before the next trip in the block: holdDeparture), from every band.
+// Totals are preserved: pace × distance + dwells ≈ observed running time, except around holds.
+// Frozen GPS (stale.ts) is left out, as in the timeline.
 //
 // Published one band per file (profile-bands.ts), with the all-day profile filled in where a band
 // has no data.
 //
 // Prediction: from a fix, walk bin by bin, stopping at each upcoming stop for its expected dwell,
-// scaled by how this bus has been running relative to the profile. Gaps (and bands not loaded yet)
-// fall back to the timetable, then to a default speed. Stops TransLink reports as skipped by a
-// trip (GTFS-RT, e.g. on a detour) get no dwell.
+// scaled by how this bus has been running relative to the profile, and holding at stops where buses
+// hold until the timetable's time there (a late bus doesn't wait); a bus seen before its trip's start
+// waits for it. Gaps (and bands not loaded yet) fall back to the timetable, then to a default speed.
+// Stops TransLink reports as skipped by a trip (GTFS-RT, e.g. on a detour) get no dwell or hold.
 
 import { cumulativeLengths, projectOnto, type LonLat } from "../geo.ts";
 import type {
@@ -34,6 +39,7 @@ import {
   type ServiceDate,
 } from "../time.ts";
 import type { RtBandProfile } from "./profile-bands.ts";
+import { frozenFixes, type FreezeFix, type FrozenGpsConfig } from "./stale.ts";
 import type { RtSnapshot, RtVehicle } from "./types.ts";
 
 export interface PredictionConfig {
@@ -55,8 +61,16 @@ export interface PredictionConfig {
   baselineWindowM: number;
   /** A bin's pace is used once it has this many metres of observed travel (≈ passes × binM). */
   minBinMetres: number;
-  /** A stop's dwell is used once this many passes were seen. */
+  /** A stop's dwell is used once this many visits were seen. */
   minStopPasses: number;
+  /** A visit arrived early at a stop when first seen there this long before its departure time (s). */
+  holdEarlyS: number;
+  /** ...and held when it left no earlier than this before it (s). */
+  holdTolS: number;
+  /** A route's buses hold at a stop when this share of its early visits held... */
+  holdShare: number;
+  /** ...from at least this many early visits. */
+  minHoldVisits: number;
   /** Speed when nothing else is known (m/s). */
   defaultSpeedMps: number;
   /** Dwell per stop when nothing else is known (s). */
@@ -95,6 +109,8 @@ export interface ShapeProfile {
   /** Index = band; null where the band has no data. */
   bands: (BandProfile | null)[];
   all: BandProfile;
+  /** Stops where buses hold to the timetable (holdDeparture), from every band. */
+  holds?: string[];
 }
 
 /** A learned profile, every band; published per band (profile-bands.ts). */
@@ -120,32 +136,119 @@ export function bandOf(bandStartHours: number[], hour: number): number {
 // native ICU memory faster than GC freed it (~8 GB for five days of fixes in build:rt-profile).
 const localHour = (ms: number, tz: string) => toWallTime(ms, tz).hour;
 
+/** A stop's visits: how many, and their stands' total (s). */
+interface Stands {
+  n: number;
+  total: number;
+}
+
 interface Acc {
   time: Float64Array;
   metres: Float64Array;
-  dwell: Map<string, number>;
-  passes: Map<string, number>;
+  /** Stop → its visits' stands. */
+  stands: Map<string, Stands>;
+  /** Stop → the stands of visits that arrived after its departure time (holdDeparture). */
+  late: Map<string, Stands>;
+}
+
+/** Evidence, over every band, that a route's buses hold at a stop. */
+interface HoldCounts {
+  /** Visits that arrived well before the departure time (holdDeparture), after the trip's start... */
+  early: number;
+  /** ...and of those, the ones that left around or after it. */
+  held: number;
+}
+
+/** A trip's bus at one of its stops: from its first fix in the stop's zone to leaving it. */
+interface StopVisit {
+  /** Standing within the zone after the trip's scheduled start (s). */
+  standS: number;
+  /** First and last fix in the zone (epoch ms). */
+  firstMs: number;
+  lastMs: number;
+}
+
+/** A vehicle on one trip, while its fixes are placed on the trip's shape. */
+interface TripRun {
+  tripId: string;
+  trip: PreparedTrip;
+  /** Start of its service day (epoch ms). */
+  dayStartMs: number;
+  /** Where its first fix on the trip was along the shape. */
+  firstAlong: number;
+  /** Index of the first stop whose visit isn't closed yet. */
+  next: number;
+  /** Open visits by stop index. */
+  visits: Map<number, StopVisit>;
+}
+
+interface VehicleTrack {
+  /** The current run of fixes at exactly one position, held until it ends (frozen GPS). */
+  pending: RtVehicle[];
+  /** Whether a run was released already (the first may have begun before the recordings). */
+  released: boolean;
+  /** Its last fix used, and where it was along its trip's shape (undefined: off it). */
+  last?: { v: RtVehicle; along: number | undefined };
+  run?: TripRun | undefined;
+}
+
+/**
+ * When a trip's bus leaves its i-th stop if the stop is one where buses hold (service-day s): its
+ * departure time there; at its second-to-last stop, if it lays over for a next trip at the terminus,
+ * no earlier than that trip's start less the timetable's running time to the last stop (buses wait
+ * there rather than at the terminus, still reporting this trip: 408 at Horseshoe Way).
+ */
+export function holdDeparture(trip: PreparedTrip, i: number): number {
+  const n = trip.dep.length;
+  const dep = trip.dep[i]!;
+  return i === n - 2 && trip.next ?
+      Math.max(dep, trip.next.dep[0]! - (trip.arr[n - 1]! - dep))
+    : dep;
 }
 
 /**
  * Accumulates fixes into profiles. Feed it hours of snapshots oldest first, then build(). Fixes are
- * folded into the accumulators as they arrive, keeping only each vehicle's last fix: weeks of every
- * bus's fixes don't fit in the heap.
+ * folded into the accumulators as they arrive, keeping only each vehicle's last fix (and its current
+ * run of repeated positions): weeks of every bus's fixes don't fit in the heap.
+ *
+ * Dwells: each trip's visit to a stop counts once, however far apart its fixes are, when its bus was
+ * seen arriving and then leaving with fixes at most maxPairS apart (at longer intervals short stands
+ * go unseen, so only long ones would count; and a bus first seen at a stop may have been laying over
+ * there). Its stand is the time it stood within stopZoneM, between fixes up to maxPairS apart, after
+ * its trip's scheduled start: before it, the bus is laying over, and Predictor.walk holds it until
+ * the start. A stop's dwell is the mean stand of its visits (more robust statistics, e.g. trimming
+ * the longest 5-20 %, predicted worse: packages/transit-core/DESIGN.md#buses), plus the slow time
+ * around it. Not at a pattern's first and last stops (prediction never dwells there), nor a stand
+ * that lasts until its trip ends.
+ *
+ * Holds: a route's buses hold at a stop when at least holdShare of its visits that arrived
+ * holdEarlyS or more before their departure time there (holdDeparture), after their trip's start,
+ * left no earlier than holdTolS before it (or stood there until their trip ended). The stop's dwell
+ * then comes from the visits that arrived after the departure time: those don't wait.
  */
 export class ProfileBuilder {
   private acc = new Map<string, Acc[]>(); // shape → per band (+1 for all-day)
-  /** Vehicle → its last fix used, and where it was along its trip's shape (undefined: off it). */
-  private last = new Map<string, { v: RtVehicle; along: number | undefined }>();
+  private holds = new Map<string, HoldCounts>(); // "<route key>|<stop id>" → counts
+  /** Shape → the routes whose trips run on it. */
+  private shapeRoutes = new Map<string, Set<string>>();
+  private vehicles = new Map<string, VehicleTrack>();
   /** Shape → its stops (id, along), from the trips seen on it. */
   private shapeStops = new Map<string, Map<string, number>>();
   private hours = new Set<string>();
 
   private pp: PreparedPlan;
   private cfg: PredictionConfig;
+  private frozenGps: FrozenGpsConfig | undefined;
 
-  constructor(pp: PreparedPlan, cfg: PredictionConfig) {
+  /** @param frozenGps Leaves frozen GPS out (stale.ts), as the timeline does. */
+  constructor(
+    pp: PreparedPlan,
+    cfg: PredictionConfig,
+    frozenGps?: FrozenGpsConfig,
+  ) {
     this.pp = pp;
     this.cfg = cfg;
+    this.frozenGps = frozenGps;
   }
 
   /** One batch (an hour) of snapshots, after every earlier batch; any order within it. */
@@ -161,20 +264,67 @@ export class ProfileBuilder {
       }
     for (const [id, list] of byVehicle) {
       list.sort((a, b) => a.ts - b.ts);
-      for (const v of list) this.addFix(id, v);
+      let vt = this.vehicles.get(id);
+      if (!vt) this.vehicles.set(id, (vt = { pending: [], released: false }));
+      for (const v of list) this.take(vt, v);
     }
   }
 
-  private addFix(id: string, v: RtVehicle): void {
+  /**
+   * Takes a vehicle's next fix: it extends the current run of fixes at one position, or ends it,
+   * and the run's fixes that weren't frozen GPS are used.
+   */
+  private take(vt: VehicleTrack, v: RtVehicle): void {
+    const last = vt.pending.at(-1) ?? vt.last?.v;
+    // Repeats of a fix in later polls, and fixes older than one already taken.
+    if (last && v.ts <= last.ts) return;
+    const first = vt.pending[0];
+    if (
+      !this.frozenGps
+      || (first && v.lat === first.lat && v.lon === first.lon)
+    )
+      vt.pending.push(v);
+    else {
+      this.release(vt, v);
+      vt.pending = [v];
+    }
+    if (!this.frozenGps) this.release(vt);
+  }
+
+  /** Uses a vehicle's held fixes, less frozen ones; `next` is the fix that ended their run. */
+  private release(vt: VehicleTrack, next?: RtVehicle): void {
+    const run = vt.pending;
+    vt.pending = [];
+    if (!run.length) return;
+    let frozen: Set<number> | undefined;
+    if (this.frozenGps && run.length > 1) {
+      const fixes: FreezeFix[] = (next ? [...run, next] : run).map((f) => {
+        const st = f.stopId ? this.pp.stopById.get(f.stopId) : undefined;
+        return {
+          lat: f.lat,
+          lon: f.lon,
+          tripId: f.tripId,
+          stop: f.stopId,
+          stopAt: st ? [st.lon, st.lat] : undefined,
+        };
+      });
+      frozen = frozenFixes(fixes, this.frozenGps, !vt.released);
+    }
+    vt.released = true;
+    run.forEach((f, k) => {
+      if (!frozen?.has(k)) this.addFix(vt, f);
+    });
+  }
+
+  private addFix(vt: VehicleTrack, v: RtVehicle): void {
     const { cfg, pp } = this;
-    const prev = this.last.get(id);
-    // Repeats of a fix in later polls, and fixes older than one already used.
-    if (prev && v.ts <= prev.v.ts) return;
+    const prev = vt.last;
     const trip = pp.tripIndex.get(v.tripId!);
     const coords =
       trip && (pp.plan.shapes[trip.pattern.shape] as LonLat[] | undefined);
     if (!trip || !coords) {
-      this.last.set(id, { v, along: undefined });
+      this.endRun(vt);
+      vt.last = { v, along: undefined };
       return;
     }
     const cum =
@@ -190,34 +340,182 @@ export class ProfileBuilder {
       sameTrip ? Math.max(0, sameTrip.along! - 50) : 0,
     );
     if (p.offset > cfg.maxOffsetM) {
-      this.last.set(id, { v, along: undefined });
+      this.endRun(vt);
+      vt.last = { v, along: undefined };
       return;
     }
+    if (!sameTrip || vt.run?.tripId !== v.tripId)
+      this.startRun(vt, v, trip, p.along);
+    const run = vt.run!;
+    const dt = sameTrip ? (v.ts - sameTrip.v.ts) / 1000 : Infinity;
     if (
       sameTrip
-      && (v.ts - sameTrip.v.ts) / 1000 <= cfg.maxPairS
+      && dt <= cfg.maxPairS
       && p.along >= sameTrip.along! - cfg.stationaryM
-    ) {
+    )
       this.addPair(
-        trip,
+        run,
         cum[cum.length - 1]!,
         sameTrip.along!,
         p.along,
-        (v.ts - sameTrip.v.ts) / 1000,
-        bandOf(cfg.bandStartHours, localHour(sameTrip.v.ts, pp.plan.timezone)),
+        sameTrip.v.ts,
+        v.ts,
       );
-    }
-    this.last.set(id, { v, along: p.along });
+    this.visit(run, p.along, v.ts, sameTrip?.v.ts);
+    vt.last = { v, along: p.along };
   }
 
-  private accFor(shape: string, bins: number): Acc[] {
+  private startRun(
+    vt: VehicleTrack,
+    v: RtVehicle,
+    trip: PreparedTrip,
+    along: number,
+  ): void {
+    this.endRun(vt);
+    const { pp, cfg } = this;
+    const date = tripServiceDate(trip, v.ts, pp.plan.timezone);
+    const dist = trip.pattern.dist;
+    let next = 0;
+    while (next < dist.length && dist[next]! + cfg.stopZoneM < along) next++;
+    vt.run = {
+      tripId: v.tripId!,
+      trip,
+      dayStartMs: serviceDayStart(date, pp.plan.timezone),
+      firstAlong: along,
+      next,
+      visits: new Map(),
+    };
+    let known = this.shapeStops.get(trip.pattern.shape);
+    if (!known) this.shapeStops.set(trip.pattern.shape, (known = new Map()));
+    trip.pattern.stops.forEach((si, i) =>
+      known.set(pp.plan.stops[si]!.id, dist[i]!),
+    );
+    let routes = this.shapeRoutes.get(trip.pattern.shape);
+    if (!routes) this.shapeRoutes.set(trip.pattern.shape, (routes = new Set()));
+    routes.add(trip.route.key);
+  }
+
+  /** The vehicle left its trip (or its shape): visits it was standing at end with it. */
+  private endRun(vt: VehicleTrack): void {
+    const run = vt.run;
+    if (!run) return;
+    vt.run = undefined;
+    for (const [i, visit] of run.visits)
+      if (i >= run.next) this.closeVisit(run, i, visit, undefined, true);
+  }
+
+  /** A fix at `along`: opens visits of stops it's near, closes those it has left behind. */
+  private visit(
+    run: TripRun,
+    along: number,
+    ts: number,
+    prevTs: number | undefined,
+  ): void {
+    const { cfg } = this;
+    const dist = run.trip.pattern.dist;
+    for (
+      let i = run.next;
+      i < dist.length && dist[i]! <= along + cfg.stopZoneM;
+      i++
+    ) {
+      if (Math.abs(dist[i]! - along) > cfg.stopZoneM) continue;
+      const v = run.visits.get(i);
+      if (v) v.lastMs = ts;
+      else run.visits.set(i, { standS: 0, firstMs: ts, lastMs: ts });
+    }
+    while (run.next < dist.length && dist[run.next]! + cfg.stopZoneM < along) {
+      const i = run.next++;
+      const v = run.visits.get(i);
+      run.visits.delete(i);
+      if (v) this.closeVisit(run, i, v, ts, false);
+      // Passed without a fix near it: its stand is known (none seen) if the fixes either side were
+      // close enough in time, and the trip was seen before it.
+      else if (
+        prevTs !== undefined
+        && (ts - prevTs) / 1000 <= cfg.maxPairS
+        && run.firstAlong < dist[i]! - cfg.stopZoneM
+      ) {
+        const at = (prevTs + ts) / 2;
+        this.closeVisit(
+          run,
+          i,
+          { standS: 0, firstMs: at, lastMs: at },
+          at,
+          false,
+        );
+      }
+    }
+  }
+
+  /**
+   * A visit is over: `leftMs` is the fix that found the bus gone (undefined: it never left), `ended`
+   * whether its trip ended there. Only visits seen arriving count (a bus first seen at a stop may
+   * have been laying over), and their stand only when seen leaving with fixes at most maxPairS
+   * apart: at longer intervals short stands go unseen, and only long ones would count.
+   */
+  private closeVisit(
+    run: TripRun,
+    i: number,
+    visit: StopVisit,
+    leftMs: number | undefined,
+    ended: boolean,
+  ): void {
+    const { cfg, pp } = this;
+    const { trip } = run;
+    const pattern = trip.pattern;
+    if (i === 0 || i === pattern.stops.length - 1) return;
+    if (run.firstAlong >= pattern.dist[i]! - cfg.stopZoneM) return;
+    const left =
+      leftMs !== undefined && (leftMs - visit.lastMs) / 1000 <= cfg.maxPairS ?
+        (visit.lastMs + leftMs) / 2
+      : undefined;
+    const stop = pp.plan.stops[pattern.stops[i]!]!.id;
+    const startMs = run.dayStartMs + trip.dep[0]! * 1000;
+    const depMs = run.dayStartMs + holdDeparture(trip, i) * 1000;
+    const tolMs = cfg.holdTolS * 1000;
+    // Arrived well before its departure time: did it wait? A trip that ended while its bus stood
+    // there waited, if it was still there near the departure time (else it's unknown).
+    const held =
+      left !== undefined ? left >= depMs - tolMs
+      : ended && visit.lastMs >= depMs - tolMs ? true
+      : undefined;
+    if (
+      held !== undefined
+      && visit.firstMs >= startMs
+      && visit.firstMs <= depMs - cfg.holdEarlyS * 1000
+    ) {
+      const key = `${trip.route.key}|${stop}`;
+      let c = this.holds.get(key);
+      if (!c) this.holds.set(key, (c = { early: 0, held: 0 }));
+      c.early++;
+      if (held) c.held++;
+    }
+    if (ended || left === undefined) return;
+    const band = bandOf(
+      cfg.bandStartHours,
+      localHour(visit.firstMs, pp.plan.timezone),
+    );
+    const accs = this.accFor(pattern.shape, trip);
+    for (const a of [accs[band]!, accs[accs.length - 1]!]) {
+      addStand(a.stands, stop, visit.standS);
+      if (visit.firstMs >= depMs) addStand(a.late, stop, visit.standS);
+    }
+  }
+
+  private accFor(shape: string, trip: PreparedTrip): Acc[] {
     let a = this.acc.get(shape);
     if (!a) {
+      const cum = this.pp.shapeCum.get(shape);
+      const length =
+        cum ?
+          cum[cum.length - 1]!
+        : trip.pattern.dist[trip.pattern.dist.length - 1]!;
+      const bins = Math.max(1, Math.ceil(length / this.cfg.binM));
       a = Array.from({ length: this.cfg.bandStartHours.length + 1 }, () => ({
         time: new Float64Array(bins),
         metres: new Float64Array(bins),
-        dwell: new Map(),
-        passes: new Map(),
+        stands: new Map(),
+        late: new Map(),
       }));
       this.acc.set(shape, a);
     }
@@ -226,20 +524,43 @@ export class ProfileBuilder {
 
   build(): RtProfile {
     const { cfg, pp } = this;
+    // Fixes still held (a run going on as the recordings end), and visits still open.
+    for (const vt of this.vehicles.values()) {
+      this.release(vt);
+      this.endRun(vt);
+    }
     const shapes: Record<string, ShapeProfile> = {};
     for (const [shape, accs] of this.acc) {
       const stops = [...(this.shapeStops.get(shape) ?? [])].map(
         ([id, along]) => ({ id, along }),
+      );
+      const routes = [...(this.shapeRoutes.get(shape) ?? [])];
+      const holds = new Set(
+        stops
+          .filter(({ id }) =>
+            routes.some((r) => {
+              const c = this.holds.get(`${r}|${id}`);
+              return (
+                c
+                && c.early >= cfg.minHoldVisits
+                && c.held >= c.early * cfg.holdShare
+              );
+            }),
+          )
+          .map((s) => s.id),
       );
       const toBand = (a: Acc): BandProfile | null => {
         const pace = [...a.time].map((t, i) =>
           a.metres[i]! >= cfg.minBinMetres ? t / a.metres[i]! : null,
         );
         const dwell: Record<string, number> = {};
-        for (const [stop, passes] of a.passes)
-          if (passes >= cfg.minStopPasses)
-            dwell[stop] = (a.dwell.get(stop) ?? 0) / passes;
-        this.moveExcessToDwell(pace, dwell, stops);
+        for (const [stop, s] of a.stands) {
+          // Where buses hold: what those that don't wait for the timetable stand there.
+          const from = holds.has(stop) ? a.late.get(stop) : s;
+          if (from && from.n >= cfg.minStopPasses)
+            dwell[stop] = from.total / from.n;
+        }
+        this.moveExcessToDwell(pace, dwell, stops, holds);
         const rounded = pace.map((p) =>
           p === null ? null : Math.round(p * 1000) / 1000,
         );
@@ -250,7 +571,11 @@ export class ProfileBuilder {
       };
       const all = toBand(accs[accs.length - 1]!);
       if (!all) continue;
-      shapes[shape] = { bands: accs.slice(0, -1).map(toBand), all };
+      shapes[shape] = {
+        bands: accs.slice(0, -1).map(toBand),
+        all,
+        ...(holds.size ? { holds: [...holds].sort() } : {}),
+      };
     }
     return {
       feedVersion: pp.plan.feedVersion,
@@ -262,11 +587,15 @@ export class ProfileBuilder {
     };
   }
 
-  /** Moves slow time around stops (vs the pace nearby) from the bins into the stops' dwells. */
+  /**
+   * Moves slow time around stops (vs the pace nearby) from the bins into the stops' dwells. Around a
+   * stop where buses hold, the slow time is the hold, which prediction adds itself: it's dropped.
+   */
   private moveExcessToDwell(
     pace: (number | null)[],
     dwell: Record<string, number>,
     stops: { id: string; along: number }[],
+    holds: ReadonlySet<string>,
   ): void {
     const { binM, stopExcessM, baselineWindowM } = this.cfg;
     const nearest = pace.map((_, b) => {
@@ -299,40 +628,55 @@ export class ProfileBuilder {
         if (pace[k] !== null && !nearest[k]) local.push(pace[k]!);
       const base = median(local) ?? overall;
       if (base === undefined || p <= base) return;
-      dwell[stop.id]! += (p - base) * binM;
+      if (!holds.has(stop.id)) dwell[stop.id]! += (p - base) * binM;
       pace[b] = base;
     });
   }
 
+  /** A pair of fixes on a trip ≤ maxPairS apart, at d0 then d1 along its shape. */
   private addPair(
-    trip: PreparedTrip,
+    run: TripRun,
     length: number,
     d0: number,
     d1: number,
-    dt: number,
-    band: number,
+    t0: number,
+    t1: number,
   ): void {
     const { cfg } = this;
+    const trip = run.trip;
+    const dt = (t1 - t0) / 1000;
     const bins = Math.ceil(length / cfg.binM);
-    const accs = this.accFor(trip.pattern.shape, bins);
+    const accs = this.accFor(trip.pattern.shape, trip);
+    const band = bandOf(
+      cfg.bandStartHours,
+      localHour(t0, this.pp.plan.timezone),
+    );
     const targets = [accs[band]!, accs[accs.length - 1]!];
-    const stops = trip.pattern.stops.map((si, i) => ({
-      id: this.pp.plan.stops[si]!.id,
-      along: trip.pattern.dist[i]!,
-    }));
-    let known = this.shapeStops.get(trip.pattern.shape);
-    if (!known) this.shapeStops.set(trip.pattern.shape, (known = new Map()));
-    for (const s of stops) known.set(s.id, s.along);
     if (d1 - d0 < cfg.stationaryM) {
       const mid = (d0 + d1) / 2;
-      const stop = stops.find((s) => Math.abs(s.along - mid) <= cfg.stopZoneM);
-      for (const a of targets) {
-        if (stop) a.dwell.set(stop.id, (a.dwell.get(stop.id) ?? 0) + dt);
-        else a.time[Math.min(bins - 1, Math.floor(mid / cfg.binM))]! += dt;
+      const dist = trip.pattern.dist;
+      let stop = -1;
+      for (let i = 0; i < dist.length; i++)
+        if (
+          Math.abs(dist[i]! - mid) <= cfg.stopZoneM
+          && (stop < 0
+            || Math.abs(dist[i]! - mid) < Math.abs(dist[stop]! - mid))
+        )
+          stop = i;
+      if (stop >= 0) {
+        // Dwelling: only after the trip's scheduled start (before it, the bus is laying over).
+        const startMs = run.dayStartMs + trip.dep[0]! * 1000;
+        let v = run.visits.get(stop);
+        if (!v && stop >= run.next)
+          run.visits.set(stop, (v = { standS: 0, firstMs: t0, lastMs: t1 }));
+        if (v) v.standS += Math.max(0, t1 - Math.max(t0, startMs)) / 1000;
+        return;
       }
+      for (const a of targets)
+        a.time[Math.min(bins - 1, Math.floor(mid / cfg.binM))]! += dt;
       return;
     }
-    // Moving: spread time over bins by distance; count passes of stops crossed.
+    // Moving: spread time over bins by distance.
     for (
       let b = Math.floor(d0 / cfg.binM);
       b <= Math.min(bins - 1, Math.floor(d1 / cfg.binM));
@@ -346,13 +690,16 @@ export class ProfileBuilder {
         a.metres[b]! += overlap;
       }
     }
-    for (const s of stops)
-      if (s.along > d0 && s.along <= d1)
-        for (const a of targets)
-          a.passes.set(s.id, (a.passes.get(s.id) ?? 0) + 1);
   }
 }
 
+function addStand(m: Map<string, Stands>, stop: string, s: number): void {
+  const st = m.get(stop);
+  if (st) {
+    st.n++;
+    st.total += s;
+  } else m.set(stop, { n: 1, total: s });
+}
 /**
  * What a pattern's trips share in a band (with the same stops skipped): the profile's pace per bin
  * and dwell per stop.
@@ -362,8 +709,8 @@ interface CourseBase {
   length: number;
   /** s/m per bin; NaN where the profile has no pace (the trip's timetable gives it: Course.hop). */
   pace: Float64Array;
-  /** Stops in order: along (m) and expected dwell (s). */
-  stops: { along: number; dwell: number }[];
+  /** Stops in order: along (m), expected dwell (s), and whether buses hold there. */
+  stops: { along: number; dwell: number; hold: boolean }[];
   /** The pattern's stops' distances along it (m). */
   dist: readonly number[];
 }
@@ -372,6 +719,10 @@ interface CourseBase {
 interface Course extends CourseBase {
   /** s/m between each stop and the next, from the timetable, for bins the profile has no pace for. */
   hop: Float64Array;
+  /** The trip's departure from each stop (service-day s). */
+  dep: Float64Array;
+  /** Per stop, the service-day second before which a bus doesn't leave it; NaN: no hold. */
+  holdUntil: Float64Array;
 }
 
 /** Pace (s/m) in bin b of a course: the profile's, else the timetable's for the hop it's in. */
@@ -492,9 +843,23 @@ export class Predictor {
       let base = this.bases.get(baseKey);
       if (!base)
         this.bases.set(baseKey, (base = this.buildBase(trip, band, skip)));
-      this.courses.set(key, (c = { ...base, hop: this.hopPace(trip) }));
+      c = {
+        ...base,
+        hop: this.hopPace(trip),
+        dep: trip.dep,
+        holdUntil: new Float64Array(base.stops.length).fill(NaN),
+      };
+      this.holdTimes(trip, c);
+      this.courses.set(key, c);
     }
     return c;
+  }
+
+  /** When the trip's bus leaves the stops where buses hold (holdDeparture). */
+  private holdTimes(trip: PreparedTrip, c: Course): void {
+    c.stops.forEach((s, i) => {
+      if (s.hold) c.holdUntil[i] = holdDeparture(trip, i);
+    });
   }
 
   private buildBase(
@@ -524,6 +889,7 @@ export class Predictor {
           skip?.has(id) ? 0
           : k >= 0 ? sp!.dwell[k]!
           : cfg.defaultDwellS,
+        hold: !skip?.has(id) && Boolean(sp?.holds.has(id)),
       };
     });
     return { binM, length, pace, stops, dist };
@@ -562,24 +928,41 @@ export class Predictor {
 
   /**
    * Position after `seconds` from along a0, with every time scaled by `factor`. Stops at or before
-   * a0 are behind the bus; `servedTo` marks stops up to that along as already served too.
+   * a0 are behind the bus. With `at`, the service-day second it was at a0, buses hold to the
+   * timetable: before its trip's start, a bus stands where it is until its departure from there (the
+   * stop it's at, else the one behind it), and it doesn't leave a stop it holds at (holdUntil) before
+   * time. Without it (fitting a walk between two fixes, or the paced schedule), dwells only.
    */
   walk(
     c: Course,
     a0: number,
     seconds: number,
     factor = 1,
-    servedTo = a0,
+    at?: number,
   ): WalkResult {
     let left = seconds;
     let d = a0;
-    let si = c.stops.findIndex((s) => s.along > Math.max(a0, servedTo));
+    let si = c.stops.findIndex((s) => s.along > a0);
     if (si < 0) si = c.stops.length;
+    if (at !== undefined && at < c.dep[0]!) {
+      let k = 0;
+      while (
+        k + 1 < c.stops.length
+        && c.stops[k + 1]!.along <= a0 + this.cfg.stopZoneM
+      )
+        k++;
+      const wait = c.dep[k]! - at;
+      if (wait >= left) return { along: a0, speed: 0 };
+      if (wait > 0) left -= wait;
+      si = Math.max(si, k + 1);
+    }
     while (left > 0 && d < c.length) {
       const next = si < c.stops.length ? c.stops[si]! : undefined;
       if (next && next.along <= d + 1e-6) {
-        const dwell =
-          next.dwell >= this.cfg.minDwellS ? next.dwell * factor : 0;
+        let dwell = next.dwell >= this.cfg.minDwellS ? next.dwell * factor : 0;
+        const until = c.holdUntil[si]!;
+        if (at !== undefined && !Number.isNaN(until))
+          dwell = Math.max(dwell, until - (at + seconds - left));
         if (left < dwell) return { along: d, speed: 0 };
         left -= dwell;
         si++;
