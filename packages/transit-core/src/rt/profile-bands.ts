@@ -32,8 +32,11 @@ export interface RtBandProfile {
   shapes: Map<string, ShapeBand>;
 }
 
+/** The band files' format: bump it whenever the encoding changes (clients read only this one). */
+export const BAND_FILE_FORMAT = 2;
+
 interface BandFileHeader {
-  format: 2;
+  format: typeof BAND_FILE_FORMAT;
   feedVersion: string;
   builtAt: string;
   binM: number;
@@ -91,7 +94,7 @@ export const publishedBandProfiles = (profile: RtProfile): RtBandProfile[] =>
 
 export function encodeBandProfile(p: RtBandProfile): Uint8Array {
   const header: BandFileHeader = {
-    format: 2,
+    format: BAND_FILE_FORMAT,
     feedVersion: p.feedVersion,
     builtAt: p.builtAt,
     binM: p.binM,
@@ -137,7 +140,7 @@ export function decodeBandProfile(bytes: Uint8Array): RtBandProfile {
   const header = JSON.parse(
     new TextDecoder().decode(bytes.subarray(4, 4 + length)),
   ) as BandFileHeader;
-  if (header.format !== 2)
+  if (header.format !== BAND_FILE_FORMAT)
     throw new Error(`Unknown profile format ${String(header.format)}`);
   let o = 4 + length;
   const shapes = new Map<string, ShapeBand>();
