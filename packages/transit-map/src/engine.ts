@@ -91,6 +91,7 @@ import {
   placeChoice,
   placeLocation,
   placeSnapshot,
+  stopCard,
   type ForeignBays,
   type PickChoice,
   type PickMenu,
@@ -150,11 +151,18 @@ export interface SelectedVehicle {
   /** Undefined when the vehicle isn't in service at the shown time. */
   vehicle: VehicleState | undefined;
   route: PlanRoute | undefined;
+  /** The card of the stop it's at or heading for (its station's for a platform), if known. */
+  stop: Place | undefined;
   /**
-   * Its trip as a rider would name it: when and where it starts, and the trip id as its agency's
-   * riders see it (packages/transit-core/src/plan/display.ts). Undefined when the trip isn't in the plan.
+   * Its trip as a rider would name it: when and where it starts (and that place's card), and the
+   * trip id as its agency's riders see it (packages/transit-core/src/plan/display.ts). Undefined
+   * when the trip isn't in the plan.
    */
-  trip: { start: number; from: string; shortId: string } | undefined;
+  trip:
+    | { start: number; from: string; fromPlace: Place; shortId: string }
+    | undefined;
+  /** Who runs it ("TransLink", "BC Transit"): its timetable's agency, where the plan names one. */
+  operator: string | undefined;
   /** Registry ids of the data behind it (@transitopia/shared/datasets.ts), for its card's credits. */
   datasets: string[];
 }
@@ -2108,13 +2116,20 @@ export class TransitEngine {
         undefined
       : (() => {
           const v = this.selectedVehicle();
+          const pp =
+            v && this.slotOf(v.feed)?.store.planFor(v.serviceDate, Infinity);
           const route =
             v ? this.slotOf(v.feed)?.shown?.routes.get(v.routeKey) : undefined;
           return {
             id: this.selectedId!,
             vehicle: v,
             route,
+            stop:
+              pp && v.stopId && pp.stopById.has(v.stopId) ?
+                stopCard(pp, v.stopId, false)
+              : undefined,
             trip: v && this.tripSummary(v),
+            operator: pp?.plan.agency,
             datasets: this.datasetsOf([
               [route, v !== undefined && v.provenance !== "estimated"],
             ]),
@@ -2195,9 +2210,11 @@ export class TransitEngine {
     const pt = pp?.tripIndex.get(v.tripId);
     if (!slot || !pp || !pt) return undefined;
     const i = firstBoarding(pt.pattern);
+    const from = pt.pattern.stops[i]!;
     return {
       start: slot.dayStart(v.serviceDate) + pt.dep[i]! * 1000,
-      from: placeName(pp.plan, pt.pattern.stops[i]!),
+      from: placeName(pp.plan, from),
+      fromPlace: stopCard(pp, pp.plan.stops[from]!.id, true),
       shortId: shortId(pp.plan.tripIdPattern, v.tripId),
     };
   }

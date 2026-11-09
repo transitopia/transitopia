@@ -53,6 +53,8 @@ export interface VehicleState {
   status: VehicleStatus;
   /** Stop the vehicle is at (dwell/layover) or heading to (moving). */
   stopName?: string | undefined;
+  /** That stop's GTFS stop_id (in its feed's plan). */
+  stopId?: string | undefined;
   provenance: Provenance;
   source: string;
   /** Caveat about this position or its data, shown in the inspect panel. */
@@ -750,6 +752,7 @@ function positionOnTrip(
     speed,
     status,
     stopName: stop?.name,
+    stopId: stop?.id,
     provenance: "estimated",
     source: timetableLabel(pp.plan),
     serviceDate,

@@ -1,5 +1,6 @@
 import React from "react";
 import type {
+  Place,
   TransitEngine,
   TransitSnapshot,
 } from "@transitopia/transit-map/engine.ts";
@@ -13,6 +14,7 @@ import { creditsFor, legendsFor } from "@transitopia/shared/datasets.ts";
 import { clockMinutes, timeState, toHeadsign } from "./format.ts";
 import { RouteBadge, routeColorsFor } from "./RouteBadge.tsx";
 import {
+  CardChips,
   CardRow,
   CardSection,
   InfoCard,
@@ -123,6 +125,28 @@ function consist(c: NonNullable<VehicleState["consist"]>): string | undefined {
 }
 
 /**
+ * A stop or station the card names, as a chip opening its card, with a back strip returning to the
+ * vehicle (apps/web/README.md#cross-references).
+ */
+const PlaceChip: React.FC<{
+  place: Place;
+  label: string;
+  onOpen: (p: Place) => void;
+}> = ({ place, label, onOpen }) => (
+  <CardChips
+    className="justify-end"
+    chips={[
+      {
+        label,
+        icon: place.kind === "station" ? "station" : "bus-stop",
+        onSelect: () => onOpen(place),
+        action: `View ${place.kind}: ${label}`,
+      },
+    ]}
+  />
+);
+
+/**
  * The selected vehicle (apps/web/README.md#feature-cards), following it by id each frame, and saying
  * plainly whether its position is observed or estimated.
  */
@@ -195,14 +219,12 @@ export const VehicleCard: React.FC<{
         ),
     },
   ];
-  const details: [string, string | undefined][] = [
-    // "08:05 from Langford Exchange · 11898518": as a rider names it, with the agency's short id.
-    [
-      "Trip",
-      sel.trip ?
-        `${clockMinutes(sel.trip.start, snap.timezone)} from ${sel.trip.from} · ${sel.trip.shortId}`
-      : v.tripId || undefined,
-    ],
+  const openPlace = (place: Place) => engine.open({ place }, title);
+  const stopName = v.stopName ? cleanStopName(v.stopName) : undefined;
+  const details: [string, React.ReactNode][] = [
+    // Without the plan's trip, its id; with it, the Trip row below says it as a rider would.
+    ["Trip", sel.trip ? undefined : v.tripId || undefined],
+    ["Operator", sel.operator],
     ["Train (inferred run)", v.runId],
     ["Vehicle", v.label],
     ["Name", v.consist?.name],
@@ -248,7 +270,18 @@ export const VehicleCard: React.FC<{
       <CardSection title="Now">
         <CardRow
           label={STATUS[v.status]}
-          {...(v.stopName ? { value: cleanStopName(v.stopName) } : {})}
+          {...(stopName ?
+            {
+              value:
+                sel.stop ?
+                  <PlaceChip
+                    place={sel.stop}
+                    label={stopName}
+                    onOpen={openPlace}
+                  />
+                : stopName,
+            }
+          : {})}
         />
         {v.note ?
           <CardRow label="Note" note={v.note} />
@@ -276,6 +309,23 @@ export const VehicleCard: React.FC<{
             </button>
           }
         />
+        {sel.trip ?
+          // "08:05 from [Langford Exchange]", under the agency's short id: as a rider names it.
+          <CardRow
+            label="Trip"
+            note={sel.trip.shortId}
+            value={
+              <span className="flex flex-wrap items-center justify-end gap-x-1.5 gap-y-1">
+                {clockMinutes(sel.trip.start, snap.timezone)} from
+                <PlaceChip
+                  place={sel.trip.fromPlace}
+                  label={sel.trip.from}
+                  onOpen={openPlace}
+                />
+              </span>
+            }
+          />
+        : null}
         {details.map(([label, value]) =>
           value ? <CardRow key={label} label={label} value={value} /> : null,
         )}

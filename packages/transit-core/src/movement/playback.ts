@@ -4,6 +4,7 @@
 
 import { timetableLabel } from "../plan/display.ts";
 import type { LonLat } from "../geo.ts";
+import type { PlanStop } from "../plan/types.ts";
 import type { Dir, TrackGraph, TrackPos } from "../infra/graph.ts";
 import type {
   PreparedPlan,
@@ -93,7 +94,7 @@ interface TrainAt {
   /** Its trip's headsign, or what it's doing out of service. */
   headsign: string;
   /** The stop it's at or heading for. */
-  stopName?: string | undefined;
+  stop?: PlanStop | undefined;
   /** The trip it's running (none out of service: the run's line is its route). */
   trip?: { id: string; routeKey: string } | undefined;
 }
@@ -387,8 +388,7 @@ export class TrainPlayback {
       headsign: t.trip.headsign,
       trip: { id: t.trip.id, routeKey: t.route.key },
     };
-    const stopName = (k: number) =>
-      this.pp.plan.stops[t.pattern.stops[k]!]!.name;
+    const stopAt = (k: number) => this.pp.plan.stops[t.pattern.stops[k]!]!;
     // Dispatched trips: seconds late (+) or early (−) against the timetable at this stop or the next.
     const late = (v: VehicleState, at: number) => {
       if (!e.times) return v;
@@ -406,7 +406,7 @@ export class TrainPlayback {
           ...stopPos(i),
           status: "dwell",
           speed: 0,
-          stopName: stopName(i),
+          stop: stopAt(i),
           ...onTrip,
         }),
         i,
@@ -422,7 +422,7 @@ export class TrainPlayback {
         ...this.along(path, d),
         status: w ? "held" : "moving",
         speed,
-        stopName: stopName(i + 1),
+        stop: stopAt(i + 1),
         ...onTrip,
       });
       if (w) v.note = `Held: ${w.why}`;
@@ -435,7 +435,7 @@ export class TrainPlayback {
           dep: dep[i]!,
           arr: arr[i + 1]!,
           waits,
-          stopName: stopName(i + 1),
+          stop: stopAt(i + 1),
           ...onTrip,
         }),
         i + 1,
@@ -448,7 +448,7 @@ export class TrainPlayback {
         ...this.along(path, distanceAt(leg, tt)),
         status: holding ? "dwell" : "moving",
         speed: speedAt(leg, tt),
-        stopName: stopName(holding ? i : i + 1),
+        stop: stopAt(holding ? i : i + 1),
         ...onTrip,
       }),
       holding ? i : i + 1,
@@ -467,14 +467,14 @@ export class TrainPlayback {
       arr: number;
       waits: HopWait[];
       /** The stop it's heading for, and the trip it's running. */
-      stopName: string;
+      stop: PlanStop;
       headsign: string;
       trip: { id: string; routeKey: string };
     },
   ): VehicleState {
     const { path, dep, arr, waits } = hop;
     const shown = {
-      stopName: hop.stopName,
+      stop: hop.stop,
       headsign: hop.headsign,
       trip: hop.trip,
     };
@@ -557,7 +557,7 @@ export class TrainPlayback {
   }
 
   private state(r: PreparedRun, base: Base, at: TrainAt): VehicleState {
-    const { pos, dir, status, speed, headsign, stopName } = at;
+    const { pos, dir, status, speed, headsign, stop } = at;
     const p = this.g.pointAt(pos, dir);
     const v: VehicleState = {
       ...base,
@@ -573,7 +573,10 @@ export class TrainPlayback {
       runId: r.run.id,
       track: { seg: pos.seg, offset: pos.offset },
     };
-    if (stopName) v.stopName = stopName;
+    if (stop) {
+      v.stopName = stop.name;
+      v.stopId = stop.id;
+    }
     if (this.opts.shapes) {
       const half = r.kin.length / 2;
       const back = this.g.walk(pos, -dir as Dir, half);
