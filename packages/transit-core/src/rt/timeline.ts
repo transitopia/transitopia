@@ -1353,7 +1353,10 @@ export class RtTimeline {
       observedAt: basis.v.ts,
     };
     if (speed !== undefined) s.speed = speed;
-    if (stop) s.stopName = stop.name;
+    if (stop) {
+      s.stopName = stop.name;
+      s.stopId = stop.id;
+    }
     if (v.label) s.label = v.label;
     if (wantDelay && delay !== undefined) s.delay = delay;
     if (notes.length) s.note = notes.join(". ");

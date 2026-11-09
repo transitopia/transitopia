@@ -619,6 +619,25 @@ function sharedSnapshot(p: Place, ctx: PlaceContext): SharedSnapshot {
   };
 }
 
+/**
+ * The card for a stop a vehicle calls at: its station for a platform; with `grouped`, also its
+ * station or exchange for a bus bay (as a rider names where a trip starts, plan/display.ts →
+ * placeName); else the stop's own.
+ */
+export function stopCard(
+  pp: PreparedPlan,
+  stopId: string,
+  grouped: boolean,
+): Place {
+  const { plan } = pp;
+  const feed = plan.feed;
+  const parent = pp.stopById.get(stopId)?.parent;
+  if (parent && plan.stations.some((s) => s.id === parent))
+    return { kind: "station", feed, id: parent };
+  const hub = grouped && hubsOf(plan).find((h) => h.bays.includes(stopId));
+  return hub ? parentPlace(feed, hub) : { kind: "stop", feed, id: stopId };
+}
+
 /** The card for a station's bus bays or an exchange. */
 function parentPlace(feed: string, hub: BusHub): Place {
   return hub.station ?
