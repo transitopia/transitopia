@@ -7,6 +7,7 @@ import {
   expandSnapshot,
   type CompactSnapshot,
   type RtSnapshot,
+  type SnapshotRow,
 } from "./types.ts";
 
 type IntArray = Int8Array | Int16Array | Int32Array;
@@ -25,6 +26,8 @@ export interface PackedSnapshots {
   strings: string[];
   /** id, label, tripId, routeKey, lat, lon, bearing, ts − headerTs, stopSeq, stopId, status, delay, speed. */
   columns: Column[];
+  /** By snapshot index: its frozen buses' last real fixes (CompactSnapshot.f), as they came: a few per snapshot. */
+  frozen: Map<number, SnapshotRow[]>;
 }
 
 /** Columns that hold strings (indexes into `strings`), by SnapshotRow position. */
@@ -79,12 +82,14 @@ export class SnapshotPacker {
   private start: number[] = [];
   private strings: string[] = [];
   private stringIndex = new Map<string, number>();
+  private frozen = new Map<number, SnapshotRow[]>();
   private fields: (number | null)[][] = Array.from(
     { length: FIELDS },
     () => [],
   );
 
   add(s: CompactSnapshot): void {
+    if (s.f?.length) this.frozen.set(this.fetchedAt.length, s.f);
     this.fetchedAt.push(s.t);
     this.headerTs.push(s.h);
     this.start.push(this.fields[0]!.length);
@@ -112,6 +117,7 @@ export class SnapshotPacker {
       start: Int32Array.from([...this.start, this.fields[0]!.length]),
       strings: this.strings,
       columns: this.fields.map((values, f) => packColumn(values, SCALES[f]!)),
+      frozen: this.frozen,
     };
   }
 }
@@ -135,6 +141,8 @@ export function unpackSnapshots(p: PackedSnapshots): RtSnapshot[] {
   for (let s = 0; s < p.fetchedAt.length; s++) {
     const h = p.headerTs[s]!;
     const compact: CompactSnapshot = { t: p.fetchedAt[s]!, h, v: [] };
+    const frozen = p.frozen.get(s);
+    if (frozen) compact.f = frozen;
     for (let i = p.start[s]!; i < p.start[s + 1]!; i++) {
       for (let f = 0; f < FIELDS; f++) {
         const x = valueAt(p.columns[f]!, i);

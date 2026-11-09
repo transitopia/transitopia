@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { frozenFixes, type FreezeFix } from "../src/rt/stale.ts";
+import { FreezeWatch, frozenFixes, type FreezeFix } from "../src/rt/stale.ts";
 
 const cfg = { stopFarM: 1000, movedM: 300 };
 // A stop ~2.2 km north of the frozen position, one beside it.
@@ -87,5 +87,54 @@ describe("frozenFixes", () => {
         fix(49.281, "t1", "e", far),
       ]),
     ).toEqual([]);
+  });
+});
+
+describe("FreezeWatch", () => {
+  const watch = (fixes: FreezeFix[], w = new FreezeWatch<number>(cfg)) => {
+    const out: (number | undefined)[] = [];
+    fixes.forEach((f, k) => {
+      w.add("bus", k * 30_000, f, k);
+      out.push(w.lastReal("bus"));
+    });
+    return out;
+  };
+
+  it("names the run's first fix while a suspect run goes on, as frozenFixes would", () => {
+    expect(
+      watch([
+        fix(49.32, "t1", "a", near),
+        fix(49.324, "t1", "b", near), // the GPS's last real position
+        fix(49.324, "t1", "c", near),
+        fix(49.324, "t1", "d", far), // given away
+        fix(49.324, "t2", "e", far),
+        fix(49.281, "t2", "e", far), // back
+      ]),
+    ).toEqual([undefined, undefined, undefined, 1, 1, undefined]);
+  });
+
+  it("ignores repeats of a fix time", () => {
+    const w = new FreezeWatch<number>(cfg);
+    w.add("bus", 0, fix(49.324, "t1", "b", near), 0);
+    w.add("bus", 30_000, fix(49.324, "t1", "d", far), 1);
+    w.add("bus", 30_000, fix(49.281, "t1", "d", far), 2);
+    expect(w.lastReal("bus")).toBe(0);
+  });
+
+  it("resumes a freeze it knows began, and not one that began unseen", () => {
+    const known = new FreezeWatch<number>(cfg);
+    known.resume("bus", 0, fix(49.324, "t1", "d", far), 7);
+    expect(known.lastReal("bus")).toBe(7);
+    known.add("bus", 30_000, fix(49.324, "t1", "e", far), 8);
+    expect(known.lastReal("bus")).toBe(7);
+
+    const unseen = new FreezeWatch<number>(cfg);
+    unseen.resume("bus", 0, fix(49.324, "t1", "c", near));
+    expect(
+      watch(
+        [fix(49.324, "t1", "c", near), fix(49.324, "t1", "d", far)],
+        unseen,
+      ),
+    ).toEqual([undefined, undefined]);
   });
 });

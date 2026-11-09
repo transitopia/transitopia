@@ -64,6 +64,23 @@ export async function feedZipFor(
   );
 }
 
+/**
+ * Where each stop is, by GTFS stop_id, in the feed's versions still in service on or after `from`
+ * (the newest version's position wins): what real-time fixes from then on can report.
+ */
+export async function stopPositions(
+  feed: string,
+  from: ServiceDate,
+  dir = feedPaths(feed).raw,
+): Promise<Map<string, LonLat>> {
+  const out = new Map<string, LonLat>();
+  const zips = (await archivedFeeds(feed, dir)).filter((f) => f.end >= from);
+  for (const z of zips.reverse())
+    for await (const r of readCsv(z.path, "stops.txt"))
+      out.set(r.stop_id!, [Number(r.stop_lon), Number(r.stop_lat)]);
+  return out;
+}
+
 export interface DayTrip {
   tripId: string;
   routeId: string;

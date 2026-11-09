@@ -221,6 +221,30 @@ const OBSERVED_S = 10;
 /** Nested corrections considered when working out what was shown before a fix arrived. */
 const MAX_CORRECTION_DEPTH = 3;
 
+/**
+ * Puts a bus's last real fix before a freeze (from the server) into its fixes, in time order, and
+ * drops the run of fixes repeating its position after it: frozen, unless the bus reappeared within
+ * movedM of it once the run ended (it really stood there: stale.ts).
+ */
+function restoreLastReal(tr: Track, real: Obs, cfg: FrozenGpsConfig): void {
+  const obs = tr.obs;
+  let k = obs.findIndex((o) => o.v.ts >= real.v.ts);
+  if (k < 0) k = obs.length;
+  if (obs[k]?.v.ts !== real.v.ts) obs.splice(k, 0, real);
+  const at = obs[k]!.v;
+  let end = k + 1;
+  while (
+    end < obs.length
+    && obs[end]!.v.lat === at.lat
+    && obs[end]!.v.lon === at.lon
+  )
+    end++;
+  const next = obs[end]?.v;
+  if (next && distM([at.lon, at.lat], [next.lon, next.lat]) <= cfg.movedM)
+    return;
+  obs.splice(k + 1, end - k - 1);
+}
+
 export class RtTimeline {
   private tracks = new Map<string, Track>();
   private fetchTimes: number[] = [];
@@ -255,8 +279,16 @@ export class RtTimeline {
     this.kin = kin;
     this.opts = opts;
     const sorted = [...snapshots].sort((a, b) => a.fetchedAt - b.fetchedAt);
+    /** Per vehicle, by fix time: last real fixes before frozen ones, from the server (RtSnapshot.frozen). */
+    const lastReal = new Map<string, Map<number, Obs>>();
     for (const s of sorted) {
       this.fetchTimes.push(s.fetchedAt);
+      for (const v of s.frozen ?? []) {
+        let m = lastReal.get(v.id);
+        if (!m) lastReal.set(v.id, (m = new Map()));
+        if (!m.has(v.ts))
+          m.set(v.ts, { v, knownAt: s.receivedAt ?? s.fetchedAt });
+      }
       for (const v of s.vehicles) {
         let tr = this.tracks.get(v.id);
         if (!tr)
@@ -281,9 +313,9 @@ export class RtTimeline {
         tr.obs.push({ v, knownAt: s.receivedAt ?? s.fetchedAt });
       }
     }
-    for (const tr of this.tracks.values()) {
+    for (const [id, tr] of this.tracks) {
       // Frozen GPS first, so the fix after a freeze is checked against where the bus really was.
-      this.dropFrozen(tr);
+      this.dropFrozen(tr, lastReal.get(id));
       const kept: Obs[] = [];
       for (const o of tr.obs)
         if (plausible(o.v, kept[kept.length - 1]?.v)) kept.push(o);
@@ -294,12 +326,16 @@ export class RtTimeline {
 
   /**
    * Drops fixes whose position is frozen GPS (packages/transit-core/src/rt/stale.ts). It looks at
-   * the fixes that follow, as dropSpikes does: live, a freeze still going on is taken as one.
+   * the fixes that follow, as dropSpikes does: live, a freeze still going on is taken as one. A
+   * freeze the server saw begin (`lastReal`) is replaced by the last real fix it sent, so a bus
+   * frozen since before these snapshots begin is estimated from where it really was.
    */
-  private dropFrozen(tr: Track): void {
+  private dropFrozen(tr: Track, lastReal: Map<number, Obs> | undefined): void {
     const cfg = this.opts.frozenGps;
+    if (!cfg) return;
+    for (const real of lastReal?.values() ?? []) restoreLastReal(tr, real, cfg);
     const pp = this.pp;
-    if (!cfg || !pp || tr.obs.length < 2) return;
+    if (!pp || tr.obs.length < 2) return;
     const frozen = frozenFixes(
       tr.obs.map(({ v }) => {
         const st = v.stopId ? pp.stopById.get(v.stopId) : undefined;
