@@ -26,6 +26,7 @@ export class LivePoller {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private last: string | undefined;
   private gone = false;
+  private inFlight = false;
   /** Epoch ms of the last successful poll, changed or not. */
   lastOkAt = 0;
   private readonly url: string | undefined;
@@ -59,6 +60,16 @@ export class LivePoller {
     this.timer = setTimeout(this.poll, 0);
   }
 
+  /**
+   * Polls at once if it's polling, rather than at its timer: when the page becomes visible again,
+   * the browser has held the timer back while it was hidden (issue #181).
+   */
+  pollNow(): void {
+    if (this.timer === undefined || this.inFlight) return;
+    clearTimeout(this.timer);
+    this.timer = setTimeout(this.poll, 0);
+  }
+
   stop(): void {
     if (this.timer === undefined) return;
     clearTimeout(this.timer);
@@ -70,6 +81,7 @@ export class LivePoller {
 
   private poll = async (): Promise<void> => {
     let delayS = this.cfg.clientPollS;
+    this.inFlight = true;
     try {
       const res = await fetch(this.url!, { cache: "no-cache" });
       if (res.status === 404) {
@@ -100,6 +112,8 @@ export class LivePoller {
     } catch {
       this.last = undefined;
       this.handlers.onError("Real-time service unreachable", false);
+    } finally {
+      this.inFlight = false;
     }
     if (this.timer !== undefined)
       this.timer = setTimeout(this.poll, delayS * 1000);

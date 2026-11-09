@@ -60,7 +60,7 @@ The cycling and micromobility layer for British Columbia, built from OpenStreetM
 
 ## Time and not-live
 
-Every transit card follows the map's time, date and speed, so the past, live and the future stay in step; bike cards ignore it (OpenStreetMap has no history). Amber means "not live" and nothing else; green "Live" appears only when live (`clock.isLive()`: playing at 1× within seconds of now, so pausing leaves live).
+Every transit card follows the map's time, date and speed, so the past, live and the future stay in step; bike cards ignore it (OpenStreetMap has no history). Amber means "not live" and nothing else; green "Live" appears only when live (`clock.isLive()`: following the wall clock, from "Go live" or a link without a time, or after catching up with now at 1×; seeking, changing speed or pausing leaves live).
 
 - Not live, the time bar gets an amber border and an amber status line ("Paused", "Replaying at 10×", or "Projected at 60×" for the future, with the date), a "Not live" badge, and Go live in place of the Live pill.
 - Every time-dependent card opens with an amber banner: "Not live · Showing Tue 6 Oct, 08:00" (or "projected" for the future) and Go live, inside an amber border (`notLive` on `InfoCard`; `timeState()` in `src/TransitMap/format.ts`). There's no amber frame or tag over the map itself.
