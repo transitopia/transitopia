@@ -18,7 +18,6 @@ import { creditsFor, legendsFor } from "@transitopia/shared/datasets.ts";
 import { transitApi } from "../config.ts";
 
 import {
-  CardChips,
   CardSection,
   InfoCard,
   TimeMark,
@@ -37,6 +36,7 @@ import {
   type RouteColors,
 } from "./RouteBadge.tsx";
 import { bandOf, waitText } from "./frequency.ts";
+import { PlaceChip } from "./PlaceChip.tsx";
 
 /** "Eastbound E Hastings St @ Main St" → ["Eastbound", "E Hastings St @ Main St"]. */
 function splitDirection(name: string): [string | undefined, string] {
@@ -677,16 +677,11 @@ const PlaceCardBody: React.FC<{
       }>
       {place.partOf ?
         <CardSection title="Part of">
-          <CardChips
+          <PlaceChip
             className="py-1.5"
-            chips={[
-              {
-                label: stationName(place.partOf.name),
-                icon: place.partOf.kind === "station" ? "station" : "bus-stop",
-                onSelect: go(place.partOf),
-                action: `View ${place.partOf.kind}: ${stationName(place.partOf.name)}`,
-              },
-            ]}
+            place={place.partOf}
+            label={stationName(place.partOf.name)}
+            onOpen={(p) => go(p)()}
           />
         </CardSection>
       : null}

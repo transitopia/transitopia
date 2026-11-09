@@ -13,8 +13,8 @@ import { creditsFor, legendsFor } from "@transitopia/shared/datasets.ts";
 
 import { clockMinutes, timeState, toHeadsign } from "./format.ts";
 import { RouteBadge, routeColorsFor } from "./RouteBadge.tsx";
+import { PlaceChip } from "./PlaceChip.tsx";
 import {
-  CardChips,
   CardRow,
   CardSection,
   InfoCard,
@@ -123,28 +123,6 @@ function consist(c: NonNullable<VehicleState["consist"]>): string | undefined {
     .join(" ");
   return text || undefined;
 }
-
-/**
- * A stop or station the card names, as a chip opening its card, with a back strip returning to the
- * vehicle (apps/web/README.md#cross-references).
- */
-const PlaceChip: React.FC<{
-  place: Place;
-  label: string;
-  onOpen: (p: Place) => void;
-}> = ({ place, label, onOpen }) => (
-  <CardChips
-    className="justify-end"
-    chips={[
-      {
-        label,
-        icon: place.kind === "station" ? "station" : "bus-stop",
-        onSelect: () => onOpen(place),
-        action: `View ${place.kind}: ${label}`,
-      },
-    ]}
-  />
-);
 
 /**
  * The selected vehicle (apps/web/README.md#feature-cards), following it by id each frame, and saying
