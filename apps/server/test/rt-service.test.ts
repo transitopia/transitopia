@@ -42,6 +42,27 @@ function positionsFeed(tripIds: string[]): Uint8Array {
   ).finish();
 }
 
+/** A positions feed with one bus on trip t1 (route 6641) at a latitude, reporting a stop, at ts (s). */
+function busAt(lat: number, stopId: string, ts: number): Uint8Array {
+  return FeedMessage.encode(
+    FeedMessage.create({
+      header: { gtfsRealtimeVersion: "2.0", timestamp: ts },
+      entity: [
+        {
+          id: "v0",
+          vehicle: {
+            trip: { tripId: "t1", routeId: "6641" },
+            vehicle: { id: "bus0" },
+            position: { latitude: lat, longitude: -123.1 },
+            stopId,
+            timestamp: ts,
+          },
+        },
+      ],
+    }),
+  ).finish();
+}
+
 /** A trip-updates feed with one stop delay per trip. */
 function tripUpdatesFeed(tripIds: string[]): Uint8Array {
   return FeedMessage.encode(
@@ -206,6 +227,67 @@ describe("RtService", () => {
     // The region forms the feed endpoints replaced are gone.
     expect((await get("/regions/test-region/live/transit")).status).toBe(404);
     expect(upstream.mock.calls.length).toBe(3);
+  });
+
+  it("sends a frozen bus's last real fix with the live snapshot (#277)", async () => {
+    dir = await mkdtemp(join(tmpdir(), "rt-test-"));
+    const t0 = Math.floor(Date.now() / 1000) - 600;
+    // Its GPS sticks at 49.26 from the second fix while its stop runs on 4.4 km north.
+    const fixes: [number, string][] = [
+      [49.25, "s0"],
+      [49.26, "s1"],
+      [49.26, "s1"],
+      [49.26, "s2"],
+      [49.26, "s3"],
+    ];
+    let polls = 0;
+    const upstream = vi.fn(async (url: string | URL) => {
+      if (!/gtfsposition/.test(String(url))) return feedResponse(emptyFeed());
+      const k = Math.min(polls++, fixes.length - 1);
+      return feedResponse(busAt(fixes[k]![0], fixes[k]![1], t0 + k * 30));
+    });
+    vi.stubGlobal("fetch", upstream);
+    service = new RtService({
+      historyDir: dir,
+      record: false,
+      log: () => {},
+      apiKey: "test-key",
+      aisApiKey: null,
+      dispatch: false,
+    });
+    await service.start();
+    await vi.waitFor(() => expect(latest(service!)).not.toBeNull());
+    const poller = service.pollers.get("translink") as unknown as {
+      routeKeyById: Map<string, string>;
+      stopAt: Map<string, [number, number]>;
+      pollPositions(): Promise<number>;
+    };
+    poller.routeKeyById = new Map([["6641", "translink:099"]]);
+    poller.stopAt = new Map([
+      ["s1", [-123.1, 49.2601]],
+      ["s2", [-123.1, 49.3]],
+      ["s3", [-123.1, 49.31]],
+    ]);
+    const live = async () => {
+      const r = await service!.handle(
+        "/feeds/translink/live",
+        new URLSearchParams(),
+      );
+      const body = JSON.parse(String(r.body)) as LiveResponse;
+      const v = body.sources["vehicles"];
+      return v?.kind === "vehicles" ? v.data : null;
+    };
+    while (polls < 3) await poller.pollPositions();
+    // Standing, as far as anyone can tell yet.
+    expect((await live())?.f).toBeUndefined();
+    await poller.pollPositions();
+    // Given away: its last real fix is the run's first.
+    const frozen = (await live())?.f;
+    expect(frozen?.map((r) => [r[0], r[4], r[7], r[9]])).toEqual([
+      ["bus0", 49.26, (t0 + 30) * 1000, "s1"],
+    ]);
+    await poller.pollPositions();
+    expect((await live())?.f).toEqual(frozen);
   });
 
   it("keeps one pending timer per feed however long it polls", async () => {

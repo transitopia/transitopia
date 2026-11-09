@@ -23,6 +23,13 @@
 // page opened, or a loaded recorded hour): then where the run began is unknown, and its first fix
 // may be frozen too, so it goes as well (seen: bus 8127, 2026-11-08, frozen from 10:38, jumped back
 // to its frozen spot when a page opened at 10:51 switched to live data).
+//
+// The server has every fix, so it watches each bus's current run as polls arrive (FreezeWatch) and,
+// for a bus whose latest fixes are frozen, sends its last real fix with each snapshot (live and
+// recorded: RtSnapshot.frozen). The timeline puts that fix in place of the frozen ones, so a bus
+// frozen since before the data begins is still estimated from where it really was rather than
+// dropped (`openStart` remains for when the server doesn't know: recordings from before that, or a
+// freeze already under way when the server started).
 
 import { distM, type LonLat } from "../geo.ts";
 
@@ -48,6 +55,21 @@ export interface FreezeFix {
  * Indexes of one vehicle's fixes (in time order, one per fix time) whose position is frozen.
  * `openStart`: the first fix may be partway through a run (see above).
  */
+/** Whether fix f, at the same position as the fix before it (prev), gives its run away as suspect. */
+function givesAway(
+  prev: FreezeFix,
+  f: FreezeFix,
+  cfg: FrozenGpsConfig,
+): boolean {
+  return (
+    f.tripId !== undefined
+    && f.tripId === prev.tripId
+    && f.stop !== prev.stop
+    && f.stopAt !== undefined
+    && distM(f.stopAt, [f.lon, f.lat]) > cfg.stopFarM
+  );
+}
+
 export function frozenFixes(
   fixes: readonly FreezeFix[],
   cfg: FrozenGpsConfig,
@@ -60,16 +82,7 @@ export function frozenFixes(
     const a = fixes[start]!;
     const f = fixes[k];
     if (f && f.lat === a.lat && f.lon === a.lon) {
-      const prev = fixes[k - 1]!;
-      if (
-        !suspect
-        && f.tripId !== undefined
-        && f.tripId === prev.tripId
-        && f.stop !== prev.stop
-        && f.stopAt
-        && distM(f.stopAt, [f.lon, f.lat]) > cfg.stopFarM
-      )
-        suspect = true;
+      if (!suspect && givesAway(fixes[k - 1]!, f, cfg)) suspect = true;
       continue;
     }
     if (suspect && (!f || distM([a.lon, a.lat], [f.lon, f.lat]) > cfg.movedM))
@@ -79,4 +92,61 @@ export function frozenFixes(
     suspect = false;
   }
   return out;
+}
+
+interface WatchedRun<T> {
+  /** Its first fix's value; undefined when the run began before the watch knew the vehicle. */
+  first: T | undefined;
+  /** Its latest fix. */
+  last: FreezeFix;
+  lastTs: number;
+  suspect: boolean;
+}
+
+/**
+ * frozenFixes for fixes arriving one poll at a time (the server's live feed): each vehicle's current
+ * run of fixes at the same position, and whether it's suspect. A suspect run still going on is
+ * frozen, as frozenFixes takes it, and its first fix is the bus's last real one. `T` is what the
+ * caller keeps of a fix (the server: the RtVehicle). One small entry per vehicle in the feed.
+ */
+export class FreezeWatch<T> {
+  private runs = new Map<string, WatchedRun<T>>();
+  private cfg: FrozenGpsConfig;
+
+  constructor(cfg: FrozenGpsConfig) {
+    this.cfg = cfg;
+  }
+
+  /** A vehicle's fix at `ts` (ms). Repeats of its latest fix time, and older fixes, are ignored. */
+  add(id: string, ts: number, fix: FreezeFix, value: T): void {
+    const r = this.runs.get(id);
+    if (r && ts <= r.lastTs) return;
+    if (r && fix.lat === r.last.lat && fix.lon === r.last.lon) {
+      if (!r.suspect && givesAway(r.last, fix, this.cfg)) r.suspect = true;
+      r.last = fix;
+      r.lastTs = ts;
+      return;
+    }
+    this.runs.set(id, { first: value, last: fix, lastTs: ts, suspect: false });
+  }
+
+  /**
+   * A vehicle seen without its earlier fixes (e.g. in the last snapshot recorded before a restart):
+   * its run began at an unknown time, unless `lastReal` (the snapshot's RtSnapshot.frozen) says it
+   * is frozen since then.
+   */
+  resume(id: string, ts: number, fix: FreezeFix, lastReal?: T): void {
+    this.runs.set(id, {
+      first: lastReal,
+      last: fix,
+      lastTs: ts,
+      suspect: lastReal !== undefined,
+    });
+  }
+
+  /** The vehicle's last real fix, when its latest fixes are frozen and the watch saw where that began. */
+  lastReal(id: string): T | undefined {
+    const r = this.runs.get(id);
+    return r?.suspect ? r.first : undefined;
+  }
 }

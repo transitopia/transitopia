@@ -1078,6 +1078,55 @@ describe("frozen GPS", () => {
     expect(tl.vehiclesAt(ms(310))).toEqual([]);
   });
 
+  it("estimates a bus frozen since before its fixes begin from the last real fix the server sends", () => {
+    // The live buffer from 120 s, as the server sends it: each snapshot names the fix at 60 s.
+    const real = snaps([frozen[1]!])[0]!.vehicles[0]!;
+    const live = snaps(frozen.slice(2, 4)).map((s) => ({
+      ...s,
+      frozen: [real],
+    }));
+    const tl = new RtTimeline(live, pp2, kin, fopts);
+    // Predicted on from 200 m as when the whole freeze is in view, then estimated with its delay.
+    expect(alongOf(tl.vehiclesAt(ms(130))[0]!)).toBeGreaterThan(200);
+    expect(tl.vehiclesAt(ms(400))).toEqual([]);
+    expect(tl.tripDelays(ms(400)).map((d) => [d.tripId, d.fixTs])).toEqual([
+      ["trip1", ms(60)],
+    ]);
+    // Without it, these fixes alone don't give the freeze away: estimated from the frozen spot.
+    expect(
+      new RtTimeline(snaps(frozen.slice(2, 4)), pp2, kin, fopts)
+        .tripDelays(ms(400))
+        .map((d) => d.fixTs),
+    ).toEqual([ms(300)]);
+    // From the last real fix on, they do, but the run's start is unknown: not drawn at all.
+    const from60 = snaps(frozen.slice(1, 4));
+    expect(new RtTimeline(from60, pp2, kin, fopts).tripDelays(ms(400))).toEqual(
+      [],
+    );
+    expect(
+      new RtTimeline(
+        from60.map((s) => ({ ...s, frozen: [real] })),
+        pp2,
+        kin,
+        fopts,
+      )
+        .tripDelays(ms(400))
+        .map((d) => d.fixTs),
+    ).toEqual([ms(60)]);
+  });
+
+  it("keeps a bus the server took as frozen that reappears where it stood", () => {
+    const real = snaps([frozen[1]!])[0]!.vehicles[0]!;
+    const stood: Fix[] = [...frozen.slice(2, 4), [360, 260, "trip1", "s2"]];
+    const tl = new RtTimeline(
+      snaps(stood).map((s, k) => (k < 2 ? { ...s, frozen: [real] } : s)),
+      pp2,
+      kin,
+      fopts,
+    );
+    expect(alongOf(tl.vehiclesAt(ms(250))[0]!)).toBeCloseTo(200, -1);
+  });
+
   it("keeps a bus that really stood there while its reported stop ran on", () => {
     // It moves off from where it stood: its GPS was right.
     const stood: Fix[] = [...frozen.slice(0, 4), [360, 260, "trip1", "s2"]];
@@ -1419,6 +1468,13 @@ describe("snapshot encoding", () => {
     });
     expect(d.vehicles[0]!.lon).toBeCloseTo(-123.12346, 5);
     expect(d.vehicles[0]!.bearing).toBeUndefined();
+    expect(d.frozen).toBeUndefined();
+  });
+
+  it("carries frozen buses' last real fixes", () => {
+    const s = snap(0, [[-123.1, 49.2]]);
+    s.frozen = [{ ...s.vehicles[0]!, ts: s.vehicles[0]!.ts - 60_000 }];
+    expect(decodeSnapshot(encodeSnapshot(s)).frozen).toEqual(s.frozen);
   });
 });
 
@@ -1435,6 +1491,19 @@ describe("trackedOnly", () => {
     expect(
       trackedOnly(s, new Map([["6627", "25"]])).vehicles.map((v) => v.routeKey),
     ).toEqual(["99", "25"]);
+  });
+
+  it("does the same with frozen buses' last real fixes", () => {
+    const s = snap(0, [
+      [-123.1, 49.2],
+      [-123.2, 49.2],
+    ]);
+    s.vehicles[1]!.routeKey = untrackedRouteKey("6627");
+    s.frozen = [s.vehicles[1]!];
+    expect(trackedOnly(s).frozen).toBeUndefined();
+    expect(
+      trackedOnly(s, new Map([["6627", "25"]])).frozen?.map((v) => v.routeKey),
+    ).toEqual(["25"]);
   });
 });
 
