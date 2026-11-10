@@ -5,8 +5,6 @@
 
 import type { Db } from "./connect.ts";
 
-export type JobStatus = "running" | "done" | "failed";
-
 /** A run left "running" longer than this is assumed dead (the process stopped mid-run). */
 const STALE_RUNNING_MS = 6 * 3_600_000;
 

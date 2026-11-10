@@ -1,14 +1,4 @@
 import type React from "react";
-import type { PlanRoute } from "@transitopia/transit-core/plan/types.ts";
-
-/** A route's line colour, thinner for buses. */
-export const RouteSwatch: React.FC<{ route: PlanRoute }> = ({ route }) => (
-  <span
-    aria-hidden="true"
-    className={`inline-block w-6 flex-none rounded ${route.kind === "bus" ? "h-[3px] opacity-80" : "h-[5px]"}`}
-    style={{ background: route.color }}
-  />
-);
 
 /** Example vehicle colour for the key (Expo Line blue). */
 const KEY_COLOR = "#1d3fa6";

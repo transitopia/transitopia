@@ -10,7 +10,7 @@
 // The live view uses the profile to predict buses between fixes; without one it falls back to the
 // timetable. Rebuild as history accumulates. Check the effect with `npx tsx pipelines/eval-rt.ts`.
 
-import { readFile, rm, stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import {
   ProfileBuilder,
   type PredictionConfig,
@@ -115,8 +115,6 @@ async function buildFeed(feed: FeedInfo, maxAgeH?: number): Promise<void> {
       await writeAtomic(file(bandFileName(band.band)), data);
       bytes += data.length;
     }
-    // The single-file profile these replaced.
-    await rm(file("rt-profile.json"), { force: true });
     log(
       `${feed.id} ${pp.plan.feedVersion}: profile for ${Object.keys(profile.shapes).length} shapes from ${profile.hours.length} recorded hours (${profile.bandStartHours.length} bands, ${Math.round(bytes / 1024)} KB)`,
     );

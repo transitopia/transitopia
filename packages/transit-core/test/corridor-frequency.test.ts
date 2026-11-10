@@ -47,6 +47,7 @@ const plan = {
   feedStart: serviceDate("20261001"),
   feedEnd: serviceDate("20261031"),
   stops: [0, 1, 2, 3, 4, 5].map((i) => ({ id: `s${i}`, name: `S${i}` })),
+  hubs: [],
   patterns: [
     pattern(0, "A", 0, [0, 1, 2, 3, 4]),
     pattern(1, "B", 0, [1, 2, 3, 4]),

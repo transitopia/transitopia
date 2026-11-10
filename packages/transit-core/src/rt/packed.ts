@@ -128,14 +128,6 @@ export function packedCount(p: PackedSnapshots): number {
   return p.fetchedAt.length;
 }
 
-/** Approximate bytes held (typed arrays and the string table). */
-export function packedBytes(p: PackedSnapshots): number {
-  let n = p.fetchedAt.byteLength + p.headerTs.byteLength + p.start.byteLength;
-  for (const c of p.columns) n += c.data?.byteLength ?? 0;
-  for (const s of p.strings) n += 16 + s.length * 2;
-  return n;
-}
-
 /** The snapshots as decodeSnapshot gives them. */
 export function unpackSnapshots(p: PackedSnapshots): RtSnapshot[] {
   const out: RtSnapshot[] = [];

@@ -40,9 +40,3 @@ export interface DisruptionFile {
   $comment?: string;
   disruptions: Disruption[];
 }
-
-/** Published index (var/public/data/disruptions/index.json): service date (YYYYMMDD) → disruption ids. */
-export interface DisruptionIndex {
-  schema: 1;
-  byDate: Record<string, string[]>;
-}

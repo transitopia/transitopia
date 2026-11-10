@@ -41,7 +41,7 @@ export function stationsOnly(plan: Pick<ServicePlan, "stops">): PlaceOf {
  */
 export function stationsAndHubs(
   plan: Pick<ServicePlan, "stops" | "hubs">,
-  hubs: readonly Pick<PlanHub, "id" | "bays" | "station">[] = plan.hubs ?? [],
+  hubs: readonly Pick<PlanHub, "id" | "bays" | "station">[] = plan.hubs,
 ): PlaceOf {
   const base = stationsOnly(plan);
   const hubOf = new Map<string, string>();
