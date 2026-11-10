@@ -68,7 +68,7 @@ each feed's observations, and each rail network's `data/networks/<id>/` track an
 Uploads copy, never sync, so files a build no longer writes stay until deleted by hand. The server builds it daily (its `data` job, at
 `dataBuildAt` in `config/server/recording.json`) and uploads it to the R2 bucket
 `transitopia-data`, so its live dispatch patches fit the published plans.
-`.github/workflows/build_transit_data.yml` is a manual fallback only (see the comment at its top).
+Nothing else builds it: a failed build retries hourly, and to publish one by hand, run `npm run data` and then `npm run publish:data -- <remote>` locally (the server's next build replaces it, and until then live dispatch patches won't fit).
 `data/osm/<area>/` holds the cycling map's OSM file, which `.github/workflows/build_cycling.yml` publishes daily ([packages/cycling-core → Building the tiles](../packages/cycling-core/README.md#building-the-tiles)); the server's uploads never touch it.
 The server's build makes the cycling map's files from it and publishes them with the transit data, at `data/cycling/<area>/` ([packages/cycling-core → Published files](../packages/cycling-core/README.md#published-files)): the tiles and bike routes named by their content, and `index.json` naming the current ones. Since a day's tiles are about 5 MB, files the index no longer names are deleted once they're two weeks old (`pruneCycling` in `apps/server/src/jobs/data-build.ts`).
 
@@ -102,7 +102,7 @@ One-time setup (done):
    122 KB that way, 84 KB at quality 11. Clients that accept brotli get our copy as stored, even
    when they also accept zstd; for the rest (`curl`, Node's `fetch`), the edge decodes it (tested
    2026-10-19).
-5. For the fallback workflow, add GitHub secrets `RCLONE_CONFIG_TRANSITOPIA_DATA_R2_ACCESS_KEY_ID` and
+5. For the cycling workflow, which publishes the OSM file there, add GitHub secrets `RCLONE_CONFIG_TRANSITOPIA_DATA_R2_ACCESS_KEY_ID` and
    `RCLONE_CONFIG_TRANSITOPIA_DATA_R2_SECRET_ACCESS_KEY` (an R2 API token that can write the bucket;
    the endpoint is shared with the maps bucket).
 
@@ -277,6 +277,3 @@ Migrations run when the server starts. After changing `infra/backup/`, rebuild i
 - The server's data lives in two Docker volumes: `transitopia_db` (PostgreSQL) and
   `transitopia_var` (recordings, GTFS downloads, build output). The archive bucket holds copies of
   closed recordings and every GTFS feed.
-- `.github/workflows/build_transit_data.yml` is now a manual fallback: running it while the server
-  publishes replaces the server's build, and live dispatch patches won't fit until the server's
-  next build.

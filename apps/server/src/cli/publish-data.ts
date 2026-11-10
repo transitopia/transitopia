@@ -1,5 +1,5 @@
 // Publish var/public/data to object storage the way the server's data job does (compressed, with
-// its cache headers): for the manual fallback workflow, .github/workflows/build_transit_data.yml.
+// its cache headers): for uploading a local build by hand (deployment/README.md → Published data).
 //
 //   npm run publish:data -- <rclone remote, e.g. r2:transitopia-data>
 
