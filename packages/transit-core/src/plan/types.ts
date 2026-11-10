@@ -48,7 +48,6 @@ export interface PlanRoute {
   mergedGtfsRouteIds?: string[] | undefined;
   /**
    * Dataset registry id of the feed it comes from (@transitopia/shared/datasets.ts), for credits.
-   * Absent in plans built before it: hosts pass a default (TransitEngineOptions.dataset).
    */
   dataset?: string | undefined;
   /**
@@ -85,7 +84,7 @@ export interface PlanStop {
   name: string;
   lon: number;
   lat: number;
-  /** GTFS stop_code: the number on the stop's sign ("50123"). Absent in plans built before it. */
+  /** GTFS stop_code: the number on the stop's sign ("50123"), where the feed gives one. */
   code?: string;
   /** Parent station stop_id, for platforms. */
   parent?: string;

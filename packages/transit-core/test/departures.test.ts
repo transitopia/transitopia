@@ -271,6 +271,7 @@ describe("shared stretches of short-turns", () => {
     const plan = {
       stops,
       stations: [],
+      hubs: [],
       patterns: [
         { ...base, id: 0, stops: [0, 1, 2], dist: [0, gapM, gapM + 900] },
         { ...base, id: 1, stops: [0, 1], dist: [0, gapM] },

@@ -1,5 +1,5 @@
 // The transit overview tileset (packages/transit-core/DESIGN.md#overview-tiles): every feed's routes,
-// from its plan for today, at the zooms below a region's engine, with static colours. Bus corridors
+// from its plan for today, at the zooms below the engine's, with static colours. Bus corridors
 // (divided roads merged) and buses without corridors are coloured by how often buses pass on
 // regular weekdays, as the map's "Day" (CorridorFrequency, corridorStyle); routes with their own
 // colour (SkyTrain, the 99, RapidBus, Blink, SeaBus, WCE) are drawn in it, and have their tier too

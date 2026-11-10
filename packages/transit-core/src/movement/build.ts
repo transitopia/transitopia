@@ -44,7 +44,6 @@ export interface OperationsConfig {
     speedFactor: number;
     unloadS: number;
     reversalS: number;
-    blockBonusS: number;
   };
   yard: {
     maxDeadheadM: number;

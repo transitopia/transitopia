@@ -19,6 +19,7 @@ This repository is a monorepo (npm workspaces) containing most of the parts you 
 * `packages/transit-core`: the DOM-free transit engine: GTFS, the SkyTrain track graph, run inference, a signalling-aware train dispatcher, playback, corrections, and bus prediction.
 * `packages/transit-map`: the transit map engine (clock, playback, WebGL vehicle layers), mounted by the website on `/transit`.
 * `packages/db`: the server's PostgreSQL migrations and types.
+* `packages/data`: Node-side data access shared by the pipelines and the server (where data lives on disk, GTFS zips, the track graph).
 * `packages/map-style`: the site's basemap style (Protomaps, light and dark).
 * `packages/shared`: definitions shared by the website and server, such as the dataset registry behind the map's credits.
 * `pipelines`: build-time data pipelines and validators.

@@ -4,7 +4,7 @@ dist/
 package-lock.json
 # Vendored Protomaps tile worker
 deployment/worker.js
-# Curated config and region data: hand-laid-out JSON, generated GeoJSON, recorded GPX
+# Curated config: hand-laid-out JSON, generated GeoJSON, recorded GPX
 config/
 # Prose is wrapped by hand
 *.md

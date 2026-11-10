@@ -2,7 +2,7 @@
 # build. Built from the repository root: docker build -f infra/server.Dockerfile .
 #
 # The official Node.js image carries its own ICU and time zone data; the server refuses to start if
-# that data is too old for the region (region.json timezoneChecks), so keep the Node version current.
+# that data is too old for a feed (feed.json timezoneChecks), so keep the Node version current.
 
 FROM node:26-slim AS rclone
 # Keep in step with infra/backup/Dockerfile.

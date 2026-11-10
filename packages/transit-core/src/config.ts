@@ -117,7 +117,6 @@ const operations: z.ZodType<OperationsConfig> = z.strictObject({
     speedFactor: pos,
     unloadS: nonNeg,
     reversalS: nonNeg,
-    blockBonusS: nonNeg,
   }),
   yard: z.strictObject({
     maxDeadheadM: pos,
@@ -592,7 +591,7 @@ const bounds = z
   .refine(([w, s, e, n]) => w < e && s < n, "[west, south, east, north]");
 
 /**
- * A rail network: physical track and how trains run on it (packages/transit-core/DESIGN.md#rail-networks).
+ * A rail network: physical track and how trains run on it (docs/DESIGN.md#feeds-operators-and-rail-networks).
  * Feeds and networks are many to many: a feed can run on several networks, and a network carry
  * several feeds' trains.
  */

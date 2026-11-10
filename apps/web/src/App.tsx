@@ -1,4 +1,3 @@
-import "./App.css";
 import "maplibre-gl/dist/maplibre-gl.css";
 import React from "react";
 import { Redirect, Route, Switch } from "wouter";

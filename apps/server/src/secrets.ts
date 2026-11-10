@@ -23,7 +23,5 @@ export function secret(name: string): string | undefined {
   return undefined;
 }
 
-export const translinkApiKey = (): string | undefined =>
-  secret("TRANSLINK_API_KEY");
 export const aisstreamApiKey = (): string | undefined =>
   secret("AISSTREAM_API_KEY");

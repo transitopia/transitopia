@@ -893,9 +893,7 @@ export function hubsOf(plan: ServicePlan): BusHub[] {
       plan,
       (c = {
         places,
-        // A plan published before plans carried `hubs` (until the next data build after a deploy,
-        // and in branch previews, which read production's data) has none: no exchanges, no crash.
-        hubs: places ? hubsFromPlaces(plan, places) : (plan.hubs ?? []),
+        hubs: places ? hubsFromPlaces(plan, places) : plan.hubs,
       }),
     );
   return c.hubs;

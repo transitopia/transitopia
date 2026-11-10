@@ -114,7 +114,6 @@ const ops: OperationsConfig = {
     maxTurnbackM: 4000,
     unloadS: 20,
     reversalS: 30,
-    blockBonusS: 600,
   },
   yard: {
     maxDeadheadM: 10_000,

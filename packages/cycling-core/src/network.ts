@@ -1,4 +1,4 @@
-// The cycling network from OSM elements, read one at a time (packages/cycling-core/README.md#from-osm):
+// The cycling network from OSM elements, read one at a time (packages/cycling-core/README.md):
 // every way that's a cycling facility with its attributes, bike parking, and the bike routes.
 
 import { distM, round } from "@transitopia/transit-core/geo.ts";

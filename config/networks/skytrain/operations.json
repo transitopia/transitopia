@@ -18,9 +18,7 @@
     "$speedFactor": "Turnbacks (short empty moves between an arrival and the next departure, e.g. through the crossovers west of Production Way–University) run at this fraction of line max speed. At the pull-out speed (0.55) the 4-minute Production Way turnaround in the timetable was infeasible, so trains waited 16 min for a later departure, parked on Millennium platforms. guess, OPEN-QUESTIONS #6",
     "speedFactor": 0.8,
     "$reversalS": "Time to change ends / reverse direction (driverless, so short). guess",
-    "reversalS": 40,
-    "$blockBonusS": "Unused since GTFS block successors are now always preferred (kept for config compatibility).",
-    "blockBonusS": 600
+    "reversalS": 40
   },
   "yard": {
     "$comment": "Pull-outs/pull-ins between yards and the first/last platform of each run (OPEN-QUESTIONS #1, #2). The nearest reachable yard by track distance is used, even for runs that really lay up on the line overnight (config/networks/skytrain/README.md#yards-and-overnight-layup).",

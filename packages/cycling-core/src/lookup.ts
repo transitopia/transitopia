@@ -2,7 +2,7 @@
 // (packages/cycling-core/README.md#lookup): an OSM ref (`osm-way:<id>`, `osm-node:<id>`) → its kind,
 // name and extent, from the latest build, so a link works without the map's position and without
 // calling OSM. Written beside the published files, not published. Bike routes are in the database
-// (README.md#bike-routes).
+// (packages/cycling-core/README.md#bike-routes).
 
 import {
   chainWayId,

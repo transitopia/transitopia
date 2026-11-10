@@ -15,5 +15,9 @@
     "@transitopia/shared": "*",
     "@transitopia/transit-core": "*",
     "maplibre-gl": "^6.16.0"
+  },
+  "devDependencies": {
+    "@transitopia/config": "*",
+    "@types/geojson": "^7946.0.16"
   }
 }

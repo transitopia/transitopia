@@ -23,7 +23,7 @@ export const PLAN_TILE_LAYERS = {
   overviewCorridors: "corridors-overview",
   /** Routes along their shapes: buses without corridors, SeaBus, WCE, SkyTrain without track. */
   routes: "routes",
-  /** SkyTrain's centrelines, ribbons and tracks (infra/line-geometry.ts), in a region with track-level rail. */
+  /** SkyTrain's centrelines, ribbons and tracks (infra/line-geometry.ts), for a feed on a rail network. */
   railLines: "rail-lines",
   /** Track segments drawn on their own: yards, and track under works. */
   railTracks: "rail-tracks",
@@ -31,7 +31,7 @@ export const PLAN_TILE_LAYERS = {
 
 /** Detailed corridors are drawn from this zoom, the overview's below it. */
 export const CORRIDOR_DETAIL_ZOOM = 14;
-/** A plan's tiles cover these zooms; the map overzooms the last (a region's engine starts at the first). */
+/** A plan's tiles cover these zooms; the map overzooms the last (the engine starts at the first). */
 export const PLAN_TILES_MIN_ZOOM = 10;
 export const PLAN_TILES_MAX_ZOOM = 14;
 
@@ -46,7 +46,7 @@ export type TileFeature = Feature<
   tippecanoe: { layer: string; minzoom?: number; maxzoom?: number };
 };
 
-/** A region's SkyTrain track and line geometry (build-infra's tracks.geojson and lines.geojson). */
+/** A rail network's SkyTrain track and line geometry (build-infra's tracks.geojson and lines.geojson). */
 export interface RailInput {
   tracks: InfraCollection;
   lines: LineGeometry;
