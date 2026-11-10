@@ -581,7 +581,8 @@ export class TransitEngine {
 
     const url = opts.initial ?? readUrl(this.tz);
     this.preview = url.preview;
-    this.clock = new Clock(url.t ?? Date.now());
+    // Without a time in the URL: live.
+    this.clock = new Clock(url.t);
     this.clock.setBounds(range[0], range[1]);
     if (url.t === undefined && (Date.now() < range[0] || Date.now() > range[1]))
       this.clock.seek(range[0] + 8 * 3600_000);
@@ -726,6 +727,17 @@ export class TransitEngine {
         this.invalidate();
         this.writeUrlSoon();
       }),
+    );
+
+    // Back from a hidden tab or a sleep: live data now, not when the held-back timers fire (#181).
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      for (const slot of this.slots) slot.live.pollNow();
+      for (const d of this.dispatchPolls.values()) d.poll.pollNow();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    this.cleanups.push(() =>
+      document.removeEventListener("visibilitychange", onVisible),
     );
 
     this.syncFeeds();
