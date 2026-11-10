@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@maplibre/maplibre-gl-style-spec": "^26.5.0",
+    "@maplibre/maplibre-gl-style-spec": "^26.5.1",
     "@protomaps/basemaps": "^5.7.2"
   }
 }
