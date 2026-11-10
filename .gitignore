@@ -25,8 +25,6 @@ dist-ssr
 
 # Large .pmtiles files
 *.pmtiles
-# Except this symlink:
-!public/transitopia-cycling-british-columbia.pmtiles
 
 # Transit data: downloads, recordings and pipeline build output (see packages/data/src/paths.ts)
 var/

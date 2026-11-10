@@ -81,7 +81,7 @@ Verified 2026-10-14 against the Victoria (operator 48) and Kelowna (operator 47)
 
 OSM maps SkyTrain **per track** in detail: 264 `railway=switch` nodes, 45+ crossovers, named pockets (Metrotown, Vanness, Holdom, Moody Centre, Great Northern, "Mainline Pocket", Waterfront Tail), and yard tracks: the **Canada Line OMC** (~50 tracks, east of Bridgeport), **OMC 1** (~75 tracks across two clusters, south of Edmonds), and a **~16-track yard near Inlet Centre/Coquitlam Central**. OSM is our primary source for geometry *and* topology.
 
-OSM's roads are also where buses run: `fetch-osm-roads` takes every public road class, busways, service roads open to buses and service roads within 150 m of a bus stop (exchange loops are often plain service roads) for the bbox of each feed's stops, plus a margin (`ROADS_MARGIN_DEG`) (TransLink, 2026-10-17: 123,414 ways, 618,799 nodes, 96 MB). See [Bus corridors](#bus-corridors).
+OSM's roads are also where buses run: `fetch-osm-roads` takes every public road class, busways, service roads open to buses and service roads within 150 m of a bus stop (exchange loops are often plain service roads) for the grid cells (`CELL_DEG`) each feed's shapes and stops are in, and the cells around those (TransLink, 2026-10-17: 123,414 ways, 618,799 nodes, 96 MB). See [Bus corridors](#bus-corridors).
 
 ### Wikipedia track diagram
 
@@ -237,7 +237,7 @@ Output: **runs**, each an ordered list of movements (revenue trips and empty mov
 - **Routing**: each leg (platform → platform, yard → platform, turnback) is routed on the track graph by shortest path, respecting turns. Legs start and end on the platform's own track. Revenue trains keep to main track.
 - **Timed paths**: each leg becomes a list of `(edgeId, fromOffset, toOffset)` plus a time profile. Per-line kinematics (acceleration, deceleration, top speed, dwell; `config/defaults/kinematics.json`) are fitted so run time matches the schedule; slack goes into the dwell.
 - **Movement files**: `var/public/data/feeds/translink/<v>/movements/*.json`, one per service pattern. Trips that run on plan are stored by reference; trips the dispatcher changed carry explicit times. Schema version 1 is timetable positions only, version 2 is dispatched.
-- **Playback** (`playback.ts`) is pure: (movement file, prepared plan, graph, t) → positions. `positionAt(run, t)` binary-searches the timed path, applies the kinematic interpolation, and maps the edge offset to a position and bearing. Keep it pure.
+- **Playback** (`playback.ts`) is pure: (movement file, prepared plan, graph, t) → positions. `TrainPlayback.vehiclesAt(t)` binary-searches each run's timed path, applies the kinematic interpolation, and maps the edge offset to a position and bearing. Keep it pure.
 
 ## SeaBus and West Coast Express
 

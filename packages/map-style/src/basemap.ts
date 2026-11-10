@@ -1,4 +1,4 @@
-// The site's basemap: Protomaps layers over a PMTiles extract (docs/DESIGN.md#regions), with
+// The site's basemap: Protomaps layers over a PMTiles extract (docs/DESIGN.md#feeds-operators-and-rail-networks), with
 // self-hosted glyphs and sprites (pipelines/tiles.ts). Nothing here calls third-party servers.
 
 import type {

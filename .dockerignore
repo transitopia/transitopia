@@ -1,4 +1,4 @@
-# The server image (infra/server.Dockerfile) needs the workspaces' code and the region's inputs,
+# The server image (infra/server.Dockerfile) needs the workspaces' code and config,
 # not downloads, recordings, build output or the site.
 .git
 **/node_modules
