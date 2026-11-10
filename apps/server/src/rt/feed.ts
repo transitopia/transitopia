@@ -352,7 +352,10 @@ export class FeedPoller {
   // --- polls ---
 
   private async pollAlerts(): Promise<void> {
-    const decoded = await fetchAlerts(this.upstream);
+    const decoded = await fetchAlerts(
+      this.upstream,
+      AbortSignal.timeout(15_000),
+    );
     await this.opts.store?.recordAlerts(this.feed.id, decoded);
     await this.opts.onAlerts?.(decoded, this.railKeyById);
     // Bus route alerts (e.g. detours), kept per day for playback.
