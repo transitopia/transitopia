@@ -337,7 +337,8 @@ export const CyclingMap: React.FC = () => {
     (e: MapLibreGL.MapLayerEventType["mousemove"]) => {
       if (!map) return undefined;
       if (map.getZoom() < 13) return;
-      const feature = e.features![0];
+      const feature = e.features?.[0];
+      if (!feature) return;
       if (feature.id !== hoveredFeatureIdRef.current) {
         if (hoveredFeatureIdRef.current) {
           map.removeFeatureState(

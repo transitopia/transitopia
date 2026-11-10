@@ -16,6 +16,8 @@
 
     /* Linting */
     "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
     "exactOptionalPropertyTypes": true, // Distinguish between {key?: value} and {key: value | undefined} strictly.
     "erasableSyntaxOnly": true, // Allow running code directly with Node.
     "verbatimModuleSyntax": true, // Allow running code directly with Node.
