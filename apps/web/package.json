@@ -10,14 +10,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.106.1",
+    "@tanstack/react-query": "^5.107.1",
     "@transitopia/config": "*",
     "@transitopia/cycling-core": "*",
     "@transitopia/map-style": "*",
     "@transitopia/shared": "*",
     "@transitopia/transit-core": "*",
     "@transitopia/transit-map": "*",
-    "maplibre-gl": "^6.16.0",
+    "maplibre-gl": "^6.18.0",
     "pmtiles": "^4.5.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
@@ -25,13 +25,13 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.3.4",
+    "@tailwindcss/vite": "^4.3.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@vitejs/plugin-react": "^6.2.1",
+    "@vitejs/plugin-react": "^6.3.0",
     "sirv": "^3.0.2",
     "tailwindcss": "^4",
     "typescript": "^7",
-    "vite": "^8.3.6"
+    "vite": "^8.3.8"
   }
 }
