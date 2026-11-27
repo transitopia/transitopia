@@ -29,7 +29,9 @@
 // recorded: RtSnapshot.frozen). The timeline puts that fix in place of the frozen ones, so a bus
 // frozen since before the data begins is still estimated from where it really was rather than
 // dropped (`openStart` remains for when the server doesn't know: recordings from before that, or a
-// freeze already under way when the server started).
+// freeze already under way when the server started). A bus back at the same position after missing
+// from the feed for longer than `maxGapS` (e.g. overnight, still frozen) is taken the same way, so
+// the server doesn't send a last real fix from before the gap.
 
 import { distM, type LonLat } from "../geo.ts";
 
@@ -38,6 +40,11 @@ export interface FrozenGpsConfig {
   stopFarM: number;
   /** ... and frozen, once it has ended, when the next fix is further than this from it (m). */
   movedM: number;
+  /**
+   * FreezeWatch: a vehicle back at the same position after a gap in its fixes longer than this is
+   * taken as partway through a run that began at an unknown time (s).
+   */
+  maxGapS: number;
 }
 
 /** What frozenFixes needs from a fix. */
@@ -51,10 +58,6 @@ export interface FreezeFix {
   stopAt: LonLat | undefined;
 }
 
-/**
- * Indexes of one vehicle's fixes (in time order, one per fix time) whose position is frozen.
- * `openStart`: the first fix may be partway through a run (see above).
- */
 /** Whether fix f, at the same position as the fix before it (prev), gives its run away as suspect. */
 function givesAway(
   prev: FreezeFix,
@@ -70,6 +73,10 @@ function givesAway(
   );
 }
 
+/**
+ * Indexes of one vehicle's fixes (in time order, one per fix time) whose position is frozen.
+ * `openStart`: the first fix may be partway through a run (see above).
+ */
 export function frozenFixes(
   fixes: readonly FreezeFix[],
   cfg: FrozenGpsConfig,
@@ -107,7 +114,9 @@ interface WatchedRun<T> {
  * frozenFixes for fixes arriving one poll at a time (the server's live feed): each vehicle's current
  * run of fixes at the same position, and whether it's suspect. A suspect run still going on is
  * frozen, as frozenFixes takes it, and its first fix is the bus's last real one. `T` is what the
- * caller keeps of a fix (the server: the RtVehicle). One small entry per vehicle in the feed.
+ * caller keeps of a fix (the server: the RtVehicle). One small entry per vehicle seen (bounded by
+the fleet): a vehicle's last position is kept across gaps, which is how a bus back after one at
+the same spot is told from one that moved.
  */
 export class FreezeWatch<T> {
   private runs = new Map<string, WatchedRun<T>>();
@@ -122,6 +131,11 @@ export class FreezeWatch<T> {
     const r = this.runs.get(id);
     if (r && ts <= r.lastTs) return;
     if (r && fix.lat === r.last.lat && fix.lon === r.last.lon) {
+      if (ts - r.lastTs > this.cfg.maxGapS * 1000) {
+        // Back after a gap at the same position: where this run began is unknown.
+        this.resume(id, ts, fix);
+        return;
+      }
       if (!r.suspect && givesAway(r.last, fix, this.cfg)) r.suspect = true;
       r.last = fix;
       r.lastTs = ts;

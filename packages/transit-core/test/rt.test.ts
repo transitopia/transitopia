@@ -418,7 +418,7 @@ describe("prediction", () => {
       n: number,
       arr: number[],
       runs: (pp2: ReturnType<typeof preparePlan>) => RtSnapshot[],
-      frozen?: { stopFarM: number; movedM: number },
+      frozen?: { stopFarM: number; movedM: number; maxGapS: number },
     ) => {
       const pp2 = preparePlan(
         {
@@ -474,7 +474,7 @@ describe("prediction", () => {
         ...run("c", "t2", 37200, stand(100, 160)),
         ...frozenRun(pp2),
       ];
-      const frozen = { stopFarM: 500, movedM: 300 };
+      const frozen = { stopFarM: 500, movedM: 300, maxGapS: 1800 };
       expect(build(4, [0, 200, 400], runs, frozen).all.dwell.mid).toBe(60);
       // Taken as standing, it would have stood 5 minutes.
       expect(build(4, [0, 200, 400], runs).all.dwell.mid).toBe(120);

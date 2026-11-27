@@ -343,6 +343,7 @@ const carry: z.ZodType<CarryConfig> = carryShape;
 const frozenGpsShape = z.strictObject({
   stopFarM: pos,
   movedM: pos,
+  maxGapS: pos,
 });
 const frozenGps: z.ZodType<FrozenGpsConfig> = frozenGpsShape;
 
