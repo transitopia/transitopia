@@ -14,6 +14,7 @@ import {
 } from "@transitopia/transit-core/time.ts";
 import type {
   Bounds,
+  FeedManifest,
   PlanRoute,
   ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
@@ -47,8 +48,6 @@ import {
   sharedStopOwners,
   stopFeatures,
   manifestInstants,
-  playedManifest,
-  type FeedManifests,
 } from "./plans.ts";
 import {
   PLACE_LAYERS,
@@ -125,8 +124,6 @@ export interface TransitEngineOptions {
   /** URL prefix of the RT service (…/feeds/<id>/live), ending in "/"; omit for schedules only. */
   apiBase?: string | undefined;
   theme: Theme;
-  /** Build a scenario's plans instead of the real network (?scenario=<name>). */
-  scenario?: string | undefined;
   /** Segment ids and platform markers on the tracks (?debug=1). */
   debug?: boolean | undefined;
   /** Initial time, rate and selection; defaults to the current URL. */
@@ -246,7 +243,6 @@ export interface TransitSnapshot {
   pick: PickMenu | undefined;
   /** Registry ids (@transitopia/shared/datasets.ts) of the data drawn right now. */
   datasets: string[];
-  scenario: { name: string; description: string } | undefined;
   /**
    * A `?select=` key no feed loaded has (a feature elsewhere, or one only the resolver knows): the
    * host can look it up (GET /features/<key>) and move the map there; the engine selects it once a
@@ -271,7 +267,7 @@ const ROUTE_LINES_CHOICES: readonly RouteLinesChoice[] = ["off", "trace", "on"];
 /** A feed the engine may show (TransitEngineOptions.feeds), loaded while it's in view. */
 interface FeedEntry {
   config: FeedConfig;
-  manifests: FeedManifests;
+  manifest: FeedManifest;
   /** Where it runs (FeedManifest.coverage). */
   coverage: Bounds | null;
   /** Its slot while loaded. */
@@ -409,8 +405,6 @@ export class TransitEngine {
   private lastFeedCheck = 0;
   private readonly map: MlMap;
   private readonly urls: { dataBase: string; apiBase: string | undefined };
-  /** Shown instead of the real network (?scenario=). */
-  private readonly scenario: boolean;
   /** Called once when the published data was rebuilt (TransitEngineOptions.onRebuilt). */
   private readonly onRebuilt: (() => void) | undefined;
   private rebuilt = false;
@@ -532,11 +526,10 @@ export class TransitEngine {
     if (!opts.feeds.length) throw new Error("The engine shows no feeds");
     const loaded = await Promise.all(
       opts.feeds.map((config) =>
-        PlanStore.manifests(opts.dataBase, config, opts.scenario).then(
+        PlanStore.manifest(opts.dataBase, config).then(
           (m) => ({ config, m }),
           (e: unknown) => {
-            // A scenario that isn't built fails the engine; another feed's missing data only leaves it out.
-            if (opts.scenario && config.rail) throw e;
+            // A feed's missing data only leaves it out.
             console.error(e);
             return undefined;
           },
@@ -550,8 +543,8 @@ export class TransitEngine {
       map,
       feeds.map(({ config, m }) => ({
         config,
-        manifests: m,
-        coverage: m.manifest.coverage,
+        manifest: m,
+        coverage: m.coverage,
         slot: undefined,
         unsubscribe: undefined,
         leftAt: undefined,
@@ -568,7 +561,6 @@ export class TransitEngine {
     this.map = map;
     this.feeds = feeds;
     this.urls = { dataBase: opts.dataBase, apiBase: opts.apiBase };
-    this.scenario = opts.scenario !== undefined;
     this.onRebuilt = opts.onRebuilt;
     this.tz = opts.feeds[0]!.feed.timezone;
     this.theme = opts.theme;
@@ -1167,7 +1159,7 @@ export class TransitEngine {
 
   /** Make a feed's slot, and draw and play it with the others. */
   private loadFeed(f: FeedEntry): void {
-    const slot = new FeedSlot(f.config, f.manifests, this.urls);
+    const slot = new FeedSlot(f.config, f.manifest, this.urls);
     f.slot = slot;
     this.slots = this.feeds.flatMap((x) => (x.slot ? [x.slot] : []));
     if (this.preview) slot.store.setPreview(this.preview);
@@ -1286,10 +1278,7 @@ export class TransitEngine {
   /** Instants any feed has timetables for, from the first feed's first day to the last one's end. */
   private range(): [number, number] | undefined {
     const ranges = this.feeds.flatMap((f) => {
-      const r = manifestInstants(
-        playedManifest(f.manifests),
-        f.config.feed.timezone,
-      );
+      const r = manifestInstants(f.manifest, f.config.feed.timezone);
       return r ? [r] : [];
     });
     if (!ranges.length) return undefined;
@@ -2111,7 +2100,7 @@ export class TransitEngine {
 
   /** First and last service dates that can be shown: with a timetable, and at most DATE_AHEAD_DAYS from today. */
   private dateRange(): [ServiceDate, ServiceDate] | undefined {
-    const feeds = this.feeds.flatMap((f) => playedManifest(f.manifests).feeds);
+    const feeds = this.feeds.flatMap((f) => f.manifest.feeds);
     if (!feeds.length) return undefined;
     const ahead = addDays(this.displayDate(Date.now()), DATE_AHEAD_DAYS);
     const end = feeds
@@ -2149,8 +2138,6 @@ export class TransitEngine {
         })();
     const prev = this.snapshot as TransitSnapshot | undefined;
     const routes = this.slots.flatMap((s) => s.shown?.plan.routes ?? []);
-    const scenario = this.feeds.find((f) => f.manifests.scenario)?.manifests
-      .scenario;
     return {
       t,
       timezone: this.tz,
@@ -2198,10 +2185,6 @@ export class TransitEngine {
         prev && prev.datasets.join() === this.datasets.join() ?
           prev.datasets
         : this.datasets,
-      scenario:
-        scenario ?
-          { name: scenario.name, description: scenario.description }
-        : undefined,
       elsewhere: this.elsewhere,
       inCoverage: this.feeds.some((f) => overlaps(f.coverage, this.view)),
     };
@@ -2445,16 +2428,13 @@ export class TransitEngine {
     if (this.disposed) return;
     const { clock, map } = this;
     const t = clock.now();
-    // Scenarios are hypothetical: never mix in real bus positions.
-    if (!this.scenario) {
-      for (const slot of this.slots) {
-        slot.rt.update(t, this.sliderRange(t));
-        slot.live.update(t);
-      }
-      for (const [network, d] of this.dispatchPolls)
-        if (this.slots.some((s) => s.config.rail?.network === network))
-          d.poll.update(t);
+    for (const slot of this.slots) {
+      slot.rt.update(t, this.sliderRange(t));
+      slot.live.update(t);
     }
+    for (const [network, d] of this.dispatchPolls)
+      if (this.slots.some((s) => s.config.rail?.network === network))
+        d.poll.update(t);
     // Feeds that left the view are unloaded in time, even while it stays put.
     if (performance.now() - this.lastFeedCheck > FEED_CHECK_MS)
       this.syncFeeds();
@@ -2602,7 +2582,6 @@ export class TransitEngine {
     t: number,
     due?: (feed: string, kind: VehicleKind) => boolean,
   ): void {
-    const { scenario } = this;
     // Hidden routes aren't computed, except the selected vehicle's and the open route card's:
     // hiding a layer hides it from the map, but its cards stay true. Until the selected vehicle
     // has been seen, compute everything to find it.
@@ -2654,7 +2633,6 @@ export class TransitEngine {
           visible,
           selected: (id) => id === own,
           place: place !== undefined,
-          scenario,
           within: area && {
             bounds: area,
             except: new Set(
@@ -2667,7 +2645,7 @@ export class TransitEngine {
         });
         groups[kind] = { out, t, at };
       }
-      slot.syncFerryPair(this.styleReady ? this.map : undefined, t, scenario);
+      slot.syncFerryPair(this.styleReady ? this.map : undefined, t);
       const bus = groups.bus!.out;
       const other = groups.other!.out;
       return {
@@ -2683,8 +2661,7 @@ export class TransitEngine {
       if (v) this.selectedRoute = feedKey(v.feed, v.routeKey);
     }
 
-    const notices =
-      scenario ? [] : this.slots.flatMap((s) => s.store.noticesAt(t));
+    const notices = this.slots.flatMap((s) => s.store.noticesAt(t));
     if (notices.join("\n") !== this.notices.join("\n")) {
       this.notices = notices;
       this.dirty = true;

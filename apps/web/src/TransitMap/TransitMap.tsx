@@ -192,7 +192,6 @@ export default function TransitMap() {
       dataBase: transitData,
       apiBase: transitApi,
       theme: themeRef.current,
-      scenario: params.get("scenario") ?? undefined,
       debug: params.has("debug"),
       feeds: FEEDS,
       onRebuilt: () => setBuild((b) => b + 1),

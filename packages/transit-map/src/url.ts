@@ -99,10 +99,8 @@ export function writeUrl(
   }
   if (select) q.set("select", select);
   const kept = new URLSearchParams(location.search);
-  for (const k of ["scenario", "preview"]) {
-    const v = kept.get(k);
-    if (v) q.set(k, v);
-  }
+  const preview = kept.get("preview");
+  if (preview) q.set("preview", preview);
   const search = formatQuery(q);
   const url = `${location.pathname}${search ? `?${search}` : ""}${location.hash}`;
   if (url !== `${location.pathname}${location.search}${location.hash}`)

@@ -493,10 +493,8 @@ export class RtClient {
    */
   predictorFor(pp: PreparedPlan): Predictor {
     const version = pp.plan.feedVersion;
-    // Scenario plans ("<version>~<name>") share the base feed's profile.
-    const base = version.split("~")[0]!;
-    let bands = this.profiles.get(base);
-    if (!bands) this.profiles.set(base, (bands = []));
+    let bands = this.profiles.get(version);
+    if (!bands) this.profiles.set(version, (bands = []));
     for (const t of [this.clockT, this.clockT + PROFILE_PREFETCH_MS]) {
       const band = bandOf(
         this.prediction.bandStartHours,
@@ -504,7 +502,7 @@ export class RtClient {
       );
       if (!bands[band]) {
         bands[band] = "loading";
-        void this.loadBand(pp.plan.feed, base, band, bands);
+        void this.loadBand(pp.plan.feed, version, band, bands);
       }
     }
     let p = this.predictors.get(version);

@@ -1,6 +1,5 @@
 // Convert the OSM extract (pipelines/fetch-osm.ts) into our track model (packages/transit-core/DESIGN.md#track-graph):
 //   config/networks/<network>/infrastructure/tracks.generated.geojson   in-service track (committed; don't hand-edit)
-//   config/networks/<network>/infrastructure/future.generated.geojson   track with a future opening_date (scenario material)
 // for --network <id> (default: the one rail network).
 //
 // The network itself (segments, turns, stop positions) is built by packages/transit-core/src/infra/network.ts.
@@ -27,7 +26,7 @@ import {
   type OsmNode,
   type OsmWay,
 } from "@transitopia/transit-core/infra/network.ts";
-import { composeNetwork } from "@transitopia/transit-core/scenario/network.ts";
+import { addTrack } from "@transitopia/transit-core/infra/compose.ts";
 import type { LineKey } from "@transitopia/transit-core/infra/types.ts";
 import { TIMEZONE } from "@transitopia/transit-core/time.ts";
 
@@ -119,8 +118,8 @@ async function main() {
   }
   // OSM's opening_date is a local date.
   const today = Temporal.Now.plainDateISO(TIMEZONE).toString();
+  // Track with a future opening_date (e.g. the Broadway Extension) isn't in service yet.
   const current = ways.filter((w) => !isFuture(w.tags ?? {}, today));
-  const future = ways.filter((w) => isFuture(w.tags ?? {}, today));
   const stopNodes = [...nodes.values()].filter(
     (n) =>
       n.tags
@@ -138,16 +137,16 @@ async function main() {
   await mkdir(INFRA_DIR, { recursive: true });
 
   let base = buildNetwork(current, nodes, wayLines, stopNodes, meta);
-  // Track missing from OSM (overrides.addTrack), joined by coordinates like scenario track.
-  const { addTrack } = await loadOverrides(NETWORK);
-  if (addTrack) {
-    const custom = JSON.parse(
-      await readFile(join(INFRA_DIR, addTrack), "utf8"),
+  // Track missing from OSM (overrides.addTrack), joined by coordinates.
+  const overrides = await loadOverrides(NETWORK);
+  if (overrides.addTrack) {
+    const added = JSON.parse(
+      await readFile(join(INFRA_DIR, overrides.addTrack), "utf8"),
     );
-    const composed = composeNetwork({ base: base.fc, custom });
+    const composed = addTrack(base.fc, added);
     composed.fc.metadata = {
       ...meta,
-      note: `Includes ${custom.features.length} added track pieces from ${addTrack}`,
+      note: `Includes ${added.features.length} added track pieces from ${overrides.addTrack}`,
     };
     base = composed;
   }
@@ -156,25 +155,6 @@ async function main() {
     `${JSON.stringify(base.fc)}\n`,
   );
   log(`tracks.generated.geojson: ${JSON.stringify(base.stats)}`);
-
-  // Future track is imported together with the base network so its connections are correct, then
-  // only the future segments are kept.
-  const all = buildNetwork(ways, nodes, wayLines, [], {
-    ...meta,
-    note: "Track with a future opening_date; for scenarios",
-  });
-  const futureIds = new Set(future.map((w) => w.id));
-  all.fc.features = all.fc.features.filter(
-    (f) =>
-      f.properties.type === "segment" && futureIds.has(f.properties.osmWay),
-  );
-  await writeFile(
-    join(INFRA_DIR, "future.generated.geojson"),
-    `${JSON.stringify(all.fc)}\n`,
-  );
-  log(
-    `future.generated.geojson: ${all.fc.features.length} segments (${future.length} OSM ways with a future opening_date)`,
-  );
 }
 
 main().catch((e) => {

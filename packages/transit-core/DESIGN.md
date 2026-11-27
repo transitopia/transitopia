@@ -10,7 +10,7 @@ The engine animates, on a to-scale vector map of Metro Vancouver (and BC Transit
 - **SeaBus** and **West Coast Express**: from the schedule along simpler geometry. SeaBus is anchored by live AIS.
 - **Express buses** (99, R1–R6): real positions from GTFS-realtime when live or recorded, predicted between fixes, and schedule estimates otherwise.
 
-It plays in real time by default and can pause, rewind, fast-forward and jump to any date in the current or any future published timetable. Scenarios (alternate track and service) go through the same pipeline.
+It plays in real time by default and can pause, rewind, fast-forward and jump to any date in the current or any future published timetable.
 
 ```
                   BUILD TIME and SERVER                                    BROWSER
@@ -23,8 +23,8 @@ It plays in real time by default and can pause, rewind, fast-forward and jump to
  │ OSM (Overpass)│──▶│ import +    │──▶ track ─▶│ inference + │  each with provenance           │
  └───────────────┘   │ overrides   │    graph   │ dispatcher  │        ▲                        │
  ┌───────────────┐   └─────────────┘            ▼             │        │ overlays               │
- │ Scenarios,    │──────────────────▶ ┌──────────────────┐    │  dispatch patches · bus RT ·    │
- │ corrections   │                    │ movement plan    │───▶│  AIS · history                  │
+ │ Corrections   │──────────────────▶ ┌──────────────────┐    │  dispatch patches · bus RT ·    │
+ │               │                    │ movement plan    │───▶│  AIS · history                  │
  └───────────────┘                    │ per service day  │    │                                 │
                                       └──────────────────┘    │ MapLibre + WebGL vehicle layer  │
                                                               └──────────────┬──────────────────┘
@@ -35,7 +35,7 @@ It plays in real time by default and can pause, rewind, fast-forward and jump to
                                                           └──────────────────────────────────────┘
 ```
 
-The core design principle is that **every vehicle position is a pure function of (movement plan, overlays, time)**. Nothing steps a simulation forward frame by frame. That makes seeking, rewinding and 1000× fast-forward trivial and deterministic, and it makes corrections and scenarios composable, because they just produce a different plan or overlay. The [dispatcher](#dispatcher) keeps this: it runs centrally (build time, the server), and its output is one more versioned plan that playback reads.
+The core design principle is that **every vehicle position is a pure function of (movement plan, overlays, time)**. Nothing steps a simulation forward frame by frame. That makes seeking, rewinding and 1000× fast-forward trivial and deterministic, and it makes corrections composable, because they just produce a different plan or overlay. The [dispatcher](#dispatcher) keeps this: it runs centrally (build time, the server), and its output is one more versioned plan that playback reads.
 
 Every vehicle state carries a **provenance** (`observed | interpolated | estimated`) and a `source`. The same concept drives the bus real-versus-estimated indicator and rail corrections.
 
@@ -101,8 +101,8 @@ The heart of the engine. It lives as versioned data in `config/networks/skytrain
 **Sourcing**
 
 1. `pipelines/fetch-osm.ts` runs an Overpass query for `railway=subway` ways and `railway=switch` nodes in the rail network's bbox (`network.json` → `bbox`), into `var/raw/osm/<network>/`.
-2. `pipelines/import-osm.ts` converts it into our format (`src/infra/network.ts` builds the topology, the same code scenarios use) and writes `tracks.generated.geojson`. Track with a future `opening_date` (e.g. the Broadway Extension) goes to `future.generated.geojson`, for scenarios only.
-3. **Hand fixes** live in `overrides.json`: switch pairings OSM doesn't encode, excluded ways (e.g. track closed for works), `addTrack` (GeoJSON track missing from OSM), platform pins and role-based `patternPlatforms` rules (pins for trips that terminate at versus pass through a station, for temporary operations such as the OMC4 works at Braid). They refer to OSM ids and coordinates, never to generated segment ids, so OSM can be re-pulled without losing them.
+2. `pipelines/import-osm.ts` converts it into our format (`src/infra/network.ts` builds the topology) and writes `tracks.generated.geojson`. Track with a future `opening_date` (e.g. the Broadway Extension) is left out until it opens.
+3. **Hand fixes** live in `overrides.json`: switch pairings OSM doesn't encode, excluded ways (e.g. track closed for works), `addTrack` (GeoJSON track missing from OSM, joined by `src/infra/compose.ts`), platform pins and role-based `patternPlatforms` rules (pins for trips that terminate at versus pass through a station, for temporary operations such as the OMC4 works at Braid). They refer to OSM ids and coordinates, never to generated segment ids, so OSM can be re-pulled without losing them.
 4. `npm run validate:infra` checks the result ([Validation](#validation)).
 
 **Platform mapping** (`src/infra/platforms.ts`) is a global optimisation, not a nearest-track snap: route consistency, distinct tracks per numbered platform (except terminal arrival and departure berths), and every trip end must be able to turn back or pull in to a yard. Two Canada Line Waterfront platforms are pinned by override.
@@ -132,7 +132,7 @@ The site's route groups, its layers panel's switches, come from the timetable ra
 
 ### Published plans
 
-`src/plan/published.ts`, written by `build-schedule` (and `npm run scenario`) through `writePlan` in `packages/data/src/plans.ts`. With every bus route drawn, a TransLink plan as one JSON file was 24 MB (about 2 MB brotli), 70 % of it trips for every service day of the feed (#194). So a plan is published in parts, next to each other in `data/feeds/<feed>/<version>/`, and the browser loads only the parts it shows:
+`src/plan/published.ts`, written by `build-schedule` through `writePlan` in `packages/data/src/plans.ts`. With every bus route drawn, a TransLink plan as one JSON file was 24 MB (about 2 MB brotli), 70 % of it trips for every service day of the feed (#194). So a plan is published in parts, next to each other in `data/feeds/<feed>/<version>/`, and the browser loads only the parts it shows:
 
 | File | What | TransLink, all buses (brotli at quality 11, as uploaded; 2026-10-20) |
 |---|---|---|
@@ -141,7 +141,7 @@ The site's route groups, its layers panel's switches, come from the timetable ra
 | `corridor-info.json` | The bus corridors' metadata without their geometry: per corridor (zoomed out and in), its frequency combo, and the short corridors with the corridors they join (`PlanCorridorInfo`) | 30 KB |
 | `paths/<group>.json` | Bus patterns' paths over the corridors (`PatternPath`, `src/plan/paths.ts`): per pattern, in order, each corridor it runs along, each time it does, from and to where along its shape; a file per group of routes, by the first character of their key (`pathGroup`: the 9 and 99 together, R1–R6, the N buses), so a combined route loads one or two | 11 files for TransLink, 4–50 KB each |
 | `rail-paths.json` | SkyTrain patterns' paths over its line pieces in the plan's tiles (centrelines and service tracks, matched to their shapes within 30 m), written by build-plan-tiles with the tiles that number those pieces | 15 KB |
-| `corridors-overview.json`, `corridors.json` | The bus corridors' geometry zoomed out and in, coded the same way, each with its frequency combo: for pipelines (`build-plan-tiles`, scenarios); the browser draws them from the [plan's tiles](#plan-tiles) | 60 KB, 85 KB |
+| `corridors-overview.json`, `corridors.json` | The bus corridors' geometry zoomed out and in, coded the same way, each with its frequency combo: for pipelines (`build-plan-tiles`); the browser draws them from the [plan's tiles](#plan-tiles) | 60 KB, 85 KB |
 | `../lines/<hash>.pmtiles` | The [plan's tiles](#plan-tiles) (`files.tiles`, set by `build-plan-tiles`), shared by the feed's plans whose lines are the same | 650 KB, of which a view loads its tiles |
 | `trips/<service>.json`, `trips/<service>.late.json` | A service's trips, as columns by pattern: start, id, block, headsign, and a stop-time profile shared by every trip of the pattern with the same running times | weekday 170 + 35 KB, Sunday 95 + 30 KB |
 
@@ -167,7 +167,6 @@ Every line the map draws for a plan is in vector tiles of its own (`src/plan/til
 - **Named by their content.** A plan's tiles are `data/feeds/<feed>/lines/<hash>.pmtiles`, the hash of their input (every feature, ids and properties included, in a fixed order, and `PLAN_TILES_FORMAT`), and its core names them (`files.tiles`, relative to it). A feed version whose lines didn't change gets the same hash and reuses the tiles already published (and cached by browsers); a plan can never be paired with tiles whose corridor ids don't match its metadata, since ids are part of what's hashed. Corridors are numbered by their geometry (then their patterns) when the plan is built (`byGeometry` in `build-schedule`), so unchanged corridors keep their ids. Tiles no plan names are removed.
 - **When.** After `build-infra` in `npm run data` (the track's service extents need every plan, so a plan's tiles come after them), and in `npm run data:gtfs` (with whatever track was published last). Building them takes seconds: TransLink's are 650 KB.
 - **Nothing dropped.** Every feature at every zoom (`--drop-rate=1 --no-feature-limit --no-tile-size-limit`), full detail at z14 (`--simplify-only-low-zooms`), which the map overzooms: a missing corridor would be a missing or wrongly coloured line.
-- **Scenarios** make their own beside their plan (`scenarios/<name>/lines/`), with their own track, so the engine has one code path.
 - What stays out: stations, exchanges and bus stops (GeoJSON from the plan: exchanges are grouped by the version's places file, which an admin can change within minutes), and vehicles, which move along the plan's shapes (`shapes.json`).
 
 ### Overview tiles
@@ -232,7 +231,7 @@ Output: **runs**, each an ordered list of movements (revenue trips and empty mov
 
 ## Movements and playback
 
-`src/movement/` (`kinematics.ts`, `playback.ts`, `types.ts`) and `src/infra/graph.ts`. The same code builds scenarios and feeds the dispatcher.
+`src/movement/` (`kinematics.ts`, `playback.ts`, `types.ts`) and `src/infra/graph.ts`. The same code feeds the dispatcher.
 
 - **Routing**: each leg (platform → platform, yard → platform, turnback) is routed on the track graph by shortest path, respecting turns. Legs start and end on the platform's own track. Revenue trains keep to main track.
 - **Timed paths**: each leg becomes a list of `(edgeId, fromOffset, toOffset)` plus a time profile. Per-line kinematics (acceleration, deceleration, top speed, dwell; `config/defaults/kinematics.json`) are fitted so run time matches the schedule; slack goes into the dwell.
@@ -293,8 +292,7 @@ Rendered positions come from a layered stack:
 
 ```
 movement plan (schedule-inferred, dispatched)
-  └─ + scenario edits (optional)
-      └─ + observations and disruptions (optional, time-stamped, each with a source)
+  └─ + observations and disruptions (optional, time-stamped, each with a source)
 ```
 
 Observations (`src/corrections/types.ts`) reference **service date + GTFS trip_id**, or **stop + time**, never inferred run ids, which change between builds. Kinds: a sighting at a platform (optionally with a consist), a delay, a cancellation, a consist, a position, and parked trains. The file format and validation rules are in `config/feeds/translink/observations/README.md` (`src/corrections/validate.ts`). Where they're stored and reviewed is in [docs/DESIGN.md → Corrections and previews](../../docs/DESIGN.md#corrections-and-previews).
@@ -304,16 +302,6 @@ Observations (`src/corrections/types.ts`) reference **service date + GTFS trip_i
 - Cancelled trips are hidden while their train runs them (the train still runs, empty, in the simulation).
 - Positions within 90 s of an observation are *observed*; spans whose times differ from the base plan by ≥ 5 s are *interpolated*.
 - The bus RT history is effectively the first observation source, using the same ideas in a simpler form. A future rail real-time adapter should emit `Observation`s rather than touch playback.
-
-## Scenarios
-
-A scenario is a directory in `config/networks/skytrain/scenarios/<name>/` (format in its README; `src/scenario/`):
-
-- `infrastructure.json`: a diff against the base graph: future OSM track, custom GeoJSON track, removals. `composeNetwork` rebuilds base + future + custom track by shared coordinates, with the same code as the OSM import.
-- `service.json`: either the base GTFS or service operations (e.g. `extend` a line) that produce a modified plan without mutating the base (it's `structuredClone`d).
-- optional config overrides for kinematics, fleet caps and turnback times.
-
-`npm run scenario -- <name>` runs the whole pipeline (apply the diff → validate → generate trips → infer runs → route → dispatch) and writes `var/public/data/networks/skytrain/scenarios/<name>/` (gitignored); `?scenario=<name>` shows it. Buses in scenarios are schedule-only. There's no editing UI, and recomputes stay central: browsers don't run the pipeline. The demo is `broadway-subway`.
 
 ## Disruptions and alerts
 
@@ -342,7 +330,7 @@ inputs = { closures, serviceChanges, anchors }      // all optional, each with a
 ```
 
 - **Deterministic:** the same inputs give byte-identical output (stable ordering, no wall clock, no randomness). Tested.
-- **Central only:** it runs at build time (base plans, scenarios, dates with corrections: `build:movements`, `build:dispatch`) and in the server (live). Browsers never dispatch; they download results, so every visitor sees the same plan. Client requests never trigger a dispatch; only new inputs and the build do. A patch only fits the build it was dispatched against (`baseBuiltAt`). So `build:movements` keeps a version's movement files, `builtAt` included, while what they're made from is the same (`inputs` in each file and `movements/index.json`: a hash of the plan's rail routes, patterns, stops, shapes, trips, services and stations, the track graph and its overrides, the kinematics, operations and dispatch settings, and the code: `pipelines/lib/source-hash.ts` hashes the script and every repo module it imports, and dispatching a date's (`build:dispatch`, the contexts it and the live dispatcher load, and `dispatch/date.ts`), so an edit there rebuilds without a format number to bump). A version whose index lists a file that's missing is rebuilt too. Bus-only changes to a plan leave them alone. A date's patch version (`dateVersion`) covers the base's `builtAt`, the dispatch settings and the date's observations and disruptions, so `build:dispatch` and the live dispatcher keep a patch while it's the same.
+- **Central only:** it runs at build time (base plans, dates with corrections: `build:movements`, `build:dispatch`) and in the server (live). Browsers never dispatch; they download results, so every visitor sees the same plan. Client requests never trigger a dispatch; only new inputs and the build do. A patch only fits the build it was dispatched against (`baseBuiltAt`). So `build:movements` keeps a version's movement files, `builtAt` included, while what they're made from is the same (`inputs` in each file and `movements/index.json`: a hash of the plan's rail routes, patterns, stops, shapes, trips, services and stations, the track graph and its overrides, the kinematics, operations and dispatch settings, and the code: `pipelines/lib/source-hash.ts` hashes the script and every repo module it imports, and dispatching a date's (`build:dispatch`, the contexts it and the live dispatcher load, and `dispatch/date.ts`), so an edit there rebuilds without a format number to bump). A version whose index lists a file that's missing is rebuilt too. Bus-only changes to a plan leave them alone. A date's patch version (`dateVersion`) covers the base's `builtAt`, the dispatch settings and the date's observations and disruptions, so `build:dispatch` and the live dispatcher keep a patch while it's the same.
 - **Playback stays pure:** positions = f(plan, dispatch result, t). The dispatcher steps through time internally; the ban on frame-stepped state applies to playback.
 
 **Signalling model.** SkyTrain uses moving-block CBTC (believed to be Thales SelTrac on all three lines; OPEN-QUESTIONS #26). Parameters are in `config/networks/skytrain/dispatch.json`, all guesses.
@@ -360,7 +348,7 @@ inputs = { closures, serviceChanges, anchors }      // all optional, each with a
 
 **Inputs** (typed and validated, each with a source and an active period):
 
-- **`closures`:** track out of service, from [disruptions](#disruptions-and-alerts), in the same diff format as scenario infrastructure.
+- **`closures`:** track out of service, from [disruptions](#disruptions-and-alerts), as track segments.
 - **`serviceChanges`:** cancelled trips, short-turns, and replacement headways for a section. What operators do when capacity drops is set by config until it's observed.
 - **`anchors`:** [observations](#corrections). A sighting pins a train to a stop at a time. The dispatcher absorbs the difference before the sighting (a hold at an earlier station, or early running within slack) and propagates knock-on delays through the signalling.
 - **Provenance:** trains within 90 s of an anchor are *observed*, trains whose times the dispatcher changed are *interpolated*, the rest *estimated*.
@@ -387,7 +375,7 @@ TransLink publishes no real-time data for the SeaBus, but the vessels broadcast 
 
 ## Validation
 
-- **Unit tests** (vitest, `test/`): service-day resolution and time parsing, feed selection across overlapping feeds, routing with turns, playback continuity, bus provenance at coverage edges, dispatcher determinism, no deadlock on single-track and stub fixtures, the Braid case (a northbound short-turn waits at the crossover for the departing one), disruptions, alert parsing, SeaBus berths, scenarios, bus RT, and observed stop times and statistics.
+- **Unit tests** (vitest, `test/`): service-day resolution and time parsing, feed selection across overlapping feeds, routing with turns, playback continuity, bus provenance at coverage edges, dispatcher determinism, no deadlock on single-track and stub fixtures, the Braid case (a northbound short-turn waits at the crossover for the departing one), disruptions, alert parsing, SeaBus berths, added track, bus RT, and observed stop times and statistics.
 - **`npm run validate:infra`** (`pipelines/validate-infra.ts`): every rail platform `stop_id` maps to exactly one platform, every consecutive stop pair in every trip is routable, every terminus has a legal turnback, every yard is reachable, no dangling nodes, and the diagram checklist (`infrastructure/diagram-checklist.json`) is satisfied. It also flags in-service track tagged construction or disused in OSM.
 - **`npm run validate:plan`** (`pipelines/validate-plan.ts`): no teleports between movements (fails), conflicts outside yards, delay added against the timetable per line (median, p95, the worst trips and where they waited), holds by place, broken deadlocks, and fleet in service per line.
 - **Debug view** (`?debug=1`): segment ids and platform markers on the map.

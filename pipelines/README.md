@@ -18,7 +18,6 @@ Build-time data pipelines, validators and tools, run from the repo root (`npm ru
 | `npm run build:observations` | `build-observations.ts` | Validate and publish observation files |
 | `npm run build:dispatch` | `build-dispatch.ts` | Re-dispatch dates with observations or disruptions into per-date patches, keeping a date's patch while its version (base, settings, inputs) is the same (`--force` redoes them all) |
 | `npm run build:rt-profile` | `build-rt-profile.ts` | Learn bus travel-time profiles from each feed's recorded history (`--feed <id>`; `--max-age-h <h>` keeps a feed's current profile younger than that, as the server's builds outside the nightly one do through `TRANSITOPIA_PROFILE_MAX_AGE_H`) ([Buses](../packages/transit-core/DESIGN.md#buses)) |
-| `npm run scenario -- <name>` | `scenario.ts` | Build a scenario ([Scenarios](../packages/transit-core/DESIGN.md#scenarios)) |
 | `npm run tiles -- --region bc` | `tiles.ts` | The basemap: a BC extract of the Protomaps daily build (~2 GB), plus fonts and sprites |
 
 After changing infrastructure, config or pipeline code, rebuild and run both validators.

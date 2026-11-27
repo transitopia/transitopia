@@ -1,25 +1,30 @@
-// Compose a scenario track network: base network + optional future OSM track + custom track, then
-// rebuild topology with the same code as the OSM import (packages/transit-core/DESIGN.md#scenarios). Pieces are joined wherever
-// they share a coordinate; custom track endpoints snap to existing track within a few metres.
+// Track missing from OSM (overrides.json → addTrack) joined to the imported network, then topology
+// rebuilt with the same code as the OSM import (packages/transit-core/DESIGN.md#track-graph). Pieces are
+// joined wherever they share a coordinate; added track's endpoints snap to existing track within a few metres.
 
 import { distM, localProjector, type LonLat } from "../geo.ts";
-import { buildNetwork, type OsmNode, type OsmWay } from "../infra/network.ts";
-import type { InfraCollection, LineKey, SegmentProps } from "../infra/types.ts";
-import type { CustomTrackProps } from "./types.ts";
+import { buildNetwork, type OsmNode, type OsmWay } from "./network.ts";
+import type {
+  InfraCollection,
+  LineKey,
+  SegmentKind,
+  SegmentProps,
+} from "./types.ts";
 
-/** Custom track endpoints within this distance of existing track join it (m). */
+/** Added track's endpoints within this distance of existing track join it (m). */
 const SNAP_M = 4;
 
-export interface ComposeInput {
-  base: InfraCollection;
-  future?: InfraCollection | undefined;
-  futureLines?: LineKey[] | undefined;
-  custom?:
-    GeoJSON.FeatureCollection<GeoJSON.LineString, CustomTrackProps> | undefined;
-  removeWays?: number[] | undefined;
+/** Properties of an added track piece (overrides.json → addTrack). */
+export interface AddedTrackProps {
+  kind?: SegmentKind;
+  lines?: LineKey[];
+  name?: string;
 }
 
-export function composeNetwork(input: ComposeInput): {
+export function addTrack(
+  base: InfraCollection,
+  added: GeoJSON.FeatureCollection<GeoJSON.LineString, AddedTrackProps>,
+): {
   fc: InfraCollection;
   stats: Record<string, number>;
 } {
@@ -53,7 +58,7 @@ export function composeNetwork(input: ComposeInput): {
     buffer: { railway: "buffer_stop" },
     crossing: { railway: "railway_crossing" },
   };
-  for (const f of input.base.features) {
+  for (const f of base.features) {
     if (f.properties.type === "node" && nodeTag[f.properties.kind])
       nodeFor(f.geometry.coordinates as LonLat, nodeTag[f.properties.kind]);
   }
@@ -61,7 +66,6 @@ export function composeNetwork(input: ComposeInput): {
   const ways: OsmWay[] = [];
   const wayLines = new Map<number, Set<LineKey>>();
   let nextWay = 1;
-  const remove = new Set(input.removeWays ?? []);
   const addSegmentWay = (
     p: SegmentProps,
     coords: LonLat[],
@@ -81,29 +85,16 @@ export function composeNetwork(input: ComposeInput): {
     ways.push({ type: "way", id, nodes: coords.map((c) => nodeFor(c)), tags });
     if (lines.length) wayLines.set(id, new Set(lines));
   };
-  for (const f of input.base.features) {
-    if (f.properties.type !== "segment" || remove.has(f.properties.osmWay))
-      continue;
+  for (const f of base.features) {
+    if (f.properties.type !== "segment") continue;
     addSegmentWay(
       f.properties,
       f.geometry.coordinates as LonLat[],
       f.properties.lines,
     );
   }
-  let futureCount = 0;
-  for (const f of input.future?.features ?? []) {
-    if (f.properties.type !== "segment") continue;
-    addSegmentWay(
-      f.properties,
-      f.geometry.coordinates as LonLat[],
-      f.properties.lines.length ?
-        f.properties.lines
-      : (input.futureLines ?? []),
-    );
-    futureCount++;
-  }
 
-  // Custom track: snap endpoints to nearby existing vertices, or else split the nearest existing
+  // Added track: snap endpoints to nearby existing vertices, or else split the nearest existing
   // track there (so crossovers can attach mid-segment).
   const allCoords = [...idByCoord.keys()].map(
     (k) => k.split(",").map(Number) as LonLat,
@@ -155,12 +146,12 @@ export function composeNetwork(input: ComposeInput): {
     allCoords.push(hit.at);
     return hit.at;
   };
-  let customCount = 0;
-  for (const f of input.custom?.features ?? []) {
+  let addedCount = 0;
+  for (const f of added.features) {
     const coords = [...(f.geometry.coordinates as LonLat[])];
     coords[0] = snap(coords[0]!);
     coords[coords.length - 1] = snap(coords[coords.length - 1]!);
-    // Later custom pieces (e.g. crossovers) can join this one's vertices.
+    // Later added pieces (e.g. crossovers) can join this one's vertices.
     for (const c of coords) allCoords.push(c);
     const p = f.properties ?? {};
     const id = nextWay++;
@@ -171,12 +162,12 @@ export function composeNetwork(input: ComposeInput): {
     if (p.name) tags.name = p.name;
     ways.push({ type: "way", id, nodes: coords.map((c) => nodeFor(c)), tags });
     if (p.lines?.length) wayLines.set(id, new Set(p.lines));
-    customCount++;
+    addedCount++;
   }
 
   // Stop positions carry over by coordinate.
   const stopNodes: OsmNode[] = [];
-  for (const f of input.base.features) {
+  for (const f of base.features) {
     if (f.properties.type !== "stop") continue;
     const id = nodeFor(f.geometry.coordinates as LonLat);
     const n = nodes.get(id)!;
@@ -192,11 +183,11 @@ export function composeNetwork(input: ComposeInput): {
   }
 
   const { fc, stats } = buildNetwork(ways, nodes, wayLines, stopNodes, {
-    source: `${input.base.metadata.source}; scenario composition`,
+    source: `${base.metadata.source}; added track`,
     generatedAt: new Date().toISOString(),
   });
   return {
     fc,
-    stats: { ...stats, futureSegments: futureCount, customTracks: customCount },
+    stats: { ...stats, addedTracks: addedCount },
   };
 }

@@ -131,7 +131,7 @@ export function routeSections(
 
   const out: RouteSection[] = [];
   for (const route of routeKeys) {
-    // Patterns without trips (e.g. superseded by a scenario) aren't drawn.
+    // Patterns without trips aren't drawn.
     const patterns = plan.patterns.filter(
       (p) => p.route === route && (counts[p.id] ?? 0) > 0,
     );

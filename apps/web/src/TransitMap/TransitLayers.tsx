@@ -176,11 +176,6 @@ export const TransitLayers: React.FC<{
   const colors = routeColorsFor(engine);
   return (
     <LayersPanel label="Transit layers">
-      {snap.scenario ?
-        <p className="px-4 pb-1 text-sm" title={snap.scenario.description}>
-          Scenario: <strong>{snap.scenario.name}</strong>
-        </p>
-      : null}
       {GROUPS.map((g) => {
         // Groups without routes (no rail in Victoria) are greyed out.
         const routes = snap.routes.filter((r) =>

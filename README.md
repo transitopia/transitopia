@@ -23,7 +23,7 @@ This repository is a monorepo (npm workspaces) containing most of the parts you 
 * `packages/map-style`: the site's basemap style (Protomaps, light and dark).
 * `packages/shared`: definitions shared by the website and server, such as the dataset registry behind the map's credits.
 * `pipelines`: build-time data pipelines and validators.
-* `config/networks/skytrain`: the SkyTrain rail network (track infrastructure, operations, dispatch, scenarios and disruptions), and `config/feeds/translink`: TransLink's feed (routes drawn, real-time budget, SeaBus berths, observations).
+* `config/networks/skytrain`: the SkyTrain rail network (track infrastructure, operations, dispatch and disruptions), and `config/feeds/translink`: TransLink's feed (routes drawn, real-time budget, SeaBus berths, observations).
 * `packages/cycling-core`: the cycling/micromobility map's logic: classifying OpenStreetMap's cycling infrastructure and the cycling tiles' schema (built by `npm run data:cycling`).
 
 How it all fits together is in [docs/DESIGN.md](docs/DESIGN.md), with each part's design in its own folder. [CLAUDE.md](CLAUDE.md) lists every command. Planned work is in [GitHub issues](https://github.com/transitopia/transitopia/issues).
