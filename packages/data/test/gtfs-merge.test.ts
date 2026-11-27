@@ -110,31 +110,24 @@ describe("mergeGtfs", () => {
     expect(await zipSignature(a)).toBe(await zipSignature(b));
   });
 
-  it("renames a time zone the feed takes as its own", async () => {
+  it("fails when the exports are in different time zones", async () => {
     const tz = (zone: string) =>
       `agency_id,agency_name,agency_timezone\n0,BCTransit,${zone}\n`;
-    const out = join(dir, "zones.zip");
-    await mergeGtfs(
-      [
-        await zip("comox-tz.zip", {
-          ...comox,
-          "agency.txt": tz("America/Vancouver"),
-        }),
-        await zip("dawson.zip", {
-          ...campbell,
-          "agency.txt": tz("America/Dawson_Creek"),
-        }),
-      ],
-      out,
-      { timezones: { "America/Dawson_Creek": "America/Vancouver" } },
-    );
-    expect(await readCsvAll(out, "agency.txt")).toEqual([
-      {
-        agency_id: "0",
-        agency_name: "BCTransit",
-        agency_timezone: "America/Vancouver",
-      },
-    ]);
+    await expect(
+      mergeGtfs(
+        [
+          await zip("comox-tz.zip", {
+            ...comox,
+            "agency.txt": tz("America/Vancouver"),
+          }),
+          await zip("dawson.zip", {
+            ...campbell,
+            "agency.txt": tz("America/Dawson_Creek"),
+          }),
+        ],
+        join(dir, "zones.zip"),
+      ),
+    ).rejects.toThrow(/agency\.txt/);
   });
 
   it("fails when two exports list a service differently", async () => {

@@ -29,8 +29,12 @@ export const VIEWS: readonly TransitView[] = [
   { name: "Vernon", bounds: [-119.35, 50.2, -119.2, 50.32] },
   // Nelson to Castlegar.
   { name: "West Kootenay", bounds: [-117.75, 49.25, -117.25, 49.52] },
+  // Cranbrook's routes (the East Kootenay's other systems are further out).
+  { name: "Cranbrook", bounds: [-115.8, 49.48, -115.72, 49.545] },
   // Downtown to UNBC and the College of New Caledonia.
   { name: "Prince George", bounds: [-122.86, 53.86, -122.7, 53.97] },
+  // Fort St. John's routes (Dawson Creek is 75 km south-east).
+  { name: "Fort St. John", bounds: [-120.89, 56.225, -120.79, 56.275] },
 ];
 
 /** [[west, south], [east, north]] for MapLibre. */
