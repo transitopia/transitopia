@@ -48,9 +48,11 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # A pinned TransLink GTFS static snapshot (gtfs-static.translink.ca, not the rate-limited
-      # Open API), so a new upstream feed can't change the result of a PR. Bump it deliberately. The
-      # validators check Metro Vancouver's rail, so the other feeds aren't fetched.
-      FIXTURE_FEED_DATE: "2026-09-25"
+      # Open API), so a new upstream feed can't change the result of a PR. Bump it deliberately, and
+      # before TransLink drops it: History/ keeps about eight weeks of weekly (Friday) snapshots, and
+      # the cache below is evicted after a week unused. The validators check Metro Vancouver's rail,
+      # so the other feeds aren't fetched.
+      FIXTURE_FEED_DATE: "2026-11-27"
     steps:
       - name: Check out code
         uses: actions/checkout@v7
