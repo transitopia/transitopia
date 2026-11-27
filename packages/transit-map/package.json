@@ -14,7 +14,7 @@
     "@transitopia/map-style": "*",
     "@transitopia/shared": "*",
     "@transitopia/transit-core": "*",
-    "maplibre-gl": "^6.16.0"
+    "maplibre-gl": "^6.19.0"
   },
   "devDependencies": {
     "@transitopia/config": "*",
