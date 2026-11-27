@@ -1,5 +1,5 @@
 {
-  "$comment": "Rail network record (docs/DESIGN.md#feeds-operators-and-rail-networks): the SkyTrain's track (infrastructure/), how trains run on it (operations.json, dispatch.json), and its disruptions. Its dispatch patches and track are published under data/networks/skytrain/.",
+  "$comment": "Rail network record (docs/DESIGN.md#feeds-operators-and-rail-networks): the SkyTrain's track (infrastructure/), and how trains run on it (operations.json, dispatch.json). Its dispatch patches and track are published under data/networks/skytrain/.",
   "id": "skytrain",
   "name": "SkyTrain",
   "timezone": "America/Vancouver",

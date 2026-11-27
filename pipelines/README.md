@@ -1,6 +1,6 @@
 # Pipelines
 
-Build-time data pipelines, validators and tools, run from the repo root (`npm run …` or `npx tsx pipelines/<name>.ts`). They write to `var/` (gitignored); [`@transitopia/data`](../packages/data/README.md)'s `paths.ts` is the one place that knows where data lives, and holds the data access the server shares with them (GTFS zips, disruption files, the track graph, dispatch contexts). The models they build are described in [packages/transit-core/DESIGN.md](../packages/transit-core/DESIGN.md). In production the server runs the build steps daily ([apps/server → Jobs](../apps/server/README.md#jobs)).
+Build-time data pipelines, validators and tools, run from the repo root (`npm run …` or `npx tsx pipelines/<name>.ts`). They write to `var/` (gitignored); [`@transitopia/data`](../packages/data/README.md)'s `paths.ts` is the one place that knows where data lives, and holds the data access the server shares with them (GTFS zips, the track graph, dispatch contexts). The models they build are described in [packages/transit-core/DESIGN.md](../packages/transit-core/DESIGN.md). In production the server runs the build steps daily ([apps/server → Jobs](../apps/server/README.md#jobs)).
 
 ## Building the transit data
 
@@ -16,7 +16,7 @@ Build-time data pipelines, validators and tools, run from the repo root (`npm ru
 | `npm run build:overview-tiles` | `build-overview-tiles.ts` | Every feed's routes for today at low zoom, coloured as the map's "Day": `var/public/tiles/transit-overview-v<N>.pmtiles` ([Overview tiles](../packages/transit-core/DESIGN.md#overview-tiles)) |
 | `npm run build:movements` | `build-movements.ts` | Infer runs and dispatch them, per service-day type (`--verbose`, `--no-dispatch`); a version whose inputs (`inputs`: its plan's rail content, the track, settings and code) haven't changed is kept as it is (`--force` rebuilds it) ([Run inference](../packages/transit-core/DESIGN.md#run-inference), [Dispatcher](../packages/transit-core/DESIGN.md#dispatcher)) |
 | `npm run build:observations` | `build-observations.ts` | Validate and publish observation files |
-| `npm run build:dispatch` | `build-dispatch.ts` | Re-dispatch dates with observations or disruptions into per-date patches, keeping a date's patch while its version (base, settings, inputs) is the same (`--force` redoes them all) |
+| `npm run build:dispatch` | `build-dispatch.ts` | Re-dispatch dates with observations into per-date patches, keeping a date's patch while its version (base, settings, inputs) is the same (`--force` redoes them all) |
 | `npm run build:rt-profile` | `build-rt-profile.ts` | Learn bus travel-time profiles from each feed's recorded history (`--feed <id>`; `--max-age-h <h>` keeps a feed's current profile younger than that, as the server's builds outside the nightly one do through `TRANSITOPIA_PROFILE_MAX_AGE_H`) ([Buses](../packages/transit-core/DESIGN.md#buses)) |
 | `npm run tiles -- --region bc` | `tiles.ts` | The basemap: a BC extract of the Protomaps daily build (~2 GB), plus fonts and sprites |
 

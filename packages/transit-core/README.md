@@ -12,7 +12,6 @@ Being here doesn't mean a module runs in the browser. The package holds the engi
 | `src/schedule/` | The schedule engine for timetable vehicles (SeaBus, WCE, buses), with re-timing and corrections | [SeaBus and West Coast Express](DESIGN.md#seabus-and-west-coast-express) |
 | `src/dispatch/` | The signalling-aware dispatcher and dispatch patches | [Dispatcher](DESIGN.md#dispatcher) |
 | `src/corrections/` | Observations: types, validation, and how they become dispatcher inputs or schedule corrections | [Corrections](DESIGN.md#corrections) |
-| `src/disruption/` | Disruptions: types, drafting from TransLink alerts, applying them to a date | [Disruptions and alerts](DESIGN.md#disruptions-and-alerts) |
 | `src/rt/` | Bus real-time data: snapshots, the request budget, prediction profiles, delay carry-forward, service changes, observed stop times, daily statistics | [Buses](DESIGN.md#buses), [docs/DESIGN.md → Retention and statistics](../../docs/DESIGN.md#retention-and-statistics) |
 | `src/ais/` | SeaBus AIS: fixes, matching to the timetable, smoothing | [SeaBus AIS](DESIGN.md#seabus-ais) |
 | `src/config.ts` | A schema for each config file (`config/networks/<network>/*.json`, `feed.json`, `network.json`, …), checked by `parseConfig` wherever one is loaded and by a test over every committed file. Settings are strict: a new one goes in its schema too. | [docs/DESIGN.md → Principles](../../docs/DESIGN.md) |

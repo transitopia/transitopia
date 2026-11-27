@@ -79,9 +79,7 @@ export async function buildData(opts: {
     childEnv.TRANSITOPIA_PROFILE_MAX_AGE_H = String(opts.profileMaxAgeH);
   // The pipelines read them from a directory laid out like config/ (correctionPaths).
   const n = await repo.exportFiles(CORRECTIONS_EXPORT_DIR);
-  timed(
-    `exported ${n.observationSets} observation sets and ${n.disruptions} disruptions for the build`,
-  );
+  timed(`exported ${n.observationSets} observation sets for the build`);
   childEnv.TRANSITOPIA_CORRECTIONS_DIR = CORRECTIONS_EXPORT_DIR;
   await run(process.execPath, ["--import", "tsx", "pipelines/data.ts"], {
     cwd: ROOT,

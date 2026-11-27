@@ -196,7 +196,7 @@ export class TrainPlayback {
   /**
    * Trains visible at `sec` (service-day seconds) of this file's service day. With a dispatch patch
    * applied (packages/transit-core/DESIGN.md#dispatcher), runs carry their observations: positions within 90 s of a sighting are
-   * observed, times moved by observations or disruptions interpolated.
+   * observed, times moved by observations interpolated.
    */
   vehiclesAt(
     sec: number,
@@ -224,8 +224,6 @@ export class TrainPlayback {
             serviceDayStart(serviceDate, this.pp.plan.timezone) + near.t * 1000;
       }
       if (run.consist) v.consist = run.consist;
-      const note = run.notes?.find((n) => sec >= n.t0 && sec <= n.t1);
-      if (note) v.note = v.note ? `${v.note} · ${note.text}` : note.text;
       out.push(v);
     }
     for (const [i, p] of (this.file.parked ?? []).entries()) {

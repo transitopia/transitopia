@@ -1490,6 +1490,43 @@ describe("service changes (GTFS-RT)", () => {
     ...emptyDayChanges(serviceDate("20260928")),
     ...patch,
   });
+  it("finds the alerts about a set of routes while they apply (SkyTrain notices)", () => {
+    const view = changesView(
+      [
+        day({
+          alerts: [
+            {
+              id: "sky",
+              entities: [{ routeKey: "expo" }],
+              stopIds: [],
+              periods: [{ start: T0, end: T0 + 3600_000 }],
+              header: "Expo Line: single-tracking",
+              description: "",
+              seen: [T0, T0 + 3600_000],
+            },
+            {
+              id: "bus",
+              entities: [{ routeKey: "99" }],
+              stopIds: [],
+              effect: EFFECT_DETOUR,
+              periods: [],
+              header: "99 detour",
+              description: "",
+              seen: [T0, T0 + 3600_000],
+            },
+          ],
+        }),
+      ],
+      300_000,
+    );
+    const rail = new Set(["expo", "millennium"]);
+    expect(view.alerts(rail, T0 + 60_000).map((a) => a.header)).toEqual([
+      "Expo Line: single-tracking",
+    ]);
+    expect(view.alerts(rail, T0 + 2 * 3600_000)).toEqual([]);
+    expect(view.alerts(new Set(), T0 + 60_000)).toEqual([]);
+  });
+
   const detour = (directionId?: number) =>
     day({
       alerts: [

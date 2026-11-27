@@ -54,7 +54,6 @@ const dispatch = z.strictObject({
   minHoldS: nonNeg,
   maxWaitS: pos,
   crossingBufferS: nonNeg,
-  singleTrackHeadwayS: pos,
   revenueFirst: z.boolean(),
 });
 

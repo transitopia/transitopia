@@ -3,7 +3,7 @@
 //   /rt/*, /feeds/*, /networks/*  public real-time API (rt/service.ts), CORS *, cached at the edge
 //   /healthz           freshness checks for monitoring (503 when data is stale)
 //   /auth/*            admin sign-in with GitHub (auth.ts)
-//   /admin/api/*       the review queue behind /admin: disruptions and observations with previews,
+//   /admin/api/*       the review queue behind /admin: observations with previews,
 //                      jobs and status. Admins only; CORS for ALLOWED_ORIGINS.
 
 import { statfs } from "node:fs/promises";
@@ -28,7 +28,6 @@ import { recentRuns } from "@transitopia/db/jobs.ts";
 import { storageSizes } from "@transitopia/db/storage.ts";
 import type * as z from "zod";
 import {
-  disruption,
   featureDetailResponse,
   featureFlagsResponse,
   featureSearchResponse,
@@ -47,10 +46,6 @@ import {
   type RtStatus,
   type StatusResponse,
 } from "@transitopia/shared/admin-api.ts";
-import type {
-  Disruption,
-  DisruptionFile,
-} from "@transitopia/transit-core/disruption/types.ts";
 import type { ObservationFile } from "@transitopia/transit-core/corrections/types.ts";
 import { observationProblems } from "@transitopia/transit-core/corrections/validate.ts";
 import { notModified, type RtService } from "./rt/service.ts";
@@ -301,33 +296,10 @@ export function createApp(deps: AppDeps): Hono<Env> {
   });
 
   app.get("/admin/api/corrections", async (c) => {
-    const [disruptions, observationSets] = await Promise.all([
-      repo.disruptions(),
-      repo.observationSets(),
-    ]);
     return c.json({
-      disruptions,
-      observationSets,
-      unparsedAlerts: service.alertDrafts?.unparsed ?? [],
+      observationSets: await repo.observationSets(),
       liveDispatch: service.dispatcher?.pointer() ?? {},
     } satisfies CorrectionsResponse);
-  });
-
-  // Edit (or create) a disruption. Edits keep the review state, except that a confirmed one goes
-  // back to draft: it has to be previewed and confirmed again.
-  app.put("/admin/api/disruptions/:id", async (c) => {
-    const id = c.req.param("id");
-    const body = await parseBody(c, disruption);
-    if (!body.ok) return body.response;
-    const d = body.value;
-    const problems = disruptionProblems(d, id);
-    if (problems.length) return c.json({ error: problems.join("; ") }, 400);
-    const old = await repo.disruption(id);
-    await repo.saveDisruption(d, {
-      state: !old || old.state === "confirmed" ? "draft" : old.state,
-      by: c.get("user").login,
-    });
-    return c.json({ ok: true });
   });
 
   app.put("/admin/api/observations/:id", async (c) => {
@@ -352,58 +324,29 @@ export function createApp(deps: AppDeps): Hono<Env> {
   });
 
   // Dispatch the dates it touches with this correction added: preview versions to look at on /transit.
-  app.post(
-    "/admin/api/:kind{disruptions|observations}/:id/preview",
-    async (c) => {
-      if (!service.dispatcher)
-        return c.json({ error: "Live dispatch runs on the leader" }, 409);
-      const { kind, id } = c.req.param();
-      let candidate;
-      if (kind === "disruptions") {
-        const d = await repo.disruption(id);
-        if (!d) return c.notFound();
-        const problems = disruptionProblems(d.body, id, true);
-        if (problems.length) return c.json({ error: problems.join("; ") }, 400);
-        candidate = { disruptions: [d.body] };
-      } else {
-        const s = await repo.observationSet(id);
-        if (!s) return c.notFound();
-        candidate = { observations: s.body.observations };
-      }
-      const versions = await service.dispatcher.preview(
-        candidate,
-        `${kind}:${id}`,
-      );
-      await repo.setState(
-        kind === "disruptions" ? "disruption" : "observations",
-        id,
-        "previewing",
-        c.get("user").login,
-      );
-      return c.json({ versions } satisfies PreviewResponse);
-    },
-  );
+  app.post("/admin/api/observations/:id/preview", async (c) => {
+    if (!service.dispatcher)
+      return c.json({ error: "Live dispatch runs on the leader" }, 409);
+    const id = c.req.param("id");
+    const s = await repo.observationSet(id);
+    if (!s) return c.notFound();
+    const versions = await service.dispatcher.preview(
+      { observations: s.body.observations },
+      `observations:${id}`,
+    );
+    await repo.setState(id, "previewing", c.get("user").login);
+    return c.json({ versions } satisfies PreviewResponse);
+  });
 
   app.post(
-    "/admin/api/:kind{disruptions|observations}/:id/:action{confirm|discard|reopen}",
+    "/admin/api/observations/:id/:action{confirm|discard|reopen}",
     async (c) => {
-      const { kind, id, action } = c.req.param();
-      if (kind === "disruptions" && action === "confirm") {
-        const d = await repo.disruption(id);
-        if (!d) return c.notFound();
-        const problems = disruptionProblems(d.body, id, true);
-        if (problems.length) return c.json({ error: problems.join("; ") }, 400);
-      }
+      const { id, action } = c.req.param();
       const state: ReviewState =
         action === "confirm" ? "confirmed"
         : action === "discard" ? "discarded"
         : "draft";
-      const ok = await repo.setState(
-        kind === "disruptions" ? "disruption" : "observations",
-        id,
-        state,
-        c.get("user").login,
-      );
+      const ok = await repo.setState(id, state, c.get("user").login);
       return ok ? c.json({ ok: true }) : c.notFound();
     },
   );
@@ -413,48 +356,11 @@ export function createApp(deps: AppDeps): Hono<Env> {
     const observations: Record<string, ObservationFile> = {};
     for (const s of await repo.observationSets(["confirmed"]))
       observations[s.id] = s.body;
-    const disruptions: Record<string, DisruptionFile> = {};
-    for (const d of await repo.disruptions(["confirmed"]))
-      disruptions[d.id] = { disruptions: [{ ...d.body, status: "confirmed" }] };
-    return c.json({ observations, disruptions });
+    return c.json({ observations });
   });
 
   app.notFound((c) => c.json({ error: "Not found" }, 404));
   return app;
-}
-
-/** What the disruption format requires (config/networks/skytrain/disruptions/README.md). */
-export function disruptionProblems(
-  d: Disruption,
-  id: string,
-  forConfirm = false,
-): string[] {
-  const p: string[] = [];
-  if (!d || typeof d !== "object") return ["not a disruption"];
-  if (d.id !== id || !ID.test(id))
-    p.push("id must match the URL and be [a-z0-9._-]");
-  if (!d.text) p.push("text is required");
-  if (!d.source) p.push("source is required");
-  if (!Array.isArray(d.active) || !d.active.length)
-    p.push("active needs at least one period");
-  for (const a of d.active ?? [])
-    if (!(instantOrNaN(a.from) < instantOrNaN(a.until)))
-      p.push(
-        `period ${a.from} → ${a.until} is not a valid range of ISO 8601 times with offset`,
-      );
-  if (!d.singleTrack?.length && !d.headway?.length)
-    p.push("needs singleTrack or headway (or both)");
-  for (const s of d.singleTrack ?? []) {
-    if (!s.line || s.between?.length !== 2)
-      p.push("singleTrack needs line and two stations in between");
-    if (forConfirm && !s.keep)
-      p.push(
-        `which track stays open between ${s.between?.join(" and ")}? Set keep to a platform stop`,
-      );
-  }
-  for (const h of d.headway ?? [])
-    if (!h.line || !(h.minS > 0)) p.push("headway needs line and minS > 0");
-  return p;
 }
 
 /** Data freshness (deployment/README.md#monitoring): the poller, AIS, the database, the jobs and the disk. */
@@ -572,13 +478,4 @@ async function parseBody<T>(
           400,
         ),
       };
-}
-
-/** Epoch ms of an ISO 8601 time with offset (what the disruption format requires), else NaN. */
-function instantOrNaN(iso: unknown): number {
-  try {
-    return Temporal.Instant.from(iso as string).epochMilliseconds;
-  } catch {
-    return NaN;
-  }
 }

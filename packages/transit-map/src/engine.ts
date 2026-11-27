@@ -2661,7 +2661,7 @@ export class TransitEngine {
       if (v) this.selectedRoute = feedKey(v.feed, v.routeKey);
     }
 
-    const notices = this.slots.flatMap((s) => s.store.noticesAt(t));
+    const notices = this.slots.flatMap((s) => s.noticesAt(t));
     if (notices.join("\n") !== this.notices.join("\n")) {
       this.notices = notices;
       this.dirty = true;

@@ -281,7 +281,7 @@ export function patternStarts(
 ): Record<string, number[]>[] {
   if (plan.patterns.every((p) => p.starts))
     return plan.patterns.map((p) => p.starts!);
-  // Per trips array: disruptions replace a plan's trips with a new one.
+  // Per trips array: a plan's trips can be replaced with a new array (withServiceTrips).
   const cached = startsOfTrips.get(plan.trips);
   if (cached?.length === plan.patterns.length) return cached;
   const out = plan.patterns.map((): Record<string, number[]> => ({}));

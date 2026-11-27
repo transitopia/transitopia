@@ -1,12 +1,12 @@
 // Publish dispatch patches for dates with inputs (packages/transit-core/DESIGN.md#dispatcher): re-dispatch each date that has
-// observations or disruptions and write what changed against its base plan.
-//   var/public/data/feeds/<rail feed>/observations/*.json (from build:observations) + config/networks/<network>/disruptions/*.json
+// observations and write what changed against its base plan.
+//   var/public/data/feeds/<rail feed>/observations/*.json (from build:observations)
 //     → var/public/data/networks/<network>/dispatch/<date>.json + index.json
 //
 //   npm run build:dispatch [-- --network skytrain] [--force]
 //
 // A date whose patch was made from the same inputs (its version, dateVersion: the base movement
-// file's builtAt, the dispatch settings, the date's observations and disruptions) keeps it; --force
+// file's builtAt, the dispatch settings, the date's observations) keeps it; --force
 // dispatches every date again. Changes to the dispatching code rebuild the base movement files
 // (build-movements), which gives every date a new version.
 
@@ -15,7 +15,6 @@ import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   PUBLIC_DIR,
-  correctionPaths,
   exists,
   railNetworksArg,
   type RailNetwork,
@@ -34,7 +33,6 @@ import type {
   ObservationFile,
   ObservationIndex,
 } from "@transitopia/transit-core/corrections/types.ts";
-import { datesOf, loadDisruptions } from "@transitopia/data/disruptions.ts";
 import {
   feedDataPath,
   networkDataPath,
@@ -58,11 +56,8 @@ async function buildNetwork(net: RailNetwork) {
       );
   const index: DispatchIndex = { schema: 1, byDate: {} };
   const builtAt = new Date().toISOString();
-  const disruptions = await loadDisruptions(correctionPaths(net).disruptions);
-  const dates = new Set(Object.keys(obsIndex.byDate).filter(isServiceDate));
-  for (const d of disruptions)
-    if (d.status !== "draft") for (const x of datesOf(d)) dates.add(x);
-  for (const date of [...dates].sort()) {
+  const dates = Object.keys(obsIndex.byDate).filter(isServiceDate);
+  for (const date of dates.sort()) {
     const observations: Observation[] = [];
     for (const p of obsIndex.byDate[date] ?? [])
       observations.push(
@@ -73,7 +68,7 @@ async function buildNetwork(net: RailNetwork) {
       log(`${date}: no dispatched plan covers this date; skipped`);
       continue;
     }
-    const inputs = { date, observations, disruptions };
+    const inputs = { date, observations };
     const path = networkDataPath(net.network, `dispatch/${date}.json`);
     const kept = was?.byDate[date];
     if (
@@ -89,18 +84,13 @@ async function buildNetwork(net: RailNetwork) {
     const patch = await dispatchDate(ctx, inputs, builtAt);
     await writeJson(join(PUBLIC_DIR, path), patch);
     index.byDate[date] = { version: patch.version, path };
-    const changed =
-      patch.file ?
-        `whole day re-planned (${patch.file.runs.length} runs)`
-      : `${patch.runs.length} runs changed`;
     log(
-      `${date}: ${patch.summary.inputs.join(", ") || "no inputs"} → ${changed}; ${patch.summary.forced.length} forced; ${Math.round(performance.now() - t0)} ms`,
+      `${date}: ${patch.summary.inputs.join(", ") || "no inputs"} → ${patch.runs.length} runs changed; ${patch.summary.forced.length} forced; ${Math.round(performance.now() - t0)} ms`,
     );
     for (const u of patch.unmatched)
       log(
         `    not applied (${u.reason}): ${JSON.stringify(u.obs).slice(0, 160)}`,
       );
-    for (const p of patch.problems ?? []) log(`    disruption problem: ${p}`);
   }
   // Patches of dates that no longer have inputs.
   const current = new Set(

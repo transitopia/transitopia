@@ -112,7 +112,7 @@ export async function buildAllMovements(
       : built;
     if (input.inputs) file.inputs = input.inputs;
     await writeJson(join(input.outDir, `${key}.json`), file);
-    // The inferred runs, for re-dispatching single dates with observations or disruptions.
+    // The inferred runs, for re-dispatching single dates with observations.
     if (input.dispatch)
       await writeJson(join(input.outDir, "inferred", `${key}.json`), built);
     index.files[key] = `${input.relDir}/${key}.json`;

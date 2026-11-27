@@ -4,7 +4,6 @@ Node-side access to the data on disk, used by both the [pipelines](../../pipelin
 
 - `src/paths.ts`: the one place that knows where data lives (`config/`, `var/`, the published data under `var/public/`: `feedPaths`, `networkDataDir`), plus JSON helpers and the checked readers `readNetworkConfig` (a rail network's settings file), `readNetwork(s)`, `readFeed(s)` (every feed in `config/feeds/`), `readFeedRoutes` and `readManifest`. `networkPaths(network)` gives a rail network's files, `correctionPaths(net)` its corrections as files (the committed ones, or an export laid out like `config/`), `cyclingPaths(area)` and `readCyclingConfig()` the cycling map's, `readFeedConfig` a feed's settings resolved in layers, and `railNetworks()` / `railNetwork()` / `railNetworksArg()` (`--network <id>`) each rail network with each feed on it.
 - `src/gtfs-zip.ts`, `src/gtfs-day.ts`: reading GTFS zips, and the archived feeds and one service day's trips and stops from them.
-- `src/disruptions.ts`: the disruption files and the service dates each one touches.
 - `src/infra.ts`: the track graph, platform mapping and overrides as published.
 - `src/osm-extracts.ts`, `src/osmium.ts`: downloaded OSM extracts by date and the cycling OSM files made from them (with their `latest.json` pointer), and running osmium-tool ([cycling-core → Building the tiles](../cycling-core/README.md#building-the-tiles)).
 - `src/plan-tiles.ts`: tippecanoe, for plan, overview and cycling tiles.

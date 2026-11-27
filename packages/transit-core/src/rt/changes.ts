@@ -1,4 +1,4 @@
-// Service changes TransLink publishes in GTFS-RT for our bus routes, collected per service date by
+// Service changes TransLink publishes in GTFS-RT for our bus routes and SkyTrain lines, collected per service date by
 // the RT service (apps/server/src/rt/changes.ts) and served at /feeds/<feed>/days/<YYYYMMDD>/changes (versioned, the feed's live endpoint points to the current version):
 //  - cancelled trips (TripUpdates schedule_relationship CANCELED). The feed drops a trip once its
 //    time has passed, so only a recording keeps them for replaying the day. Seen 2026-09-29: some
@@ -10,7 +10,9 @@
 //    alerts outlive the trip updates (a trip cancelled before recording started is only known from
 //    its alert). Those listing stops ("resuming service at Lonsdale Quay") skip just those stops;
 //  - DETOUR alerts. They name the route (and direction or trip) and the affected stops; the detour
-//    path is only in the text ("via Gilmore Ave, Lougheed Hwy, ..."), so it isn't drawn.
+//    path is only in the text ("via Gilmore Ave, Lougheed Hwy, ..."), so it isn't drawn;
+//  - SkyTrain alerts (track work, single-tracking, delays): there are no SkyTrain trip updates, so
+//    these are shown as text only, while they apply (ChangesView.alerts).
 // See config/feeds/translink/OPEN-QUESTIONS.md #28.
 
 import type { ServiceDate } from "../time.ts";
@@ -40,7 +42,7 @@ export interface RtDayChanges {
   cancelled: Record<string, [number, number]>;
   /** trip_id → stop_ids seen skipped (not for cancelled trips). */
   skipped: Record<string, string[]>;
-  /** Alerts for our bus routes seen during this (local calendar) day; trips they name run on it. */
+  /** Alerts for our bus routes and SkyTrain lines seen during this (local calendar) day; trips they name run on it. */
   alerts: RtRouteAlert[];
 }
 
@@ -129,6 +131,8 @@ export interface ChangesView {
     tripId: string | undefined,
     t: number,
   ) => RtRouteAlert[];
+  /** Alerts about any of these routes that apply at t. */
+  alerts: (routeKeys: ReadonlySet<string>, t: number) => RtRouteAlert[];
 }
 
 /** @param graceMs how long an alert still counts after it was last seen (its poll interval), fixed or at a time. */
@@ -157,7 +161,10 @@ export function changesView(
       }
     }
   }
-  const alerts = mergeAlerts(days).filter((a) => a.effect === EFFECT_DETOUR);
+  const merged = mergeAlerts(days);
+  const alerts = merged.filter((a) => a.effect === EFFECT_DETOUR);
+  const grace = (t: number) =>
+    typeof graceMs === "number" ? graceMs : graceMs(t);
   return {
     cancelledTrips: (date) =>
       [...cancelled]
@@ -167,14 +174,13 @@ export function changesView(
     skipped: (date, tripId) => skipped.get(`${date}|${tripId}`),
     detours: (routeKey, directionId, tripId, t) =>
       alerts.length ?
-        detoursFor(
-          alerts,
-          routeKey,
-          directionId,
-          tripId,
-          t,
-          typeof graceMs === "number" ? graceMs : graceMs(t),
-        )
+        detoursFor(alerts, routeKey, directionId, tripId, t, grace(t))
       : [],
+    alerts: (routeKeys, t) =>
+      merged.filter(
+        (a) =>
+          a.entities.some((e) => routeKeys.has(e.routeKey))
+          && alertActiveAt(a, t, grace(t)),
+      ),
   };
 }

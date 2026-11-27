@@ -73,10 +73,8 @@ const store = new Store(db.db);
 const repo = new CorrectionsRepo(db.db, rail);
 // First start on a new database: bring in the committed corrections (existing ids are kept).
 const imported = await repo.importFiles();
-if (imported.observationSets || imported.disruptions)
-  log(
-    `imported ${imported.observationSets} observation sets and ${imported.disruptions} disruptions from files`,
-  );
+if (imported.observationSets)
+  log(`imported ${imported.observationSets} observation sets from files`);
 
 const jobs =
   env.jobs && !env.forwardTo ?

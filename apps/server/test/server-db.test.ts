@@ -27,7 +27,7 @@ import { CorrectionsRepo } from "../src/corrections.ts";
 import { Auth } from "../src/auth.ts";
 import { createApp, health, type AppDeps } from "../src/app.ts";
 import { readEnv } from "../src/env.ts";
-import type { Disruption } from "@transitopia/transit-core/disruption/types.ts";
+import type { ObservationFile } from "@transitopia/transit-core/corrections/types.ts";
 import type { RtSnapshot } from "@transitopia/transit-core/rt/types.ts";
 import {
   correctionsResponse,
@@ -36,6 +36,19 @@ import {
 
 const { FeedMessage } = GtfsRealtimeBindings.transit_realtime;
 const RAIL = { network: "skytrain", feed: "translink" };
+const RIDER: ObservationFile = {
+  $comment: "Rider report",
+  observations: [
+    {
+      kind: "at_platform",
+      date: "2026-10-01",
+      source: "rider report",
+      stop: "Waterfront Station @ Platform 1",
+      time: "2026-10-01T08:15:30-07:00",
+      line: "expo",
+    },
+  ],
+};
 
 function positionsFeed(): Uint8Array {
   const now = Math.floor(Date.now() / 1000);
@@ -262,44 +275,14 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
     expect(onLost).not.toHaveBeenCalled();
   });
 
-  it("keeps a person's decision over an alert's draft, and applies only confirmed corrections", async () => {
+  it("applies only confirmed corrections", async () => {
     const repo = new CorrectionsRepo(t.db, RAIL);
-    const draft: Disruption = {
-      id: "alert-1",
-      source: "TransLink alert",
-      text: "Single-tracking",
-      status: "draft",
-      alertId: "1",
-      active: [
-        {
-          from: "2026-09-28T21:00:00-07:00",
-          until: "2026-09-29T02:00:00-07:00",
-        },
-      ],
-      singleTrack: [
-        { line: "expo", between: ["Edmonds", "Royal Oak"], keep: "" },
-      ],
-    };
-    expect(await repo.saveAlertDraft(draft)).toBe(true);
-    // The same alert again changes nothing.
-    expect(await repo.saveAlertDraft(draft)).toBe(false);
-    expect((await repo.load()).disruptions).toEqual([]);
-    await repo.saveDisruption({
-      ...draft,
-      singleTrack: [
-        { ...draft.singleTrack![0]!, keep: "Edmonds Station @ Platform 2" },
-      ],
-    });
-    await repo.setState("disruption", "alert-1", "confirmed", "someone");
-    expect(await repo.saveAlertDraft({ ...draft, text: "UPDATE: …" })).toBe(
-      false,
-    );
-    const applied = (await repo.load()).disruptions;
-    expect(
-      applied.map((d) => [d.id, d.status, d.singleTrack?.[0]?.keep]),
-    ).toEqual([["alert-1", "confirmed", "Edmonds Station @ Platform 2"]]);
-    const row = await repo.disruption("alert-1");
-    expect(row?.dates).toEqual(["2026-09-28"]);
+    await repo.saveObservationSet("rider-1", RIDER);
+    expect((await repo.load()).observations).toEqual([]);
+    await repo.setState("rider-1", "confirmed", "someone");
+    expect((await repo.load()).observations).toEqual(RIDER.observations);
+    const row = await repo.observationSet("rider-1");
+    expect(row?.dates).toEqual(["2026-10-01"]);
   });
 
   it("gates the admin API and validates corrections", async () => {
@@ -335,6 +318,12 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
         },
       });
 
+    const exportedSets = async () =>
+      (
+        (await (await call("/admin/api/export")).json()) as {
+          observations: Record<string, unknown>;
+        }
+      ).observations;
     expect((await call("/admin/api/corrections", {}, "wrong")).status).toBe(
       401,
     );
@@ -349,71 +338,42 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
       "https://www.transitopia.org",
     );
 
-    const d: Disruption = {
-      id: "works-1",
-      source: "rider report",
-      text: "Reduced service",
-      active: [
-        {
-          from: "2026-10-03T08:00:00-07:00",
-          until: "2026-10-03T12:00:00-07:00",
-        },
-      ],
-      singleTrack: [
-        {
-          line: "canada",
-          between: ["Bridgeport", "Richmond-Brighouse"],
-          keep: "",
-        },
-      ],
-    };
     expect(
       (
-        await call("/admin/api/disruptions/works-1", {
+        await call("/admin/api/observations/rider-2", {
           method: "PUT",
-          body: JSON.stringify({ ...d, text: "" }),
+          body: JSON.stringify({
+            file: {
+              observations: [{ ...RIDER.observations[0]!, stop: "" }],
+            },
+          }),
         })
       ).status,
     ).toBe(400);
     expect(
       (
-        await call("/admin/api/disruptions/works-1", {
+        await call("/admin/api/observations/rider-2", {
           method: "PUT",
-          body: JSON.stringify(d),
+          body: JSON.stringify({ file: RIDER }),
         })
       ).status,
     ).toBe(200);
-    // Confirming needs the open track.
-    const refused = await call("/admin/api/disruptions/works-1/confirm", {
-      method: "POST",
-    });
-    expect(refused.status).toBe(400);
-    expect(((await refused.json()) as { error: string }).error).toMatch(
-      /which track stays open/,
-    );
-    const fixed = {
-      ...d,
-      singleTrack: [
-        { ...d.singleTrack![0]!, keep: "Lansdowne Station @ Platform 1" },
-      ],
-    };
-    await call("/admin/api/disruptions/works-1", {
-      method: "PUT",
-      body: JSON.stringify(fixed),
-    });
     expect(
-      (await call("/admin/api/disruptions/works-1/confirm", { method: "POST" }))
-        .status,
+      (
+        await call("/admin/api/observations/rider-2/confirm", {
+          method: "POST",
+        })
+      ).status,
     ).toBe(200);
     // The responses match the shared schemas /admin parses them with.
     const list = correctionsResponse.parse(
       await (await call("/admin/api/corrections")).json(),
     );
-    expect(list.disruptions.find((x) => x.id === "works-1")).toMatchObject({
+    expect(list.observationSets.find((x) => x.id === "rider-2")).toMatchObject({
       state: "confirmed",
       reviewed_by: "dev",
     });
-    expect(list.disruptions[0]!.updated_at).toBeInstanceOf(Date);
+    expect(list.observationSets[0]!.updated_at).toBeInstanceOf(Date);
     const status = statusResponse.parse(
       await (await call("/admin/api/status")).json(),
     );
@@ -429,16 +389,13 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
           })
         ).status,
       ).toBe(400);
-    // Editing a confirmed disruption sends it back for review.
-    await call("/admin/api/disruptions/works-1", {
+    expect(Object.keys(await exportedSets())).toContain("rider-2");
+    // Editing a confirmed set sends it back for review.
+    await call("/admin/api/observations/rider-2", {
       method: "PUT",
-      body: JSON.stringify({ ...fixed, text: "Edited" }),
+      body: JSON.stringify({ title: "Edited", file: RIDER }),
     });
-    expect((await repo.disruption("works-1"))?.state).toBe("draft");
-    const exported = (await (await call("/admin/api/export")).json()) as {
-      disruptions: Record<string, unknown>;
-    };
-    expect(Object.keys(exported.disruptions)).toContain("alert-1");
-    expect(Object.keys(exported.disruptions)).not.toContain("works-1");
+    expect((await repo.observationSet("rider-2"))?.state).toBe("draft");
+    expect(Object.keys(await exportedSets())).not.toContain("rider-2");
   });
 });
