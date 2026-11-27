@@ -103,8 +103,6 @@ export interface Run {
   sources?: string[];
   /** Trips reported cancelled: the train is hidden while running them. */
   cancelled?: string[];
-  /** Notices for this train while they apply (e.g. a disruption on its line), service-day seconds. */
-  notes?: { t0: number; t1: number; text: string }[];
 }
 
 export interface PatternPaths {
@@ -146,7 +144,7 @@ export interface MovementsFile {
 export interface DispatchSummary {
   /** Service date the inputs applied to, if any (base plans have none). */
   date?: string;
-  /** Inputs used, for display ("3 observations, 1 disruption"). */
+  /** Inputs used, for display ("3 observations"). */
   inputs: string[];
   /** Per line: delay added at trip ends against the timetable (s). */
   delay: Record<

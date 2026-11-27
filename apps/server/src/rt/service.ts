@@ -5,7 +5,7 @@
 //
 //   GET /feeds/<id>/live                          a feed's live sources in one shared, edge-cached response
 //   GET /feeds/<id>/days/<YYYYMMDD>/ais           its vessels' AIS fixes recorded for a service date so far
-//   GET /feeds/<id>/days/<YYYYMMDD>/changes       a service date's bus service changes (current)
+//   GET /feeds/<id>/days/<YYYYMMDD>/changes       a service date's service changes and alerts (current)
 //   GET /feeds/<id>/days/<YYYYMMDD>/changes/<v>.json   a version of them (immutable)
 //   GET /networks/<id>/live/dispatch              a rail network's live dispatch, shared and edge-cached
 //
@@ -14,7 +14,6 @@
 //   GET /rt/history?feed=<id>&date=YYYY-MM-DD&hour=HH   a feed's recorded snapshots for one local hour (NDJSON)
 //   GET /rt/coverage?feed=<id>&from=ms&to=ms           a feed's recorder coverage intervals
 //   GET /rt/status                      the pollers' health (no secrets)
-//   GET /rt/alerts                      current alerts for our rail lines (and whether drafted)
 //   GET /networks/<id>/dispatch                    a rail network's live dispatch: current patch per service date (index)
 //   GET /networks/<id>/dispatch/<date>/<v>.json    a patch version (immutable)
 //
@@ -53,7 +52,6 @@ import type { LeaderLock } from "../leader.ts";
 import type { CorrectionsRepo } from "../corrections.ts";
 import type { RtStatus } from "@transitopia/shared/admin-api.ts";
 import { FeedPoller } from "./feed.ts";
-import type { DecodedAlert } from "./upstream.ts";
 import {
   addDays,
   localDate,
@@ -65,11 +63,6 @@ import {
   type LiveAisSection,
   type LiveResponse,
 } from "@transitopia/transit-core/rt/live.ts";
-import { AlertDrafts } from "./alerts.ts";
-import {
-  draftFromAlert,
-  type ServiceAlert,
-} from "@transitopia/transit-core/disruption/alerts.ts";
 
 export interface HttpResult {
   status: number;
@@ -156,8 +149,8 @@ export interface RtServiceOptions {
    */
   store?: Store | undefined;
   /**
-   * Corrections in the database: alert drafts go there, and the dispatcher reads it. The server
-   * always has them; without them (tests), there's no live dispatch and no alert drafts.
+   * Corrections in the database, which the dispatcher reads. The server always has them; without
+   * them (tests), there's no live dispatch.
    */
   corrections?: CorrectionsRepo | undefined;
   /** Leader election (the server's: PgLeaderLock); without one (tests), this process leads. */
@@ -168,7 +161,7 @@ export interface RtServiceOptions {
   onLead?: (() => void) | undefined;
   /**
    * The rail network (packages/data/src/paths.ts → railNetwork): its live dispatch is served under
-   * /networks/<id>/, and its feed's alerts become disruption drafts. Without one, neither runs.
+   * /networks/<id>/. Without one, it doesn't run.
    */
   rail?: RailNetwork | undefined;
   log?: (msg: string) => void;
@@ -178,14 +171,11 @@ export interface RtServiceOptions {
 const LEADER_RETRY_MS = 30_000;
 
 export class RtService {
-  private alerts: ServiceAlert[] = [];
-  /** Drafts from the rail feed's alerts (none without a rail network or corrections). */
-  readonly alertDrafts: AlertDrafts | undefined;
   /** One per feed with real time, by feed id. */
   readonly pollers = new Map<string, FeedPoller>();
   /** The feeds served under /feeds/<id>/. */
   readonly feeds: ReadonlySet<string>;
-  /** The rail network, if this server has one: live dispatch and alert drafts are its. */
+  /** The rail network, if this server has one: live dispatch is its. */
   readonly rail: RailNetwork | undefined;
   private running = false;
   private startedAt = Date.now();
@@ -225,7 +215,6 @@ export class RtService {
     this.onLead = opts.onLead;
     if (opts.forwardTo) this.leaderUrl = opts.forwardTo.replace(/\/$/, "");
     const poll = !opts.forwardTo && (opts.poll ?? true);
-    const railFeeds = new Set(this.rail ? [this.rail.feed] : []);
     for (const feed of opts.feeds ?? [parseFeed(translinkFeed)]) {
       const rt = feed.realtime;
       if (!rt) continue;
@@ -243,13 +232,6 @@ export class RtService {
           record: this.record,
           store: opts.store,
           log: this.log,
-          // Drafts from the rail feed's alerts for its lines.
-          ...(railFeeds.has(feed.id) ?
-            {
-              onAlerts: (alerts: DecodedAlert[], rail: Map<string, string>) =>
-                this.railAlerts(alerts, rail),
-            }
-          : {}),
         }),
       );
     }
@@ -302,46 +284,11 @@ export class RtService {
       if (stream) this.aisStream?.add(stream);
       this.aisFeeds.set(feed.id, { cfg, stream });
     }
-    // Alert drafts and their history go with the rail feed's recordings.
-    this.alertDrafts =
-      this.rail && opts.corrections ?
-        new AlertDrafts({
-          repo: opts.corrections,
-          historyDir: join(this.historyDir, this.rail.feed),
-          log: this.log,
-        })
-      : undefined;
   }
 
   /** Whether this process polls, records and dispatches (false while following another). */
   get leading(): boolean {
     return this.isLeader;
-  }
-
-  /** The rail network's lines' alerts: drafts of the ones we can model (packages/transit-core/DESIGN.md#disruptions-and-alerts). */
-  private async railAlerts(
-    decoded: DecodedAlert[],
-    railKeyById: Map<string, string>,
-  ): Promise<void> {
-    this.alerts = decoded
-      .map((a) => ({
-        id: a.id,
-        lines: [
-          ...new Set(
-            a.routeIds
-              .map((r) => railKeyById.get(r))
-              .filter((k): k is string => Boolean(k)),
-          ),
-        ],
-        stopIds: a.stopIds,
-        periods: a.periods,
-        ...(a.cause !== undefined ? { cause: a.cause } : {}),
-        ...(a.effect !== undefined ? { effect: a.effect } : {}),
-        header: a.header,
-        description: a.description,
-      }))
-      .filter((a) => a.lines.length > 0);
-    await this.alertDrafts?.update(this.alerts);
   }
 
   /**
@@ -405,12 +352,6 @@ export class RtService {
       this.log(`Streaming ${id}'s vessel positions from aisstream.io`);
     }
     await this.aisStream?.start();
-    // The last alerts, so /rt/alerts and /admin aren't empty until the first alerts poll.
-    if (this.alertDrafts)
-      this.alerts = await this.alertDrafts.restore().catch((e: Error) => {
-        this.log(`could not restore alerts (${e.message})`);
-        return [];
-      });
     for (const p of this.pollers.values()) await p.start();
   }
 
@@ -668,17 +609,6 @@ export class RtService {
           body: f.body,
         };
       }
-      case "/rt/alerts":
-        return json(
-          200,
-          {
-            alerts: this.alerts.map((a) => ({
-              ...a,
-              drafted: Boolean(draftFromAlert(a).draft),
-            })),
-          },
-          { "Cache-Control": "public, max-age=60" },
-        );
       case "/rt/status":
         return json(200, this.status() satisfies RtStatus);
       default:

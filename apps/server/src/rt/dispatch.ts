@@ -19,9 +19,7 @@ import {
   type RailNetwork,
 } from "@transitopia/data/paths.ts";
 import { DispatchContexts } from "@transitopia/data/dispatch-context.ts";
-import { datesOf } from "@transitopia/data/disruptions.ts";
 import {
-  activeDisruptions,
   dateVersion,
   dispatchDate,
   type DateInputs,
@@ -31,7 +29,6 @@ import type {
   DispatchPatch,
 } from "@transitopia/transit-core/dispatch/patch.ts";
 import type { Observation } from "@transitopia/transit-core/corrections/types.ts";
-import type { Disruption } from "@transitopia/transit-core/disruption/types.ts";
 import {
   addDays,
   localDate,
@@ -167,7 +164,7 @@ export class LiveDispatcher {
 
   private async runCheck(): Promise<void> {
     await this.refreshBase();
-    const { observations, disruptions } = await this.corrections.load();
+    const { observations } = await this.corrections.load();
     const today = localDate(this.now());
     const lo = addDays(today, -serverConfig.dispatchWindowDays);
     const hi = addDays(today, serverConfig.dispatchWindowDays);
@@ -176,9 +173,6 @@ export class LiveDispatcher {
       const d = isoToServiceDate(o.date);
       if (d >= lo && d <= hi) dates.add(d);
     }
-    for (const d of disruptions)
-      if (d.status !== "draft")
-        for (const x of datesOf(d)) if (x >= lo && x <= hi) dates.add(x);
     // Dates whose inputs went away fall back to the base plan.
     for (const d of this.current.keys())
       if (!dates.has(d)) this.current.delete(d);
@@ -188,12 +182,9 @@ export class LiveDispatcher {
         observations: observations.filter(
           (o) => isoToServiceDate(o.date) === date,
         ),
-        disruptions,
       };
       const ctx = await this.contexts.forDate(date);
       if (!ctx) continue;
-      if (!inputs.observations.length && !activeDisruptions(inputs).length)
-        continue;
       const version = dateVersion(ctx, inputs);
       if (this.current.get(date) === version) continue;
       const existing = await this.patch(date, version);
@@ -252,7 +243,7 @@ export class LiveDispatcher {
    * candidate doesn't change, or outside the window, are left out.
    */
   async preview(
-    candidate: { observations?: Observation[]; disruptions?: Disruption[] },
+    candidate: { observations: Observation[] },
     previewOf: string,
   ): Promise<
     Record<string, { version: string; summary: DispatchPatch["summary"] }>
@@ -260,15 +251,11 @@ export class LiveDispatcher {
     await this.refreshBase();
     const confirmed = await this.corrections.load();
     const dates = new Set<ServiceDate>();
-    for (const o of candidate.observations ?? [])
-      dates.add(isoToServiceDate(o.date));
-    for (const d of candidate.disruptions ?? [])
-      for (const x of datesOf(d)) dates.add(x);
+    for (const o of candidate.observations) dates.add(isoToServiceDate(o.date));
     const out: Record<
       string,
       { version: string; summary: DispatchPatch["summary"] }
     > = {};
-    const ids = new Set((candidate.disruptions ?? []).map((d) => d.id));
     for (const date of [...dates].sort((a, b) => a.localeCompare(b))) {
       const ctx = await this.contexts.forDate(date);
       if (!ctx) continue;
@@ -276,16 +263,8 @@ export class LiveDispatcher {
         date,
         observations: [
           ...confirmed.observations,
-          ...(candidate.observations ?? []),
+          ...candidate.observations,
         ].filter((o) => isoToServiceDate(o.date) === date),
-        disruptions: [
-          // The candidate replaces a confirmed disruption with the same id (an edit).
-          ...confirmed.disruptions.filter((d) => !ids.has(d.id)),
-          ...(candidate.disruptions ?? []).map((d) => ({
-            ...d,
-            status: "confirmed" as const,
-          })),
-        ],
       };
       const version = dateVersion(ctx, inputs);
       const patch =

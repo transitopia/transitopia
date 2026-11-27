@@ -311,7 +311,6 @@ describe("corrections (observations → dispatcher → playback)", () => {
     minHoldS: 40,
     maxWaitS: 900,
     crossingBufferS: 30,
-    singleTrackHeadwayS: 720,
     revenueFirst: true,
   };
   const dopts = {

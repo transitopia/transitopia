@@ -3,17 +3,14 @@
 // Timestamps are Dates on both sides: the server's rows hold Dates, JSON carries ISO strings, and
 // parsing turns them back into Dates.
 //
-// Disruption and observation bodies are checked only for being objects here: their formats belong
-// to transit-core, and the server validates them (disruptionProblems, observationProblems) with
-// messages the page shows.
+// Observation bodies are checked only for being objects here: their format belongs to transit-core,
+// and the server validates them (observationProblems) with messages the page shows.
 
 import * as z from "zod";
-import type { Disruption } from "@transitopia/transit-core/disruption/types.ts";
 import type { ObservationFile } from "@transitopia/transit-core/corrections/types.ts";
 
 const object = (v: unknown) =>
   typeof v === "object" && v !== null && !Array.isArray(v);
-export const disruption = z.custom<Disruption>(object, "not a disruption");
 export const observationFile = z.custom<ObservationFile>(
   object,
   "not an observation file",
@@ -155,36 +152,19 @@ const correctionRow = <T extends z.ZodType>(body: T) =>
     reviewed_at: z.coerce.date().nullable(),
   });
 
-export const disruptionRow = correctionRow(disruption).extend({
-  /** The TransLink alert it was drafted from. */
-  alert_id: z.string().nullable(),
-});
-export type DisruptionRow = z.infer<typeof disruptionRow>;
-
 export const observationRow = correctionRow(observationFile).extend({
   title: z.string(),
 });
 export type ObservationRow = z.infer<typeof observationRow>;
 
-/** A SkyTrain alert the server couldn't draft a disruption from, and why. */
-export const unparsedAlert = z.object({
-  id: z.string(),
-  lines: z.array(z.string()),
-  header: z.string(),
-  reason: z.string(),
-});
-export type UnparsedAlert = z.infer<typeof unparsedAlert>;
-
 export const correctionsResponse = z.object({
-  disruptions: z.array(disruptionRow),
   observationSets: z.array(observationRow),
-  unparsedAlerts: z.array(unparsedAlert),
   /** Service date (YYYYMMDD) → the live dispatch version. */
   liveDispatch: z.record(z.string(), z.string()),
 });
 export type CorrectionsResponse = z.infer<typeof correctionsResponse>;
 
-/** PUT /admin/api/observations/:id (a disruption is PUT as it is). */
+/** PUT /admin/api/observations/:id. */
 export const observationSetPut = z.object({
   title: z.string().optional(),
   file: observationFile,

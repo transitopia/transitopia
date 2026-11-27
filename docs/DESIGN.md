@@ -23,7 +23,7 @@ Planned work is tracked in [GitHub issues](https://github.com/transitopia/transi
 Transitopia is one site with **transit** and **cycling** modes, backed by a long-running server in Canada and a PostgreSQL database for everything we collect and curate.
 
 - **Cycling**: the cycling and micromobility map of British Columbia, built from OpenStreetMap by our own pipeline ([packages/cycling-core](../packages/cycling-core/README.md)).
-- **Transit** (Metro Vancouver, with BC Transit's buses in Greater Victoria, Kelowna and the Fraser Valley to keep the design [multi-feed](#feeds-operators-and-rail-networks)): Our goal is to show every transit mode in real-time on a single map. Currently we show express buses and SeaBus using accurate real-time data, and we do our best to model SkyTrain and West Coast Express based on their schedule. The web app features a time slider covering past, live and projected future service. Corrections, disruptions and a signalling-aware dispatcher refine the schedule where possible.
+- **Transit** (Metro Vancouver, with BC Transit's buses in Greater Victoria, Kelowna and the Fraser Valley to keep the design [multi-feed](#feeds-operators-and-rail-networks)): Our goal is to show every transit mode in real-time on a single map. Currently we show express buses and SeaBus using accurate real-time data, and we do our best to model SkyTrain and West Coast Express based on their schedule. The web app features a time slider covering past, live and projected future service. Corrections, SkyTrain alerts and a signalling-aware dispatcher refine the schedule where possible.
 - **Walking** is planned for the future.
 
 Some upcoming priorities, in order: details panels, the frequency map, submissions and annotations, micromobility, all buses, a mobile app, and trip planning. Data quality and site performance improve continuously alongside all of these. The long-term goal is SkyTrain-level detail in other cities, one city at a time: Vancouver first, Montreal next.
@@ -35,7 +35,7 @@ Desktop-first, but the map and time controls must work on phones, with minimal c
 1. **Positions are a pure function of (plan, overlays, t).** No frame-stepped state in the client. This is what makes seeking, rewinding and fast-forwarding work, and it applies to every mode we animate.
 2. **Provenance everywhere.** Vehicles carry `observed | interpolated | estimated` and a source. Curated facts carry a source and a date. Never present an estimate as fact.
 3. **Upstream APIs are polled centrally,** within each provider's limits and on an explicit request budget ([below](#upstream-request-budget)). Client requests never trigger calls to TransLink, aisstream.io or OSM, and neither do development machines.
-4. **Shared state is computed centrally.** The dispatcher and disruption parsing run on the server or at build time, and every visitor sees the same versioned result.
+4. **Shared state is computed centrally.** The dispatcher runs on the server or at build time, and every visitor sees the same versioned result.
 5. **Secrets never reach the browser or the app bundle.**
 6. **Infrastructure is data.** OSM first, fixed upstream where possible. Our own fixes are reviewable data (`config/networks/*/infrastructure/overrides.json`).
 7. **Nothing untrusted reaches the public map or the dispatcher without review.** Drafts can be previewed, but only confirmed inputs are published ([below](#corrections-and-previews)).
@@ -81,7 +81,7 @@ packages/transit-core/     DOM-free engine: GTFS, track graph, run inference, di
 packages/transit-map/      the engine on a host MapLibre map: clock, playback, WebGL layers; no UI framework
 packages/map-style/        the Protomaps basemap style (light and dark), zoom helpers
 packages/cycling-core/     DOM-free cycling map logic: OSM classification, chains, the cycling tiles' schema
-packages/data/             Node-side data access for pipelines and the server: where data lives (paths.ts), GTFS zips, disruption files, dispatch contexts
+packages/data/             Node-side data access for pipelines and the server: where data lives (paths.ts), GTFS zips, dispatch contexts
 packages/db/               PostgreSQL: SQL migrations, Kysely types, partitions, jobs
 packages/shared/           shared by web and server: the dataset registry
 pipelines/                 build-time pipelines and validators
@@ -96,7 +96,7 @@ var/                       gitignored: downloads, recordings, build output (var/
 | Data | Where | Kept |
 |---|---|---|
 | Infrastructure overrides, operations config | Git (`config/networks/`), checked by the validators | |
-| Observations and disruptions | Database, with review states and an export to the file format in `config/feeds/*/observations/` and `config/networks/*/disruptions/` ([below](#corrections-and-previews)) | indefinitely |
+| Observations | Database, with review states and an export to the file format in `config/feeds/*/observations/` ([below](#corrections-and-previews)) | indefinitely |
 | Raw real-time data: GTFS-RT positions and AIS fixes | Database (partitioned by day) and hourly NDJSON.gz files, copied to the archive bucket | **60 days** |
 | Observed stop times per trip and stop | Database (partitioned by month) | indefinitely |
 | Per-route daily statistics | Database (`route_stats_daily`) | indefinitely |
@@ -144,13 +144,13 @@ Other providers get budgets under their own terms. aisstream.io allows 3 connect
 
 ## Corrections and previews
 
-Observations (sightings of a train or vessel at a stop at a time, consists, cancellations) and disruptions (single-track sections, reduced headways for a period) refine the schedule. The engine side is in [packages/transit-core/DESIGN.md → Corrections](../packages/transit-core/DESIGN.md#corrections) and [→ Disruptions and alerts](../packages/transit-core/DESIGN.md#disruptions-and-alerts).
+Observations (sightings of a train or vessel at a stop at a time, consists, cancellations) refine the schedule. The engine side is in [packages/transit-core/DESIGN.md → Corrections](../packages/transit-core/DESIGN.md#corrections). SkyTrain alerts aren't corrections: they're shown as text ([→ SkyTrain alerts](../packages/transit-core/DESIGN.md#skytrain-alerts)).
 
-- In production they live in the database, each with a review state: `draft → previewing → confirmed | discarded`. The server drafts disruptions from TransLink alerts; admins edit them at `/admin`.
+- In production they live in the database, each with a review state: `draft → previewing → confirmed | discarded`. Admins edit them at `/admin`.
 - **Preview**: an admin dispatches the dates a draft touches (within a week of today) with the draft added. The result is a **preview version**: an immutable dispatch patch like any other, but not advertised by the live endpoint. `/admin` links to `/transit?preview=<YYYYMMDD>:<version>`, and the time bar says it's showing unconfirmed corrections. Preview versions hold nothing private, so anyone with the link can see one.
-- **Confirm** publishes the input, and the next regular dispatch includes it. A disruption can't be confirmed without saying which track stays open. Editing a confirmed input sends it back to draft.
-- Observations are a feed's (they name its trips: `config/feeds/translink/observations/`) and disruptions a rail network's (they name its track: `config/networks/skytrain/disruptions/`). Those files are imported into a new database, and are what local pipeline runs (`npm run data`) read; the server's data build exports the database's confirmed ones for its pipelines instead, laid out the same way (`correctionPaths` in `packages/data/src/paths.ts`). `npm run corrections -- export|import|pull` moves corrections between the two.
-- Precedence, shown as provenance: manual observation > live sensor (GTFS-RT, AIS) > confirmed disruption or alert > schedule.
+- **Confirm** publishes the input, and the next regular dispatch includes it. Editing a confirmed input sends it back to draft.
+- Observations are a feed's (they name its trips: `config/feeds/translink/observations/`). Those files are imported into a new database, and are what local pipeline runs (`npm run data`) read; the server's data build exports the database's confirmed ones for its pipelines instead, laid out the same way (`correctionPaths` in `packages/data/src/paths.ts`). `npm run corrections -- export|import|pull` moves corrections between the two.
+- Precedence, shown as provenance: manual observation > live sensor (GTFS-RT, AIS) > schedule.
 
 ## Attribution
 
@@ -175,8 +175,8 @@ config/
                    routes, by name; ferries/<route>.json: a ferry route's berths, lanes and default
                    berth pair (the SeaBus, Hullo); for TransLink also observations/; README, OPEN-QUESTIONS
   networks/<id>/   network.json: a rail network (time zone, signalling, OSM area, the feeds whose
-                   track-level routes run on it); operations.json, dispatch.json; infrastructure/,
-                   disruptions/; README, OPEN-QUESTIONS
+                   track-level routes run on it); operations.json, dispatch.json; infrastructure/;
+                   README, OPEN-QUESTIONS
 ```
 
 | Feed (operator) | Where | Drawn |
@@ -207,7 +207,7 @@ Everything that comes from a feed is keyed by the feed, and happens once however
 - **Built** per feed: `var/raw/gtfs/<feed>/<version>/`, published at `data/feeds/<feed>/manifest.json` and `data/feeds/<feed>/<version>/` (plan, movements, platforms, real-time profile); each plan names its feed (`ServicePlan.feed`). The manifest also says where the feed runs (`coverage`: the bbox of every version's stops and shapes), which is how the map knows when to load it. A GTFS `feed_version` becomes a directory name with anything but letters, digits, `.`, `_` and `-` replaced (`versionDir`).
 - **Polled and recorded** per feed: one poller each on the server's leader, within the feed's own budget (`feed.json` → `realtime.poll`), and one AIS stream for a feed whose vessels report AIS (`feed.json` → `ais`: TransLink's SeaBus); recordings in `var/rt-history/<feed>/` and `var/ais-history/<feed>/` (archived under the same paths); database rows keyed by `feed_id`. The server's endpoints for recordings take the feed (`/rt/history?feed=<id>`, `/rt/coverage?feed=<id>`), and refuse a request without one.
 - A feed's **observations** (sightings of its trips) are published at `data/feeds/<feed>/observations/`.
-- What's the **rail network's** is published under `data/networks/<id>/`: its track (`infra/`), and dispatch patches (`dispatch/`); its live dispatch is served at `/networks/<id>/live/dispatch` (and as an index at `/networks/<id>/dispatch`), its versions kept in `var/dispatch-history/<network>/` and the `dispatch_versions` table (`network_id`), its disruptions in the `disruptions` table (`network_id`).
+- What's the **rail network's** is published under `data/networks/<id>/`: its track (`infra/`), and dispatch patches (`dispatch/`); its live dispatch is served at `/networks/<id>/live/dispatch` (and as an index at `/networks/<id>/dispatch`), its versions kept in `var/dispatch-history/<network>/` and the `dispatch_versions` table (`network_id`).
 
 **Track-level rail** runs on rail networks: `railNetworks()` in `packages/data/src/paths.ts` lists each network with each feed on it (`network.json` → `feeds`, whose routes of kind `skytrain` run on its track), and the rail pipelines loop over them (or take `--network <id>`). The server's live dispatcher, its corrections and `/admin` support one rail network so far (`railNetwork()`, which fails at startup if there are more), but everything they keep is keyed by its id, so a second network needs only a dispatcher per network. `network.json` → `signalling` says what the dispatcher models (only `moving-block` so far).
 
@@ -241,7 +241,7 @@ Every station, bus exchange, stop and route in every feed, and every bike route,
 
 ### Features and areas
 
-Nothing in the registry is keyed by an area. Place-bound engineering data (track, dispatch, disruptions) is a rail network's; what a stop or route belongs to is its operator and feed (`features.operator_id`, `feed_id`). A station or exchange can hold several feeds' stops (the Fraser Valley's 66 at TransLink's Lougheed Station), and the map shows it as one place.
+Nothing in the registry is keyed by an area. Place-bound engineering data (track, dispatch) is a rail network's; what a stop or route belongs to is its operator and feed (`features.operator_id`, `feed_id`). A station or exchange can hold several feeds' stops (the Fraser Valley's 66 at TransLink's Lougheed Station), and the map shows it as one place.
 
 ### Relationships between features
 
@@ -309,7 +309,8 @@ Made while planning V2 (2026-09-29 to 2026-10-01). Change them deliberately, and
 | Retention | Raw real-time data (GTFS-RT, AIS, later GBFS) kept **60 days**. Observed stop times, per-route statistics and GTFS feeds kept **indefinitely**. |
 | Statistics | "On time" is **1 minute early to 3 minutes late** at timepoints. |
 | Frequency metric | The **90th-percentile gap over the upcoming hour** from the time viewed, per service and per shared corridor segment, computed at least every 30 minutes. Bands (one definition for cards and map, `packages/shared/src/frequency.ts`): Good ≤ 6 min, OK ≤ 12, Poor ≤ 20, Bad over 20. |
-| Corrections | Observations and disruptions live in the database with review states and previews, with a file export. |
+| Corrections | Observations live in the database with review states and previews, with a file export. |
+| Disruptions | **Removed** (2026-11-27): SkyTrain disruptions drafted from TransLink alerts (closures and reduced headways, re-planned and dispatched) applied only once an admin confirmed which track stays open, and none ever were. SkyTrain alerts are shown as text instead ([packages/transit-core → SkyTrain alerts](../packages/transit-core/DESIGN.md#skytrain-alerts)); anything automated from GTFS-RT (cancellations, skipped stops, detours) is unchanged. |
 | Data snapshots | The server records all the time; developers pull snapshots of production data. Whether each dataset can be published depends on its source's license. |
 | Attribution | Shown dynamically: the map credits exactly the datasets visible. |
 | Analytics | Privacy-friendly: Cloudflare Web Analytics (cookieless). Self-hosted Umami later if we need custom events, carrying no identifiers. |
@@ -321,7 +322,7 @@ Made while planning V2 (2026-09-29 to 2026-10-01). Change them deliberately, and
 | Mobile app | Low priority; mobile web must be good enough for testing and reporting. **Capacitor** is tentatively accepted (our core is MapLibre GL JS plus a custom WebGL layer, which React Native's native MapLibre bindings can't run), to be reviewed before starting. Meanwhile: token auth, bottom-sheet panels, touch targets ≥ 44 px, no dependence on hover. |
 | Trip planning | Wanted after the mobile app. Evaluate reusing an existing system (the Transit app's API, OpenTripPlanner, MOTIS) before building anything. |
 | Next city | Montreal, a long way off. |
-| Feeds, operators and rail networks | **Operators are separate from feeds** (2026-10-15): settings come in layers (defaults, operator, feed, then route) under `config/`. **Rail networks own track** (2026-11-01, #250): infrastructure, operations, dispatch and disruptions are a rail network's, observations and ferry berths a feed's. **No regions; feeds load by viewport** (2026-11-02, #250): regions (each a set of feeds the site showed one at a time) cut routes off at their edges and were thrown away at every boundary; one engine now loads each feed whose coverage is in view, and the site keeps only a few named views. Greater Victoria, Central Okanagan and the Fraser Valley (BC Transit's buses) keep the design multi-feed and multi-agency before a second big city. Zoomed out, every feed's routes come from one overview tileset (2026-10-20, #198). |
+| Feeds, operators and rail networks | **Operators are separate from feeds** (2026-10-15): settings come in layers (defaults, operator, feed, then route) under `config/`. **Rail networks own track** (2026-11-01, #250): infrastructure, operations and dispatch are a rail network's, observations and ferry berths a feed's. **No regions; feeds load by viewport** (2026-11-02, #250): regions (each a set of feeds the site showed one at a time) cut routes off at their edges and were thrown away at every boundary; one engine now loads each feed whose coverage is in view, and the site keeps only a few named views. Greater Victoria, Central Okanagan and the Fraser Valley (BC Transit's buses) keep the design multi-feed and multi-agency before a second big city. Zoomed out, every feed's routes come from one overview tileset (2026-10-20, #198). |
 | Live data | **One poll per feed and per rail network** (2026-11-01, #250; one per region before, issue #177): `/feeds/<id>/live` and `/networks/<id>/live/dispatch`, each shared by every visitor and every view at the edge, with a section per source and pointers to immutable per-date files for anything large or slow-changing ([apps/server → Live endpoints](../apps/server/README.md#live-endpoints)). Per feed rather than per view, so a feed shown in several places is fetched and cached once. Polling, not server-sent events or WebSockets: an open connection per visitor would reach the one VM and lose the edge cache. |
 | Feature IDs | **Prefixed random IDs** with a decorative name suffix in URLs, **refs** for source records, **no slugs** (2026-10-18, issue #193). The registry is in the database, GTFS refs hold over ranges of feed versions, containment is the registry's (the heuristics only propose it), and only production mints the IDs that are published. Plans hold no IDs: places files beside them do, so registry edits publish in minutes ([above](#feature-ids)). |
 | Cycling layer | **Built by our TypeScript pipeline** (2026-10-27): osmium filters Geofabrik's extract in GitHub Actions, which publishes the result (about 20 MB for BC), so nothing else needs osmium, the 1.3 GB extract or osmium's 2.5 GB of memory; `packages/cycling-core` classifies ways and joins them into chains, and tippecanoe tiles them, as the transit lines are tiled. It replaced the Java Planetiler profile, so the classification is shared with the site and, later, the server, and a selected path is a whole chain ([packages/cycling-core](../packages/cycling-core/README.md)). |

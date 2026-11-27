@@ -33,8 +33,6 @@ export interface DispatchConfig {
   minHoldS: number;
   maxWaitS: number;
   crossingBufferS: number;
-  /** Default through-service headway on a single-tracked line (disruptions without a headway). */
-  singleTrackHeadwayS: number;
   revenueFirst: boolean;
 }
 

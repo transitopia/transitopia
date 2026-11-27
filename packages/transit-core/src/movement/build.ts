@@ -118,18 +118,8 @@ function reversePath(p: Path): Path {
 const lengthOf = (pieces: PathPiece[]) =>
   pieces.reduce((s, p) => s + Math.abs(p.to - p.from), 0);
 
-/** Track out of service for part of a day (a disruption): trips of `patterns` route around it. */
-export interface Closure {
-  segs: Set<string>;
-  /** Service-day seconds. */
-  from: number;
-  to: number;
-  patterns: Set<number>;
-}
-
 export interface BuildInput {
   graph: TrackGraph;
-  closures?: Closure[];
   pp: PreparedPlan;
   platforms: Map<string, PlatformAssignment>;
   /** Per-pattern platform positions from role-based rules. */
@@ -147,13 +137,7 @@ export function buildMovements({
   services,
   ops,
   kin,
-  closures = [],
 }: BuildInput): MovementsFile {
-  /** Track closed at service time t (disruptions), and a cache-key tag for it. */
-  const closedAt = (t: number): { closed?: Set<string>; tag: string } => {
-    const i = closures.findIndex((c) => t >= c.from && t <= c.to);
-    return i < 0 ? { tag: "" } : { closed: closures[i]!.segs, tag: `c${i}|` };
-  };
   const plan = pp.plan;
   const railRoutes = new Set(
     plan.routes.filter((r) => r.kind === "skytrain").map((r) => r.key),
@@ -198,15 +182,7 @@ export function buildMovements({
   const patternsOut: MovementsFile["patterns"] = {};
   for (const p of plan.patterns) {
     if (!railRoutes.has(p.route)) continue;
-    const closure = closures.find((c) => c.patterns.has(p.id));
-    const r = routePattern(
-      g,
-      plan,
-      platforms,
-      p,
-      patternPositions,
-      closure?.segs,
-    );
+    const r = routePattern(g, plan, platforms, p, patternPositions);
     if (r.failures.length) continue;
     patternRoutes.set(p.id, r);
     patternsOut[p.id] = { hops: r.hops.map((h) => addPath(h!.pieces)) };
@@ -264,12 +240,10 @@ export function buildMovements({
   const pk = (p: TrackPos) => `${p.seg}@${p.offset.toFixed(1)}`;
   const tbCache = new Map<string, Path | null>();
   const turnback = (a: TripInfo, d: TripInfo): Path | null => {
-    const { closed, tag } = closedAt(a.arr);
-    const key = `${tag}${pk(a.pos1)}|${a.dir1}|${pk(d.pos0)}|${d.dir0}`;
+    const key = `${pk(a.pos1)}|${a.dir1}|${pk(d.pos0)}|${d.dir0}`;
     let r = tbCache.get(key);
     if (r !== undefined) return r;
     r = g.route(a.pos1, d.pos0, {
-      ...(closed ? { closed } : {}),
       fromDir: a.dir1,
       toDir: d.dir0,
       allowReversals: true,
@@ -286,18 +260,11 @@ export function buildMovements({
    * Path from a platform to the nearest yard (for pull-ins), extended into the yard. `reversed`: the
    * path will be run backwards (a pull-out), so traffic direction is judged the other way round.
    */
-  const toYard = (
-    pos: TrackPos,
-    dir: Dir,
-    reversed = false,
-    at = -1,
-  ): Path | null => {
-    const { closed, tag } = closedAt(at);
-    const key = `${tag}${pk(pos)}|${dir}|${reversed}`;
+  const toYard = (pos: TrackPos, dir: Dir, reversed = false): Path | null => {
+    const key = `${pk(pos)}|${dir}|${reversed}`;
     let r = yardCache.get(key);
     if (r !== undefined) return r;
     r = g.route(pos, null, {
-      ...(closed ? { closed } : {}),
       fromDir: dir,
       allowReversals: true,
       allowReverseAtStart: true,
@@ -351,8 +318,7 @@ export function buildMovements({
     const r = patternRoutes.get(d.t.pattern.id)!;
     const second = r.positions[1]!;
     const dir = -a.dir1 as Dir;
-    const { closed, tag } = closedAt(a.arr);
-    const key = `${tag}${pk(a.pos1)}|${dir}|${pk(second)}`;
+    const key = `${pk(a.pos1)}|${dir}|${pk(second)}`;
     let p = berthCache.get(key);
     if (p !== undefined) return p;
     p = g.route(a.pos1, second, {
@@ -360,7 +326,6 @@ export function buildMovements({
       allowReversals: false,
       maxLength: 12_000,
       kindPenalty: REVENUE_KIND_PENALTY,
-      ...(closed ? { closed } : {}),
     });
     if (p && p.reversals > 0) p = null;
     berthCache.set(key, p);
@@ -663,19 +628,12 @@ export function buildMovements({
       (o) =>
         o.from < to && from < o.to && Math.abs(o.offset - pos.offset) < len,
     );
-  const noRev = (
-    a: TrackPos,
-    dir: Dir | undefined,
-    b: TrackPos,
-    at: number,
-  ) => {
-    const { closed } = closedAt(at);
+  const noRev = (a: TrackPos, dir: Dir | undefined, b: TrackPos) => {
     const p = g.route(a, b, {
       fromDir: dir,
       allowReversals: false,
       maxLength: 12_000,
       kindPenalty: REVENUE_KIND_PENALTY,
-      ...(closed ? { closed } : {}),
     });
     return p && p.reversals === 0 ? p : null;
   };
@@ -705,14 +663,9 @@ export function buildMovements({
         chosen = { pos, arriveDir: a.dir1, departDir: defaultDepart };
         break;
       }
-      const inHop = noRev(
-        ra.positions[n - 2]!,
-        ra.hops[n - 2]!.startDir,
-        pos,
-        a.arr,
-      );
+      const inHop = noRev(ra.positions[n - 2]!, ra.hops[n - 2]!.startDir, pos);
       if (!inHop) continue;
-      const outHop = noRev(pos, -inHop.endDir as Dir, rd.positions[1]!, a.arr);
+      const outHop = noRev(pos, -inHop.endDir as Dir, rd.positions[1]!);
       if (!outHop) continue;
       chosen = {
         pos,
@@ -754,7 +707,7 @@ export function buildMovements({
       events,
     };
     // Pull-out: nearest yard behind the first platform, reversed.
-    const back = toYard(first.pos0, -first.dir0 as Dir, true, first.dep);
+    const back = toYard(first.pos0, -first.dir0 as Dir, true);
     const readyAt = first.dep - ops.yard.pullOutLeadS;
     if (back) {
       const out = reversePath(back);
@@ -827,7 +780,7 @@ export function buildMovements({
     }
     // Pull-in after the last trip.
     const last = cur!;
-    const inPath = toYard(last.pos1, last.dir1, false, last.arr);
+    const inPath = toYard(last.pos1, last.dir1, false);
     const unloadEnd = last.arr + ops.turnback.unloadS;
     hold(events, last.arr, unloadEnd, last.pos1, last.dir1);
     if (inPath) {

@@ -265,7 +265,7 @@ export class PlanStore {
   }
 
   /**
-   * The dispatch patch for a date (observations, disruptions; packages/transit-core/DESIGN.md#dispatcher): null if there is
+   * The dispatch patch for a date (observations; packages/transit-core/DESIGN.md#dispatcher): null if there is
    * none, undefined while loading. Patches are dispatched centrally, never in the browser.
    */
   private patchFor(date: ServiceDate): DispatchPatch | null | undefined {
@@ -314,8 +314,6 @@ export class PlanStore {
           const patch = j as DispatchPatch;
           for (const u of patch.unmatched)
             console.warn(`Observation not applied (${u.reason}):`, u.obs);
-          for (const pr of patch.problems ?? [])
-            console.warn(`Disruption not fully applied: ${pr}`);
           return patch;
         },
       );
@@ -524,19 +522,6 @@ export class PlanStore {
       changed = true;
     }
     if (changed) this.emit();
-  }
-
-  /** Disruptions in effect at instant t (epoch ms), from the dispatch patches of the days running then. */
-  noticesAt(t: number): string[] {
-    const out: string[] = [];
-    const today = localDate(t, this.tz);
-    for (const date of [addDays(today, -1), today]) {
-      const sec = (t - serviceDayStart(date, this.tz)) / 1000;
-      const patch = this.patchFor(date);
-      for (const n of patch?.notices ?? [])
-        if (sec >= n.from && sec <= n.to) out.push(`${n.text} (${n.source})`);
-    }
-    return out;
   }
 
   /** A feed's manifest (data/feeds/<feed>/manifest.json). */

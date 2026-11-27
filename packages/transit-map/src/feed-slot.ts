@@ -24,6 +24,7 @@ import {
   patternStarts,
   type FeedManifest,
   type PlanRoute,
+  type ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
 import type {
   PreparedPlan,
@@ -136,6 +137,8 @@ export interface FeedVehicles {
 }
 
 const NO_IDS: ReadonlySet<number> = new Set();
+/** Each plan's SkyTrain route keys (noticesAt). */
+const railRoutesOf = new WeakMap<ServicePlan, ReadonlySet<string>>();
 
 export class FeedSlot {
   readonly feed: string;
@@ -815,6 +818,21 @@ export class FeedSlot {
       this.corrections.other?.get(date),
       this.corrections.bus?.get(date),
     );
+  }
+
+  /** Its SkyTrain alerts that apply at t (packages/transit-core/src/rt/changes.ts), for the service-change badge. */
+  noticesAt(t: number): string[] {
+    const pp = this.store.planFor(this.displayDate(t));
+    if (!pp) return [];
+    let rail = railRoutesOf.get(pp.plan);
+    if (!rail)
+      railRoutesOf.set(
+        pp.plan,
+        (rail = new Set(
+          pp.plan.routes.filter((r) => r.kind === "skytrain").map((r) => r.key),
+        )),
+      );
+    return this.rt.alertsAt(rail, t);
   }
 
   /**

@@ -17,7 +17,7 @@ import { card } from "./styles.ts";
 
 /** An observation set (config/feeds/translink/observations/README.md) to review, or reviewed. */
 export function ObservationCard({ row }: { row: ObservationRow }) {
-  const review = useReview("observations", row.id);
+  const review = useReview(row.id);
   const [editing, setEditing] = React.useState(false);
   return (
     <article className={`${card} flex flex-col gap-2`}>

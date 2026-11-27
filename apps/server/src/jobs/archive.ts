@@ -36,7 +36,7 @@ export async function archiveRecordings(remote: string): Promise<void> {
   await copy(
     RT_HISTORY_DIR,
     "rt-history",
-    include("*.ndjson.gz", "changes/*.json", "alerts.ndjson", "coverage.json"),
+    include("*.ndjson.gz", "changes/*.json", "coverage.json"),
   );
   await copy(
     AIS_HISTORY_DIR,

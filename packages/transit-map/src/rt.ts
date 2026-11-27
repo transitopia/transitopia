@@ -2,7 +2,7 @@
 // endpoint (acceptLive, polled by live.ts); at other times it loads recorded hours from /rt/history.
 // It also tracks recorder coverage, which decides per instant whether buses are shown from RT data
 // (observed/interpolated) or schedule (estimated), and loads TransLink's service changes (cancelled
-// trips, skipped stops, detours) for the days shown: while live, the version the live endpoint
+// trips, skipped stops, detours, SkyTrain alerts) for the days shown: while live, the version the live endpoint
 // points to; otherwise the current file, refreshed for recent days.
 
 import {
@@ -416,6 +416,14 @@ export class RtClient {
         this.cancelledMemo.delete(this.cancelledMemo.keys().next().value!);
     }
     return m.corr;
+  }
+
+  /** Alert texts (headers) about any of these routes that apply at t, from the loaded days. */
+  alertsAt(routeKeys: ReadonlySet<string>, t: number): string[] {
+    if (!routeKeys.size) return [];
+    return this.changesView()
+      .alerts(routeKeys, t)
+      .map((a) => a.header);
   }
 
   /** Lookups over every loaded day's service changes. */

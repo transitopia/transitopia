@@ -34,19 +34,12 @@ import type { OperationsConfig } from "@transitopia/transit-core/movement/build.
 import type { DispatchConfig } from "@transitopia/transit-core/dispatch/dispatch.ts";
 import type { DateContext } from "@transitopia/transit-core/dispatch/date.ts";
 import type { TrackGraph } from "@transitopia/transit-core/infra/graph.ts";
-import {
-  mapPlatforms,
-  type PlatformReport,
-} from "@transitopia/transit-core/infra/platforms.ts";
-import type { Overrides } from "./infra.ts";
 
 /** What dispatching a rail network's service dates needs, cached (one per rail network). */
 export class DispatchContexts {
   readonly net: RailNetwork;
   private manifest: Promise<FeedManifest> | undefined;
-  private graph:
-    Promise<{ graph: TrackGraph; overrides: Overrides }> | undefined;
-  private platforms = new Map<string, PlatformReport>();
+  private graph: Promise<{ graph: TrackGraph }> | undefined;
   private configs:
     | Promise<{
         kin: KinematicsConfig;
@@ -122,28 +115,12 @@ export class DispatchContexts {
     const key = serviceKey([...pp.servicesOn(date)].filter((s) => rail.has(s)));
     const path = index.files[key];
     if (!path) return undefined;
-    const [base, inferred, { graph, overrides }] = await Promise.all([
+    const [base, inferred, { graph }] = await Promise.all([
       this.file(path),
       this.file(path.replace(/\/([^/]+)$/, "/inferred/$1")),
       (this.graph ??= loadGraph(this.net.network)),
     ]);
     if (base.schema !== 2) return undefined;
-    let report = this.platforms.get(feed.version);
-    if (!report) {
-      const railKeys = new Set(
-        pp.plan.routes.filter((r) => r.kind === "skytrain").map((r) => r.key),
-      );
-      this.platforms.set(
-        feed.version,
-        (report = mapPlatforms(
-          graph,
-          pp.plan,
-          railKeys,
-          overrides.platforms,
-          overrides.patternPlatforms,
-        )),
-      );
-    }
     return {
       pp,
       graph,
@@ -152,11 +129,7 @@ export class DispatchContexts {
       config: dispatch,
       kin,
       ops,
-      platforms: report.assignments,
       debug: dispatchDebugFromEnv(),
-      ...(report.patternPositions ?
-        { patternPositions: report.patternPositions }
-      : {}),
     };
   }
 }

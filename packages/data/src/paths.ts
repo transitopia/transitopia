@@ -40,7 +40,7 @@ export const ROOT = join(
 
 // Committed, curated inputs (config/, docs/DESIGN.md#feeds-operators-and-rail-networks): global
 // defaults, operators, the feeds they run (feed.json, routes.json, ferry berths and lanes, observations), rail
-// networks (network.json and settings, infrastructure, disruptions).
+// networks (network.json and settings, infrastructure).
 export const CONFIG_ROOT = join(ROOT, "config");
 export const DEFAULTS_DIR = join(CONFIG_ROOT, "defaults");
 export const OPERATORS_DIR = join(CONFIG_ROOT, "operators");
@@ -68,18 +68,15 @@ export function networkPaths(network: string): {
 
 /**
  * Where a rail network's corrections are as files, under a directory laid out like config/: its
- * feed's observations (feeds/<feed>/observations/) and its disruptions (networks/<id>/disruptions/).
+ * feed's observations (feeds/<feed>/observations/).
  * By default the committed files, or on the server the export the pipelines read
  * (TRANSITOPIA_CORRECTIONS_DIR).
  */
 export function correctionPaths(
   net: RailNetwork,
   root: string = CORRECTIONS_DIR ?? CONFIG_ROOT,
-): { observations: string; disruptions: string } {
-  return {
-    observations: join(root, "feeds", net.feed, "observations"),
-    disruptions: join(root, "networks", net.network, "disruptions"),
-  };
+): { observations: string } {
+  return { observations: join(root, "feeds", net.feed, "observations") };
 }
 
 // Gitignored downloads, recordings and build output.

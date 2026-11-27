@@ -1,5 +1,5 @@
-// The parts of a correction's card that disruptions and observation sets share: its review state,
-// the buttons that move it along, and links to previews.
+// The parts of an observation set's card: its review state, the buttons that move it along, and
+// links to previews.
 
 import React from "react";
 import { railNetwork } from "../TransitMap/feeds.ts";
@@ -41,18 +41,18 @@ export function StateBadge({ row }: { row: Reviewed }) {
  * A card's writes and what came of them: `act` previews, confirms, discards or reopens it, `save`
  * stores an edit (dropping previews of the old version).
  */
-export function useReview(kind: "disruptions" | "observations", id: string) {
+export function useReview(id: string) {
   const write = useWrite();
   const [previews, setPreviews] = React.useState<Previews>();
   const act = (action: "preview" | "confirm" | "discard" | "reopen") =>
     write.mutate(
-      { path: `admin/api/${kind}/${id}/${action}` },
+      { path: `admin/api/observations/${id}/${action}` },
       { onSuccess: (r) => "versions" in r && setPreviews(r.versions) },
     );
   const save = (body: unknown, onSaved?: () => void) =>
     write.mutate(
       {
-        path: `admin/api/${kind}/${encodeURIComponent(id)}`,
+        path: `admin/api/observations/${encodeURIComponent(id)}`,
         method: "PUT",
         body,
       },

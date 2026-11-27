@@ -8,7 +8,7 @@ import type { CorrectionsRepo } from "../src/corrections.ts";
 const RAIL = { network: "skytrain", feed: "translink" };
 /** No corrections: the dispatcher has nothing to dispatch, so its index stays empty. */
 const NO_CORRECTIONS = {
-  load: async () => ({ observations: [], disruptions: [] }),
+  load: async () => ({ observations: [] }),
 } as unknown as CorrectionsRepo;
 
 let dir: string | undefined;

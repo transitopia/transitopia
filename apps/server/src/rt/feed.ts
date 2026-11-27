@@ -53,7 +53,6 @@ import {
   fetchPositions,
   fetchTripUpdates,
   tripFeedSummary,
-  type DecodedAlert,
   type TripDelays,
   type TripFeedSummary,
   type Upstream,
@@ -72,13 +71,6 @@ export interface FeedPollerOptions {
   historyDir: string;
   record: boolean;
   store: Store | undefined;
-  /** Every alerts poll, with the feed's SkyTrain lines by GTFS route_id (alert drafts, RtService). */
-  onAlerts?:
-    | ((
-        alerts: DecodedAlert[],
-        railKeyById: Map<string, string>,
-      ) => Promise<void>)
-    | undefined;
   log: (msg: string) => void;
 }
 
@@ -92,8 +84,8 @@ export class FeedPoller {
   private latest: RtSnapshot | null = null;
   private delays: TripDelays = new Map();
   private routeKeyById = new Map<string, string>();
-  /** GTFS route_id → our key for SkyTrain lines (alerts). */
-  private railKeyById = new Map<string, string>();
+  /** GTFS route_id → our key, for bus routes and SkyTrain lines (alerts). */
+  private alertKeyById = new Map<string, string>();
   private routesLoadedFrom: number | undefined;
   /** Each endpoint's pending poll (one per endpoint: a tick schedules the next). */
   private timers: Partial<Record<PollFeed, ReturnType<typeof setTimeout>>> = {};
@@ -328,17 +320,17 @@ export class FeedPoller {
       const mtime = (await stat(feedPaths(this.feed.id).manifest)).mtimeMs;
       if (mtime === this.routesLoadedFrom) return;
       const map = new Map<string, string>();
-      const rail = new Map<string, string>();
+      const alertKeys = new Map<string, string>();
       for (const [id, r] of await routesByGtfsId(this.feed.id)) {
         if (r.kind === "bus") map.set(id, r.key);
-        if (r.kind === "skytrain") rail.set(id, r.key);
+        if (r.kind === "bus" || r.kind === "skytrain") alertKeys.set(id, r.key);
       }
       if (this.routesLoadedFrom !== undefined)
         this.log(
           `timetable data changed: now tracking ${new Set(map.values()).size} bus routes`,
         );
       this.routeKeyById = map;
-      this.railKeyById = rail;
+      this.alertKeyById = alertKeys;
       this.routesLoadedFrom = mtime;
       // Filtered hours depend on the routes drawn (trackedOnly).
       this.historyCache.clear();
@@ -357,16 +349,15 @@ export class FeedPoller {
       AbortSignal.timeout(15_000),
     );
     await this.opts.store?.recordAlerts(this.feed.id, decoded);
-    await this.opts.onAlerts?.(decoded, this.railKeyById);
-    // Bus route alerts (e.g. detours), kept per day for playback.
-    const bus: Omit<RtRouteAlert, "seen">[] = [];
+    // Bus route alerts (e.g. detours) and SkyTrain alerts, kept per day for playback.
+    const alerts: Omit<RtRouteAlert, "seen">[] = [];
     for (const a of decoded) {
       const entities = a.entities.flatMap(({ routeId, ...rest }) => {
-        const routeKey = this.routeKeyById.get(routeId);
+        const routeKey = this.alertKeyById.get(routeId);
         return routeKey ? [{ routeKey, ...rest }] : [];
       });
       if (!entities.length) continue;
-      bus.push({
+      alerts.push({
         id: a.id,
         entities,
         stopIds: a.stopIds,
@@ -376,7 +367,7 @@ export class FeedPoller {
         description: a.description,
       });
     }
-    await this.changes.updateAlerts(bus);
+    await this.changes.updateAlerts(alerts);
   }
 
   private async pollTripUpdates(): Promise<number> {

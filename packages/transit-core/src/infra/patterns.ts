@@ -37,8 +37,6 @@ export function routePattern(
   pattern: PlanPattern,
   /** Per-pattern overrides (PlatformReport.patternPositions). */
   patternPositions?: Map<number, Map<number, TrackPos>>,
-  /** Segments out of service (disruptions). */
-  closed?: Set<string>,
 ): PatternRoute {
   const positions: TrackPos[] = [];
   const failures: string[] = [];
@@ -73,7 +71,6 @@ export function routePattern(
             allowReversals: false,
             maxLength: 12_000,
             kindPenalty: REVENUE_KIND_PENALTY,
-            ...(closed ? { closed } : {}),
           })
         : null;
       if (!p || p.reversals > 0) {

@@ -1,7 +1,6 @@
 // /admin (apps/web/README.md#admin): the server's status, the review queue for corrections, and the
-// feature registry's tools (Features.tsx). Disruptions drafted from TransLink alerts, and
-// observation sets, are edited here, previewed on the map as dispatch versions nobody else sees,
-// then confirmed (or discarded). Admins sign in with GitHub;
+// feature registry's tools (Features.tsx). Observation sets are edited here, previewed on the map
+// as dispatch versions nobody else sees, then confirmed (or discarded). Admins sign in with GitHub;
 // the server returns a bearer token in the URL fragment, kept in localStorage.
 
 import React from "react";
@@ -16,7 +15,6 @@ import {
   useCorrections,
   useSignOut,
 } from "./api.ts";
-import { DisruptionCard } from "./DisruptionCard.tsx";
 import { Features } from "./Features.tsx";
 import { NewCorrection } from "./NewCorrection.tsx";
 import { ObservationCard } from "./ObservationCard.tsx";
@@ -121,13 +119,6 @@ function Dashboard() {
       : null}
       {data ?
         <>
-          <Section title="Disruptions to review" empty="Nothing to review.">
-            {data.disruptions
-              .filter((d) => isOpen(d.state))
-              .map((d) => (
-                <DisruptionCard key={d.id} row={d} />
-              ))}
-          </Section>
           <Section title="Observations to review" empty="Nothing to review.">
             {data.observationSets
               .filter((o) => isOpen(o.state))
@@ -137,27 +128,7 @@ function Dashboard() {
           </Section>
           <NewCorrection />
           <Features />
-          {data.unparsedAlerts.length ?
-            <Section title="SkyTrain alerts without a draft" empty="">
-              {data.unparsedAlerts.map((a) => (
-                <div key={a.id} className={card}>
-                  <p className="text-sm font-medium">
-                    {a.lines.join(", ")}: {a.header}
-                  </p>
-                  <p className="text-xs text-gray-600 dark:text-gray-400">
-                    Alert {a.id}: {a.reason}. Add a disruption by hand if it
-                    changes service.
-                  </p>
-                </div>
-              ))}
-            </Section>
-          : null}
           <Section title="Confirmed and discarded" empty="None yet.">
-            {data.disruptions
-              .filter((d) => !isOpen(d.state))
-              .map((d) => (
-                <DisruptionCard key={d.id} row={d} />
-              ))}
             {data.observationSets
               .filter((o) => !isOpen(o.state))
               .map((o) => (

@@ -11,10 +11,10 @@
 // and:
 //   var/ais-history/<feed>/<date>/<HH>.ndjson[.gz] → rt_polls + ais_fixes, for each feed with vessels
 //   var/dispatch-history/<network>/<date>/<v>.json    → dispatch_versions
-//   config/feeds/<feed>/observations, config/networks/<network>/disruptions → corrections (as on every start)
+//   config/feeds/<feed>/observations → corrections (as on every start)
 //
 // The files themselves stay where they are: the server keeps serving /rt/history, service changes and
-// dispatch versions from them. Alerts (alerts.ndjson, and the bus alerts inside changes/) aren't
+// dispatch versions from them. Alerts (the ones inside changes/) aren't
 // imported into the alerts table: they're in another shape (our route keys, not GTFS ids).
 
 import { readdir, readFile } from "node:fs/promises";
@@ -302,7 +302,5 @@ if (existsSync(dispatchDir))
 log(`dispatch versions: ${versions}`);
 
 const n = await new CorrectionsRepo(db, rail).importFiles();
-log(
-  `corrections: ${n.observationSets} observation sets and ${n.disruptions} disruptions`,
-);
+log(`corrections: ${n.observationSets} observation sets`);
 await db.destroy();
