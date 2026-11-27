@@ -1,0 +1,60 @@
+{
+  "$comment": "BC Transit's Peace region systems in one feed: Dawson Creek (27) and Fort St. John (28), as numbered on https://www.bctransit.com/open-data/ (checked 2026-11-27), each a separate export that fetch-gtfs merges. Its own feed because they keep Mountain Standard Time all year, unlike the rest of Northern BC (config/feeds/bc-transit-northern-bc/). One agency; route_ids end in -DAW, -FSJ. 7 routes. Every route is drawn; overrides and exclusions: routes.json. Terms: https://www.bctransit.com/open-data/terms-of-use/ (identify BC Transit as the source; no use of its marks).",
+  "id": "bc-transit-peace",
+  "name": "BC Transit (Peace Region)",
+  "operator": "bc-transit",
+  "$timezone": "Both exports' agency_timezone (checked 2026-11-27): the Peace region's year-round Mountain Standard Time (UTC-7). It has had America/Vancouver's offset since BC's permanent UTC-7 (tzdata 2026b), but its times are computed in its own zone, so they stay right if the two ever differ.",
+  "timezone": "America/Dawson_Creek",
+  "$timezoneChecks": "Known facts about the feed's time zone that the runtime's time zone data (tzdata, via ICU) must agree with; the server refuses to start otherwise (checkTimezoneData in packages/transit-core/src/time.ts). Times are still always computed from the runtime's data, never from these. America/Dawson_Creek has been UTC-7 all year since 1972 (tzdata).",
+  "timezoneChecks": [
+    {
+      "at": "2026-11-02T20:00:00Z",
+      "utcOffsetMinutes": -420,
+      "reason": "the Peace region's year-round Mountain Standard Time"
+    }
+  ],
+  "dataset": "bc-transit-gtfs",
+  "$routeKey": "Its two systems each number their routes from 1 (1 and 2 are used by both), so routes are keyed by route_id (the number and the system, e.g. 1-FSJ) and riders see the number (packages/transit-core/DESIGN.md#routes).",
+  "routeKey": "route_id",
+  "static": {
+    "$comment": "BC Transit's server returns an empty feed for several operatorIds at once (operatorIds=27,28, in any spelling; checked 2026-11-02), so each system's export is fetched and merged (packages/transit-core/DESIGN.md#timetables). Each is regenerated daily with a new feed_version even when the timetable is unchanged, so fetch-gtfs archives a version only when the merged files differ from the newest archived one. Uses calendar_dates.txt only (no calendar.txt), shape_dist_traveled in metres. How often the timetable really changes: OPEN-QUESTIONS #1; the merge: OPEN-QUESTIONS #6.",
+    "merge": [
+      "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=27",
+      "https://bct.tmix.se/Tmix.Cap.TdExport.WebApi/gtfs/?operatorIds=28"
+    ]
+  },
+  "realtime": {
+    "$comment": "No API key and no stated request limit. Unlike the static export, GTFS-realtime takes several operatorIds at once and returns every system's buses (operatorIds=27,28 checked 2026-11-27). Polled within a modest budget: OPEN-QUESTIONS #2.",
+    "urls": {
+      "positions": "https://bct.tmix.se/gtfs-realtime/vehicleupdates.pb?operatorIds=27,28",
+      "tripUpdates": "https://bct.tmix.se/gtfs-realtime/tripupdates.pb?operatorIds=27,28",
+      "alerts": "https://bct.tmix.se/gtfs-realtime/alerts.pb?operatorIds=27,28"
+    },
+    "$poll": "Positions and trip updates every 5 minutes while buses run (05:00-24:00), every 10 overnight; alerts every 15 minutes: small systems, where frequent polling isn't needed (as for the Kootenays: Braden MacDonald, 2026-11-02; config/operators/bc-transit/operator.json). About 610 requests a day; dailyCap is a safety net. OPEN-QUESTIONS #2.",
+    "poll": {
+      "dailyCap": 1000,
+      "weekday": [
+        { "from": "00:00", "positionsS": 600, "tripUpdatesS": 600, "alertsS": 900 },
+        { "from": "05:00", "positionsS": 300, "tripUpdatesS": 300, "alertsS": 900 }
+      ],
+      "weekend": [
+        { "from": "00:00", "positionsS": 600, "tripUpdatesS": 600, "alertsS": 900 },
+        { "from": "05:00", "positionsS": 300, "tripUpdatesS": 300, "alertsS": 900 }
+      ]
+    },
+    "$staleGraceS": "Clients fall back to schedule estimates once live data is this much older than the positions poll interval: one missed 5-minute poll (guess, OPEN-QUESTIONS #2).",
+    "staleGraceS": 300,
+    "$coverageSlackS": "Recorder coverage breaks when snapshots are further apart than the positions poll interval plus this (guess, OPEN-QUESTIONS #2).",
+    "coverageSlackS": 120,
+    "$interpolateSlackS": "Interpolate between two fixes at most the positions poll interval plus this apart: across one missed 5-minute poll (guess, OPEN-QUESTIONS #2).",
+    "interpolateSlackS": 300,
+    "$extrapolateSlackS": "Predict a bus forward for at most the positions poll interval plus this (BC Transit's fixes are fresh when fetched, under 30 s old elsewhere; guess, OPEN-QUESTIONS #2).",
+    "extrapolateSlackS": 45
+  },
+  "display": {
+    "$tripId": "Trip ids are three internal ids, <journey>:<variant>:<block> (e.g. 2102626:14622067:14634975); the journey alone is unique on any date, as in BC Transit's other feeds.",
+    "tripId": "^([^:]+):",
+    "$feedVersion": "Versions look like \"202611020/20261101 21:00:00/20261102 03:00:00\": the export date and a sequence number, then the export window. A merged feed takes the newest of its exports'.",
+    "feedVersion": "^([^/ ]+)"
+  }
+}

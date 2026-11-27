@@ -60,11 +60,8 @@ import {
   type StopSpurLimits,
 } from "@transitopia/transit-core/geo.ts";
 import {
-  addDays,
-  firstOffsetDifference,
   parseGtfsTime,
   serviceDate,
-  serviceDayStart,
   type ServiceDate,
 } from "@transitopia/transit-core/time.ts";
 import {
@@ -226,29 +223,12 @@ export async function buildPlan(
   const [info] = await readCsvAll(zipPath, "feed_info.txt");
   if (!info) throw new Error("feed_info.txt missing");
   // Service days and times are computed in the feed's zone (feed.json → timezone, written to
-  // plan.timezone), which has to be every agency's (GTFS allows one agency_timezone per feed). A zone
-  // feed.json says is equivalent passes while it has the same offsets on every date of the timetable.
-  const zones = [feed.timezone, ...(feed.equivalentTimezones ?? [])];
+  // plan.timezone), which has to be every agency's (GTFS allows one agency_timezone per feed).
   for (const a of await readCsvAll(zipPath, "agency.txt"))
-    if (!zones.includes(a.agency_timezone!))
+    if (a.agency_timezone !== feed.timezone)
       throw new Error(
         `${feed.id}: agency ${a.agency_name} is in ${a.agency_timezone} and the feed says ${feed.timezone}`,
       );
-  for (const z of feed.equivalentTimezones ?? []) {
-    const at = firstOffsetDifference(
-      z,
-      feed.timezone,
-      serviceDayStart(serviceDate(info.feed_start_date!), feed.timezone),
-      serviceDayStart(
-        addDays(serviceDate(info.feed_end_date!), 2),
-        feed.timezone,
-      ),
-    );
-    if (at !== undefined)
-      throw new Error(
-        `${feed.id}: ${z} and ${feed.timezone} have different UTC offsets at ${new Date(at).toISOString()}, so ${z} can no longer be taken as ${feed.timezone} (feed.json → equivalentTimezones)`,
-      );
-  }
 
   // Routes: every one in the feed, as routes.json overrides or excludes them (matched by name), keyed as feed.json says.
   const selected = selectRoutes(
@@ -353,7 +333,7 @@ export async function buildPlan(
     const zone =
       (row.parent_station && allStops.get(row.parent_station)?.stop_timezone)
       || row.stop_timezone;
-    if (zone && !zones.includes(zone)) s.timezone = zone;
+    if (zone && zone !== feed.timezone) s.timezone = zone;
     stopIndex.set(id, stops.length);
     stops.push(s);
   }

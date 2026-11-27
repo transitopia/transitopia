@@ -72,11 +72,7 @@ async function latest(feed: FeedInfo, dest: string): Promise<void> {
   try {
     for (const [i, url] of feed.static.merge.entries())
       await download(feed, url, parts[i]!);
-    const report = await mergeGtfs(parts, dest, {
-      timezones: Object.fromEntries(
-        (feed.equivalentTimezones ?? []).map((z) => [z, feed.timezone]),
-      ),
-    });
+    const report = await mergeGtfs(parts, dest);
     for (const [file, n] of Object.entries(report.keptFirst))
       log(
         `${feed.id}: ${file}: ${n} records listed differently by two exports; kept the first's`,
