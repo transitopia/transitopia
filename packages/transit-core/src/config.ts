@@ -137,7 +137,7 @@ const tripUpdatesHealth = z.strictObject({
 
 const server = z.strictObject({
   port: z.number().int().min(1).max(65535),
-  /** Live dispatch (apps/server/README.md#live-dispatch-and-previews). */
+  /** Live dispatch (apps/server/README.md#live-dispatch). */
   dispatchCheckS: pos,
   dispatchWindowDays: count,
   /** The default for every feed; feed.json → realtime.tripUpdatesHealth overrides it. */

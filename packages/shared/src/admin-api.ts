@@ -16,15 +16,6 @@ export const observationFile = z.custom<ObservationFile>(
   "not an observation file",
 );
 
-/** A correction's review (docs/DESIGN.md#corrections-and-previews); also the database column. */
-export const reviewState = z.enum([
-  "draft",
-  "previewing",
-  "confirmed",
-  "discarded",
-]);
-export type ReviewState = z.infer<typeof reviewState>;
-
 /** Any error: the status says what kind, `error` is for people. */
 export const errorResponse = z.object({ error: z.string() });
 
@@ -139,21 +130,14 @@ export type StatusResponse = z.infer<typeof statusResponse>;
 
 // ---- Corrections ------------------------------------------------------------------------------
 
-const correctionRow = <T extends z.ZodType>(body: T) =>
-  z.object({
-    id: z.string(),
-    state: reviewState,
-    /** Service dates it touches (YYYY-MM-DD). */
-    dates: z.array(z.string()),
-    body,
-    updated_at: z.coerce.date(),
-    created_by: z.string().nullable(),
-    reviewed_by: z.string().nullable(),
-    reviewed_at: z.coerce.date().nullable(),
-  });
-
-export const observationRow = correctionRow(observationFile).extend({
+export const observationRow = z.object({
+  id: z.string(),
   title: z.string(),
+  /** Service dates it touches (YYYY-MM-DD). */
+  dates: z.array(z.string()),
+  body: observationFile,
+  updated_at: z.coerce.date(),
+  created_by: z.string().nullable(),
 });
 export type ObservationRow = z.infer<typeof observationRow>;
 
@@ -169,20 +153,6 @@ export const observationSetPut = z.object({
   title: z.string().optional(),
   file: observationFile,
 });
-
-/** Service date (YYYYMMDD) → the preview dispatch version and what went into it. */
-export const previews = z.record(
-  z.string(),
-  z.object({
-    version: z.string(),
-    summary: z.object({ inputs: z.array(z.string()) }),
-  }),
-);
-export type Previews = z.infer<typeof previews>;
-
-/** POST /admin/api/:kind/:id/preview. */
-export const previewResponse = z.object({ versions: previews });
-export type PreviewResponse = z.infer<typeof previewResponse>;
 
 // ---- Features (docs/DESIGN.md#feature-ids) ---------------------------------------------------
 

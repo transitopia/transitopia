@@ -1,14 +1,11 @@
-// Live dispatch (apps/server/README.md#live-dispatch-and-previews): one dispatcher per deployment, shared by every client.
+// Live dispatch (apps/server/README.md#live-dispatch): one dispatcher per deployment, shared by every client.
 //
-// Every `dispatchCheckS` it reads the confirmed corrections (from the database) and, for each service date near
+// Every `dispatchCheckS` it reads the corrections (from the database) and, for each service date near
 // today whose inputs changed, re-dispatches that date and publishes a new patch version. Clients
 // learn the current versions from the network's live endpoint (/networks/<id>/live/dispatch, or the index at /networks/<id>/dispatch) and fetch
 // /networks/<id>/dispatch/<date>/<version>.json, which never changes. Client requests never start a dispatch.
 // Versions are kept in var/dispatch-history/<network>/<date>/<version>.json (and listed in dispatch_versions),
 // so any version can be served again (and, later, an "as known then" view).
-//
-// Previews (docs/DESIGN.md#corrections-and-previews): an admin can dispatch a date with a correction that isn't confirmed
-// yet. That's a version like any other, reachable by its link, but never current.
 
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -28,7 +25,6 @@ import type {
   DispatchIndex,
   DispatchPatch,
 } from "@transitopia/transit-core/dispatch/patch.ts";
-import type { Observation } from "@transitopia/transit-core/corrections/types.ts";
 import {
   addDays,
   localDate,
@@ -41,7 +37,7 @@ import type { Store } from "../store.ts";
 export interface LiveDispatchOptions {
   /** The rail network it dispatches (packages/data/src/paths.ts → railNetwork). */
   net: RailNetwork;
-  /** Where confirmed corrections come from (the database: CorrectionsRepo). */
+  /** Where corrections come from (the database: CorrectionsRepo). */
   corrections: Corrections;
   /** Where its versions are kept (default: var/dispatch-history/<network>/). */
   historyDir?: string;
@@ -194,7 +190,7 @@ export class LiveDispatcher {
         continue;
       }
       const t0 = performance.now();
-      const patch = await this.publish(ctx, inputs, version, "live");
+      const patch = await this.publish(ctx, inputs, version);
       this.patches.set(`${date}/${version}`, patch);
       this.current.set(date, version);
       this.log(
@@ -211,8 +207,6 @@ export class LiveDispatcher {
     ctx: NonNullable<Awaited<ReturnType<DispatchContexts["forDate"]>>>,
     inputs: DateInputs,
     version: string,
-    kind: "live" | "preview",
-    previewOf?: string,
   ): Promise<DispatchPatch> {
     const patch = await dispatchDate(
       ctx,
@@ -229,49 +223,9 @@ export class LiveDispatcher {
         network: this.network,
         date: inputs.date,
         version,
-        kind,
-        previewOf,
         inputs: patch.summary.inputs,
       })
       .catch((e: Error) => this.log(`could not list version (${e.message})`));
     return patch;
-  }
-
-  /**
-   * Dispatch each date a candidate correction touches (within the live window) with the confirmed
-   * corrections plus the candidate, as preview versions: date (YYYYMMDD) → version. Dates the
-   * candidate doesn't change, or outside the window, are left out.
-   */
-  async preview(
-    candidate: { observations: Observation[] },
-    previewOf: string,
-  ): Promise<
-    Record<string, { version: string; summary: DispatchPatch["summary"] }>
-  > {
-    await this.refreshBase();
-    const confirmed = await this.corrections.load();
-    const dates = new Set<ServiceDate>();
-    for (const o of candidate.observations) dates.add(isoToServiceDate(o.date));
-    const out: Record<
-      string,
-      { version: string; summary: DispatchPatch["summary"] }
-    > = {};
-    for (const date of [...dates].sort((a, b) => a.localeCompare(b))) {
-      const ctx = await this.contexts.forDate(date);
-      if (!ctx) continue;
-      const inputs: DateInputs = {
-        date,
-        observations: [
-          ...confirmed.observations,
-          ...candidate.observations,
-        ].filter((o) => isoToServiceDate(o.date) === date),
-      };
-      const version = dateVersion(ctx, inputs);
-      const patch =
-        (await this.patch(date, version))
-        ?? (await this.publish(ctx, inputs, version, "preview", previewOf));
-      out[date] = { version, summary: patch.summary };
-    }
-    return out;
   }
 }

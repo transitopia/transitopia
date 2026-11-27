@@ -294,7 +294,6 @@ if (existsSync(dispatchDir))
         network: rail.network,
         date,
         version: f.replace(/\.json$/, ""),
-        kind: "live",
         inputs: patch.summary.inputs,
       });
       versions++;

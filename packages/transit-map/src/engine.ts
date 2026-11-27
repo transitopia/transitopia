@@ -201,8 +201,6 @@ export interface TransitSnapshot {
   rt: { mode: RtMode; label: string; title: string };
   /** Service changes in effect at the shown time. */
   notices: string[];
-  /** Service dates shown with a preview dispatch (unconfirmed corrections; ?preview=). */
-  preview: string[];
   /** Every feed's routes. */
   routes: PlanRoute[];
   /** Each route's groups (the layers panel's switches, `routeGroups`), by `routeId`. */
@@ -466,8 +464,6 @@ export class TransitEngine {
   private visible = true;
   /** Layers hidden by `setVisible(false)`, to show again. */
   private hiddenLayers: string[] = [];
-  /** Dispatch versions to preview (?preview=), for each rail feed as it loads. */
-  private preview: Record<string, string> | undefined;
   /** A `?select=` key waiting for the plans and their places files (and while elsewhere, for a feed that has it). */
   private pendingSelect: string | undefined;
   /** A `?select=` key no feed shown has (TransitSnapshot.elsewhere). */
@@ -572,7 +568,6 @@ export class TransitEngine {
       );
 
     const url = opts.initial ?? readUrl(this.tz);
-    this.preview = url.preview;
     // Without a time in the URL: live.
     this.clock = new Clock(url.t);
     this.clock.setBounds(range[0], range[1]);
@@ -1162,7 +1157,6 @@ export class TransitEngine {
     const slot = new FeedSlot(f.config, f.manifest, this.urls);
     f.slot = slot;
     this.slots = this.feeds.flatMap((x) => (x.slot ? [x.slot] : []));
-    if (this.preview) slot.store.setPreview(this.preview);
     const network = slot.config.rail?.network;
     if (network) {
       const dispatch = this.dispatchPollOf(network, slot);
@@ -2151,9 +2145,6 @@ export class TransitEngine {
       coverage: this.coverage,
       rt: this.rtState,
       notices: this.notices,
-      preview: [
-        ...new Set(this.slots.flatMap((s) => s.store.previewDates)),
-      ].sort(),
       // Stable identities, so React skips re-rendering the legend.
       routes: prev && sameRoutes(prev.routes, routes) ? prev.routes : routes,
       groups: this.groupsOf(),

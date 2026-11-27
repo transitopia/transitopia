@@ -3,7 +3,6 @@
 // Date objects, bigints as numbers.
 
 import type { ColumnType, Generated } from "kysely";
-import type { ReviewState } from "@transitopia/shared/admin-api.ts";
 import type { FeatureKind } from "@transitopia/shared/features.ts";
 
 type Timestamp = ColumnType<Date, Date | string, Date | string>;
@@ -106,35 +105,17 @@ export interface Database {
   observation_sets: {
     id: string;
     feed_id: string;
-    state: ReviewState;
     title: string;
     body: Json<unknown>;
     dates: DateString[];
     created_at: DefaultTimestamp;
     updated_at: DefaultTimestamp;
     created_by: string | null;
-    reviewed_by: string | null;
-    reviewed_at: Timestamp | null;
-  };
-  disruptions: {
-    id: string;
-    network_id: string;
-    state: ReviewState;
-    body: Json<unknown>;
-    dates: DateString[];
-    alert_id: string | null;
-    created_at: DefaultTimestamp;
-    updated_at: DefaultTimestamp;
-    created_by: string | null;
-    reviewed_by: string | null;
-    reviewed_at: Timestamp | null;
   };
   dispatch_versions: {
     network_id: string;
     service_date: DateString;
     version: string;
-    kind: "live" | "preview";
-    preview_of: string | null;
     inputs: Json<unknown>;
     created_at: DefaultTimestamp;
   };

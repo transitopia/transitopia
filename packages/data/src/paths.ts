@@ -49,7 +49,7 @@ export const NETWORKS_DIR = join(CONFIG_ROOT, "networks");
 /** config/cycling/cycling.json: the cycling map's area and classification (readCyclingConfig). */
 export const CYCLING_CONFIG_DIR = join(CONFIG_ROOT, "cycling");
 
-// Corrections: the committed files, or on the server an export of the confirmed ones from its
+// Corrections: the committed files, or on the server an export of the ones in its
 // database (TRANSITOPIA_CORRECTIONS_DIR, laid out like config/: correctionPaths).
 const CORRECTIONS_DIR = process.env.TRANSITOPIA_CORRECTIONS_DIR;
 
@@ -88,7 +88,7 @@ export const GTFS_RAW_DIR = join(RAW_DIR, "gtfs");
 export const RT_HISTORY_DIR = join(VAR_DIR, "rt-history");
 export const AIS_HISTORY_DIR = join(VAR_DIR, "ais-history");
 export const DISPATCH_HISTORY_DIR = join(VAR_DIR, "dispatch-history");
-/** The server's export of confirmed corrections from its database (TRANSITOPIA_CORRECTIONS_DIR). */
+/** The server's export of the corrections in its database (TRANSITOPIA_CORRECTIONS_DIR). */
 export const CORRECTIONS_EXPORT_DIR = join(VAR_DIR, "corrections");
 /** Served at the web root by the transit viewer (/data/…, /tiles/…, /basemap-assets/…). */
 export const PUBLIC_DIR = join(VAR_DIR, "public");

@@ -14,7 +14,6 @@ import {
   featureSearchResponse,
   newExchangeResponse,
   okResponse,
-  previewResponse,
   statusResponse,
 } from "@transitopia/shared/admin-api.ts";
 import { transitApi } from "../config.ts";
@@ -124,12 +123,9 @@ export function useStatus() {
   });
 }
 
-/** What a write answers: previews for a preview, else just ok. */
-const writeResponse = z.union([previewResponse, okResponse]);
-
 /**
- * Writes to corrections (edit, create, preview, confirm, …), reloading the review queue after each
- * one that succeeds. One per card, so a card has one busy state and one error.
+ * Writes to corrections (create, edit, delete), reloading the list after each one that succeeds.
+ * One per card, so a card has one busy state and one error.
  */
 export function useWrite() {
   const call = React.useContext(CallContext);
@@ -137,10 +133,9 @@ export function useWrite() {
   return useMutation({
     mutationFn: (w: {
       path: string;
-      method?: "POST" | "PUT";
+      method: "PUT" | "DELETE";
       body?: unknown;
-    }) =>
-      call(w.path, writeResponse, { method: w.method ?? "POST", body: w.body }),
+    }) => call(w.path, okResponse, { method: w.method, body: w.body }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: CORRECTIONS }),
   });
 }

@@ -272,8 +272,6 @@ export class Store {
     network: string;
     date: ServiceDate;
     version: string;
-    kind: "live" | "preview";
-    previewOf?: string | undefined;
     inputs: unknown;
   }): Promise<void> {
     await this.db
@@ -282,8 +280,6 @@ export class Store {
         network_id: v.network,
         service_date: isoDate(v.date),
         version: v.version,
-        kind: v.kind,
-        preview_of: v.previewOf ?? null,
         inputs: JSON.stringify(v.inputs),
       })
       .onConflict((oc) => oc.doNothing())

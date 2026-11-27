@@ -1,8 +1,8 @@
-// Corrections: observations (docs/DESIGN.md#corrections-and-previews), in the observation_sets
-// table with a review state (draft → previewing → confirmed | discarded). The live dispatcher reads
-// the confirmed ones through `Corrections`; `importFiles` brings in the committed files (TransLink's
-// observations in config/feeds/translink/observations/), and `export` writes the confirmed ones back
-// to that format (for tests, reproducible bug reports and the static build).
+// Corrections: observations (docs/DESIGN.md#corrections), in the observation_sets table. Each set
+// applies as soon as it's saved: the live dispatcher reads them through `Corrections`; `importFiles`
+// brings in the committed files (TransLink's observations in config/feeds/translink/observations/),
+// and `export` writes them back to that format (for tests, reproducible bug reports and the static
+// build).
 
 import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -12,10 +12,7 @@ import {
   type RailNetwork,
 } from "@transitopia/data/paths.ts";
 import type { Db } from "@transitopia/db/connect.ts";
-import type {
-  ObservationRow,
-  ReviewState,
-} from "@transitopia/shared/admin-api.ts";
+import type { ObservationRow } from "@transitopia/shared/admin-api.ts";
 import type {
   Observation,
   ObservationFile,
@@ -26,7 +23,7 @@ export interface CorrectionInputs {
   observations: Observation[];
 }
 
-/** What the live dispatcher applies: confirmed corrections only. */
+/** What the live dispatcher applies. */
 export interface Corrections {
   load(): Promise<CorrectionInputs>;
 }
@@ -66,10 +63,7 @@ export const observationDates = (f: ObservationFile): string[] =>
 type Stored<T> = T & { created_at: Date };
 export type ObservationSetRow = Stored<ObservationRow> & { feed_id: string };
 
-/**
- * Corrections in the database: what the dispatcher applies, and the admin's review queue. A rail
- * network's: its feed's observations.
- */
+/** Corrections in the database, which the dispatcher applies. A rail network's: its feed's observations. */
 export class CorrectionsRepo implements Corrections {
   readonly db: Db;
   readonly net: RailNetwork;
@@ -80,7 +74,7 @@ export class CorrectionsRepo implements Corrections {
   }
 
   async load(): Promise<CorrectionInputs> {
-    const sets = await this.observationSets(["confirmed"]);
+    const sets = await this.observationSets();
     // In id order, as files are read in name order: the same inputs give the same dispatch version.
     sets.sort((a, b) =>
       a.id < b.id ? -1
@@ -90,13 +84,13 @@ export class CorrectionsRepo implements Corrections {
     return { observations: sets.flatMap((s) => valid(s.body.observations)) };
   }
 
-  async observationSets(states?: ReviewState[]): Promise<ObservationSetRow[]> {
-    let q = this.db
+  async observationSets(): Promise<ObservationSetRow[]> {
+    const rows = await this.db
       .selectFrom("observation_sets")
       .selectAll()
-      .where("feed_id", "=", this.net.feed);
-    if (states) q = q.where("state", "in", states);
-    const rows = await q.orderBy("updated_at", "desc").execute();
+      .where("feed_id", "=", this.net.feed)
+      .orderBy("updated_at", "desc")
+      .execute();
     return rows.map((r) => ({
       ...r,
       body: r.body as ObservationFile,
@@ -107,15 +101,11 @@ export class CorrectionsRepo implements Corrections {
     return (await this.observationSets()).find((s) => s.id === id);
   }
 
-  /** Create or replace an observation set (its content; the state is kept unless given). */
+  /** Create or replace an observation set; it applies at the dispatcher's next check. */
   async saveObservationSet(
     id: string,
     body: ObservationFile,
-    opts: {
-      title?: string | undefined;
-      state?: ReviewState | undefined;
-      by?: string | undefined;
-    } = {},
+    opts: { title?: string | undefined; by?: string | undefined } = {},
   ): Promise<void> {
     const now = new Date();
     const title = opts.title ?? body.$comment?.slice(0, 200) ?? id;
@@ -124,13 +114,10 @@ export class CorrectionsRepo implements Corrections {
       .values({
         id,
         feed_id: this.net.feed,
-        state: opts.state ?? "draft",
         title,
         body: JSON.stringify(body),
         dates: observationDates(body),
         created_by: opts.by ?? null,
-        reviewed_by: null,
-        reviewed_at: null,
       })
       .onConflict((oc) =>
         oc.column("id").doUpdateSet({
@@ -138,28 +125,18 @@ export class CorrectionsRepo implements Corrections {
           body: JSON.stringify(body),
           dates: observationDates(body),
           updated_at: now,
-          ...(opts.state ? { state: opts.state } : {}),
         }),
       )
       .execute();
   }
 
-  async setState(id: string, state: ReviewState, by: string): Promise<boolean> {
-    const now = new Date();
-    const set = {
-      state,
-      updated_at: now,
-      ...(state === "confirmed" || state === "discarded" ?
-        { reviewed_by: by, reviewed_at: now }
-      : {}),
-    };
+  async deleteObservationSet(id: string): Promise<boolean> {
     const r = await this.db
-      .updateTable("observation_sets")
-      .set(set)
+      .deleteFrom("observation_sets")
       .where("id", "=", id)
       .where("feed_id", "=", this.net.feed)
       .executeTakeFirst();
-    return Number(r.numUpdatedRows) > 0;
+    return Number(r.numDeletedRows) > 0;
   }
 
   /**
@@ -172,25 +149,22 @@ export class CorrectionsRepo implements Corrections {
     const knownSets = new Set((await this.observationSets()).map((s) => s.id));
     for (const { id, file } of await loadObservationFiles(observationsDir)) {
       if (knownSets.has(id)) continue;
-      await this.saveObservationSet(id, file, {
-        state: "confirmed",
-        by: "import",
-      });
+      await this.saveObservationSet(id, file, { by: "import" });
       observationSets++;
     }
     return { observationSets };
   }
 
   /**
-   * Write the confirmed corrections as files under `root`, laid out like config/ (correctionPaths):
+   * Write the corrections as files under `root`, laid out like config/ (correctionPaths):
    * feeds/<feed>/observations/<id>.json (the format in config/feeds/translink/observations/README.md).
-   * The directory is replaced, so it holds exactly what's confirmed.
+   * The directory is replaced, so it holds exactly what's in the database.
    */
   async exportFiles(root: string): Promise<{ observationSets: number }> {
     const { observations: obsDir } = correctionPaths(this.net, root);
     await rm(obsDir, { recursive: true, force: true });
     await mkdir(obsDir, { recursive: true });
-    const sets = await this.observationSets(["confirmed"]);
+    const sets = await this.observationSets();
     for (const s of sets)
       await writeFile(
         join(obsDir, `${s.id}.json`),

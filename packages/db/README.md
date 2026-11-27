@@ -16,7 +16,7 @@ PostgreSQL (18, with PostGIS) for the Transitopia server: SQL migrations, [Kysel
 
 | Table | What | Kept |
 |---|---|---|
-| `operators`, `feeds`, `rail_networks` | Operator, feed and rail network records, upserted from `config/operators/*/operator.json`, `config/feeds/*/feed.json` and `config/networks/*/network.json` when the server starts (a feed references its operator) ([docs/DESIGN.md → Feeds, operators and rail networks](../../docs/DESIGN.md#feeds-operators-and-rail-networks)). What comes from a feed is keyed by `feed_id` (polls, positions, trip changes, alerts, GTFS feeds, observed stop times, statistics, observation sets); AIS fixes too; disruptions and dispatch versions by `network_id`. Nothing is keyed by an area. | |
+| `operators`, `feeds`, `rail_networks` | Operator, feed and rail network records, upserted from `config/operators/*/operator.json`, `config/feeds/*/feed.json` and `config/networks/*/network.json` when the server starts (a feed references its operator) ([docs/DESIGN.md → Feeds, operators and rail networks](../../docs/DESIGN.md#feeds-operators-and-rail-networks)). What comes from a feed is keyed by `feed_id` (polls, positions, trip changes, alerts, GTFS feeds, observed stop times, statistics, observation sets); AIS fixes too; dispatch versions by `network_id`. Nothing is keyed by an area. | |
 | `service_leader` | Where followers forward `/rt/*`: at most one row, the deployment's leader. Leadership itself is a session advisory lock. | |
 | `upstream_requests` | Every upstream request, successful or not, by `provider` (the feed id): each feed's daily cap is enforced against it, so restarts and retries count | |
 | `rt_polls` | One row per poll or AIS batch: the coverage record | |
@@ -24,8 +24,8 @@ PostgreSQL (18, with PostGIS) for the Transitopia server: SQL migrations, [Kysel
 | `ais_fixes` | Raw AIS fixes of a feed's vessels (the SeaBus), by `feed_id` (partitioned by day) | 60 days |
 | `trip_changes` | Trips a feed reported cancelled or skipping stops, per service date, every route | indefinitely |
 | `alerts` | GTFS-RT alerts with first and last sighting; the latest wording wins | indefinitely |
-| `observation_sets`, `disruptions` | Curated corrections: `body` is the file format, `state` the review state (`draft`, `previewing`, `confirmed`, `discarded`). Only confirmed ones apply. | indefinitely |
-| `dispatch_versions` | Dispatch patch versions (the patches are files): `live` or `preview` | indefinitely |
+| `observation_sets` | Curated corrections: `body` is the file format. Each applies as soon as it's saved. | indefinitely |
+| `dispatch_versions` | Dispatch patch versions (the patches are files) | indefinitely |
 | `gtfs_feeds` | GTFS static feeds (the zips are in the archive bucket). `seq` numbers them in the order they were archived, which ranges of refs are over; `reconciled_at` is when feature reconciliation took the version in. | indefinitely |
 | `features` | The feature registry ([docs/DESIGN.md → Feature IDs](../../docs/DESIGN.md#feature-ids)): an ID per station, exchange, stop, route and bike route; its kind, operator and feed, name, position (`geom`, a PostGIS geography point; null for routes, vehicles and bike routes, whose extent is in `cycling_routes`), status (`active`, `retired`, `merged` with `merged_into`), and a stop's station or exchange (`parent_id`) | indefinitely |
 | `feature_refs` | The source records a feature is (`scheme`, `namespace`, `ref`), over a range of feed versions (`versions`, an `int4range` of `gtfs_feeds.seq`; unbounded for schemes without versions). An exclusion constraint (`btree_gist`) keeps a ref to one feature in each version. | indefinitely |
