@@ -6,7 +6,7 @@
 // A GTFS-RT feed that answers with no vehicles is an outage, not a report that no buses run, so its
 // empty snapshots are recorded but don't extend coverage (emptyIsGap): playback falls back to
 // schedule estimates there (seen 01:50–08:26 on 2026-10-23, when TransLink's positions feed was empty).
-// Dates and hours are local (America/Vancouver) time of the fetch.
+// Dates and hours are the fetch time's local time in the feed's zone (feed.json → timezone).
 
 import { createReadStream, createWriteStream } from "node:fs";
 import { createInterface } from "node:readline";
@@ -31,8 +31,9 @@ import {
 } from "@transitopia/transit-core/rt/types.ts";
 import { toWallTime } from "@transitopia/transit-core/time.ts";
 
-export function hourKey(t: number): { date: string; hour: string } {
-  const w = toWallTime(t);
+/** The hour file an instant goes in: named by the local date and hour in the feed's zone. */
+export function hourKey(t: number, tz: string): { date: string; hour: string } {
+  const w = toWallTime(t, tz);
   return {
     date: `${w.year}-${String(w.month).padStart(2, "0")}-${String(w.day).padStart(2, "0")}`,
     hour: String(w.hour).padStart(2, "0"),
@@ -46,6 +47,8 @@ export class Recorder {
   private writing: Promise<void> = Promise.resolve();
 
   readonly dir: string;
+  /** The feed's time zone, which names the hour files. */
+  readonly timezone: string;
   /** Coverage continues across gaps up to this (ms), fixed or depending on the time. */
   private gapMs: number | ((t: number) => number);
   /** Snapshots without vehicles don't extend coverage (GTFS-RT; an AIS batch may be empty while connected). */
@@ -53,10 +56,12 @@ export class Recorder {
 
   constructor(
     dir: string,
+    timezone: string,
     gapMs: number | ((t: number) => number),
     opts: { emptyIsGap?: boolean } = {},
   ) {
     this.dir = dir;
+    this.timezone = timezone;
     this.gapMs = gapMs;
     this.emptyIsGap = opts.emptyIsGap ?? false;
   }
@@ -97,7 +102,7 @@ export class Recorder {
 
   private async write(s: RtSnapshot): Promise<void> {
     await this.init();
-    const { date, hour } = hourKey(s.fetchedAt);
+    const { date, hour } = hourKey(s.fetchedAt, this.timezone);
     const dayDir = join(this.dir, date);
     const file = join(dayDir, `${hour}.ndjson`);
     if (this.currentFile !== file) {
@@ -180,7 +185,7 @@ export class Recorder {
 
   /** On startup, compress any hour files other than the current hour. */
   private async compressClosedHours(): Promise<void> {
-    const { date, hour } = hourKey(Date.now());
+    const { date, hour } = hourKey(Date.now(), this.timezone);
     const current = join(this.dir, date, `${hour}.ndjson`);
     let days: string[] = [];
     try {
@@ -223,7 +228,7 @@ export class Recorder {
   /** The latest recorded snapshot from this hour or the previous one, e.g. to serve after a restart. */
   async lastSnapshot(now = Date.now()): Promise<RtSnapshot | undefined> {
     for (const t of [now, now - 3_600_000]) {
-      const { date, hour } = hourKey(t);
+      const { date, hour } = hourKey(t, this.timezone);
       const f = await this.hourFile(date, hour);
       if (!f) continue;
       let lines: string[];

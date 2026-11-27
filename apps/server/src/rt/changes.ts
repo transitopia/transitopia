@@ -35,10 +35,13 @@ export class ServiceChanges {
   private versions = new Map<ServiceDate, Map<string, string>>();
 
   readonly dir: string;
+  /** The feed's time zone: alerts are recorded under its local date. */
+  readonly timezone: string;
   private record: boolean;
 
-  constructor(dir: string, record: boolean) {
+  constructor(dir: string, timezone: string, record: boolean) {
     this.dir = dir;
+    this.timezone = timezone;
     this.record = record;
   }
 
@@ -121,7 +124,7 @@ export class ServiceChanges {
     now = Date.now(),
   ): Promise<void> {
     if (!alerts.length) return;
-    const date = localDate(now);
+    const date = localDate(now, this.timezone);
     const d = await this.get(date);
     for (const a of alerts) {
       const i = d.alerts.findIndex((x) => x.id === a.id);

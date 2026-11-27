@@ -41,12 +41,15 @@ import { feedForDate } from "@transitopia/transit-core/plan/types.ts";
  * another format (a deploy since it was built) or with other bands than `bandStartHours`.
  */
 async function currentProfileAgeH(
-  feed: string,
+  feed: FeedInfo,
   bandStartHours: readonly number[],
 ): Promise<number | undefined> {
-  const current = feedForDate(await readManifest(feed), localDate(Date.now()));
+  const current = feedForDate(
+    await readManifest(feed.id),
+    localDate(Date.now(), feed.timezone),
+  );
   if (!current) return undefined;
-  const file = feedVersionFile(feed, current.version, bandFileName(0));
+  const file = feedVersionFile(feed.id, current.version, bandFileName(0));
   const st = await stat(file).catch(() => undefined);
   if (!st) return undefined;
   try {
@@ -63,7 +66,7 @@ async function buildFeed(feed: FeedInfo, maxAgeH?: number): Promise<void> {
   const rtConfig = (await readFeedConfig(feed.id)).rt;
   if (maxAgeH !== undefined) {
     const age = await currentProfileAgeH(
-      feed.id,
+      feed,
       rtConfig.prediction.bandStartHours,
     );
     if (age !== undefined && age < maxAgeH) {
@@ -75,7 +78,7 @@ async function buildFeed(feed: FeedInfo, maxAgeH?: number): Promise<void> {
   }
   const cfg: PredictionConfig = rtConfig.prediction;
   const since = addDays(
-    localDate(Date.now()),
+    localDate(Date.now(), feed.timezone),
     -rtConfig.prediction.profileHistoryDays,
   );
   const plans = await planLoader(feed.id);

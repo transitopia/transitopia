@@ -214,7 +214,7 @@ export class RtClient {
     this.api = rt ? urls.api : undefined;
     this.feedApi = urls.feed;
     this.config = config;
-    this.cadence = rt ? cadence(rt) : NO_REALTIME;
+    this.cadence = rt ? cadence(rt, this.tz) : NO_REALTIME;
     this.prediction = config.rt.prediction;
     this.available = this.api !== undefined;
     if (!this.available)
@@ -612,9 +612,9 @@ export class RtClient {
 
   // --- recorded history ---
 
-  // Hour files are named in the recorder's time zone (apps/server/src/rt/recorder.ts), whatever the feed's.
+  // Hour files are named in the feed's time zone (apps/server/src/rt/recorder.ts → hourKey).
   private hourId(t: number): { id: string; date: string; hour: string } {
-    const w = toWallTime(t);
+    const w = toWallTime(t, this.tz);
     const date = `${w.year}-${String(w.month).padStart(2, "0")}-${String(w.day).padStart(2, "0")}`;
     const hour = String(w.hour).padStart(2, "0");
     return { id: `${date}T${hour}`, date, hour };
@@ -622,8 +622,8 @@ export class RtClient {
 
   /** Epoch ms of the end of the hour containing t. */
   private hourEnd(t: number): number {
-    const w = toWallTime(t);
-    return fromWallTime({ ...w, minute: 0, second: 0 }) + 3600_000;
+    const w = toWallTime(t, this.tz);
+    return fromWallTime({ ...w, minute: 0, second: 0 }, this.tz) + 3600_000;
   }
 
   /**

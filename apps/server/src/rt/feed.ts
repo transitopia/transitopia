@@ -133,7 +133,7 @@ export class FeedPoller {
   constructor(opts: FeedPollerOptions) {
     this.opts = opts;
     this.feed = opts.feed;
-    this.cadence = cadence(opts.feed.realtime);
+    this.cadence = cadence(opts.feed.realtime, opts.feed.timezone);
     this.upstream = {
       name: opts.feed.name,
       rt: opts.feed.realtime,
@@ -141,11 +141,13 @@ export class FeedPoller {
     };
     this.recorder = new Recorder(
       opts.historyDir,
+      opts.feed.timezone,
       (t) => this.cadence.coverageGapMs(t),
       { emptyIsGap: true },
     );
     this.changes = new ServiceChanges(
       join(opts.historyDir, "changes"),
+      opts.feed.timezone,
       opts.record,
     );
     this.ledger = new RequestLedger(this.schedule.dailyCap);
@@ -217,8 +219,8 @@ export class FeedPoller {
     const now = Date.now();
     const s = this.schedule;
     this.log(
-      `polling ${this.feed.name} on a schedule (now every ${pollIntervalS(s, "positions", now)}s positions, `
-        + `${pollIntervalS(s, "tripUpdates", now)}s trip updates, ${pollIntervalS(s, "alerts", now)}s alerts; `
+      `polling ${this.feed.name} on a schedule (now every ${pollIntervalS(s, "positions", now, this.feed.timezone)}s positions, `
+        + `${pollIntervalS(s, "tripUpdates", now, this.feed.timezone)}s trip updates, ${pollIntervalS(s, "alerts", now, this.feed.timezone)}s alerts; `
         + `${this.ledger.count(now)}/${s.dailyCap} requests used in the last 24 h); recording to ${this.recorder.dir}`,
     );
     this.pollingSince = Date.now();
@@ -296,7 +298,7 @@ export class FeedPoller {
       this.capped = false;
       this.ledger.record(endpoint, now);
       this.upstreamCalls++;
-      let delay = pollIntervalS(s, endpoint, now) * 1000;
+      let delay = pollIntervalS(s, endpoint, now, this.feed.timezone) * 1000;
       try {
         const bytes = await fn();
         this.consecutiveErrors[endpoint] = 0;
@@ -325,7 +327,7 @@ export class FeedPoller {
     schedule(
       last === undefined ?
         Date.now()
-      : last + pollIntervalS(s, endpoint, last) * 1000,
+      : last + pollIntervalS(s, endpoint, last, this.feed.timezone) * 1000,
     );
   }
 
@@ -353,7 +355,7 @@ export class FeedPoller {
       // Fixes can report yesterday's trips' stops after midnight.
       this.stopAt = await stopPositions(
         this.feed.id,
-        addDays(localDate(Date.now()), -1),
+        addDays(localDate(Date.now(), this.feed.timezone), -1),
       );
       this.routesLoadedFrom = mtime;
       // Filtered hours depend on the routes drawn (trackedOnly).
@@ -403,7 +405,7 @@ export class FeedPoller {
     this.reportTripFeed(
       tripFeedSummary({ trips, headerTs, bytes }, this.busTrips, Date.now()),
     );
-    const today = localDate(Date.now());
+    const today = localDate(Date.now(), this.feed.timezone);
     const rows = changes.map((c) => ({
       tripId: c.tripId,
       routeId: c.routeId,
@@ -577,7 +579,7 @@ export class FeedPoller {
     if (live.error) vehicles.error = live.error;
     // Service changes for the dates the live view shows: today's and yesterday's (after midnight).
     const versions: Record<string, VersionPointer> = {};
-    const today = localDate(now);
+    const today = localDate(now, this.feed.timezone);
     for (const date of [addDays(today, -1), today]) {
       const { version } = await this.changes.versioned(date);
       versions[date] = {
@@ -640,7 +642,7 @@ export class FeedPoller {
   budgetStatus(now = Date.now()): ProviderStatus["budget"] {
     const s = this.schedule;
     const intervalsS = Object.fromEntries(
-      POLL_FEEDS.map((f) => [f, pollIntervalS(s, f, now)]),
+      POLL_FEEDS.map((f) => [f, pollIntervalS(s, f, now, this.feed.timezone)]),
     );
     const nextPollInS = Object.fromEntries(
       Object.entries(this.nextPollAt).map(([f, at]) => [

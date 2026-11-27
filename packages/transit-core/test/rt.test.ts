@@ -629,7 +629,7 @@ describe("prediction", () => {
     const t1 = pp3.tripIndex.get("trip1")!;
     const t2 = pp3.tripIndex.get("trip2")!;
     const ms = (s: number) =>
-      serviceDayStart(serviceDate("20260928")) + s * 1000;
+      serviceDayStart(serviceDate("20260928"), pp3.plan.timezone) + s * 1000;
     expect(p3.course(t2, ms(start + 700)).pace).toBe(
       p3.course(t1, ms(start + 100)).pace,
     );

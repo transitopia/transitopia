@@ -251,7 +251,7 @@ describe("ServiceChanges", () => {
 
   it("keeps cancellations after the feed drops them, per service date, across restarts", async () => {
     dir = await mkdtemp(join(tmpdir(), "rt-changes-"));
-    const sc = new ServiceChanges(dir, true);
+    const sc = new ServiceChanges(dir, "America/Vancouver", true);
     await sc.updateTrips(
       [
         {
@@ -294,16 +294,18 @@ describe("ServiceChanges", () => {
     // t1 no longer reported: still recorded.
     await sc.updateTrips([], 4000);
     await sc.flushed();
-    const reloaded = await new ServiceChanges(dir, true).get(
-      serviceDate("20260929"),
-    );
+    const reloaded = await new ServiceChanges(
+      dir,
+      "America/Vancouver",
+      true,
+    ).get(serviceDate("20260929"));
     expect(reloaded.cancelled).toEqual({ t1: [1000, 3000] });
     expect(reloaded.skipped).toEqual({ t2: ["a", "b"] });
     expect((await sc.get(serviceDate("20260930"))).cancelled).toEqual({});
   });
 
   it("versions each state of a day, keeping recent versions for their immutable URLs", async () => {
-    const sc = new ServiceChanges("/nonexistent", false);
+    const sc = new ServiceChanges("/nonexistent", "America/Vancouver", false);
     const v1 = await sc.versioned(serviceDate("20260929"));
     expect(await sc.versioned(serviceDate("20260929"))).toBe(v1);
     await sc.updateTrips(
@@ -343,7 +345,7 @@ describe("ServiceChanges", () => {
 
   it("records alerts under the local date, keeping when each was first and last seen", async () => {
     dir = await mkdtemp(join(tmpdir(), "rt-changes-"));
-    const sc = new ServiceChanges(dir, false);
+    const sc = new ServiceChanges(dir, "America/Vancouver", false);
     const t0 = Date.UTC(2026, 8, 29, 15, 14); // 08:14 PDT
     const a = {
       id: "a1",

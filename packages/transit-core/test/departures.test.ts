@@ -135,7 +135,7 @@ const plan: ServicePlan = {
   },
 };
 const pp = preparePlan(plan, kin);
-const day = serviceDayStart(DATE);
+const day = serviceDayStart(DATE, plan.timezone);
 const at = (sec: number) => day + sec * 1000;
 
 describe("departuresAt", () => {

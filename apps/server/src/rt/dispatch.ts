@@ -161,7 +161,7 @@ export class LiveDispatcher {
   private async runCheck(): Promise<void> {
     await this.refreshBase();
     const { observations } = await this.corrections.load();
-    const today = localDate(this.now());
+    const today = localDate(this.now(), this.contexts.net.timezone);
     const lo = addDays(today, -serverConfig.dispatchWindowDays);
     const hi = addDays(today, serverConfig.dispatchWindowDays);
     const dates = new Set<ServiceDate>();

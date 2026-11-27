@@ -322,7 +322,9 @@ describe("corrections (observations → dispatcher → playback)", () => {
   const base = dispatch(file, pp, g, dopts);
   const date = serviceDate("20260928");
   const iso = (sec: number) =>
-    new Date(serviceDayStart(date) + sec * 1000).toISOString();
+    new Date(
+      serviceDayStart(date, "America/Vancouver") + sec * 1000,
+    ).toISOString();
   const x = (v: { lon: number }) => (v.lon - pt(0)[0]) * M_PER_DEG_LON;
   const pbOf = (f: MovementsFile) =>
     new TrainPlayback(f, pp, g, kin, {

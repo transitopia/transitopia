@@ -35,7 +35,11 @@ import {
 } from "@transitopia/shared/admin-api.ts";
 
 const { FeedMessage } = GtfsRealtimeBindings.transit_realtime;
-const RAIL = { network: "skytrain", feed: "translink" };
+const RAIL = {
+  network: "skytrain",
+  feed: "translink",
+  timezone: "America/Vancouver",
+};
 const RIDER: ObservationFile = {
   $comment: "Rider report",
   observations: [

@@ -22,14 +22,13 @@ import {
   formatServiceTime,
   localDate,
   serviceDayStart,
-  TIMEZONE,
   isServiceDate,
 } from "@transitopia/transit-core/time.ts";
 
 const feedArg = process.argv.indexOf("--feed");
 const FEED = feedArg >= 0 ? process.argv[feedArg + 1]! : "translink";
 const kin = (await readFeedConfig(FEED)).kinematics;
-const ais = (await readFeed(FEED)).ais;
+const { ais, timezone: TZ } = await readFeed(FEED);
 if (!ais)
   throw new Error(`Feed ${FEED} has no vessels with AIS (feed.json → ais)`);
 const infra = (await readFerries(FEED)).find(
@@ -42,18 +41,18 @@ if (!infra)
 const cfg: AisMatchConfig = ais.match;
 const names = new Map(ais.vessels.map((v) => [v.mmsi, v.name]));
 
-const now = Temporal.Now.zonedDateTimeISO(TIMEZONE);
+const now = Temporal.Now.zonedDateTimeISO(TZ);
 const date =
   process.argv.slice(2).find(isServiceDate)
   ?? localDate(
     (now.hour < 3 ? now.subtract({ days: 1 }) : now).epochMilliseconds,
+    TZ,
   );
 const pp = preparePlan(await loadLatestPlan(FEED), kin);
 const fixes = (
   await readRecordedFixes(
-    new Recorder(feedPaths(FEED).aisHistory, ais.coverageGapS * 1000),
+    new Recorder(feedPaths(FEED).aisHistory, TZ, ais.coverageGapS * 1000),
     date,
-    TIMEZONE,
   )
 ).map((f) => ({ ...f, name: names.get(f.mmsi) ?? f.name }));
 if (!fixes.length) {
@@ -61,7 +60,7 @@ if (!fixes.length) {
   process.exit(0);
 }
 const r = aisCorrections(pp, date, fixes, ais.route, cfg);
-const dayStart = serviceDayStart(date);
+const dayStart = serviceDayStart(date, TZ);
 const hm = (ms: number) => formatServiceTime((ms - dayStart) / 1000, true);
 console.log(
   `${date}: ${fixes.length} fixes ${hm(fixes[0]!.ts)}–${hm(fixes.at(-1)!.ts)}; matched ${r.matched}, unmatched ${r.unmatched}`,

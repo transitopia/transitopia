@@ -107,9 +107,9 @@ export function overviewFeatures(plan: ServicePlan): TileFeature[] {
 }
 
 async function main() {
-  const today = localDate(Date.now());
   const features: TileFeature[] = [];
   for (const feed of await readFeeds()) {
+    const today = localDate(Date.now(), feed.timezone);
     const entry = feedForDate(await readManifest(feed.id), today);
     const path = entry && join(PUBLIC_DIR, entry.path);
     if (!path || !(await exists(path))) {

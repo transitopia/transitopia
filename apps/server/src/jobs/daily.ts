@@ -51,7 +51,7 @@ export interface DailyResult {
 }
 
 /** A feed with real-time data, whose statistics can be computed. */
-export type RealtimeFeed = Pick<FeedInfo, "id"> & {
+export type RealtimeFeed = Pick<FeedInfo, "id" | "timezone"> & {
   realtime: FeedRealtime;
 };
 
@@ -65,8 +65,8 @@ export async function dailyStats(
   const zip = await feedZipFor(feed.id, date);
   if (!zip) throw new Error(`no archived ${feed.id} GTFS feed covers ${date}`);
   const tt = await loadDayTimetable(zip, date);
-  const coverageGapMs = cadence(feed.realtime).coverageGapMs;
-  const dayStart = serviceDayStart(date);
+  const coverageGapMs = cadence(feed.realtime, feed.timezone).coverageGapMs;
+  const dayStart = serviceDayStart(date, feed.timezone);
   const from = new Date(dayStart);
   const to = new Date(dayStart + DAY_SPAN_MS);
 
@@ -272,14 +272,14 @@ export async function dailyStats(
 /** Whether any positions poll of a feed was recorded during a service date (YYYYMMDD). */
 export async function hasRecording(
   db: Db,
-  feedId: string,
+  feed: Pick<FeedInfo, "id" | "timezone">,
   date: ServiceDate,
 ): Promise<boolean> {
-  const start = serviceDayStart(date);
+  const start = serviceDayStart(date, feed.timezone);
   const row = await db
     .selectFrom("rt_polls")
     .select("fetched_at")
-    .where("feed_id", "=", feedId)
+    .where("feed_id", "=", feed.id)
     .where("source", "=", "gtfs-rt")
     .where("fetched_at", ">=", new Date(start))
     .where("fetched_at", "<", new Date(start + DAY_SPAN_MS))

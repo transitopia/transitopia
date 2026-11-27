@@ -3,6 +3,9 @@
 // missed days are caught up after downtime:
 //
 //   partitions:<UTC date>    create tomorrow's partitions
+// Local dates and hours are in the server's zone (recording.json → timezone), except service dates,
+// which are in each feed's.
+//
 //   retention:<local date>   drop raw data older than the retention period (DB, files, archive)
 //   daily:<feed>:<service date>   a feed's observed stop times + route statistics, for each finished
 //                            service date still within the retention period (catch-up included)
@@ -129,8 +132,9 @@ export class Jobs {
 
   private async runDue(now: number): Promise<void> {
     const db = this.db;
-    const today = localDate(now);
-    const wall = toWallTime(now);
+    // The server's own schedule; per-feed work below uses each feed's zone.
+    const today = localDate(now, recording.timezone);
+    const wall = toWallTime(now, recording.timezone);
     await this.job("partitions", new Date(now).toISOString().slice(0, 10), () =>
       ensurePartitions(db, now),
     );
@@ -139,6 +143,7 @@ export class Jobs {
         db,
         retentionDays: recording.retentionDays,
         archiveRemote: this.env.archiveRemote,
+        feeds: this.feeds,
         now,
       }),
     );
@@ -190,13 +195,18 @@ export class Jobs {
     const realtime = this.feeds.filter((f): f is FeedInfo & RealtimeFeed =>
       Boolean(f.realtime),
     );
-    // Every finished service date still within the raw data's lifetime, oldest first.
+    // Every finished service date still within the raw data's lifetime, oldest first, each feed's
+    // dates in its own zone.
     for (let d = recording.retentionDays - 1; d >= 1; d--) {
-      const date = addDays(today, -d);
-      if (now < serviceDayStart(date) + recording.afterServiceDayH * 3_600_000)
-        continue;
       for (const feed of realtime) {
-        if (!(await hasRecording(db, feed.id, date))) continue;
+        const date = addDays(localDate(now, feed.timezone), -d);
+        if (
+          now
+          < serviceDayStart(date, feed.timezone)
+            + recording.afterServiceDayH * 3_600_000
+        )
+          continue;
+        if (!(await hasRecording(db, feed, date))) continue;
         await this.job("daily", `${feed.id}:${date}`, () =>
           dailyStats(db, feed, date, this.log),
         );
