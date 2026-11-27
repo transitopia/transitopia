@@ -27,7 +27,13 @@ import {
 } from "../components/InfoCard.tsx";
 import { Menu, type MenuItem } from "../components/Menu.tsx";
 import type { IconId } from "../components/Icon.tsx";
-import { clockMinutes, timeState, toHeadsign } from "./format.ts";
+import {
+  cardClock,
+  cardMinutes,
+  timeState,
+  toHeadsign,
+  type CardClock,
+} from "./format.ts";
 import {
   badge,
   RouteBadge,
@@ -58,9 +64,9 @@ function timeText(
   now: number,
   live: boolean,
   first: boolean,
-  tz: string,
+  clock: CardClock,
 ) {
-  if (!live) return clockMinutes(d.t, tz);
+  if (!live) return cardMinutes(d.t, clock);
   const m = Math.max(0, Math.round((d.t - now) / 60_000));
   if (m === 0) return "Now";
   return first ? `${m} min` : `${m}m`;
@@ -117,17 +123,17 @@ const GroupRow: React.FC<{
   group: PlaceGroup;
   now: number;
   live: boolean;
-  /** The time zone times are shown in (the snapshot's). */
-  tz: string;
+  /** The zone clock times are shown in (the place's). */
+  clock: CardClock;
   items: MenuItem[];
   colors: (r: PlanRoute) => RouteColors;
-}> = ({ group, now, live, tz, items, colors }) => {
+}> = ({ group, now, live, clock, items, colors }) => {
   const [first, ...rest] = group.departures;
   const cancelled = group.departures.filter((d) => d.cancelled);
   const note = [
     platformsText(group.platforms, group.route.mode === "bus"),
     cancelled.length ?
-      `${cancelled.map((d) => clockMinutes(d.sched, tz)).join(", ")} cancelled`
+      `${cancelled.map((d) => cardMinutes(d.sched, clock)).join(", ")} cancelled`
     : "",
   ]
     .filter(Boolean)
@@ -139,7 +145,7 @@ const GroupRow: React.FC<{
       {d.cancelled ? null : (
         <TimeMark mark={markOf(d, live)} size={isFirst ? "md" : "sm"} />
       )}
-      {timeText(d, now, live, isFirst, tz)}
+      {timeText(d, now, live, isFirst, clock)}
     </span>
   );
   const content = (
@@ -330,6 +336,7 @@ const DepartureList: React.FC<{
   parentOf: (s: Shared) => Shared | undefined;
   empty: string;
   snap: TransitSnapshot;
+  clock: CardClock;
   itemsFor: (g: PlaceGroup) => MenuItem[];
   sharedItems: (s: Shared) => MenuItem[];
   colors: (r: PlanRoute) => RouteColors;
@@ -340,6 +347,7 @@ const DepartureList: React.FC<{
   parentOf,
   empty,
   snap,
+  clock,
   itemsFor,
   sharedItems,
   colors,
@@ -374,7 +382,7 @@ const DepartureList: React.FC<{
       group={g}
       now={snap.t}
       live={snap.live}
-      tz={snap.timezone}
+      clock={clock}
       items={itemsFor(g)}
       colors={colors}
     />
@@ -476,6 +484,7 @@ const PlaceCardBody: React.FC<{
 }> = ({ engine, snap, place }) => {
   const osmNode = useOsmNode(place.feature);
   const state = timeState(snap);
+  const clock = cardClock(snap.t, place.timezone, snap.timezone);
   const colors = routeColorsFor(engine);
   const station = place.kind === "station";
   const exchange = place.kind === "exchange";
@@ -551,7 +560,7 @@ const PlaceCardBody: React.FC<{
         id: "vehicle",
         label: `View ${VEHICLE[kind].noun}`,
         icon: VEHICLE[kind].icon,
-        note: `${toHeadsign(g.headsign)} · ${timeText(next, snap.t, snap.live, true, snap.timezone)}`,
+        note: `${toHeadsign(g.headsign)} · ${timeText(next, snap.t, snap.live, true, clock)}`,
         onSelect: () => engine.open({ vehicle }, title),
       });
     }
@@ -601,7 +610,7 @@ const PlaceCardBody: React.FC<{
   const when = (noun: string) =>
     snap.live ?
       `Next ${noun}`
-    : `${noun[0]!.toUpperCase()}${noun.slice(1)} after ${clockMinutes(snap.t, snap.timezone)}`;
+    : `${noun[0]!.toUpperCase()}${noun.slice(1)} after ${cardMinutes(snap.t, clock)}`;
   return (
     <InfoCard
       tile={
@@ -693,6 +702,7 @@ const PlaceCardBody: React.FC<{
           )}
           groups={x.groups}
           shared={x.shared}
+          clock={clock}
           parentOf={(s) =>
             s.within === undefined ? undefined : place.shared[s.within]
           }

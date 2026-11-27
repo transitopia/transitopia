@@ -75,6 +75,8 @@ export interface PublishedStops {
   code: string[];
   parent: string[];
   platform: string[];
+  /** Each stop's own zone ("" for the feed's), only when a stop has one (PlanStop.timezone). */
+  timezone?: string[];
 }
 
 /** A pattern with its distances as differences, and its trips' start times per service as differences. */
@@ -390,6 +392,9 @@ function encodeStops(stops: readonly PlanStop[]): PublishedStops {
     code: stops.map((s) => s.code ?? ""),
     parent: stops.map((s) => s.parent ?? ""),
     platform: stops.map((s) => s.platform ?? ""),
+    ...(stops.some((s) => s.timezone) ?
+      { timezone: stops.map((s) => s.timezone ?? "") }
+    : {}),
   };
 }
 
@@ -491,6 +496,7 @@ function decodeStops(s: PublishedStops): PlanStop[] {
     if (s.code[i]) stop.code = s.code[i];
     if (s.parent[i]) stop.parent = s.parent[i];
     if (s.platform[i]) stop.platform = s.platform[i];
+    if (s.timezone?.[i]) stop.timezone = s.timezone[i];
     return stop;
   });
 }

@@ -70,7 +70,7 @@ A patch only fits the build it was dispatched against (`baseBuiltAt`), which is 
 
 ## Jobs
 
-`src/jobs/`. The leader checks every 5 minutes and runs whatever is due, one job at a time. `job_runs` (in `packages/db`) makes each (job, key) run once and retries failures on the next tick, so missed days are caught up after downtime; runs a previous leader left "running" are reset when a new leader starts.
+`src/jobs/`. The leader checks every 5 minutes and runs whatever is due, one job at a time. `job_runs` (in `packages/db`) makes each (job, key) run once and retries failures on the next tick, so missed days are caught up after downtime; runs a previous leader left "running" are reset when a new leader starts. Local dates and hours in keys, and `dataBuildAt`, are in the server's zone (`config/server/recording.json` → `timezone`); service dates are each feed's own, in its zone, as are its recorded hour files and the dates retention compares them with.
 
 | Job | Key | What |
 |---|---|---|

@@ -349,6 +349,11 @@ export async function buildPlan(
     const platform =
       row.platform_code || /@\s*Platform\s+(\w+)/i.exec(s.name)?.[1];
     if (platform) s.platform = platform;
+    // A platform takes its parent station's zone (GTFS stops.txt → stop_timezone).
+    const zone =
+      (row.parent_station && allStops.get(row.parent_station)?.stop_timezone)
+      || row.stop_timezone;
+    if (zone && !zones.includes(zone)) s.timezone = zone;
     stopIndex.set(id, stops.length);
     stops.push(s);
   }

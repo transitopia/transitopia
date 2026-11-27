@@ -1,12 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  cardClock,
+  cardMinutes,
   clockMinutes,
   clockTime,
   fromIsoDate,
   isoDate,
+  offsetFromDevice,
+  offsetLabel,
   rateLabel,
   shortDate,
   timeState,
+  zoneLabel,
 } from "../src/TransitMap/format.ts";
 
 // 08:04:05 in Vancouver (PDT, UTC−7).
@@ -65,5 +70,38 @@ describe("timeState", () => {
     expect(
       timeState({ t: halfPastMidnight, live: true, timezone: TZ }).when,
     ).toBe("Wed 7 Oct, 00:30");
+  });
+});
+
+describe("time zones", () => {
+  it("labels offsets", () => {
+    expect(offsetLabel(-420)).toBe("UTC−7");
+    expect(offsetLabel(330)).toBe("UTC+5:30");
+    expect(offsetLabel(0)).toBe("UTC");
+  });
+
+  it("names a zone by a short abbreviation, else its offset", () => {
+    expect(zoneLabel(T, "America/Edmonton")).toMatch(/^[A-Z]{2,4}$/);
+    // CLDR's generic name here is "India Time": too long for the time bar.
+    expect(zoneLabel(T, "Asia/Kolkata")).toBe("UTC+5:30");
+  });
+
+  it("says how far the time bar is from the device", () => {
+    vi.stubEnv("TZ", "America/Vancouver"); // the device's zone
+    try {
+      expect(offsetFromDevice(T, "America/Edmonton")).toBe("+1 h");
+      expect(offsetFromDevice(T, "America/Dawson_Creek")).toBeUndefined();
+      expect(offsetFromDevice(T, "Asia/Kolkata")).toBe("+12 h 30 min");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("marks a card's clock times only when its offset isn't the time bar's", () => {
+    // America/Dawson_Creek and America/Vancouver are both UTC−7 in October 2026: same offset, no mark.
+    const same = cardClock(T, "America/Dawson_Creek", "America/Vancouver");
+    expect(cardMinutes(T, same)).toBe("08:04");
+    const other = cardClock(T, "America/Edmonton", "America/Vancouver");
+    expect(cardMinutes(T, other)).toMatch(/^09:04 \S+$/);
   });
 });
