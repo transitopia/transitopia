@@ -37,6 +37,12 @@ export interface RtSnapshot {
   /** Epoch ms of the upstream feed header timestamp. */
   headerTs: number;
   vehicles: RtVehicle[];
+  /**
+   * The last real fix of each vehicle whose position in this snapshot is frozen GPS, when the server
+   * knows where its freeze began (packages/transit-core/src/rt/stale.ts → FreezeWatch). Absent in
+   * recordings made before 2026-11-08.
+   */
+  frozen?: RtVehicle[];
 }
 
 const UNTRACKED = "gtfs:";
@@ -56,16 +62,26 @@ export function trackedOnly(
   s: RtSnapshot,
   keyById?: ReadonlyMap<string, string>,
 ): RtSnapshot {
-  if (s.vehicles.every(isTracked)) return s;
-  const vehicles: RtVehicle[] = [];
-  for (const v of s.vehicles) {
-    if (isTracked(v)) vehicles.push(v);
-    else {
-      const key = keyById?.get(v.routeKey.slice(UNTRACKED.length));
-      if (key) vehicles.push({ ...v, routeKey: key });
+  if (s.vehicles.every(isTracked) && (s.frozen ?? []).every(isTracked))
+    return s;
+  const tracked = (list: RtVehicle[]): RtVehicle[] => {
+    const out: RtVehicle[] = [];
+    for (const v of list) {
+      if (isTracked(v)) out.push(v);
+      else {
+        const key = keyById?.get(v.routeKey.slice(UNTRACKED.length));
+        if (key) out.push({ ...v, routeKey: key });
+      }
     }
+    return out;
+  };
+  const out: RtSnapshot = { ...s, vehicles: tracked(s.vehicles) };
+  if (s.frozen) {
+    const frozen = tracked(s.frozen);
+    if (frozen.length) out.frozen = frozen;
+    else delete out.frozen;
   }
-  return { ...s, vehicles };
+  return out;
 }
 
 /** Response of GET /rt/coverage: recorder coverage as merged [start, end] epoch-ms intervals. */
@@ -96,67 +112,75 @@ export interface CompactSnapshot {
   t: number;
   h: number;
   v: SnapshotRow[];
+  /** RtSnapshot.frozen, when there are any. */
+  f?: SnapshotRow[];
 }
 
 /** The compact format: vehicles as tuples, positions rounded to ~1 m. */
 export function compactSnapshot(s: RtSnapshot): CompactSnapshot {
-  return {
+  const out: CompactSnapshot = {
     t: s.fetchedAt,
     h: s.headerTs,
-    v: s.vehicles.map((v): SnapshotRow => {
-      const row: SnapshotRow = [
-        v.id,
-        v.label ?? null,
-        v.tripId ?? null,
-        v.routeKey,
-        Math.round(v.lat * 1e5) / 1e5,
-        Math.round(v.lon * 1e5) / 1e5,
-        v.bearing ?? null,
-        v.ts,
-        v.stopSeq ?? null,
-        v.stopId ?? null,
-        v.status ?? null,
-        v.delay ?? null,
-      ];
-      if (v.speed !== undefined) row.push(v.speed);
-      return row;
-    }),
+    v: s.vehicles.map(compactVehicle),
   };
+  if (s.frozen?.length) out.f = s.frozen.map(compactVehicle);
+  return out;
+}
+
+function compactVehicle(v: RtVehicle): SnapshotRow {
+  const row: SnapshotRow = [
+    v.id,
+    v.label ?? null,
+    v.tripId ?? null,
+    v.routeKey,
+    Math.round(v.lat * 1e5) / 1e5,
+    Math.round(v.lon * 1e5) / 1e5,
+    v.bearing ?? null,
+    v.ts,
+    v.stopSeq ?? null,
+    v.stopId ?? null,
+    v.status ?? null,
+    v.delay ?? null,
+  ];
+  if (v.speed !== undefined) row.push(v.speed);
+  return row;
 }
 
 export function expandSnapshot(o: CompactSnapshot): RtSnapshot {
-  return {
+  const out: RtSnapshot = {
     fetchedAt: o.t,
     headerTs: o.h,
-    vehicles: o.v.map(
-      ([
-        id,
-        label,
-        tripId,
-        routeKey,
-        lat,
-        lon,
-        bearing,
-        ts,
-        stopSeq,
-        stopId,
-        status,
-        delay,
-        speed,
-      ]) => {
-        const v: RtVehicle = { id, routeKey, lat, lon, ts };
-        if (label !== null) v.label = label;
-        if (tripId !== null) v.tripId = tripId;
-        if (bearing !== null) v.bearing = bearing;
-        if (stopSeq !== null) v.stopSeq = stopSeq;
-        if (stopId !== null) v.stopId = stopId;
-        if (status !== null) v.status = status;
-        if (delay !== null) v.delay = delay;
-        if (speed !== undefined && speed !== null) v.speed = speed;
-        return v;
-      },
-    ),
+    vehicles: o.v.map(expandVehicle),
   };
+  if (o.f?.length) out.frozen = o.f.map(expandVehicle);
+  return out;
+}
+
+function expandVehicle([
+  id,
+  label,
+  tripId,
+  routeKey,
+  lat,
+  lon,
+  bearing,
+  ts,
+  stopSeq,
+  stopId,
+  status,
+  delay,
+  speed,
+]: SnapshotRow): RtVehicle {
+  const v: RtVehicle = { id, routeKey, lat, lon, ts };
+  if (label !== null) v.label = label;
+  if (tripId !== null) v.tripId = tripId;
+  if (bearing !== null) v.bearing = bearing;
+  if (stopSeq !== null) v.stopSeq = stopSeq;
+  if (stopId !== null) v.stopId = stopId;
+  if (status !== null) v.status = status;
+  if (delay !== null) v.delay = delay;
+  if (speed !== undefined && speed !== null) v.speed = speed;
+  return v;
 }
 
 /** One history line (NDJSON). */

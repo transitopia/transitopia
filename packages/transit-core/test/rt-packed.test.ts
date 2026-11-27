@@ -90,6 +90,17 @@ describe("packed snapshots", () => {
     expect(unpackSnapshots(p)).toEqual(snapshots.map(expandSnapshot));
   });
 
+  it("keep frozen buses' last real fixes with their snapshot", () => {
+    const withFrozen: CompactSnapshot[] = [
+      snapshots[1]!,
+      { ...snapshots[0]!, f: [snapshots[0]!.v[0]!] },
+    ];
+    const out = unpackSnapshots(packSnapshots(withFrozen));
+    expect(out).toEqual(withFrozen.map(expandSnapshot));
+    expect(out[0]!.frozen).toBeUndefined();
+    expect(out[1]!.frozen?.map((v) => v.id)).toEqual(["18330"]);
+  });
+
   it("narrow columns to the values they hold", () => {
     const p = packSnapshots(snapshots.slice(0, 1));
     const [id, , , , lat, , bearing, , , , status] = p.columns;
