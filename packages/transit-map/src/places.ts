@@ -131,6 +131,11 @@ export interface PlaceSnapshot extends Place {
   /** A stop's platform or bay (`PlanStop.platform`), where the plan has one. */
   platform?: string | undefined;
   /**
+   * The zone its clock times are shown in: the stop's own (`PlanStop.timezone`; a station's or
+   * exchange's first stop's), else its feed's (packages/transit-map/README.md#time-zones).
+   */
+  timezone: string;
+  /**
    * A station's or exchange's bus bays, by number, its own feed's first: each has its own stop card
    * (in its feed: another feed's bays at the same place are on the card too).
    */
@@ -392,6 +397,8 @@ export function placeSnapshot(
     name: where.name,
     code: "code" in where ? where.code : undefined,
     platform: "platform" in where ? where.platform : undefined,
+    timezone:
+      pp.stopById.get([...stopIds][0] ?? p.id)?.timezone ?? plan.timezone,
     codes,
     feature:
       p.kind === "stop" ? stopFeatures(pp.plan)?.idOf.get(p.id) : undefined,

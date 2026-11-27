@@ -10,6 +10,7 @@ import { realtimeOf } from "@transitopia/shared/datasets.ts";
 import {
   addDays,
   serviceDayStart,
+  tzOffsetMs,
   type ServiceDate,
 } from "@transitopia/transit-core/time.ts";
 import type {
@@ -184,9 +185,19 @@ export type { Frequency };
 export interface TransitSnapshot {
   /** Shown instant, epoch ms (updated a few times a second while playing). */
   t: number;
-  /** The time zone times are shown in (the first feed's, TransitEngineOptions.feeds). */
+  /**
+   * The time zone the time bar shows: its feed's (`clockFeed`, packages/transit-map/README.md#time-zones),
+   * the open card's feed, else the feed at the map's centre.
+   */
   timezone: string;
-  /** Displayed service date (YYYYMMDD) and its description ("Weekday", "Sunday/holiday", …). */
+  /** When the time bar's zone last changed to another UTC offset (Date.now()), to flash its label. */
+  zoneChangedAt: number | undefined;
+  /** Feeds with stops in view are in zones with different UTC offsets at t. */
+  mixedZones: boolean;
+  /**
+   * Displayed service date (YYYYMMDD) and its description ("Weekday", "Sunday/holiday", …), the
+   * time bar's feed's.
+   */
   serviceDate: ServiceDate;
   serviceLabel: string;
   playing: boolean;
@@ -418,8 +429,14 @@ export class TransitEngine {
   /** The trails vehicles leave while Route lines is "trace". */
   private readonly trace: TraceLayer;
   private readonly debug: boolean;
-  /** The time zone the clock's times and dates are shown in: the first feed's. */
-  private readonly tz: string;
+  /** The feed whose zone the time bar shows (`pickClockFeed`). */
+  private clockFeed: string;
+  /** When the time bar's zone last changed to another UTC offset (Date.now()). */
+  private zoneChangedAt: number | undefined;
+  /** The loaded feeds with stops in view (`pickPrimary`). */
+  private feedsInView: readonly string[] = [];
+  /** A slider drag is under way: the time bar's zone doesn't change until it ends. */
+  private scrubbing = false;
   private theme: Theme;
   private hiddenGroups: Set<RouteGroup>;
   /** Every feed's routes whose every group is hidden (`routeId`s, from each slot's `hidden`). */
@@ -558,7 +575,8 @@ export class TransitEngine {
     this.feeds = feeds;
     this.urls = { dataBase: opts.dataBase, apiBase: opts.apiBase };
     this.onRebuilt = opts.onRebuilt;
-    this.tz = opts.feeds[0]!.feed.timezone;
+    // The feed at the map's centre, until the view or a card says otherwise (pickClockFeed).
+    this.clockFeed = this.centreFeed() ?? opts.feeds[0]!.feed.id;
     this.theme = opts.theme;
     this.debug = opts.debug ?? false;
     const range = this.range();
@@ -567,7 +585,7 @@ export class TransitEngine {
         'The timetable manifest lists no feeds. Run "npm run data".',
       );
 
-    const url = opts.initial ?? readUrl(this.tz);
+    const url = opts.initial ?? readUrl();
     // Without a time in the URL: live.
     this.clock = new Clock(url.t);
     this.clock.setBounds(range[0], range[1]);
@@ -766,6 +784,13 @@ export class TransitEngine {
     const sec = (t - this.dayStart(this.displayDate(t))) / 1000;
     this.clock.seek(this.dayStart(date) + sec * 1000);
     this.trace.clear();
+  }
+
+  /** A slider drag starts or ends: the time bar's zone holds still during one. */
+  setScrubbing(on: boolean): void {
+    if (on === this.scrubbing) return;
+    this.scrubbing = on;
+    if (!on) this.pickClockFeed();
   }
 
   /** Seconds since the start of the displayed service day (the slider's value). */
@@ -1064,6 +1089,7 @@ export class TransitEngine {
     this.pendingSelect = this.elsewhere = undefined;
     this.revealSelected = false;
     this.syncPlaceHighlight();
+    this.pickClockFeed();
     this.writeUrl();
     this.publish();
   }
@@ -1079,6 +1105,7 @@ export class TransitEngine {
     this.pick = undefined;
     this.revealAt = performance.now() + REVEAL_DELAY_MS;
     this.syncPlaceHighlight();
+    this.pickClockFeed();
     this.writeUrl();
     this.publish();
   }
@@ -1102,9 +1129,75 @@ export class TransitEngine {
           if (contains(view, stop.lon, stop.lat)) n++;
       if (!best || n > best.n) best = { feed: slot.feed, n };
     }
-    if (best?.feed === this.primaryFeed) return;
-    this.primaryFeed = best?.feed;
+    const inView = this.slots
+      .filter((slot) =>
+        (slot.shown?.plan.stops ?? []).some(
+          (stop) => view && contains(view, stop.lon, stop.lat),
+        ),
+      )
+      .map((slot) => slot.feed);
+    if (inView.join() !== this.feedsInView.join()) {
+      this.feedsInView = inView;
+      this.dirty = true;
+    }
+    if (best?.feed !== this.primaryFeed) {
+      this.primaryFeed = best?.feed;
+      this.dirty = true;
+    }
+    this.pickClockFeed();
+  }
+
+  /** The time zone the clock's times and dates are shown in: the time bar's feed's. */
+  private get tz(): string {
+    return this.zoneOf(this.clockFeed);
+  }
+
+  private zoneOf(feed: string): string {
+    return (this.feeds.find((f) => f.config.feed.id === feed) ?? this.feeds[0]!)
+      .config.feed.timezone;
+  }
+
+  /**
+   * The feed whose coverage holds the map's centre (the primary feed among several), else the
+   * primary feed if it has stops in view.
+   */
+  private centreFeed(): string | undefined {
+    const c = this.map.getCenter();
+    const here = this.feeds
+      .filter((f) => f.coverage && contains(f.coverage, c.lng, c.lat))
+      .map((f) => f.config.feed.id);
+    if (this.primaryFeed && here.includes(this.primaryFeed))
+      return this.primaryFeed;
+    if (here.length) return here[0];
+    return this.primaryFeed && this.feedsInView.includes(this.primaryFeed) ?
+        this.primaryFeed
+      : undefined;
+  }
+
+  /**
+   * The time bar's feed (packages/transit-map/README.md#time-zones): the open card's, else the one
+   * at the map's centre. A feed in another zone (a different UTC offset at the shown time, whatever
+   * the zones' names) takes over only once no feed in the current zone has stops in view, and never
+   * during a slider drag. The instant stays: the shown time jumps, never the vehicles.
+   */
+  private pickClockFeed(): void {
+    if (this.scrubbing) return;
+    const t = this.clock.now();
+    const offset = (feed: string) => tzOffsetMs(t, this.zoneOf(feed));
+    const current = offset(this.clockFeed);
+    let next = this.selected?.feed ?? this.place?.feed;
+    if (next === undefined) {
+      const centre = this.centreFeed();
+      if (centre === undefined) return;
+      const keep = this.feedsInView.some((f) => offset(f) === current);
+      if (offset(centre) !== current && keep) return;
+      next = centre;
+    }
+    if (next === this.clockFeed) return;
+    this.clockFeed = next;
+    if (offset(next) !== current) this.zoneChangedAt = Date.now();
     this.dirty = true;
+    this.writeUrl();
   }
 
   /**
@@ -2092,9 +2185,14 @@ export class TransitEngine {
   private notices: string[] = [];
   private datasets: string[] = [];
 
-  /** First and last service dates that can be shown: with a timetable, and at most DATE_AHEAD_DAYS from today. */
+  /**
+   * First and last service dates the time bar's feed can show: with a timetable, and at most
+   * DATE_AHEAD_DAYS from today.
+   */
   private dateRange(): [ServiceDate, ServiceDate] | undefined {
-    const feeds = this.feeds.flatMap((f) => f.manifest.feeds);
+    const feeds =
+      this.feeds.find((f) => f.config.feed.id === this.clockFeed)?.manifest
+        .feeds ?? [];
     if (!feeds.length) return undefined;
     const ahead = addDays(this.displayDate(Date.now()), DATE_AHEAD_DAYS);
     const end = feeds
@@ -2135,8 +2233,13 @@ export class TransitEngine {
     return {
       t,
       timezone: this.tz,
+      zoneChangedAt: this.zoneChangedAt,
+      mixedZones:
+        new Set(this.feedsInView.map((f) => tzOffsetMs(t, this.zoneOf(f)))).size
+        > 1,
       serviceDate,
-      serviceLabel: this.primary?.describeDate(serviceDate) ?? "…",
+      serviceLabel:
+        this.slotOf(this.clockFeed)?.describeDate(serviceDate) ?? "…",
       playing: this.clock.playing,
       rate: this.clock.rate,
       live: this.clock.isLive(),

@@ -291,6 +291,8 @@ export async function readCyclingConfig(): Promise<Config<"cycling">> {
 export interface RailNetwork {
   network: string;
   feed: string;
+  /** The network's time zone (network.json → timezone), which its service dates are in. */
+  timezone: string;
 }
 
 /** Every rail network with each feed on it, by network then feed. */
@@ -304,7 +306,13 @@ export async function railNetworks(): Promise<RailNetwork[]> {
         throw new Error(
           `Network ${n.id} lists feed ${feed}, which has no track-level routes (routes.json → kind "skytrain")`,
         );
-      out.push({ network: n.id, feed });
+      // Its service dates are the feed's: a train runs on the plan's dates (feed.json → timezone).
+      const { timezone } = await readFeed(feed);
+      if (timezone !== n.timezone)
+        throw new Error(
+          `Network ${n.id} is in ${n.timezone} and its feed ${feed} in ${timezone}: they have to match`,
+        );
+      out.push({ network: n.id, feed, timezone: n.timezone });
     }
   return out;
 }

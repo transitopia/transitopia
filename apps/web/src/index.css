@@ -233,6 +233,24 @@
       transform: scale(1.25);
     }
   }
+  /* The time bar's zone label when the zone changes to another UTC offset (TimeBar.tsx → ZoneLabel). */
+  .zone-flash {
+    border-radius: 0.375rem;
+    animation: zone-flash 2.4s ease-out;
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+    }
+  }
+  @keyframes zone-flash {
+    0%,
+    40% {
+      background: var(--card-warn-bg);
+      color: var(--card-warn-fg);
+    }
+    to {
+      background: transparent;
+    }
+  }
   .layers-scrim {
     position: absolute;
     top: 100%;

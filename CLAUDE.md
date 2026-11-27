@@ -128,7 +128,7 @@ npx tsx pipelines/eval-rt.ts [--test-last 3] [--set key=value] # replay recorded
 npx tsx pipelines/probe-ais.ts [--minutes 30] # record raw aisstream.io messages for the SeaBus fleet and summarise them
 npx tsx pipelines/eval-gpx.ts [<file.gpx>]    # GPX ridden on a bus vs recorded RT, the profile and the live view (ground truth)
 npx tsx pipelines/eval-ais.ts [YYYYMMDD]      # recorded SeaBus AIS vs the timetable: matches, lateness, vessels per block, berths
-npx tsx pipelines/screenshot.ts out.png "/transit?date=2026-09-28&t=08:00:00&paused=1#map=14/49.28/-123.11" [--mobile] [--dark] [--pick expo]
+npx tsx pipelines/screenshot.ts out.png "/transit?date=2026-09-28T08:00:00-07&paused=1#map=14/49.28/-123.11" [--mobile] [--dark] [--pick expo]
 ```
 
 ## Workflow

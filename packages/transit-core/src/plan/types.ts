@@ -94,6 +94,11 @@ export interface PlanStop {
    * docs/DESIGN.md#osm-bus-stops).
    */
   platform?: string;
+  /**
+   * GTFS stop_timezone (its parent station's for a platform), only where it isn't the feed's zone
+   * (plan.timezone): the local time at the stop, for display. Its times still count in the feed's.
+   */
+  timezone?: string;
 }
 
 /** A bus exchange, or a station's bus bays. */

@@ -54,13 +54,14 @@ const opt = (name: string) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 const FEED = opt("--feed") ?? "translink";
+const feedInfo = await readFeed(FEED);
 const feedRt =
-  (await readFeed(FEED)).realtime
+  feedInfo.realtime
   ?? (() => {
     throw new Error(`Feed ${FEED} has no real-time data`);
   })();
 const rtConfig = (await readFeedConfig(FEED)).rt;
-const CADENCE = cadence(feedRt);
+const CADENCE = cadence(feedRt, feedInfo.timezone);
 /** An hour counts as complete when its snapshots span at least this long (two 300 s polls short of an hour). */
 const COMPLETE_HOUR_SPAN_MS = 50 * 60_000;
 
@@ -286,7 +287,7 @@ function subsample(
   const schedule = feedRt.poll;
   const intervalMs = (t: number) =>
     (every === "schedule" ?
-      pollIntervalS(schedule, "positions", t)
+      pollIntervalS(schedule, "positions", t, feedInfo.timezone)
     : Number(every)) * 1000;
   const out: RtSnapshot[] = [];
   for (const s of snaps)

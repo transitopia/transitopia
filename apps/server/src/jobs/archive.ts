@@ -11,6 +11,7 @@ import {
 } from "@transitopia/data/paths.ts";
 import type { Db } from "@transitopia/db/connect.ts";
 import { dropExpiredPartitions } from "@transitopia/db/partitions.ts";
+import type { FeedInfo } from "@transitopia/transit-core/config.ts";
 import { toWallTime } from "@transitopia/transit-core/time.ts";
 import { run } from "@transitopia/data/exec.ts";
 
@@ -46,8 +47,8 @@ export async function archiveRecordings(remote: string): Promise<void> {
   await copy(DISPATCH_HISTORY_DIR, "dispatch-history", []);
 }
 
-const localDay = (t: number) => {
-  const w = toWallTime(t);
+const localDay = (t: number, tz: string) => {
+  const w = toWallTime(t, tz);
   return `${w.year}-${String(w.month).padStart(2, "0")}-${String(w.day).padStart(2, "0")}`;
 };
 
@@ -56,6 +57,8 @@ export async function expireRawData(opts: {
   db: Db | undefined;
   retentionDays: number;
   archiveRemote: string | undefined;
+  /** The feeds, whose recordings are named by local date in each one's zone. */
+  feeds: readonly Pick<FeedInfo, "id" | "timezone">[];
   now?: number;
 }): Promise<{ partitions: string[]; dirs: string[] }> {
   const cutoff = (opts.now ?? Date.now()) - opts.retentionDays * 86_400_000;
@@ -67,15 +70,20 @@ export async function expireRawData(opts: {
       .where("ts", "<", new Date(cutoff))
       .execute();
   const dirs: string[] = [];
-  const oldest = localDay(cutoff);
-  // Each feed's recordings (var/rt-history/<feed>/<date>/, var/ais-history/<feed>/<date>/).
-  const feedDirs: string[] = [];
+  const zones = new Map(opts.feeds.map((f) => [f.id, f.timezone]));
+  // Each feed's recordings (var/rt-history/<feed>/<date>/, var/ais-history/<feed>/<date>/), with
+  // the first local date to keep in its zone (UTC for a feed no longer served).
+  const feedDirs: { base: string; oldest: string }[] = [];
   for (const root of [RT_HISTORY_DIR, AIS_HISTORY_DIR])
     for (const d of await readdir(root, { withFileTypes: true }).catch(
       () => [],
     ))
-      if (d.isDirectory()) feedDirs.push(join(root, d.name));
-  for (const base of feedDirs) {
+      if (d.isDirectory())
+        feedDirs.push({
+          base: join(root, d.name),
+          oldest: localDay(cutoff, zones.get(d.name) ?? "UTC"),
+        });
+  for (const { base, oldest } of feedDirs) {
     let days: string[] = [];
     try {
       days = await readdir(base);

@@ -124,7 +124,8 @@ const plan: ServicePlan = {
 };
 const pp = preparePlan(plan, kin);
 const DATE = serviceDate("20260928");
-const day = serviceDayStart(DATE);
+const TZ = "America/Vancouver";
+const day = serviceDayStart(DATE, TZ);
 const cfg: AisMatchConfig = {
   maxOffsetM: 200,
   maxShiftS: 600,
@@ -447,7 +448,7 @@ describe("AisFeed", () => {
       };
       const emit = (type: string, ev: any = {}) =>
         listeners[type]?.forEach((fn) => fn(ev));
-      const recorder = new Recorder(dir, 75_000);
+      const recorder = new Recorder(dir, "America/Vancouver", 75_000);
       const feed = new AisFeed({
         timezone: "America/Vancouver",
         cfg: {
@@ -500,14 +501,15 @@ describe("AisFeed", () => {
       // Before 03:00 local, fixes belong to the previous service date.
       const w = (await import("@transitopia/transit-core/time.ts")).toWallTime(
         now.getTime(),
+        TZ,
       );
       const date =
         w.hour < 3 ?
           (await import("@transitopia/transit-core/time.ts")).addDays(
-            localDate(now.getTime()),
+            localDate(now.getTime(), TZ),
             -1,
           )
-        : localDate(now.getTime());
+        : localDate(now.getTime(), TZ);
       // The day file and the live window only hold recorded batches.
       expect((await feed.dayFile(date)).fixes).toHaveLength(0);
       expect(feed.liveWindow(300_000).fixes).toHaveLength(0);
@@ -534,7 +536,7 @@ describe("AisFeed", () => {
         timezone: "America/Vancouver",
         cfg: feed.cfg,
         route: "seabus",
-        recorder: new Recorder(dir, 75_000),
+        recorder: new Recorder(dir, "America/Vancouver", 75_000),
         log: () => {},
       });
       await again.start();
@@ -577,7 +579,7 @@ describe("AisFeed", () => {
             maxBackoffS: 60,
           },
           route: "ferry",
-          recorder: new Recorder(dir, 75_000),
+          recorder: new Recorder(dir, "America/Vancouver", 75_000),
           log: () => {},
         });
       const a = feedOf("316042365", dirs[0]!, 49);

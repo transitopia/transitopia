@@ -95,15 +95,21 @@ for (const d of dates) {
 // The recorder's coverage index (what a local server reports at /rt/coverage), from the hours now here.
 for (const recorder of [
   ...feeds.map((f) => {
-    const c = cadence(f.realtime!);
+    const c = cadence(f.realtime!, f.timezone);
     return new Recorder(
       feedPaths(f.id).rtHistory,
+      f.timezone,
       (t: number) => c.coverageGapMs(t),
       { emptyIsGap: true },
     );
   }),
   ...aisFeeds.map(
-    (f) => new Recorder(feedPaths(f.id).aisHistory, f.ais!.coverageGapS * 1000),
+    (f) =>
+      new Recorder(
+        feedPaths(f.id).aisHistory,
+        f.timezone,
+        f.ais!.coverageGapS * 1000,
+      ),
   ),
 ])
   if (existsSync(recorder.dir)) await recorder.rebuildCoverage();

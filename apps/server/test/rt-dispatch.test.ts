@@ -5,7 +5,11 @@ import { join } from "node:path";
 import { RtService } from "../src/rt/service.ts";
 import type { CorrectionsRepo } from "../src/corrections.ts";
 
-const RAIL = { network: "skytrain", feed: "translink" };
+const RAIL = {
+  network: "skytrain",
+  feed: "translink",
+  timezone: "America/Vancouver",
+};
 /** No corrections: the dispatcher has nothing to dispatch, so its index stays empty. */
 const NO_CORRECTIONS = {
   load: async () => ({ observations: [] }),

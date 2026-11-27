@@ -269,6 +269,7 @@ export class RtService {
             timezone: feed.timezone,
             recorder: new Recorder(
               join(opts.aisHistoryDir ?? AIS_HISTORY_DIR, feed.id),
+              feed.timezone,
               cfg.coverageGapS * 1000,
             ),
             record: this.record,
@@ -549,7 +550,7 @@ export class RtService {
           )
         : tagged(body, "public, max-age=31536000, immutable");
     }
-    const recent = date >= addDays(localDate(now), -1);
+    const recent = date >= addDays(localDate(now, poller.feed.timezone), -1);
     return tagged(
       (await poller.changes.versioned(date)).body,
       `public, max-age=${recent ? 30 : 3600}`,

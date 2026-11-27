@@ -21,6 +21,7 @@ import { routesByGtfsId } from "@transitopia/data/route-ids.ts";
 import {
   PUBLIC_DIR,
   feedPaths,
+  readFeed,
   readManifest,
   readFeedConfig,
 } from "@transitopia/data/paths.ts";
@@ -87,11 +88,12 @@ async function busRouteKeys(feed: string): Promise<Map<string, string>> {
 export async function planLoader(feed: string) {
   const manifest = await readManifest(feed);
   const kin = (await readFeedConfig(feed)).kinematics;
+  const tz = (await readFeed(feed)).timezone;
   const cache = new Map<string, PreparedPlan>();
   return {
     kin,
     async forTime(ms: number): Promise<PreparedPlan | undefined> {
-      const feed = feedForDate(manifest, localDate(ms));
+      const feed = feedForDate(manifest, localDate(ms, tz));
       if (!feed) return undefined;
       let pp = cache.get(feed.version);
       if (!pp)

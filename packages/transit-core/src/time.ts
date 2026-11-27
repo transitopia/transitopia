@@ -2,7 +2,6 @@
 // Scheduled times are seconds since the service day's GTFS reference point ("noon minus 12h" local time),
 // which differs from local midnight on DST transition days.
 
-export const TIMEZONE = "America/Vancouver";
 export const DAY_S = 86_400;
 
 /** Parse a GTFS time ("5:05:00", " 25:30:00") into seconds. Returns NaN for blank values. */
@@ -112,7 +111,7 @@ function steadyOffsetMs(epochMs: number, tz: string): number | undefined {
 }
 
 /** Local wall-clock time of an instant in the given time zone. */
-export function toWallTime(epochMs: number, tz = TIMEZONE): WallTime {
+export function toWallTime(epochMs: number, tz: string): WallTime {
   const offset = steadyOffsetMs(epochMs, tz);
   if (offset === undefined) return formatWallTime(epochMs, tz);
   const d = new Date(Math.floor(epochMs / 1000) * 1000 + offset);
@@ -127,7 +126,7 @@ export function toWallTime(epochMs: number, tz = TIMEZONE): WallTime {
 }
 
 /** Offset (ms) of the zone from UTC at the given instant: local = utc + offset. */
-export function tzOffsetMs(epochMs: number, tz = TIMEZONE): number {
+export function tzOffsetMs(epochMs: number, tz: string): number {
   return (
     steadyOffsetMs(epochMs, tz)
     ?? offsetOf(formatWallTime(epochMs, tz), epochMs)
@@ -150,7 +149,7 @@ export interface TimezoneCheck {
  */
 export function checkTimezoneData(
   checks: readonly TimezoneCheck[],
-  tz = TIMEZONE,
+  tz: string,
 ): string[] {
   const problems: string[] = [];
   for (const c of checks) {
@@ -186,7 +185,7 @@ function formatOffset(minutes: number): string {
 }
 
 /** Instant for a local wall-clock time (ambiguous times resolve to the earlier instant). */
-export function fromWallTime(w: WallTime, tz = TIMEZONE): number {
+export function fromWallTime(w: WallTime, tz: string): number {
   const naive = Date.UTC(
     w.year,
     w.month - 1,
@@ -253,7 +252,7 @@ export function formatServiceDate(
 }
 
 /** Epoch ms of the GTFS reference point for a service date: local noon minus 12 hours. */
-export function serviceDayStart(date: ServiceDate, tz = TIMEZONE): number {
+export function serviceDayStart(date: ServiceDate, tz: string): number {
   const { year, month, day } = parseServiceDate(date);
   return (
     fromWallTime({ year, month, day, hour: 12, minute: 0, second: 0 }, tz)
@@ -279,7 +278,7 @@ export function dayOfWeek(date: ServiceDate): number {
 }
 
 /** Local calendar date of an instant. */
-export function localDate(epochMs: number, tz = TIMEZONE): ServiceDate {
+export function localDate(epochMs: number, tz: string): ServiceDate {
   const w = toWallTime(epochMs, tz);
   return formatServiceDate(w.year, w.month, w.day);
 }

@@ -33,7 +33,7 @@ import type { ServerEnv } from "../env.ts";
 import { run } from "@transitopia/data/exec.ts";
 import { publishData } from "./publish.ts";
 import { isoDate } from "../dates.ts";
-import { osmStopsConfig, reconcileConfig } from "../config.ts";
+import { osmStopsConfig, reconcileConfig, recordingConfig } from "../config.ts";
 import { reconcileFeeds } from "../features/reconcile.ts";
 import { registryFromDb } from "../features/export.ts";
 import { writeExport, writeFeedPlaces } from "@transitopia/data/features.ts";
@@ -240,7 +240,11 @@ export async function writeFeatureData(
     feeds.map((f) => f.id),
     log,
   );
-  if (opts.export ?? true) await writeExport(registry, localDate(Date.now()));
+  if (opts.export ?? true)
+    await writeExport(
+      registry,
+      localDate(Date.now(), recordingConfig.timezone),
+    );
   return written;
 }
 

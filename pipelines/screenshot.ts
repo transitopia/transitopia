@@ -1,8 +1,8 @@
 // Screenshot the running app with the locally installed Chrome, for visual checks.
 //
-//   tsx pipelines/screenshot.ts <out.png> [path-and-query] [--mobile] [--dark] [--wait ms] [--click x,y[;x,y…]] [--after ms] [--size WxH]
+//   tsx pipelines/screenshot.ts <out.png> [path-and-query] [--mobile] [--dark] [--wait ms] [--click x,y[;x,y…]] [--after ms] [--size WxH] [--timezone <IANA zone>]
 //
-// Example: tsx pipelines/screenshot.ts /tmp/a.png "/transit?date=2026-09-28&t=08:00:00&paused=1#map=13/49.28/-123.11"
+// Example: tsx pipelines/screenshot.ts /tmp/a.png "/transit?date=2026-09-28T08:00:00-07&paused=1#map=13/49.28/-123.11"
 // Requires `npm run dev` (http://localhost:5173). Browser console errors are printed.
 
 import { chromium } from "playwright-core";
@@ -16,9 +16,15 @@ const opt = (name: string) => {
 const positional = args.filter(
   (a, i) =>
     !a.startsWith("--")
-    && !["--wait", "--click", "--base", "--pick", "--after", "--size"].includes(
-      args[i - 1] ?? "",
-    ),
+    && ![
+      "--wait",
+      "--click",
+      "--base",
+      "--pick",
+      "--after",
+      "--size",
+      "--timezone",
+    ].includes(args[i - 1] ?? ""),
 );
 const [out = "screenshot.png", path = "/"] = positional;
 const base = opt("--base") ?? "http://localhost:5173";
@@ -38,6 +44,8 @@ const context = await browser.newContext({
   isMobile: flag("--mobile"),
   hasTouch: flag("--mobile"),
   colorScheme: flag("--dark") ? "dark" : "light",
+  // The device's zone (the time bar says how far its zone is from it).
+  ...(opt("--timezone") ? { timezoneId: opt("--timezone")! } : {}),
 });
 const page = await context.newPage();
 const seen = new Map<string, number>();

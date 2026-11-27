@@ -227,8 +227,8 @@ export class AisFeed {
     const { recorder, timezone } = this.opts;
     const today = localDate(Date.now(), timezone);
     const resumed = dedupe([
-      ...(await readRecordedFixes(recorder, addDays(today, -1), timezone)),
-      ...(await readRecordedFixes(recorder, today, timezone)),
+      ...(await readRecordedFixes(recorder, addDays(today, -1))),
+      ...(await readRecordedFixes(recorder, today)),
     ]);
     // Recorded before this process: older than any live window.
     this.fixes = resumed.map((f) => ({ ...f, at: 0 }));
@@ -267,11 +267,7 @@ export class AisFeed {
   private async pastFixes(serviceDate: ServiceDate): Promise<AisFix[]> {
     let cached = this.past.get(serviceDate);
     if (!cached) {
-      cached = await readRecordedFixes(
-        this.opts.recorder,
-        serviceDate,
-        this.opts.timezone,
-      );
+      cached = await readRecordedFixes(this.opts.recorder, serviceDate);
       this.past.set(serviceDate, cached);
       while (this.past.size > PAST_DATES_CACHED)
         this.past.delete(this.past.keys().next().value!);
@@ -356,10 +352,10 @@ function strip({ at: _, ...f }: HeldFix): AisFix {
 export async function readRecordedFixes(
   recorder: Recorder,
   serviceDate: ServiceDate,
-  tz: string,
 ): Promise<AisFix[]> {
+  const tz = recorder.timezone;
   const [from, to] = serviceDateWindow(serviceDate, tz);
-  const dates = [...new Set([hourKey(from).date, hourKey(to).date])];
+  const dates = [...new Set([hourKey(from, tz).date, hourKey(to, tz).date])];
   const out: AisFix[] = [];
   for (const date of dates) {
     for (let h = 0; h < 24; h++) {

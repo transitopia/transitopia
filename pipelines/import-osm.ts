@@ -11,6 +11,7 @@ import {
   log,
   networkPaths,
   railNetwork,
+  readNetwork,
 } from "@transitopia/data/paths.ts";
 
 // The rail network (--network <id>; default: the one there is).
@@ -28,7 +29,6 @@ import {
 } from "@transitopia/transit-core/infra/network.ts";
 import { addTrack } from "@transitopia/transit-core/infra/compose.ts";
 import type { LineKey } from "@transitopia/transit-core/infra/types.ts";
-import { TIMEZONE } from "@transitopia/transit-core/time.ts";
 
 interface OsmRelation {
   type: "relation";
@@ -116,8 +116,9 @@ async function main() {
       );
     }
   }
-  // OSM's opening_date is a local date.
-  const today = Temporal.Now.plainDateISO(TIMEZONE).toString();
+  // OSM's opening_date is a local date, in the network's zone.
+  const { timezone } = await readNetwork(NETWORK);
+  const today = Temporal.Now.plainDateISO(timezone).toString();
   // Track with a future opening_date (e.g. the Broadway Extension) isn't in service yet.
   const current = ways.filter((w) => !isFuture(w.tags ?? {}, today));
   const stopNodes = [...nodes.values()].filter(

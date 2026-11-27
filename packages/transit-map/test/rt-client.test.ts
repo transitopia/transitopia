@@ -71,10 +71,11 @@ describe("RtClient recorded hours", () => {
     vi.useRealTimers();
   });
 
-  const day0 = serviceDayStart(serviceDate("20261020"));
+  const TZ = config.feed.timezone;
+  const day0 = serviceDayStart(serviceDate("20261020"), TZ);
   const day: [number, number] = [day0, day0 + 24 * 3600_000];
   const hourId = (t: number) => {
-    const w = toWallTime(t);
+    const w = toWallTime(t, TZ);
     const pad = (n: number) => String(n).padStart(2, "0");
     return `${w.year}-${pad(w.month)}-${pad(w.day)}T${pad(w.hour)}`;
   };
@@ -104,7 +105,7 @@ describe("RtClient recorded hours", () => {
         if (failOnce.delete(key)) return new Response("", { status: 500 });
         const date = u.searchParams.get("date")!;
         const start =
-          serviceDayStart(serviceDate(date.replaceAll("-", "")))
+          serviceDayStart(serviceDate(date.replaceAll("-", "")), TZ)
           + Number(u.searchParams.get("hour")) * 3600_000;
         const line = (t: number) =>
           encodeSnapshot({

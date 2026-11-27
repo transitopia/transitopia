@@ -42,7 +42,9 @@ async function recordOutage(r: Recorder): Promise<void> {
 describe("Recorder coverage", () => {
   it("leaves empty GTFS-RT polls out of coverage (emptyIsGap)", () =>
     withDir(async (dir) => {
-      const r = new Recorder(dir, GAP, { emptyIsGap: true });
+      const r = new Recorder(dir, "America/Vancouver", GAP, {
+        emptyIsGap: true,
+      });
       await recordOutage(r);
       expect(r.coverage()).toEqual([
         [t0, t0 + 4 * 60_000],
@@ -52,7 +54,7 @@ describe("Recorder coverage", () => {
 
   it("covers empty batches by default (AIS: connected without fixes)", () =>
     withDir(async (dir) => {
-      const r = new Recorder(dir, GAP);
+      const r = new Recorder(dir, "America/Vancouver", GAP);
       await recordOutage(r);
       expect(r.coverage()).toEqual([[t0, t0 + 20 * 60_000]]);
     }));
@@ -60,9 +62,11 @@ describe("Recorder coverage", () => {
   it("rebuilds a missing coverage.json from the hour files", () =>
     withDir(async (dir) => {
       // Recorded by the AIS rule (the outage covered), then coverage.json deleted.
-      await recordOutage(new Recorder(dir, GAP));
+      await recordOutage(new Recorder(dir, "America/Vancouver", GAP));
       await rm(join(dir, "coverage.json"));
-      const r = new Recorder(dir, GAP, { emptyIsGap: true });
+      const r = new Recorder(dir, "America/Vancouver", GAP, {
+        emptyIsGap: true,
+      });
       await r.init();
       const expected = [
         [t0, t0 + 4 * 60_000],

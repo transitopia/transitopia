@@ -45,7 +45,8 @@ import {
 // GPX rides so far are all on TransLink's buses.
 const FEED = "translink";
 const rtConfig = (await readFeedConfig(FEED)).rt;
-const CADENCE = cadence((await readFeed(FEED)).realtime!);
+const FEED_INFO = await readFeed(FEED);
+const CADENCE = cadence(FEED_INFO.realtime!, FEED_INFO.timezone);
 const GPX_DIR = join(feedPaths(FEED).dir, "observations", "gpx");
 /** The live client keeps at least this much history per timeline (as eval-rt.ts). */
 const HISTORY_MS = 10 * 60_000;

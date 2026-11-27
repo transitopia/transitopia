@@ -14,6 +14,8 @@ import {
   isoToServiceDate,
 } from "../src/time.ts";
 
+const VAN = "America/Vancouver";
+
 describe("parseGtfsTime", () => {
   it("handles leading spaces and times past midnight", () => {
     expect(parseGtfsTime(" 5:05:00")).toBe(5 * 3600 + 5 * 60);
@@ -45,25 +47,28 @@ describe("service dates", () => {
 
 describe("serviceDayStart (noon minus 12h)", () => {
   it("equals local midnight on ordinary days", () => {
-    const t = serviceDayStart(serviceDate("20260925"));
+    const t = serviceDayStart(serviceDate("20260925"), VAN);
     expect(new Date(t).toISOString()).toBe("2026-09-25T07:00:00.000Z"); // UTC−7
-    expect(toWallTime(t)).toMatchObject({ hour: 0, minute: 0 });
+    expect(toWallTime(t, VAN)).toMatchObject({ hour: 0, minute: 0 });
   });
   // British Columbia moved to permanent UTC−7 in 2026 (tzdata 2026b; its last clock change was the
   // 2026-03-08 spring-forward). Older runtimes (tzdata ≤ 2026a, e.g. Node 26.7) still fall back on
   // 2026-11-01 and fail here: update Node. TZDB models the change as 2026-11-01 02:00 until CLDR
   // catches up, which gives the same results as the legal date for everything after that.
   it("stays on UTC−7 on 2026-11-01: BC no longer falls back", () => {
-    const t = serviceDayStart(serviceDate("20261101"));
+    const t = serviceDayStart(serviceDate("20261101"), VAN);
     expect(new Date(t).toISOString()).toBe("2026-11-01T07:00:00.000Z");
-    expect(toWallTime(t)).toMatchObject({ hour: 0, minute: 0 });
-    expect(toWallTime(t + 5 * 3600_000)).toMatchObject({ hour: 5, minute: 0 });
+    expect(toWallTime(t, VAN)).toMatchObject({ hour: 0, minute: 0 });
+    expect(toWallTime(t + 5 * 3600_000, VAN)).toMatchObject({
+      hour: 5,
+      minute: 0,
+    });
   });
   it("has no spring-forward in 2027", () => {
-    const t = serviceDayStart(serviceDate("20270314"));
+    const t = serviceDayStart(serviceDate("20270314"), VAN);
     expect(new Date(t).toISOString()).toBe("2027-03-14T07:00:00.000Z");
-    expect(toWallTime(t)).toMatchObject({ hour: 0 });
-    expect(toWallTime(Date.parse("2027-01-15T20:00:00Z"))).toMatchObject({
+    expect(toWallTime(t, VAN)).toMatchObject({ hour: 0 });
+    expect(toWallTime(Date.parse("2027-01-15T20:00:00Z"), VAN)).toMatchObject({
       hour: 13,
     });
   });
@@ -88,10 +93,10 @@ describe("serviceDayStart (noon minus 12h)", () => {
     });
   });
   it("maps instants back to local dates", () => {
-    expect(localDate(Date.parse("2026-09-26T06:59:00Z"))).toBe(
+    expect(localDate(Date.parse("2026-09-26T06:59:00Z"), VAN)).toBe(
       serviceDate("20260925"),
     );
-    expect(localDate(Date.parse("2026-09-26T07:01:00Z"))).toBe(
+    expect(localDate(Date.parse("2026-09-26T07:01:00Z"), VAN)).toBe(
       serviceDate("20260926"),
     );
   });
@@ -184,7 +189,7 @@ describe("checkTimezoneData", () => {
     },
   ];
   it("passes when the runtime's data agrees", () => {
-    expect(checkTimezoneData(checks)).toEqual([]);
+    expect(checkTimezoneData(checks, VAN)).toEqual([]);
   });
   it("explains a disagreement", () => {
     const problems = checkTimezoneData(checks, "America/Los_Angeles");

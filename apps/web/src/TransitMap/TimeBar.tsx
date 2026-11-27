@@ -12,10 +12,15 @@ import {
   clockTime,
   fromIsoDate,
   isoDate,
+  offsetFromDevice,
   rateLabel,
   shortDate,
   timeState,
+  zoneLabel,
 } from "./format.ts";
+
+/** How long the zone label stays up after the time bar's zone changes (ms; index.css → .zone-flash). */
+const ZONE_FLASH_MS = 2400;
 
 /** The slider spans 03:00 → 27:00 of the service day; tick labels every few hours. */
 const TICKS_DESKTOP = Array.from({ length: 9 }, (_, i) => 3 + i * 3);
@@ -253,13 +258,18 @@ const TimeText: React.FC<{ snap: TransitSnapshot; sub: string }> = ({
   sub,
 }) => {
   const time = clockTime(snap.t, snap.timezone);
+  const zone = useZone(snap);
   return (
-    <div className="flex min-w-30 flex-1 flex-col">
-      <span className="text-[22px] leading-none font-extrabold tracking-tight tabular-nums sm:text-[26px]">
+    <div className="@container flex min-w-30 flex-1 flex-col">
+      <span className="truncate text-[22px] leading-none font-extrabold tracking-tight tabular-nums sm:text-[26px]">
         {time.slice(0, 5)}
-        <span className="text-[15px] font-bold text-(--card-muted) sm:text-base">
-          {time.slice(5)}
-        </span>
+        {/* The zone label takes the seconds' place. */}
+        {zone ?
+          <ZoneLabel zone={zone} snap={snap} />
+        : <span className="text-[15px] font-bold text-(--card-muted) sm:text-base">
+            {time.slice(5)}
+          </span>
+        }
       </span>
       <span
         className={`mt-[3px] truncate text-[12.5px] sm:text-[13px] ${snap.live ? "text-(--card-muted)" : "font-bold text-(--notlive-text)"}`}>
@@ -268,6 +278,59 @@ const TimeText: React.FC<{ snap: TransitSnapshot; sub: string }> = ({
     </div>
   );
 };
+
+interface Zone {
+  /** "MT", "UTC+5:30". */
+  label: string;
+  /** "+1 h", when the device's offset differs. */
+  fromYou: string | undefined;
+  flashing: boolean;
+}
+
+/**
+ * The time bar's zone, when it isn't obvious (packages/transit-map/README.md#time-zones): the device
+ * is on another UTC offset, feeds in different zones are in view, or the zone just changed.
+ */
+function useZone(snap: TransitSnapshot): Zone | undefined {
+  const flashing = useFlash(snap.zoneChangedAt);
+  const fromYou = offsetFromDevice(snap.t, snap.timezone);
+  if (!fromYou && !snap.mixedZones && !flashing) return undefined;
+  return { label: zoneLabel(snap.t, snap.timezone), fromYou, flashing };
+}
+
+/**
+ * The zone beside the time, quietly: "MT · +1 h from you" ("from you" only where it fits). It
+ * flashes when the zone changes, so the jump in the shown time reads as a zone change.
+ */
+const ZoneLabel: React.FC<{ zone: Zone; snap: TransitSnapshot }> = ({
+  zone,
+  snap,
+}) => (
+  <span
+    key={snap.zoneChangedAt}
+    title={`Times are in ${snap.timezone.replaceAll("_", " ")}${zone.fromYou ? `, ${zone.fromYou} from your device's clock` : ""}`}
+    className={`ml-1 rounded px-1 align-[3px] text-[12.5px] font-semibold tracking-normal text-(--card-muted) sm:text-[13px] ${zone.flashing ? "zone-flash" : ""}`}>
+    {zone.label}
+    {zone.fromYou ?
+      <>
+        {` · ${zone.fromYou}`}
+        <span className="@max-[13rem]:hidden"> from you</span>
+      </>
+    : null}
+  </span>
+);
+
+/** True for ZONE_FLASH_MS after `at` (Date.now()). */
+function useFlash(at: number | undefined): boolean {
+  const [, rerender] = React.useReducer((n: number) => n + 1, 0);
+  React.useEffect(() => {
+    const left = at === undefined ? 0 : at + ZONE_FLASH_MS - Date.now();
+    if (left <= 0) return;
+    const id = setTimeout(rerender, left);
+    return () => clearTimeout(id);
+  }, [at]);
+  return at !== undefined && Date.now() < at + ZONE_FLASH_MS;
+}
 
 /** Where bus positions come from at the shown time, and service changes. */
 const Badges: React.FC<{ snap: TransitSnapshot }> = ({ snap }) => (
@@ -278,6 +341,13 @@ const Badges: React.FC<{ snap: TransitSnapshot }> = ({ snap }) => (
       <TimeMark mark={RT_MARK[snap.rt.mode]} />
       {snap.rt.label.replace("Buses: ", "Buses ")}
     </span>
+    {snap.mixedZones ?
+      <span
+        className="rounded-full bg-(--card-warn-bg) px-2.5 py-1.5 text-[12.5px] font-semibold whitespace-nowrap text-(--card-warn-fg)"
+        title={`Feeds in view keep time in different zones. Times shown are in ${snap.timezone.replaceAll("_", " ")}: open a card for its own.`}>
+        Several time zones
+      </span>
+    : null}
     {snap.notices.length ?
       <span
         className="rounded-full bg-(--card-warn-bg) px-2.5 py-1.5 text-[12.5px] font-semibold whitespace-nowrap text-(--card-warn-fg)"
@@ -440,9 +510,18 @@ const Slider: React.FC<Props & { ticks: number[] }> = ({
         max={Math.round(hi / 1000) - 1}
         step={1}
         value={value}
-        onPointerDown={() => setScrub(value)}
-        onPointerUp={() => setScrub(undefined)}
-        onBlur={() => setScrub(undefined)}
+        onPointerDown={() => {
+          setScrub(value);
+          engine.setScrubbing(true);
+        }}
+        onPointerUp={() => {
+          setScrub(undefined);
+          engine.setScrubbing(false);
+        }}
+        onBlur={() => {
+          setScrub(undefined);
+          engine.setScrubbing(false);
+        }}
         onChange={(e) => {
           const s = Number(e.target.value);
           if (scrub !== undefined) setScrub(s);

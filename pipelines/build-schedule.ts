@@ -65,7 +65,6 @@ import {
   parseGtfsTime,
   serviceDate,
   serviceDayStart,
-  TIMEZONE,
   type ServiceDate,
 } from "@transitopia/transit-core/time.ts";
 import {
@@ -226,14 +225,14 @@ export async function buildPlan(
 
   const [info] = await readCsvAll(zipPath, "feed_info.txt");
   if (!info) throw new Error("feed_info.txt missing");
-  // Service days and times are computed in TIMEZONE (packages/transit-core/src/time.ts), so every
-  // feed has to be in it until the engine works out service dates per feed (docs/DESIGN.md#feeds-operators-and-rail-networks).
-  // A zone feed.json says is equivalent passes while it has the same offsets on every date of the timetable.
+  // Service days and times are computed in the feed's zone (feed.json → timezone, written to
+  // plan.timezone), which has to be every agency's (GTFS allows one agency_timezone per feed). A zone
+  // feed.json says is equivalent passes while it has the same offsets on every date of the timetable.
   const zones = [feed.timezone, ...(feed.equivalentTimezones ?? [])];
   for (const a of await readCsvAll(zipPath, "agency.txt"))
-    if (!zones.includes(a.agency_timezone!) || feed.timezone !== TIMEZONE)
+    if (!zones.includes(a.agency_timezone!))
       throw new Error(
-        `${feed.id}: agency ${a.agency_name} is in ${a.agency_timezone} and the feed says ${feed.timezone}; only ${TIMEZONE} is supported`,
+        `${feed.id}: agency ${a.agency_name} is in ${a.agency_timezone} and the feed says ${feed.timezone}`,
       );
   for (const z of feed.equivalentTimezones ?? []) {
     const at = firstOffsetDifference(
@@ -350,6 +349,11 @@ export async function buildPlan(
     const platform =
       row.platform_code || /@\s*Platform\s+(\w+)/i.exec(s.name)?.[1];
     if (platform) s.platform = platform;
+    // A platform takes its parent station's zone (GTFS stops.txt → stop_timezone).
+    const zone =
+      (row.parent_station && allStops.get(row.parent_station)?.stop_timezone)
+      || row.stop_timezone;
+    if (zone && !zones.includes(zone)) s.timezone = zone;
     stopIndex.set(id, stops.length);
     stops.push(s);
   }
@@ -601,7 +605,7 @@ export async function buildPlan(
     feedVersion: info.feed_version!,
     feedStart: serviceDate(info.feed_start_date!),
     feedEnd: serviceDate(info.feed_end_date!),
-    timezone: TIMEZONE,
+    timezone: feed.timezone,
     builtAt: new Date().toISOString(),
     routes,
     stops,

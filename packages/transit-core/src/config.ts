@@ -174,6 +174,8 @@ const recording = z.strictObject({
   observed,
   stats,
   afterServiceDayH: pos,
+  /** The zone of the server's own schedule: dataBuildAt and the keys of jobs that aren't per feed. */
+  timezone: z.string().min(1),
   dataBuildAt: hhmm,
   initialBuildProfileMaxAgeH: pos,
 });

@@ -14,27 +14,36 @@ import {
 } from "../src/rt/budget.ts";
 import { fromWallTime } from "../src/time.ts";
 
-const rtConfig = parseFeed(translink).realtime!;
+const feed = parseFeed(translink);
+const rtConfig = feed.realtime!;
 const SCHEDULE = rtConfig.poll;
+const TZ = feed.timezone;
 /** Local (Vancouver) time. 2026-09-28 is a Monday. */
 const at = (day: number, hour: number, minute = 0) =>
-  fromWallTime({ year: 2026, month: 9, day, hour, minute, second: 0 });
+  fromWallTime({ year: 2026, month: 9, day, hour, minute, second: 0 }, TZ);
 
 describe("poll schedule", () => {
   it("picks the band by local time and day of week", () => {
-    expect(pollIntervalS(SCHEDULE, "positions", at(28, 8))).toBe(60); // Monday AM peak
-    expect(pollIntervalS(SCHEDULE, "positions", at(28, 12))).toBe(150); // midday
-    expect(pollIntervalS(SCHEDULE, "positions", at(28, 2))).toBe(300); // night
-    expect(pollIntervalS(SCHEDULE, "positions", at(28, 23, 30))).toBe(300);
-    expect(pollIntervalS(SCHEDULE, "positions", at(26, 8))).toBe(150); // Saturday morning
-    expect(pollIntervalS(SCHEDULE, "positions", at(27, 12))).toBe(90); // Sunday midday
-    expect(bandAt(SCHEDULE, at(28, 6, 30)).from).toBe("06:30");
-    expect(bandAt(SCHEDULE, at(28, 6, 29)).from).toBe("05:00");
+    expect(pollIntervalS(SCHEDULE, "positions", at(28, 8), TZ)).toBe(60); // Monday AM peak
+    expect(pollIntervalS(SCHEDULE, "positions", at(28, 12), TZ)).toBe(150); // midday
+    expect(pollIntervalS(SCHEDULE, "positions", at(28, 2), TZ)).toBe(300); // night
+    expect(pollIntervalS(SCHEDULE, "positions", at(28, 23, 30), TZ)).toBe(300);
+    expect(pollIntervalS(SCHEDULE, "positions", at(26, 8), TZ)).toBe(150); // Saturday morning
+    expect(pollIntervalS(SCHEDULE, "positions", at(27, 12), TZ)).toBe(90); // Sunday midday
+    expect(bandAt(SCHEDULE, at(28, 6, 30), TZ).from).toBe("06:30");
+    expect(bandAt(SCHEDULE, at(28, 6, 29), TZ).from).toBe("05:00");
+  });
+
+  it("reads the bands in the feed's own zone", () => {
+    // 05:30 in Vancouver is 06:30 in Edmonton (an hour ahead in September 2026).
+    expect(bandAt(SCHEDULE, at(28, 5, 30), "America/Edmonton").from).toBe(
+      "06:30",
+    );
   });
 
   it("stays under the daily cap in every 24 hours of a week, with room for restarts", () => {
     for (const start of [at(28, 0), at(28, 13, 7), at(26, 0)]) {
-      expect(maxRequestsPer24h(SCHEDULE, start, 8)).toBeLessThanOrEqual(
+      expect(maxRequestsPer24h(SCHEDULE, start, TZ, 8)).toBeLessThanOrEqual(
         SCHEDULE.dailyCap - 25,
       );
     }
@@ -49,14 +58,14 @@ describe("poll schedule", () => {
       if (!f.realtime) continue;
       for (const start of [at(28, 0), at(28, 13, 7), at(26, 0)])
         expect(
-          maxRequestsPer24h(f.realtime!.poll, start, 8),
+          maxRequestsPer24h(f.realtime!.poll, start, f.timezone, 8),
           f.id,
         ).toBeLessThanOrEqual(f.realtime!.poll.dailyCap);
     }
   });
 
   it("uses most of the budget at peak", () => {
-    const polls = simulatePolls(SCHEDULE, at(28, 0), at(29, 0));
+    const polls = simulatePolls(SCHEDULE, at(28, 0), at(29, 0), TZ);
     const total =
       polls.positions.length + polls.tripUpdates.length + polls.alerts.length;
     expect(total).toBeGreaterThan(900);
@@ -70,15 +79,21 @@ describe("poll schedule", () => {
 
   it("near a band change, thresholds use the longer interval on either side", () => {
     // The first poll after the AM peak ends comes 150 s after the last 60 s poll.
-    expect(pollIntervalNearS(SCHEDULE, "positions", at(28, 9, 29))).toBe(150);
-    expect(pollIntervalNearS(SCHEDULE, "positions", at(28, 9, 31))).toBe(150);
-    expect(pollIntervalNearS(SCHEDULE, "positions", at(28, 8))).toBe(60);
+    expect(pollIntervalNearS(SCHEDULE, "positions", at(28, 9, 29), TZ)).toBe(
+      150,
+    );
+    expect(pollIntervalNearS(SCHEDULE, "positions", at(28, 9, 31), TZ)).toBe(
+      150,
+    );
+    expect(pollIntervalNearS(SCHEDULE, "positions", at(28, 8), TZ)).toBe(60);
     // Positions reach 2 × 300 s: 06:15 is past 05:00's 150 s band and not near the night band.
-    expect(pollIntervalNearS(SCHEDULE, "positions", at(28, 6, 15))).toBe(150);
+    expect(pollIntervalNearS(SCHEDULE, "positions", at(28, 6, 15), TZ)).toBe(
+      150,
+    );
   });
 
   it("derives cadence thresholds from the interval in use", () => {
-    const c = cadence(rtConfig);
+    const c = cadence(rtConfig, TZ);
     const cfg = rtConfig;
     expect(c.maxInterpolateS(at(28, 8))).toBe(60 + cfg.interpolateSlackS);
     expect(c.maxExtrapolateS(at(28, 12))).toBe(150 + cfg.extrapolateSlackS);
@@ -99,8 +114,8 @@ describe("poll schedule", () => {
         { from: "00:00", positionsS: 20, tripUpdatesS: 60, alertsS: 300 },
       ],
     };
-    expect(pollIntervalNearS(SCHEDULE, "positions", at(28, 8))).toBe(60);
-    expect(pollIntervalNearS(fast, "positions", at(28, 8))).toBe(20);
+    expect(pollIntervalNearS(SCHEDULE, "positions", at(28, 8), TZ)).toBe(60);
+    expect(pollIntervalNearS(fast, "positions", at(28, 8), TZ)).toBe(20);
   });
 });
 
