@@ -141,7 +141,7 @@ export interface RtServiceOptions {
   aisApiKey?: string | null;
   /** Where AIS fixes go: each feed's under <aisHistoryDir>/<feed>/. */
   aisHistoryDir?: string;
-  /** Live dispatch (apps/server/README.md#live-dispatch-and-previews): on by default; false disables it, an object configures it. */
+  /** Live dispatch (apps/server/README.md#live-dispatch): on by default; false disables it, an object configures it. */
   dispatch?: boolean | LiveDispatchOptions;
   /**
    * Record to PostgreSQL as well as files, and keep the request ledger there. The server always

@@ -1,6 +1,6 @@
-// /admin (apps/web/README.md#admin): the server's status, the review queue for corrections, and the
-// feature registry's tools (Features.tsx). Observation sets are edited here, previewed on the map
-// as dispatch versions nobody else sees, then confirmed (or discarded). Admins sign in with GitHub;
+// /admin (apps/web/README.md#admin): the server's status, observation sets (added, edited and
+// deleted here; each applies as soon as it's saved), and the feature registry's tools
+// (Features.tsx). Admins sign in with GitHub;
 // the server returns a bearer token in the URL fragment, kept in localStorage.
 
 import React from "react";
@@ -18,7 +18,6 @@ import {
 import { Features } from "./Features.tsx";
 import { NewCorrection } from "./NewCorrection.tsx";
 import { ObservationCard } from "./ObservationCard.tsx";
-import { isOpen } from "./Review.tsx";
 import { Status } from "./Status.tsx";
 import { button, card, errorText, primary } from "./styles.ts";
 
@@ -119,22 +118,13 @@ function Dashboard() {
       : null}
       {data ?
         <>
-          <Section title="Observations to review" empty="Nothing to review.">
-            {data.observationSets
-              .filter((o) => isOpen(o.state))
-              .map((o) => (
-                <ObservationCard key={o.id} row={o} />
-              ))}
+          <Section title="Observations" empty="None yet.">
+            {data.observationSets.map((o) => (
+              <ObservationCard key={o.id} row={o} />
+            ))}
           </Section>
           <NewCorrection />
           <Features />
-          <Section title="Confirmed and discarded" empty="None yet.">
-            {data.observationSets
-              .filter((o) => !isOpen(o.state))
-              .map((o) => (
-                <ObservationCard key={o.id} row={o} />
-              ))}
-          </Section>
         </>
       : null}
     </>

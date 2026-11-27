@@ -275,14 +275,15 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
     expect(onLost).not.toHaveBeenCalled();
   });
 
-  it("applies only confirmed corrections", async () => {
+  it("applies observation sets once saved, and no longer once deleted", async () => {
     const repo = new CorrectionsRepo(t.db, RAIL);
     await repo.saveObservationSet("rider-1", RIDER);
-    expect((await repo.load()).observations).toEqual([]);
-    await repo.setState("rider-1", "confirmed", "someone");
     expect((await repo.load()).observations).toEqual(RIDER.observations);
     const row = await repo.observationSet("rider-1");
     expect(row?.dates).toEqual(["2026-10-01"]);
+    expect(await repo.deleteObservationSet("rider-1")).toBe(true);
+    expect((await repo.load()).observations).toEqual([]);
+    expect(await repo.deleteObservationSet("rider-1")).toBe(false);
   });
 
   it("gates the admin API and validates corrections", async () => {
@@ -358,20 +359,13 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
         })
       ).status,
     ).toBe(200);
-    expect(
-      (
-        await call("/admin/api/observations/rider-2/confirm", {
-          method: "POST",
-        })
-      ).status,
-    ).toBe(200);
     // The responses match the shared schemas /admin parses them with.
     const list = correctionsResponse.parse(
       await (await call("/admin/api/corrections")).json(),
     );
     expect(list.observationSets.find((x) => x.id === "rider-2")).toMatchObject({
-      state: "confirmed",
-      reviewed_by: "dev",
+      title: "Rider report",
+      created_by: "dev",
     });
     expect(list.observationSets[0]!.updated_at).toBeInstanceOf(Date);
     const status = statusResponse.parse(
@@ -390,12 +384,15 @@ describe.skipIf(!TEST_DATABASE_URL)("server with a database", () => {
         ).status,
       ).toBe(400);
     expect(Object.keys(await exportedSets())).toContain("rider-2");
-    // Editing a confirmed set sends it back for review.
     await call("/admin/api/observations/rider-2", {
       method: "PUT",
       body: JSON.stringify({ title: "Edited", file: RIDER }),
     });
-    expect((await repo.observationSet("rider-2"))?.state).toBe("draft");
+    expect((await repo.observationSet("rider-2"))?.title).toBe("Edited");
+    const del = (id: string) =>
+      call(`/admin/api/observations/${id}`, { method: "DELETE" });
+    expect((await del("rider-2")).status).toBe(200);
+    expect((await del("rider-2")).status).toBe(404);
     expect(Object.keys(await exportedSets())).not.toContain("rider-2");
   });
 });

@@ -1,6 +1,6 @@
 // The daily transit data build on the server (apps/server/README.md#jobs). It detects new GTFS feeds and
 // publishes to object storage. It runs the same steps as `npm run data`, with
-// the confirmed corrections exported from the database, then archives new GTFS feeds, reconciles
+// the corrections exported from the database, then archives new GTFS feeds, reconciles
 // them into the feature registry (docs/DESIGN.md#feature-ids) and publishes
 // var/public/data for data.transitopia.org. Building here keeps the live dispatcher's base plans
 // identical to what browsers load: a dispatch patch only fits the build it was made from. The

@@ -47,8 +47,6 @@ export interface UrlState {
   paused?: boolean;
   /** A feature key (an ID or a ref); invalid ones are dropped. */
   select?: string;
-  /** Dispatch versions to preview, service date (YYYYMMDD) → version (?preview=20260927:15egjb9,…). */
-  preview?: Record<string, string>;
 }
 
 /** The URL's state; `tz` is the time zone its date and time are in (the shown feed's). */
@@ -72,14 +70,6 @@ export function readUrl(tz: string): UrlState {
   if (q.get("paused") === "1") out.paused = true;
   const select = q.get("select");
   if (select && parseKey(select)) out.select = select;
-  const preview = Object.fromEntries(
-    (q.get("preview") ?? "")
-      .split(",")
-      .map((p) => /^(\d{8}):([0-9a-z]+)$/.exec(p))
-      .filter((m) => m !== null)
-      .map((m) => [m[1]!, m[2]!]),
-  );
-  if (Object.keys(preview).length) out.preview = preview;
   return out;
 }
 
@@ -98,9 +88,6 @@ export function writeUrl(
     if (!clock.playing) q.set("paused", "1");
   }
   if (select) q.set("select", select);
-  const kept = new URLSearchParams(location.search);
-  const preview = kept.get("preview");
-  if (preview) q.set("preview", preview);
   const search = formatQuery(q);
   const url = `${location.pathname}${search ? `?${search}` : ""}${location.hash}`;
   if (url !== `${location.pathname}${location.search}${location.hash}`)

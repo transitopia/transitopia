@@ -38,7 +38,7 @@ Desktop-first, but the map and time controls must work on phones, with minimal c
 4. **Shared state is computed centrally.** The dispatcher runs on the server or at build time, and every visitor sees the same versioned result.
 5. **Secrets never reach the browser or the app bundle.**
 6. **Infrastructure is data.** OSM first, fixed upstream where possible. Our own fixes are reviewable data (`config/networks/*/infrastructure/overrides.json`).
-7. **Nothing untrusted reaches the public map or the dispatcher without review.** Drafts can be previewed, but only confirmed inputs are published ([below](#corrections-and-previews)).
+7. **Nothing untrusted reaches the public map or the dispatcher.** Only admins add corrections ([below](#corrections)); automated inputs come from the operators' own feeds (GTFS, GTFS-RT, AIS).
 8. **Static first, dynamic where needed.** Anything that can be an immutable file behind a CDN is one. The server handles live data, writes and moderation. If the server is down, the site degrades to schedule estimates instead of breaking.
 9. **Licensing is tracked per dataset** ([DATA-LICENSES.md](../DATA-LICENSES.md)). Every dataset records its source and license, and publishing respects them.
 10. **Every assumption is config.** Operating assumptions live in config (a rail network's, a feed's, an operator's or `config/defaults/`) with a source or "guess", and a cross-reference to the matching open question. No magic numbers in code. Every config file has a schema (`packages/transit-core/src/config.ts`), checked wherever it's loaded, so a mistyped setting fails instead of reading as undefined.
@@ -96,7 +96,7 @@ var/                       gitignored: downloads, recordings, build output (var/
 | Data | Where | Kept |
 |---|---|---|
 | Infrastructure overrides, operations config | Git (`config/networks/`), checked by the validators | |
-| Observations | Database, with review states and an export to the file format in `config/feeds/*/observations/` ([below](#corrections-and-previews)) | indefinitely |
+| Observations | Database, with an export to the file format in `config/feeds/*/observations/` ([below](#corrections)) | indefinitely |
 | Raw real-time data: GTFS-RT positions and AIS fixes | Database (partitioned by day) and hourly NDJSON.gz files, copied to the archive bucket | **60 days** |
 | Observed stop times per trip and stop | Database (partitioned by month) | indefinitely |
 | Per-route daily statistics | Database (`route_stats_daily`) | indefinitely |
@@ -142,14 +142,12 @@ Weekends have their own, flatter schedule with a midday peak. Together they stay
 
 Other providers get budgets under their own terms. aisstream.io allows 3 connections per account: production's leader holds one WebSocket, which leaves room for `pipelines/probe-ais.ts` and the occasional local test.
 
-## Corrections and previews
+## Corrections
 
 Observations (sightings of a train or vessel at a stop at a time, consists, cancellations) refine the schedule. The engine side is in [packages/transit-core/DESIGN.md → Corrections](../packages/transit-core/DESIGN.md#corrections). SkyTrain alerts aren't corrections: they're shown as text ([→ SkyTrain alerts](../packages/transit-core/DESIGN.md#skytrain-alerts)).
 
-- In production they live in the database, each with a review state: `draft → previewing → confirmed | discarded`. Admins edit them at `/admin`.
-- **Preview**: an admin dispatches the dates a draft touches (within a week of today) with the draft added. The result is a **preview version**: an immutable dispatch patch like any other, but not advertised by the live endpoint. `/admin` links to `/transit?preview=<YYYYMMDD>:<version>`, and the time bar says it's showing unconfirmed corrections. Preview versions hold nothing private, so anyone with the link can see one.
-- **Confirm** publishes the input, and the next regular dispatch includes it. Editing a confirmed input sends it back to draft.
-- Observations are a feed's (they name its trips: `config/feeds/translink/observations/`). Those files are imported into a new database, and are what local pipeline runs (`npm run data`) read; the server's data build exports the database's confirmed ones for its pipelines instead, laid out the same way (`correctionPaths` in `packages/data/src/paths.ts`). `npm run corrections -- export|import|pull` moves corrections between the two.
+- In production they live in the database, as observation sets that admins add, edit and delete at `/admin`. A set applies as soon as it's saved: the leader's next dispatch check (`dispatchCheckS`) re-dispatches the dates it touches. There's no review step: nobody used one.
+- Observations are a feed's (they name its trips: `config/feeds/translink/observations/`). Those files are imported into a new database, and are what local pipeline runs (`npm run data`) read; the server's data build exports the database's for its pipelines instead, laid out the same way (`correctionPaths` in `packages/data/src/paths.ts`). `npm run corrections -- export|import|pull` moves corrections between the two.
 - Precedence, shown as provenance: manual observation > live sensor (GTFS-RT, AIS) > schedule.
 
 ## Attribution
@@ -309,7 +307,7 @@ Made while planning V2 (2026-09-29 to 2026-10-01). Change them deliberately, and
 | Retention | Raw real-time data (GTFS-RT, AIS, later GBFS) kept **60 days**. Observed stop times, per-route statistics and GTFS feeds kept **indefinitely**. |
 | Statistics | "On time" is **1 minute early to 3 minutes late** at timepoints. |
 | Frequency metric | The **90th-percentile gap over the upcoming hour** from the time viewed, per service and per shared corridor segment, computed at least every 30 minutes. Bands (one definition for cards and map, `packages/shared/src/frequency.ts`): Good ≤ 6 min, OK ≤ 12, Poor ≤ 20, Bad over 20. |
-| Corrections | Observations live in the database with review states and previews, with a file export. |
+| Corrections | Observations live in the database, with a file export. **No review step** (2026-11-27): a set applies as soon as an admin saves it; drafts, previews (`?preview=`) and confirming were removed, as nobody reviewed anything. |
 | Disruptions | **Removed** (2026-11-27): SkyTrain disruptions drafted from TransLink alerts (closures and reduced headways, re-planned and dispatched) applied only once an admin confirmed which track stays open, and none ever were. SkyTrain alerts are shown as text instead ([packages/transit-core → SkyTrain alerts](../packages/transit-core/DESIGN.md#skytrain-alerts)); anything automated from GTFS-RT (cancellations, skipped stops, detours) is unchanged. |
 | Data snapshots | The server records all the time; developers pull snapshots of production data. Whether each dataset can be published depends on its source's license. |
 | Attribution | Shown dynamically: the map credits exactly the datasets visible. |
@@ -342,7 +340,7 @@ Made while planning V2 (2026-09-29 to 2026-10-01). Change them deliberately, and
 | The OSM track graph has gaps or errors | Overrides survive re-imports; the validator and diagram checklist; fixes go upstream to OSM. |
 | Run inference or the dispatcher is implausible (fleet counts, turnbacks, delays, deadlocks) | Everything is config; `validate:plan` reports fleet peaks, conflicts, delays and broken deadlocks; route locking; corrections; field checks against GPS rides; the open questions. |
 | GTFS changes (new signups, route IDs, platform stops) | Routes selected by name; per-feed builds; the validator fails loudly on unmapped platforms. |
-| Untrusted input changes what everyone sees | Only confirmed corrections feed the dispatcher; visitor requests never trigger a dispatch. |
+| Untrusted input changes what everyone sees | Only admins' corrections feed the dispatcher; visitor requests never trigger a dispatch. |
 | Browser performance (all buses, phones) | Lazy per-feed and per-day files, the custom WebGL layer, simplified geometry at low zoom; later viewport-limited prediction and instanced markers. |
 | A long feature list for a small team | Strict priorities, each milestone ships, continuous quality work instead of rewrites. |
 | FullHost is less widely used than the big clouds | Only the VM is there; everything is portable Docker and S3, with backups at another provider. |

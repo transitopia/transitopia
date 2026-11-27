@@ -3,7 +3,7 @@
 //   /rt/*, /feeds/*, /networks/*  public real-time API (rt/service.ts), CORS *, cached at the edge
 //   /healthz           freshness checks for monitoring (503 when data is stale)
 //   /auth/*            admin sign-in with GitHub (auth.ts)
-//   /admin/api/*       the review queue behind /admin: observations with previews,
+//   /admin/api/*       what /admin shows and changes: observation sets, the feature registry,
 //                      jobs and status. Admins only; CORS for ALLOWED_ORIGINS.
 
 import { statfs } from "node:fs/promises";
@@ -41,8 +41,6 @@ import {
   type AuthMe,
   type CorrectionsResponse,
   type Health,
-  type PreviewResponse,
-  type ReviewState,
   type RtStatus,
   type StatusResponse,
 } from "@transitopia/shared/admin-api.ts";
@@ -314,48 +312,20 @@ export function createApp(deps: AppDeps): Hono<Env> {
     if (!Array.isArray(file.observations) || !file.observations.length)
       problems.push("no observations");
     if (problems.length) return c.json({ error: problems.join("; ") }, 400);
-    const old = await repo.observationSet(id);
-    await repo.saveObservationSet(id, file, {
-      title,
-      state: !old || old.state === "confirmed" ? "draft" : old.state,
-      by: c.get("user").login,
-    });
+    await repo.saveObservationSet(id, file, { title, by: c.get("user").login });
     return c.json({ ok: true });
   });
 
-  // Dispatch the dates it touches with this correction added: preview versions to look at on /transit.
-  app.post("/admin/api/observations/:id/preview", async (c) => {
-    if (!service.dispatcher)
-      return c.json({ error: "Live dispatch runs on the leader" }, 409);
-    const id = c.req.param("id");
-    const s = await repo.observationSet(id);
-    if (!s) return c.notFound();
-    const versions = await service.dispatcher.preview(
-      { observations: s.body.observations },
-      `observations:${id}`,
-    );
-    await repo.setState(id, "previewing", c.get("user").login);
-    return c.json({ versions } satisfies PreviewResponse);
-  });
-
-  app.post(
-    "/admin/api/observations/:id/:action{confirm|discard|reopen}",
-    async (c) => {
-      const { id, action } = c.req.param();
-      const state: ReviewState =
-        action === "confirm" ? "confirmed"
-        : action === "discard" ? "discarded"
-        : "draft";
-      const ok = await repo.setState(id, state, c.get("user").login);
-      return ok ? c.json({ ok: true }) : c.notFound();
-    },
+  app.delete("/admin/api/observations/:id", async (c) =>
+    (await repo.deleteObservationSet(c.req.param("id"))) ?
+      c.json({ ok: true })
+    : c.notFound(),
   );
 
-  // The confirmed corrections in the file format, e.g. for a test fixture or the static build.
+  // The corrections in the file format, e.g. for a test fixture or the static build.
   app.get("/admin/api/export", async (c) => {
     const observations: Record<string, ObservationFile> = {};
-    for (const s of await repo.observationSets(["confirmed"]))
-      observations[s.id] = s.body;
+    for (const s of await repo.observationSets()) observations[s.id] = s.body;
     return c.json({ observations });
   });
 

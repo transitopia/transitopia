@@ -1,9 +1,9 @@
-// Corrections in the database, as files (docs/DESIGN.md#corrections-and-previews), e.g. for tests and
-// reproducible bug reports. /admin is where they're reviewed; this is for moving them around.
+// Corrections in the database, as files (docs/DESIGN.md#corrections), e.g. for tests and
+// reproducible bug reports. /admin is where they're edited; this is for moving them around.
 //
-//   npm run corrections -- export <dir>          # confirmed ones → <dir>, laid out like config/ (below)
+//   npm run corrections -- export <dir>          # the database's → <dir>, laid out like config/ (below)
 //   npm run corrections -- import [<dir>]        # files → database (default: config/); existing ids are kept
-//   npm run corrections -- pull [<api>] [<dir>]  # a server's confirmed ones (admin token in ADMIN_TOKEN) → <dir>
+//   npm run corrections -- pull [<api>] [<dir>]  # a server's (admin token in ADMIN_TOKEN) → <dir>
 //
 // They're the rail network's (railNetwork): its feed's observations in <dir>/feeds/<feed>/observations/
 // (correctionPaths). export and import use DATABASE_URL, else the local database (npm run db:up).

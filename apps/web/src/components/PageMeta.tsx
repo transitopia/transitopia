@@ -5,7 +5,7 @@ import { siteUrl } from "../config.ts";
 /**
  * A route's search metadata (apps/web/README.md#search-metadata): its description, replacing the
  * site-wide one in index.html, and a canonical link without the query string, so the mode state in
- * it (?date=…, ?preview=…) doesn't make each variant a separate page for search engines.
+ * it (?date=…, ?select=…) doesn't make each variant a separate page for search engines.
  */
 export function PageMeta({
   path,

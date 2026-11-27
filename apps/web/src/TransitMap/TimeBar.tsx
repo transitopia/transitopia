@@ -269,7 +269,7 @@ const TimeText: React.FC<{ snap: TransitSnapshot; sub: string }> = ({
   );
 };
 
-/** Where bus positions come from at the shown time, service changes, and preview mode. */
+/** Where bus positions come from at the shown time, and service changes. */
 const Badges: React.FC<{ snap: TransitSnapshot }> = ({ snap }) => (
   <div className="flex flex-wrap items-center gap-1.5 empty:hidden">
     <span
@@ -283,13 +283,6 @@ const Badges: React.FC<{ snap: TransitSnapshot }> = ({ snap }) => (
         className="rounded-full bg-(--card-warn-bg) px-2.5 py-1.5 text-[12.5px] font-semibold whitespace-nowrap text-(--card-warn-fg)"
         title={snap.notices.join("\n")}>
         Service change
-      </span>
-    : null}
-    {snap.preview.length ?
-      <span
-        className="rounded-full bg-purple-700 px-2.5 py-1.5 text-[12.5px] font-semibold whitespace-nowrap text-white"
-        title={`Showing unconfirmed corrections for ${snap.preview.map(isoDate).join(", ")}: not what visitors see`}>
-        Preview
       </span>
     : null}
   </div>

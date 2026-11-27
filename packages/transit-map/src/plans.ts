@@ -138,7 +138,6 @@ export class PlanStore {
   private railPaths = new Map<string, Map<number, PathStep[]> | null>();
   private movementFiles = new Map<string, MovementsFile | null>();
   private playbacks = new Map<string, TrainPlayback>();
-  private preview: Record<string, string> = {};
   private dispatchIndex: DispatchIndex | null | undefined;
   /** Live dispatch versions (the RT service), which take precedence over the static index. */
   private liveDispatch: DispatchIndex["byDate"] = {};
@@ -291,21 +290,14 @@ export class PlanStore {
       });
       return undefined;
     }
-    const preview = this.preview[date];
-    const entry =
-      preview ?
-        {
-          version: preview,
-          path: `networks/${this.config.rail!.network}/dispatch/${date}/${preview}.json`,
-        }
-      : (this.liveDispatch[date] ?? this.dispatchIndex?.byDate[date]);
+    const entry = this.liveDispatch[date] ?? this.dispatchIndex?.byDate[date];
     if (!entry) return this.dispatchIndex ? null : undefined;
     const key = `${date}|${entry.version}`;
     const p = this.patches.get(key);
     if (p === undefined) {
       this.fetchOnce(
         key,
-        // Live and preview versions are served by the RT service, static ones with the data.
+        // Live versions are served by the RT service, static ones with the data.
         entry.path.startsWith("networks/") && this.apiBase ?
           `${this.apiBase}${entry.path}`
         : this.dataUrl(entry.path),
@@ -496,20 +488,6 @@ export class PlanStore {
       this.playbacks.set(pbKey, pb);
     }
     return pb;
-  }
-
-  /**
-   * Show these dispatch versions (service date → version) instead of the current ones: previews of
-   * corrections not confirmed yet (docs/DESIGN.md#corrections-and-previews, ?preview=<YYYYMMDD>:<version>).
-   */
-  setPreview(versions: Record<string, string>): void {
-    this.preview = { ...versions };
-    this.emit();
-  }
-
-  /** Dates shown with a preview version. */
-  get previewDates(): string[] {
-    return Object.keys(this.preview).sort();
   }
 
   /** New live dispatch versions from the live endpoint (service date → version and path). */
