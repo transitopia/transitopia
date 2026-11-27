@@ -231,7 +231,7 @@ export const ServiceChangeBadge: React.FC<{
             ))}
           </div>
           <p className="border-t border-(--card-divider) px-4 py-2 text-[12px] leading-snug text-(--card-muted)">
-            From real-time alerts, for the SkyTrain lines in view. Trains on the
+            From real-time alerts, for the train lines in view. Trains on the
             map still follow the regular timetable. Elevator, escalator and
             entrance notices are on station cards.
           </p>
