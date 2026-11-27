@@ -1,4 +1,4 @@
-// SkyTrain alerts as the site shows them (packages/transit-core/DESIGN.md#skytrain-alerts): those
+// Train line alerts as the site shows them (packages/transit-core/DESIGN.md#train-alerts): those
 // that change how a line runs by the time bar (for the lines in view) and on line cards, and every
 // one naming a station's platforms (elevators, escalators, entrances, fares) on its card.
 

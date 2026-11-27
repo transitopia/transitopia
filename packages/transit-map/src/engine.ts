@@ -213,8 +213,8 @@ export interface TransitSnapshot {
   coverage: [number, number][];
   rt: { mode: RtMode; label: string; title: string };
   /**
-   * SkyTrain alerts changing how a line in view runs at the shown time
-   * (packages/transit-core/DESIGN.md#skytrain-alerts), for the time bar.
+   * Train line alerts changing how a line in view runs at the shown time
+   * (packages/transit-core/DESIGN.md#train-alerts), for the time bar.
    */
   alerts: ServiceAlert[];
   /** Every feed's routes. */

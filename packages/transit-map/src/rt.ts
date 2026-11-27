@@ -2,7 +2,7 @@
 // endpoint (acceptLive, polled by live.ts); at other times it loads recorded hours from /rt/history.
 // It also tracks recorder coverage, which decides per instant whether buses are shown from RT data
 // (observed/interpolated) or schedule (estimated), and loads TransLink's service changes (cancelled
-// trips, skipped stops, detours, SkyTrain alerts) for the days shown: while live, the version the live endpoint
+// trips, skipped stops, detours, train alerts) for the days shown: while live, the version the live endpoint
 // points to; otherwise the current file, refreshed for recent days.
 
 import {

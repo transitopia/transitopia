@@ -85,7 +85,7 @@ export interface RouteSnapshot {
   /** Its vehicles drawn now, and how many of them have real positions. */
   vehicles: number;
   live: number;
-  /** A SkyTrain line's alerts changing how it runs at the shown time. */
+  /** A train line's alerts changing how it runs at the shown time. */
   alerts: ServiceAlert[];
   /** Registry ids of the data behind it, for its card's credits. */
   datasets: string[];
@@ -122,7 +122,7 @@ export interface PlaceSnapshot extends Place {
   /** Registry ids of the data behind its departures, for its card's credits. */
   datasets: string[];
   /**
-   * A SkyTrain station's alerts at the shown time (those naming its platforms: service changes,
+   * A station's train line alerts at the shown time (those naming its platforms: service changes,
    * elevators, escalators, entrances, fares), service changes first. Empty for a bus stop or exchange.
    */
   alerts: ServiceAlert[];
@@ -241,7 +241,7 @@ export interface PlaceContext {
   datasetsOf: (routes: Iterable<[PlanRoute | undefined, boolean]>) => string[];
   /** A combined route's segment and whether a vehicle is on it, for its card. */
   segment: (p: Place) => SegmentContext | undefined;
-  /** The place's feed's alerts at t: a SkyTrain line's that change how it runs, and those naming any of some stops. */
+  /** The place's feed's alerts at t: a train line's that change how it runs, and those naming any of some stops. */
   lineAlerts: (routeKey: string) => ServiceAlert[];
   stopAlerts: (stopIds: ReadonlySet<string>) => ServiceAlert[];
   /**

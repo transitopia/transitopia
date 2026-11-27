@@ -1,4 +1,4 @@
-// Collects GTFS-RT service changes for our bus routes (and alerts for our SkyTrain lines) per service date (packages/transit-core/src/rt/changes.ts) and
+// Collects GTFS-RT service changes for our bus routes (and alerts for our train lines) per service date (packages/transit-core/src/rt/changes.ts) and
 // keeps them in var/rt-history/<feed>/changes/YYYYMMDD.json, since TransLink's feeds drop a trip's
 // cancellation once it has run and an alert once it's over. Each state of a day is a version (a
 // content hash): the live endpoint points to the current one, served at an immutable URL.
@@ -118,7 +118,7 @@ export class ServiceChanges {
     for (const date of touched) this.save(date);
   }
 
-  /** Alerts for our bus routes and SkyTrain lines in one alerts poll, recorded under today's (local) date. */
+  /** Alerts for our bus routes and train lines in one alerts poll, recorded under today's (local) date. */
   async updateAlerts(
     alerts: Omit<RtRouteAlert, "seen">[],
     now = Date.now(),

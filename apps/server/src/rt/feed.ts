@@ -26,6 +26,7 @@ import type {
   LiveVehiclesSection,
   VersionPointer,
 } from "@transitopia/transit-core/rt/live.ts";
+import { isTrainLine } from "@transitopia/transit-core/plan/types.ts";
 import type { RtRouteAlert } from "@transitopia/transit-core/rt/changes.ts";
 import {
   cadence,
@@ -90,7 +91,7 @@ export class FeedPoller {
   private latest: RtSnapshot | null = null;
   private delays: TripDelays = new Map();
   private routeKeyById = new Map<string, string>();
-  /** GTFS route_id → our key, for bus routes and SkyTrain lines (alerts). */
+  /** GTFS route_id → our key, for bus routes and train lines (alerts). */
   private alertKeyById = new Map<string, string>();
   private routesLoadedFrom: number | undefined;
   /** Where each stop is, by GTFS stop_id (frozen GPS checks). */
@@ -344,7 +345,7 @@ export class FeedPoller {
       const alertKeys = new Map<string, string>();
       for (const [id, r] of await routesByGtfsId(this.feed.id)) {
         if (r.kind === "bus") map.set(id, r.key);
-        if (r.kind === "bus" || r.kind === "skytrain") alertKeys.set(id, r.key);
+        if (r.kind === "bus" || isTrainLine(r)) alertKeys.set(id, r.key);
       }
       if (this.routesLoadedFrom !== undefined)
         this.log(
@@ -375,7 +376,7 @@ export class FeedPoller {
       AbortSignal.timeout(15_000),
     );
     await this.opts.store?.recordAlerts(this.feed.id, decoded);
-    // Bus route alerts (e.g. detours) and SkyTrain alerts, kept per day for playback.
+    // Bus route alerts (e.g. detours) and train line alerts, kept per day for playback.
     const alerts: Omit<RtRouteAlert, "seen">[] = [];
     for (const a of decoded) {
       const entities = a.entities.flatMap(({ routeId, ...rest }) => {

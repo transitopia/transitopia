@@ -1,4 +1,4 @@
-// Service changes TransLink publishes in GTFS-RT for our bus routes and SkyTrain lines, collected per service date by
+// Service changes TransLink publishes in GTFS-RT for our bus routes and train lines, collected per service date by
 // the RT service (apps/server/src/rt/changes.ts) and served at /feeds/<feed>/days/<YYYYMMDD>/changes (versioned, the feed's live endpoint points to the current version):
 //  - cancelled trips (TripUpdates schedule_relationship CANCELED). The feed drops a trip once its
 //    time has passed, so only a recording keeps them for replaying the day. Seen 2026-09-29: some
@@ -11,10 +11,10 @@
 //    its alert). Those listing stops ("resuming service at Lonsdale Quay") skip just those stops;
 //  - DETOUR alerts. They name the route (and direction or trip) and the affected stops; the detour
 //    path is only in the text ("via Gilmore Ave, Lougheed Hwy, ..."), so it isn't drawn;
-//  - SkyTrain alerts (track work, single-tracking, delays, elevators): there are no SkyTrain trip
-//    updates, so these are shown as text only, while they apply (ChangesView.alerts): those that
+//  - train line alerts (SkyTrain and West Coast Express: track work, single-tracking, delays,
+//    elevators): there are no train trip updates, so these are shown as text only, while they apply (ChangesView.alerts): those that
 //    change how a line runs (`isServiceAlert`) on the time bar and line cards, any naming a
-//    station's platforms on its card (packages/transit-core/DESIGN.md#skytrain-alerts).
+//    station's platforms on its card (packages/transit-core/DESIGN.md#train-alerts).
 // See config/feeds/translink/OPEN-QUESTIONS.md #28.
 
 import type { ServiceDate } from "../time.ts";
@@ -27,7 +27,7 @@ export const EFFECT_DETOUR = 4;
 export const EFFECT_MODIFIED_SERVICE = 6;
 
 /**
- * Effects that change how a line runs. TransLink's other SkyTrain alerts are mostly elevator and
+ * Effects that change how a line runs. TransLink's other train line alerts are mostly elevator and
  * escalator outages (ACCESSIBILITY_ISSUE), fare notices (NO_EFFECT) and entrance closures
  * (UNKNOWN_EFFECT): about a station, not the line (seen 2026-11-27: 4 of 19 were service changes).
  */
@@ -64,7 +64,7 @@ export interface RtDayChanges {
   cancelled: Record<string, [number, number]>;
   /** trip_id → stop_ids seen skipped (not for cancelled trips). */
   skipped: Record<string, string[]>;
-  /** Alerts for our bus routes and SkyTrain lines seen during this (local calendar) day; trips they name run on it. */
+  /** Alerts for our bus routes and train lines seen during this (local calendar) day; trips they name run on it. */
   alerts: RtRouteAlert[];
 }
 

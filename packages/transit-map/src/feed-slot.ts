@@ -23,6 +23,7 @@ import {
   feedForDate,
   patternStarts,
   type FeedManifest,
+  isTrainLine,
   type Bounds,
   type PlanRoute,
   type ServicePlan,
@@ -143,7 +144,7 @@ export interface FeedVehicles {
 }
 
 const NO_IDS: ReadonlySet<number> = new Set();
-/** Each plan's SkyTrain route keys (railAlertsAt). */
+/** Each plan's train line keys (railAlertsAt). */
 const railRoutesOf = new WeakMap<ServicePlan, ReadonlySet<string>>();
 
 export class FeedSlot {
@@ -830,8 +831,8 @@ export class FeedSlot {
   }
 
   /**
-   * Its SkyTrain alerts that change how a line runs, at t, about lines with a station in `view`
-   * (every line without one): the time bar's badge (packages/transit-core/DESIGN.md#skytrain-alerts).
+   * Its train line alerts that change how a line runs, at t, about lines with a station in `view`
+   * (every line without one): the time bar's badge (packages/transit-core/DESIGN.md#train-alerts).
    */
   serviceAlertsAt(t: number, view: Bounds | undefined): ServiceAlert[] {
     const at = this.railAlertsAt(t);
@@ -843,7 +844,7 @@ export class FeedSlot {
       .filter((a) => a.routes.length);
   }
 
-  /** A SkyTrain line's alerts that change how it runs, at t (its card). */
+  /** A train line's alerts that change how it runs, at t (its card). */
   lineAlertsAt(routeKey: string, t: number): ServiceAlert[] {
     const at = this.railAlertsAt(t);
     if (!at) return [];
@@ -855,7 +856,7 @@ export class FeedSlot {
       .map((a) => this.alertSnapshot(a, at.pp, t));
   }
 
-  /** Every SkyTrain alert naming one of these stops (a station's platforms) at t, service changes first (its card). */
+  /** Every train line alert naming one of these stops (a station's platforms) at t, service changes first (its card). */
   stopAlertsAt(stopIds: ReadonlySet<string>, t: number): ServiceAlert[] {
     const at = this.railAlertsAt(t);
     if (!at || !stopIds.size) return [];
@@ -865,7 +866,7 @@ export class FeedSlot {
       .sort((a, b) => Number(b.service) - Number(a.service));
   }
 
-  /** The alerts about its SkyTrain lines that apply at t, with the plan they're read against. */
+  /** The alerts about its train lines that apply at t, with the plan they're read against. */
   private railAlertsAt(
     t: number,
   ): { pp: PreparedPlan; alerts: RtRouteAlert[] } | undefined {
@@ -875,15 +876,13 @@ export class FeedSlot {
     if (!rail)
       railRoutesOf.set(
         pp.plan,
-        (rail = new Set(
-          pp.plan.routes.filter((r) => r.kind === "skytrain").map((r) => r.key),
-        )),
+        (rail = new Set(pp.plan.routes.filter(isTrainLine).map((r) => r.key))),
       );
     const alerts = this.rt.alertsAt(rail, t);
     return alerts.length ? { pp, alerts } : undefined;
   }
 
-  /** An alert as shown, about its SkyTrain lines (those in `only`, when given). */
+  /** An alert as shown, about its train lines (those in `only`, when given). */
   private alertSnapshot(
     a: RtRouteAlert,
     pp: PreparedPlan,
@@ -892,7 +891,7 @@ export class FeedSlot {
   ): ServiceAlert {
     const alert = serviceAlert(a, this.feed, pp.routes, this.tz, t);
     alert.routes = alert.routes.filter(
-      (r) => r.kind === "skytrain" && (!only || only.has(r.key)),
+      (r) => isTrainLine(r) && (!only || only.has(r.key)),
     );
     return alert;
   }

@@ -12,7 +12,7 @@ import { CardSection } from "../components/InfoCard.tsx";
 import { alertPeriod } from "./format.ts";
 import { routeColorsFor, type RouteColors } from "./RouteBadge.tsx";
 
-// SkyTrain alerts (apps/web/README.md#skytrain-alerts): the time bar's badge and its popover, and the
+// Train alerts (apps/web/README.md#train-alerts): the time bar's badge and its popover, and the
 // alerts sections of line and station cards.
 
 /** A line's colour as a dot. */
@@ -113,7 +113,7 @@ function byLines(
 }
 
 /**
- * The time bar's "Service change" badge (apps/web/README.md#skytrain-alerts): the lines in view whose
+ * The time bar's "Service change" badge (apps/web/README.md#train-alerts): the lines in view whose
  * service an alert changes at the shown time, as dots, opening a popover that lists the alerts by
  * line, each line opening its card. The popover is placed against the time bar: above it, or
  * `below` when the bar is at the top of the screen.
