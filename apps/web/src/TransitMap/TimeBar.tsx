@@ -7,6 +7,7 @@ import {
 import { localDate } from "@transitopia/transit-core/time.ts";
 
 import { Icon } from "../components/Icon.tsx";
+import { ServiceChangeBadge } from "./Alerts.tsx";
 import { TimeMark, type Mark } from "../components/InfoCard.tsx";
 import {
   clockTime,
@@ -144,7 +145,7 @@ const FullBar: React.FC<Props> = ({ engine, snap }) => (
       <TimeText snap={snap} sub={subLine(snap, true)} />
       {/* Narrow screens drop these: the amber border and status line still say "not live". */}
       <div className="flex items-center gap-3 max-md:hidden">
-        <Badges snap={snap} />
+        <Badges engine={engine} snap={snap} />
         {snap.live ? null : <NotLiveBadge />}
       </div>
       <DateButton engine={engine} snap={snap} />
@@ -187,7 +188,7 @@ const PhoneBar: React.FC<
             <DateButton engine={engine} snap={snap} wide />
             <SpeedStepper engine={engine} snap={snap} />
           </div>
-          <Badges snap={snap} />
+          <Badges engine={engine} snap={snap} below={atTop} />
         </>
       : null}
     </section>
@@ -332,8 +333,12 @@ function useFlash(at: number | undefined): boolean {
   return at !== undefined && Date.now() < at + ZONE_FLASH_MS;
 }
 
-/** Where bus positions come from at the shown time, and service changes. */
-const Badges: React.FC<{ snap: TransitSnapshot }> = ({ snap }) => (
+/** Where bus positions come from at the shown time, and service changes (`below`: the time bar is at the top). */
+const Badges: React.FC<Props & { below?: boolean | undefined }> = ({
+  engine,
+  snap,
+  below,
+}) => (
   <div className="flex flex-wrap items-center gap-1.5 empty:hidden">
     <span
       title={snap.rt.title}
@@ -348,13 +353,7 @@ const Badges: React.FC<{ snap: TransitSnapshot }> = ({ snap }) => (
         Several time zones
       </span>
     : null}
-    {snap.notices.length ?
-      <span
-        className="rounded-full bg-(--card-warn-bg) px-2.5 py-1.5 text-[12.5px] font-semibold whitespace-nowrap text-(--card-warn-fg)"
-        title={snap.notices.join("\n")}>
-        Service change
-      </span>
-    : null}
+    <ServiceChangeBadge engine={engine} snap={snap} below={below} />
   </div>
 );
 

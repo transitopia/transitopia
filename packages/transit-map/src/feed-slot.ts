@@ -23,9 +23,14 @@ import {
   feedForDate,
   patternStarts,
   type FeedManifest,
+  type Bounds,
   type PlanRoute,
   type ServicePlan,
 } from "@transitopia/transit-core/plan/types.ts";
+import {
+  isServiceAlert,
+  type RtRouteAlert,
+} from "@transitopia/transit-core/rt/changes.ts";
 import type {
   PreparedPlan,
   ScheduleCorrections,
@@ -93,6 +98,7 @@ import { BusFrequencyLayer, nowWindowStart } from "./layers/bus-frequency.ts";
 import type { VehicleLayer } from "./layers/vehicles.ts";
 import { sharedEnds, type Place } from "./url.ts";
 import type { SegmentContext } from "./places.ts";
+import { serviceAlert, type ServiceAlert } from "./alerts.ts";
 
 /** A kind of day in the feed, with how often the route runs in each hour (DAY_HOURS). */
 export interface RouteDay {
@@ -137,7 +143,7 @@ export interface FeedVehicles {
 }
 
 const NO_IDS: ReadonlySet<number> = new Set();
-/** Each plan's SkyTrain route keys (noticesAt). */
+/** Each plan's SkyTrain route keys (railAlertsAt). */
 const railRoutesOf = new WeakMap<ServicePlan, ReadonlySet<string>>();
 
 export class FeedSlot {
@@ -149,6 +155,9 @@ export class FeedSlot {
   readonly store: PlanStore;
   readonly rt: RtClient;
   readonly ais: AisClient;
+  /** `linesInView`'s last answer. */
+  private inViewMemo:
+    { plan: ServicePlan; view: Bounds; lines: ReadonlySet<string> } | undefined;
   /** Its live endpoint's poll (GET /feeds/<id>/live): buses, service changes and AIS. */
   readonly live: LivePoller;
   /** The rail network's track, where the feed runs on one, once loaded. */
@@ -820,10 +829,48 @@ export class FeedSlot {
     );
   }
 
-  /** Its SkyTrain alerts that apply at t (packages/transit-core/src/rt/changes.ts), for the service-change badge. */
-  noticesAt(t: number): string[] {
+  /**
+   * Its SkyTrain alerts that change how a line runs, at t, about lines with a station in `view`
+   * (every line without one): the time bar's badge (packages/transit-core/DESIGN.md#skytrain-alerts).
+   */
+  serviceAlertsAt(t: number, view: Bounds | undefined): ServiceAlert[] {
+    const at = this.railAlertsAt(t);
+    if (!at) return [];
+    const inView = view && this.linesInView(at.pp.plan, view);
+    return at.alerts
+      .filter(isServiceAlert)
+      .map((a) => this.alertSnapshot(a, at.pp, t, inView))
+      .filter((a) => a.routes.length);
+  }
+
+  /** A SkyTrain line's alerts that change how it runs, at t (its card). */
+  lineAlertsAt(routeKey: string, t: number): ServiceAlert[] {
+    const at = this.railAlertsAt(t);
+    if (!at) return [];
+    return at.alerts
+      .filter(
+        (a) =>
+          isServiceAlert(a) && a.entities.some((e) => e.routeKey === routeKey),
+      )
+      .map((a) => this.alertSnapshot(a, at.pp, t));
+  }
+
+  /** Every SkyTrain alert naming one of these stops (a station's platforms) at t, service changes first (its card). */
+  stopAlertsAt(stopIds: ReadonlySet<string>, t: number): ServiceAlert[] {
+    const at = this.railAlertsAt(t);
+    if (!at || !stopIds.size) return [];
+    return at.alerts
+      .filter((a) => a.stopIds.some((id) => stopIds.has(id)))
+      .map((a) => this.alertSnapshot(a, at.pp, t))
+      .sort((a, b) => Number(b.service) - Number(a.service));
+  }
+
+  /** The alerts about its SkyTrain lines that apply at t, with the plan they're read against. */
+  private railAlertsAt(
+    t: number,
+  ): { pp: PreparedPlan; alerts: RtRouteAlert[] } | undefined {
     const pp = this.store.planFor(this.displayDate(t));
-    if (!pp) return [];
+    if (!pp) return undefined;
     let rail = railRoutesOf.get(pp.plan);
     if (!rail)
       railRoutesOf.set(
@@ -832,7 +879,39 @@ export class FeedSlot {
           pp.plan.routes.filter((r) => r.kind === "skytrain").map((r) => r.key),
         )),
       );
-    return this.rt.alertsAt(rail, t);
+    const alerts = this.rt.alertsAt(rail, t);
+    return alerts.length ? { pp, alerts } : undefined;
+  }
+
+  /** An alert as shown, about its SkyTrain lines (those in `only`, when given). */
+  private alertSnapshot(
+    a: RtRouteAlert,
+    pp: PreparedPlan,
+    t: number,
+    only?: ReadonlySet<string>,
+  ): ServiceAlert {
+    const alert = serviceAlert(a, this.feed, pp.routes, this.tz, t);
+    alert.routes = alert.routes.filter(
+      (r) => r.kind === "skytrain" && (!only || only.has(r.key)),
+    );
+    return alert;
+  }
+
+  /** Its lines with a station in view, kept for the last plan and view asked about. */
+  private linesInView(plan: ServicePlan, view: Bounds): ReadonlySet<string> {
+    const memo = this.inViewMemo;
+    if (memo?.plan === plan && memo.view === view) return memo.lines;
+    const lines = new Set<string>();
+    for (const s of plan.stations)
+      if (
+        s.lon >= view[0]
+        && s.lon <= view[2]
+        && s.lat >= view[1]
+        && s.lat <= view[3]
+      )
+        for (const r of s.routes) lines.add(r);
+    this.inViewMemo = { plan, view, lines };
+    return lines;
   }
 
   /**

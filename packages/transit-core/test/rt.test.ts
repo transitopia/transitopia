@@ -25,10 +25,14 @@ import {
 import rtConfig from "@transitopia/config/defaults/rt.json";
 import { delayCorrections } from "../src/rt/carry.ts";
 import {
+  alertPeriodAt,
   changesView,
   EFFECT_DETOUR,
+  EFFECT_REDUCED_SERVICE,
   emptyDayChanges,
+  isServiceAlert,
   type RtDayChanges,
+  type RtRouteAlert,
 } from "../src/rt/changes.ts";
 import { preparePlan, scheduledVehicles } from "../src/schedule/engine.ts";
 import type { Bounds, ServicePlan } from "../src/plan/types.ts";
@@ -1594,6 +1598,62 @@ describe("service changes (GTFS-RT)", () => {
     ]);
     expect(view.alerts(rail, T0 + 2 * 3600_000)).toEqual([]);
     expect(view.alerts(new Set(), T0 + 60_000)).toEqual([]);
+  });
+
+  it("lists an alert published twice under different ids once", () => {
+    const alert = (id: string): RtRouteAlert => ({
+      id,
+      entities: [{ routeKey: "expo" }],
+      stopIds: [],
+      periods: [],
+      header: "Expo Line: reduced service",
+      description: "Allow 20 minutes",
+      seen: [T0, T0 + 3600_000],
+    });
+    const view = changesView([day({ alerts: [alert("a"), alert("b")] })], 0);
+    expect(
+      view.alerts(new Set(["expo"]), T0 + 60_000).map((a) => a.id),
+    ).toEqual(["a"]);
+  });
+
+  it("tells service changes from station notices by their effect", () => {
+    const a = (effect?: number): RtRouteAlert => ({
+      id: "x",
+      entities: [{ routeKey: "expo" }],
+      stopIds: [],
+      ...(effect === undefined ? {} : { effect }),
+      periods: [],
+      header: "",
+      description: "",
+      seen: [T0, T0],
+    });
+    expect(isServiceAlert(a(EFFECT_REDUCED_SERVICE))).toBe(true);
+    // ACCESSIBILITY_ISSUE (an elevator), NO_EFFECT (a fare notice), UNKNOWN_EFFECT, none.
+    expect([11, 10, 8, undefined].map((e) => isServiceAlert(a(e)))).toEqual([
+      false,
+      false,
+      false,
+      false,
+    ]);
+  });
+
+  it("finds the period an alert is in at a time", () => {
+    const a: RtRouteAlert = {
+      id: "lim",
+      entities: [{ routeKey: "expo" }],
+      stopIds: [],
+      periods: [
+        { start: T0, end: T0 + 3600_000 },
+        { start: T0 + 86_400_000, end: T0 + 90_000_000 },
+      ],
+      header: "",
+      description: "",
+      seen: [T0 - 3600_000, T0 + 90_000_000],
+    };
+    expect(alertPeriodAt(a, T0 + 86_500_000)).toEqual(a.periods[1]);
+    // Seen before its first period starts: that one.
+    expect(alertPeriodAt(a, T0 - 60_000)).toEqual(a.periods[0]);
+    expect(alertPeriodAt({ ...a, periods: [] }, T0)).toEqual({});
   });
 
   const detour = (directionId?: number) =>

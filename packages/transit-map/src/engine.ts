@@ -82,6 +82,7 @@ import {
   type SelectContext,
 } from "./select.ts";
 import type { RtMode } from "./rt.ts";
+import type { ServiceAlert } from "./alerts.ts";
 import { LivePoller } from "./live.ts";
 import {
   sectionOf,
@@ -167,6 +168,7 @@ export interface SelectedVehicle {
 
 export type { Place };
 export type { Departure };
+export type { ServiceAlert };
 export type {
   PickChoice,
   PickMenu,
@@ -210,8 +212,11 @@ export interface TransitSnapshot {
   /** Where real bus positions exist within the slider span, epoch ms. */
   coverage: [number, number][];
   rt: { mode: RtMode; label: string; title: string };
-  /** Service changes in effect at the shown time. */
-  notices: string[];
+  /**
+   * SkyTrain alerts changing how a line in view runs at the shown time
+   * (packages/transit-core/DESIGN.md#skytrain-alerts), for the time bar.
+   */
+  alerts: ServiceAlert[];
   /** Every feed's routes. */
   routes: PlanRoute[];
   /** Each route's groups (the layers panel's switches, `routeGroups`), by `routeId`. */
@@ -2182,7 +2187,9 @@ export class TransitEngine {
     label: RT_BADGE.unavailable[0],
     title: RT_BADGE.unavailable[1],
   };
-  private notices: string[] = [];
+  private alerts: ServiceAlert[] = [];
+  /** What `alerts` shows, to tell when it changes. */
+  private alertsKey = "";
   private datasets: string[] = [];
 
   /**
@@ -2247,7 +2254,7 @@ export class TransitEngine {
       dateRange: this.dateRange(),
       coverage: this.coverage,
       rt: this.rtState,
-      notices: this.notices,
+      alerts: this.alerts,
       // Stable identities, so React skips re-rendering the legend.
       routes: prev && sameRoutes(prev.routes, routes) ? prev.routes : routes,
       groups: this.groupsOf(),
@@ -2326,6 +2333,8 @@ export class TransitEngine {
       corrections: (d) => slot.correctionsOn(d),
       datasetsOf: (routes) => this.datasetsOf(routes),
       segment: () => this.segmentInfo(),
+      lineAlerts: (routeKey) => slot.lineAlertsAt(routeKey, t),
+      stopAlerts: (stops) => slot.stopAlertsAt(stops, t),
       foreign: this.foreignBays(slot, this.place),
       foreignParent: this.foreignParent(slot, this.place),
     });
@@ -2755,9 +2764,15 @@ export class TransitEngine {
       if (v) this.selectedRoute = feedKey(v.feed, v.routeKey);
     }
 
-    const notices = this.slots.flatMap((s) => s.noticesAt(t));
-    if (notices.join("\n") !== this.notices.join("\n")) {
-      this.notices = notices;
+    const alerts = this.slots.flatMap((s) => s.serviceAlertsAt(t, this.view));
+    const alertsKey = alerts
+      .map((a) =>
+        [a.id, a.start, a.end, a.routes.map(routeId).join()].join("|"),
+      )
+      .join("\n");
+    if (alertsKey !== this.alertsKey) {
+      this.alerts = alerts;
+      this.alertsKey = alertsKey;
       this.dirty = true;
     }
     // The badge says where the primary feed's buses come from.

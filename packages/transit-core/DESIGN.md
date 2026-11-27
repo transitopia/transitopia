@@ -307,7 +307,12 @@ Observations (`src/corrections/types.ts`) reference **service date + GTFS trip_i
 
 Planned SkyTrain service changes (track work, single-tracking, reduced headways) are published only as GTFS-RT **alerts**: they aren't in static GTFS (normal service_ids stay active), and there are no SkyTrain trip updates. The operating change is free text ("Trains will single-track between Bridgeport Station and Richmond-Brighouse Station"), and an alert doesn't say which track stays open, so the timetable can't be re-planned from it without a person's judgement. They're shown as text instead.
 
-The leader's alerts poll keeps the alerts for SkyTrain lines with the bus alerts in the feed's per-day [service changes](#buses) (`src/rt/changes.ts`). While one applies (within its active period, until it was last seen), the site shows its header under a "Service change" badge by the time slider (`ChangesView.alerts`, `FeedSlot.noticesAt`). Trains still run to the timetable, dispatched, and stay *estimated*.
+The leader's alerts poll keeps the alerts for SkyTrain lines with the bus alerts in the feed's per-day [service changes](#buses) (`src/rt/changes.ts`). An alert applies within its active period, until it was last seen (`ChangesView.alerts`; one notice published under several ids, with the same header and description, counts once). Most of TransLink's SkyTrain alerts aren't about how trains run: on 2026-11-27, 12 of 19 were elevator and escalator outages (effect `ACCESSIBILITY_ISSUE`), others fare notices (`NO_EFFECT`) and an entrance closure (`UNKNOWN_EFFECT`). So the site shows them where they matter (`packages/transit-map/src/alerts.ts`, `FeedSlot.serviceAlertsAt`, `lineAlertsAt`, `stopAlertsAt`):
+
+- **Service changes**, alerts whose effect is `NO_SERVICE`, `REDUCED_SERVICE`, `SIGNIFICANT_DELAYS` or `MODIFIED_SERVICE` (`isServiceAlert`), on the time bar's badge for the lines with a station in view, and on those lines' cards.
+- **Every alert naming a station's platforms** (alerts name platform stop_ids, never the station), service changes first, on that station's card.
+
+Trains still run to the timetable, dispatched, and stay *estimated*. An alert counts only until it was last seen, so a time in the future shows none, even one already announced for it.
 
 ## Dispatcher
 

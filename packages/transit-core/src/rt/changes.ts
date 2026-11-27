@@ -11,15 +11,37 @@
 //    its alert). Those listing stops ("resuming service at Lonsdale Quay") skip just those stops;
 //  - DETOUR alerts. They name the route (and direction or trip) and the affected stops; the detour
 //    path is only in the text ("via Gilmore Ave, Lougheed Hwy, ..."), so it isn't drawn;
-//  - SkyTrain alerts (track work, single-tracking, delays): there are no SkyTrain trip updates, so
-//    these are shown as text only, while they apply (ChangesView.alerts).
+//  - SkyTrain alerts (track work, single-tracking, delays, elevators): there are no SkyTrain trip
+//    updates, so these are shown as text only, while they apply (ChangesView.alerts): those that
+//    change how a line runs (`isServiceAlert`) on the time bar and line cards, any naming a
+//    station's platforms on its card (packages/transit-core/DESIGN.md#skytrain-alerts).
 // See config/feeds/translink/OPEN-QUESTIONS.md #28.
 
 import type { ServiceDate } from "../time.ts";
 
 /** GTFS-RT Alert.Effect values. */
 export const EFFECT_NO_SERVICE = 1;
+export const EFFECT_REDUCED_SERVICE = 2;
+export const EFFECT_SIGNIFICANT_DELAYS = 3;
 export const EFFECT_DETOUR = 4;
+export const EFFECT_MODIFIED_SERVICE = 6;
+
+/**
+ * Effects that change how a line runs. TransLink's other SkyTrain alerts are mostly elevator and
+ * escalator outages (ACCESSIBILITY_ISSUE), fare notices (NO_EFFECT) and entrance closures
+ * (UNKNOWN_EFFECT): about a station, not the line (seen 2026-11-27: 4 of 19 were service changes).
+ */
+const SERVICE_EFFECTS: ReadonlySet<number> = new Set([
+  EFFECT_NO_SERVICE,
+  EFFECT_REDUCED_SERVICE,
+  EFFECT_SIGNIFICANT_DELAYS,
+  EFFECT_MODIFIED_SERVICE,
+]);
+
+/** Whether an alert changes how its routes run, rather than being about a station or fares. */
+export function isServiceAlert(a: RtRouteAlert): boolean {
+  return a.effect !== undefined && SERVICE_EFFECTS.has(a.effect);
+}
 
 export interface RtRouteAlert {
   id: string;
@@ -65,6 +87,26 @@ export function alertActiveAt(
   if (!a.periods.length) return t >= from(undefined);
   return a.periods.some(
     (p) => t >= from(p.start) && (p.end === undefined || t <= p.end),
+  );
+}
+
+/**
+ * The active period an alert is in at t (epoch ms, an open end undefined), for saying when it
+ * applies; without periods, open at both ends.
+ */
+export function alertPeriodAt(
+  a: RtRouteAlert,
+  t: number,
+): { start?: number | undefined; end?: number | undefined } {
+  return (
+    a.periods.find(
+      (p) =>
+        (p.start === undefined || t >= p.start)
+        && (p.end === undefined || t <= p.end),
+    )
+    // Applying from when it was first seen, before its period's start.
+    ?? a.periods[0]
+    ?? {}
   );
 }
 
@@ -131,7 +173,10 @@ export interface ChangesView {
     tripId: string | undefined,
     t: number,
   ) => RtRouteAlert[];
-  /** Alerts about any of these routes that apply at t. */
+  /**
+   * Alerts about any of these routes that apply at t, the first of any with the same text (TransLink
+   * sometimes publishes one notice under several ids).
+   */
   alerts: (routeKeys: ReadonlySet<string>, t: number) => RtRouteAlert[];
 }
 
@@ -176,11 +221,19 @@ export function changesView(
       alerts.length ?
         detoursFor(alerts, routeKey, directionId, tripId, t, grace(t))
       : [],
-    alerts: (routeKeys, t) =>
-      merged.filter(
-        (a) =>
-          a.entities.some((e) => routeKeys.has(e.routeKey))
-          && alertActiveAt(a, t, grace(t)),
-      ),
+    alerts: (routeKeys, t) => {
+      const texts = new Set<string>();
+      return merged.filter((a) => {
+        if (
+          !a.entities.some((e) => routeKeys.has(e.routeKey))
+          || !alertActiveAt(a, t, grace(t))
+        )
+          return false;
+        const text = `${a.header}\n${a.description}`;
+        if (texts.has(text)) return false;
+        texts.add(text);
+        return true;
+      });
+    },
   };
 }

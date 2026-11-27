@@ -48,6 +48,7 @@ import {
   changesView,
   type ChangesView,
   type RtDayChanges,
+  type RtRouteAlert,
 } from "@transitopia/transit-core/rt/changes.ts";
 import {
   addDays,
@@ -418,12 +419,10 @@ export class RtClient {
     return m.corr;
   }
 
-  /** Alert texts (headers) about any of these routes that apply at t, from the loaded days. */
-  alertsAt(routeKeys: ReadonlySet<string>, t: number): string[] {
+  /** Alerts about any of these routes that apply at t, from the loaded days. */
+  alertsAt(routeKeys: ReadonlySet<string>, t: number): RtRouteAlert[] {
     if (!routeKeys.size) return [];
-    return this.changesView()
-      .alerts(routeKeys, t)
-      .map((a) => a.header);
+    return this.changesView().alerts(routeKeys, t);
   }
 
   /** Lookups over every loaded day's service changes. */
