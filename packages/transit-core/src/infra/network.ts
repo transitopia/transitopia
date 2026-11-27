@@ -1,6 +1,6 @@
 // Build the track network (segments, nodes with turns, stop positions) from way/node data
-// (packages/transit-core/DESIGN.md#track-graph). Used by pipelines/import-osm.ts for OpenStreetMap and by scenarios, which feed it the
-// base network plus future/custom track.
+// (packages/transit-core/DESIGN.md#track-graph). Used by pipelines/import-osm.ts for OpenStreetMap and by
+// infra/compose.ts, which feeds it the imported network plus track missing from OSM.
 //
 // Segments are ways split at junctions/switches (ids "w<wayId>.<piece>", stable while the way is
 // unchanged). Turns at each node are derived from geometry: a train may pass between two segment
@@ -47,7 +47,7 @@ export interface OsmWay {
 }
 
 export function kindOf(tags: Record<string, string>): SegmentKind {
-  // Explicit kind (scenarios, round-tripped networks).
+  // Explicit kind (added track, round-tripped networks).
   if (tags["viz:kind"]) return tags["viz:kind"] as SegmentKind;
   const name = tags.name ?? "";
   if (/tail/i.test(name)) return "tail";

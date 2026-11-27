@@ -40,7 +40,7 @@ export const ROOT = join(
 
 // Committed, curated inputs (config/, docs/DESIGN.md#feeds-operators-and-rail-networks): global
 // defaults, operators, the feeds they run (feed.json, routes.json, ferry berths and lanes, observations), rail
-// networks (network.json and settings, infrastructure, scenarios, disruptions).
+// networks (network.json and settings, infrastructure, disruptions).
 export const CONFIG_ROOT = join(ROOT, "config");
 export const DEFAULTS_DIR = join(CONFIG_ROOT, "defaults");
 export const OPERATORS_DIR = join(CONFIG_ROOT, "operators");
@@ -58,13 +58,11 @@ export function networkPaths(network: string): {
   dir: string;
   /** Track infrastructure (tracks.generated.geojson, overrides.json, …). */
   infra: string;
-  scenarios: string;
 } {
   const dir = join(NETWORKS_DIR, network);
   return {
     dir,
     infra: join(dir, "infrastructure"),
-    scenarios: join(dir, "scenarios"),
   };
 }
 

@@ -107,8 +107,7 @@ export class DispatchContexts {
     const index = await readJson<MovementsIndex>(
       join(
         PUBLIC_DIR,
-        feed.movements
-          ?? feedDataPath(this.net.feed, feed.version, "movements/index.json"),
+        feedDataPath(this.net.feed, feed.version, "movements/index.json"),
       ),
     );
     const rail = new Set(

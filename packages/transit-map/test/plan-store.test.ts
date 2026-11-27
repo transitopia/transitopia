@@ -53,7 +53,7 @@ async function store(
     }),
   );
   const s = PlanStore.create(
-    await PlanStore.manifests("https://data.example/", config),
+    await PlanStore.manifest("https://data.example/", config),
     "https://data.example/",
     undefined,
     config,
@@ -234,7 +234,7 @@ describe("PlanStore loading plans by parts", () => {
       }),
     );
     const s = PlanStore.create(
-      await PlanStore.manifests("https://data.example/", config),
+      await PlanStore.manifest("https://data.example/", config),
       "https://data.example/",
       undefined,
       config,

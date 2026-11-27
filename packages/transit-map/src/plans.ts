@@ -30,7 +30,6 @@ import {
 } from "@transitopia/shared/features.ts";
 import { baysFromPlaces, hubsFromPlaces } from "./hubs.ts";
 import { type BusHub } from "@transitopia/transit-core/plan/exchanges.ts";
-import type { ScenarioManifest } from "@transitopia/transit-core/scenario/types.ts";
 import {
   preparePlan,
   scheduledVehicles,
@@ -153,8 +152,6 @@ export class PlanStore {
   >();
 
   readonly manifest: FeedManifest;
-  /** Set when viewing a scenario (?scenario=<name>). */
-  readonly scenario: ScenarioManifest | undefined;
   /** URL prefix of the published data (manifest paths are relative to it), ending in "/". */
   readonly dataBase: string;
   /** URL prefix of the RT service, or undefined for schedules only. */
@@ -168,14 +165,12 @@ export class PlanStore {
     base: string,
     apiBase: string | undefined,
     config: Pick<FeedConfig, "kinematics" | "rail" | "feed">,
-    scenario?: ScenarioManifest,
   ) {
     this.manifest = manifest;
     this.dataBase = base;
     this.apiBase = apiBase;
     this.config = config;
     this.tz = config.feed.timezone;
-    this.scenario = scenario;
   }
 
   /**
@@ -281,14 +276,14 @@ export class PlanStore {
         fetch(url)
           .then((r) => (r.ok ? (r.json() as Promise<DispatchIndex>) : null))
           .catch(() => null);
-      // The static index (build:dispatch) and, unless viewing a scenario, the live one.
+      // The static index (build:dispatch) and the live one.
       void Promise.all([
         get(this.dataUrl(this.networkPath("dispatch/index.json"))),
-        this.scenario || !this.apiBase ?
-          null
-        : get(
+        !this.apiBase ? null : (
+          get(
             `${this.apiBase}networks/${encodeURIComponent(this.config.rail!.network)}/dispatch`,
-          ),
+          )
+        ),
       ]).then(([idx, live]) => {
         this.dispatchIndex = idx ?? { schema: 1, byDate: {} };
         if (live) this.liveDispatch = { ...live.byDate, ...this.liveDispatch };
@@ -398,7 +393,6 @@ export class PlanStore {
    * none (no registry where the data was built, or a version not reconciled yet).
    */
   placesFor(pp: PreparedPlan): PlacesFile | null | undefined {
-    if (this.scenario) return null;
     const indexPath = feedDataPath(
       this.config.feed.id,
       undefined,
@@ -450,10 +444,8 @@ export class PlanStore {
     if (!loaded) return undefined;
     const index = this.movementIndexes.get(version);
     if (index === undefined) {
-      const entry = this.manifest.feeds.find((f) => f.version === version);
       const url = this.dataUrl(
-        entry?.movements
-          ?? feedDataPath(this.config.feed.id, version, "movements/index.json"),
+        feedDataPath(this.config.feed.id, version, "movements/index.json"),
       );
       this.fetchOnce(
         version,
@@ -524,7 +516,7 @@ export class PlanStore {
 
   /** New live dispatch versions from the live endpoint (service date → version and path). */
   setLiveDispatch(pointer: Record<string, VersionPointer> | undefined): void {
-    if (!pointer || this.scenario) return;
+    if (!pointer) return;
     let changed = false;
     for (const [date, entry] of Object.entries(pointer)) {
       if (this.liveDispatch[date]?.version === entry.version) continue;
@@ -547,46 +539,33 @@ export class PlanStore {
     return out;
   }
 
-  /**
-   * A feed's manifests: its own (data/feeds/<feed>/manifest.json), and with `scenario`, where the
-   * feed runs on a rail network, the scenario's (its plans replace the feed's own).
-   */
-  static async manifests(
+  /** A feed's manifest (data/feeds/<feed>/manifest.json). */
+  static async manifest(
     base: string,
-    config: Pick<FeedConfig, "rail" | "feed">,
-    scenario?: string,
-  ): Promise<FeedManifests> {
+    config: Pick<FeedConfig, "feed">,
+  ): Promise<FeedManifest> {
     const res = await fetchManifest(base, config.feed.id);
     if (!res.ok)
       throw new Error(
         `No timetable data for ${config.feed.name} (HTTP ${res.status}). Run "npm run data" first.`,
       );
-    const manifest = (await res.json()) as FeedManifest;
-    if (!scenario || !config.rail) return { manifest };
-    const sres = await fetch(
-      `${base}${networkDataPath(config.rail.network, `scenarios/${encodeURIComponent(scenario)}/manifest.json`)}`,
-    );
-    if (!sres.ok)
-      throw new Error(
-        `Scenario "${scenario}" isn't built (HTTP ${sres.status}). Run "npm run scenario -- ${scenario}".`,
-      );
-    return { manifest, scenario: (await sres.json()) as ScenarioManifest };
+    return (await res.json()) as FeedManifest;
   }
 
-  /** A store for a feed whose manifests are in (`manifests`). */
+  /** A store for a feed whose manifest is in (`manifest`). */
   static create(
-    m: FeedManifests,
+    m: FeedManifest,
     base: string,
     apiBase: string | undefined,
     config: Pick<FeedConfig, "kinematics" | "rail" | "feed">,
   ): PlanStore {
-    return new PlanStore(playedManifest(m), base, apiBase, config, m.scenario);
+    return new PlanStore(m, base, apiBase, config);
   }
 
   /** Track network to draw and route on, for a feed with track-level rail. */
   get tracksPath(): string | undefined {
     if (!this.rail) return undefined;
-    return this.scenario?.tracks ?? this.networkPath("infra/tracks.geojson");
+    return this.networkPath("infra/tracks.geojson");
   }
 
   /** Instants covered by the available feeds: first service day start to end of last service day. */
@@ -695,7 +674,7 @@ export class PlanStore {
    * caches may answer with the old build's files, in a format this code may not read.
    */
   private async checkManifest(): Promise<void> {
-    if (this.scenario || this.isRebuilt || this.checkingManifest) return;
+    if (this.isRebuilt || this.checkingManifest) return;
     this.checkingManifest = true;
     try {
       const res = await fetchManifest(this.dataBase, this.config.feed.id);
@@ -1028,29 +1007,6 @@ function railServices(pp: PreparedPlan): Set<string> {
 }
 
 /**
- * A feed's manifest, revalidated rather than taken from the browser's cache: it names the build
- * every other file's URL is for.
- */
-/** A feed's manifest and, while a scenario is shown, its scenario's (`PlanStore.manifests`). */
-export interface FeedManifests {
-  manifest: FeedManifest;
-  scenario?: ScenarioManifest | undefined;
-}
-
-/** The manifest a feed's plans come from: its scenario's, while one is shown, else its own. */
-export function playedManifest(m: FeedManifests): FeedManifest {
-  const sm = m.scenario;
-  return sm ?
-      {
-        schema: 1,
-        generatedAt: sm.builtAt,
-        coverage: m.manifest.coverage,
-        feeds: sm.feeds,
-      }
-    : m.manifest;
-}
-
-/**
  * Instants a manifest's versions cover, in the feed's time zone: its first service day's start to
  * the end of its last.
  */
@@ -1066,6 +1022,10 @@ export function manifestInstants(
   ];
 }
 
+/**
+ * A feed's manifest, revalidated rather than taken from the browser's cache: it names the build
+ * every other file's URL is for.
+ */
 function fetchManifest(base: string, feed: string): Promise<Response> {
   return fetch(`${base}${feedDataPath(feed, undefined, "manifest.json")}`, {
     cache: "no-cache",

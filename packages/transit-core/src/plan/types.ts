@@ -281,7 +281,7 @@ export function patternStarts(
 ): Record<string, number[]>[] {
   if (plan.patterns.every((p) => p.starts))
     return plan.patterns.map((p) => p.starts!);
-  // Per trips array: scenarios and disruptions replace a plan's trips with a new one.
+  // Per trips array: disruptions replace a plan's trips with a new one.
   const cached = startsOfTrips.get(plan.trips);
   if (cached?.length === plan.patterns.length) return cached;
   const out = plan.patterns.map((): Record<string, number[]> => ({}));
@@ -427,8 +427,6 @@ export interface FeedManifestEntry {
   /** The plan (relative to the data root): feedDataPath(feed, version, "plan.json"). */
   path: string;
   builtAt: string;
-  /** Movements index (relative to the data root), where a scenario has its own; default beside the plan. */
-  movements?: string;
 }
 
 /** [west, south, east, north], degrees. */
@@ -498,7 +496,7 @@ export function feedDataPath(
   return parts.join("/");
 }
 
-/** Where a rail network's published files live (infra, dispatch, scenarios), relative to the data root. */
+/** Where a rail network's published files live (infra, dispatch), relative to the data root. */
 export function networkDataPath(network: string, file?: string): string {
   return [
     "data",

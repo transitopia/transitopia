@@ -1,4 +1,4 @@
-// Build movement files for every service-day type of a plan (shared by build-movements and scenario).
+// Build movement files for every service-day type of a plan (build-movements), and their dispatch summary (validate-plan).
 
 import { join } from "node:path";
 import { log, writeJson } from "@transitopia/data/paths.ts";

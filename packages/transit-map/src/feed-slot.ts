@@ -22,6 +22,7 @@ import {
 import {
   feedForDate,
   patternStarts,
+  type FeedManifest,
   type PlanRoute,
 } from "@transitopia/transit-core/plan/types.ts";
 import type {
@@ -59,7 +60,6 @@ import type { BusHub } from "@transitopia/transit-core/plan/exchanges.ts";
 import {
   PlanStore,
   displayServiceDate,
-  type FeedManifests,
   hubsOf,
   mergeCorrections,
   placeOfStop,
@@ -198,11 +198,11 @@ export class FeedSlot {
 
   constructor(
     config: FeedConfig,
-    manifests: FeedManifests,
+    manifest: FeedManifest,
     urls: { dataBase: string; apiBase: string | undefined },
   ) {
     const store = PlanStore.create(
-      manifests,
+      manifest,
       urls.dataBase,
       urls.apiBase,
       config,
@@ -654,7 +654,7 @@ export class FeedSlot {
    * changes and real-time delays, and real-time buses where there are fixes (rt.ts). `visible` limits
    * which routes are computed (keys; undefined: all), and `selected` names its selected vehicle (by
    * its id), whose delay is always worked out. With `place`, a card needs every bus's delay (its
-   * departure times), not only those of buses shown as estimates. A scenario mixes in no real data.
+   * departure times), not only those of buses shown as estimates.
    * With `within`, only vehicles that may be in its area are worked out (viewport culling; its
    * `except` are route keys). `kind` is which of its vehicles: its buses (real time, and estimates
    * carrying their delays) or the rest (trains and ferries, with AIS), each recomputed at its own
@@ -667,34 +667,30 @@ export class FeedSlot {
       visible: Set<string> | undefined;
       selected: (id: string) => boolean;
       place: boolean;
-      scenario: boolean;
       within: Within | undefined;
     },
   ): FeedVehicles {
     const { store, rt, ais } = this;
-    const { scenario } = opts;
     const pp = store.planFor(this.displayDate(t));
     const routes = this.routesOfKind(opts.kind, opts.visible, pp);
     if (opts.kind === "other") {
       // Trains and ferries: the timetable, shifted by AIS fixes and service changes.
       let byDate: Map<ServiceDate, ScheduleCorrections> | undefined;
       let aisUsed = false;
-      if (!scenario) {
-        const today = localDate(t, this.tz);
-        for (const date of [addDays(today, -1), today]) {
-          // The day before: only its trips still running.
-          const dpp = store.planFor(
-            date,
-            date === today ? 0 : (t - this.dayStart(date)) / 1000,
-          );
-          const fixes = dpp && ais.correctionsFor(date, dpp, t);
-          if (!fixes) continue;
-          aisUsed = true;
-          byDate = new Map(byDate);
-          byDate.set(date, fixes);
-        }
-        byDate = this.withCancellations(t, byDate);
+      const today = localDate(t, this.tz);
+      for (const date of [addDays(today, -1), today]) {
+        // The day before: only its trips still running.
+        const dpp = store.planFor(
+          date,
+          date === today ? 0 : (t - this.dayStart(date)) / 1000,
+        );
+        const fixes = dpp && ais.correctionsFor(date, dpp, t);
+        if (!fixes) continue;
+        aisUsed = true;
+        byDate = new Map(byDate);
+        byDate.set(date, fixes);
       }
+      byDate = this.withCancellations(t, byDate);
       this.corrections.other = byDate;
       return {
         vehicles: store.vehiclesAt(t, routes, byDate, opts.within),
@@ -705,32 +701,25 @@ export class FeedSlot {
     }
     // Buses drawn from RT but outside the area (not worked out).
     const outside = new Set<string>();
-    const live =
-      scenario ?
-        { mode: "estimated" as const, vehicles: undefined }
-      : rt.vehiclesAt(
-          t,
-          pp,
-          routes,
-          opts.selected,
-          opts.within && { ...opts.within, outside },
-        );
+    const live = rt.vehiclesAt(
+      t,
+      pp,
+      routes,
+      opts.selected,
+      opts.within && { ...opts.within, outside },
+    );
     // RT delays carried forward: schedule estimates continue from where buses really were. Of a
     // bus drawn from RT (here or outside the area) only a place card needs the delay (its departure
     // times); the map draws an estimate only for a bus that isn't (below), so the rest are left out.
-    const carry =
-      scenario ? undefined : (
-        rt.delayCorrections(
-          t,
-          pp,
-          live.vehicles && !opts.place ?
-            new Set([...live.vehicles.map((v) => v.id), ...outside])
-          : undefined,
-        )
-      );
+    const carry = rt.delayCorrections(
+      t,
+      pp,
+      live.vehicles && !opts.place ?
+        new Set([...live.vehicles.map((v) => v.id), ...outside])
+      : undefined,
+    );
     // Bus trips the feed cancelled: no schedule estimates for them.
-    const byDate =
-      scenario ? undefined : this.withCancellations(t, carry?.byDate);
+    const byDate = this.withCancellations(t, carry?.byDate);
     const scheduled = store.vehiclesAt(t, routes, byDate, opts.within);
     // An estimate carrying a bus's RT delay stands for that bus: it keeps the RT vehicle's id and
     // number, so a selection (or follow) carries across the hand-over, and back at the next fix.
@@ -832,12 +821,11 @@ export class FeedSlot {
    * SeaBus route lines: the berth pair in use on the day shown at t solid, the other dotted (set on
    * the map when it changes, and `map` is given: the style is ready).
    */
-  syncFerryPair(map: MlMap | undefined, t: number, scenario: boolean): void {
+  syncFerryPair(map: MlMap | undefined, t: number): void {
     const date = this.displayDate(t);
     const pp = this.store.planFor(date);
     const ferry = pp?.plan.ferry;
-    const pair =
-      ferry ? (!scenario && this.ais.pairFor(date, pp)) || ferry.default : null;
+    const pair = ferry ? this.ais.pairFor(date, pp) || ferry.default : null;
     if (pair !== this.ferryPair && map) {
       this.ferryPair = pair;
       setFerryPair(map, this.ids, pair ?? undefined);
