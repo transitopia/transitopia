@@ -136,3 +136,35 @@ export function timeState(snap: {
     when: `${shortDate(localDate(snap.t, snap.timezone))}, ${clockMinutes(snap.t, snap.timezone)}`,
   };
 }
+
+/**
+ * When an alert applies (its active period at the shown time), in its zone, marked where the time
+ * bar's differs: "Sat 28 Nov, 04:30–10:15", "Thu 26 Nov, 21:30 – Sat 28 Nov, 04:00", "Since Tue
+ * 21 Jul" (a start alone is mostly the start of service, so no time), "Until Fri 27 Nov, 16:00".
+ * A date in another year than the shown time's has its year ("Since Sun 25 Feb 2024"). Undefined
+ * with neither end.
+ */
+export function alertPeriod(
+  a: { start: number | undefined; end: number | undefined; timezone: string },
+  now: number,
+  barTz: string,
+): string | undefined {
+  const { start, end, timezone: tz } = a;
+  const at = start ?? end;
+  if (at === undefined) return undefined;
+  const { mark } = cardClock(at, tz, barTz);
+  const year = localDate(now, tz).slice(0, 4);
+  const day = (t: number) => {
+    const d = localDate(t, tz);
+    return d.startsWith(year) ?
+        shortDate(d)
+      : `${shortDate(d)} ${d.slice(0, 4)}`;
+  };
+  const time = (t: number) => clockMinutes(t, tz);
+  if (start !== undefined && end !== undefined)
+    return day(start) === day(end) ?
+        `${day(start)}, ${time(start)}–${time(end)}${mark}`
+      : `${day(start)}, ${time(start)} – ${day(end)}, ${time(end)}${mark}`;
+  if (start !== undefined) return `Since ${day(start)}`;
+  return `Until ${day(end!)}, ${time(end!)}${mark}`;
+}

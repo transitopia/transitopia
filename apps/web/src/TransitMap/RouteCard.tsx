@@ -25,6 +25,7 @@ import {
   type CardChip,
 } from "../components/InfoCard.tsx";
 import { clockMinutes, timeState, toHeadsign } from "./format.ts";
+import { AlertsSection } from "./Alerts.tsx";
 import { bandKey, bandOf } from "./frequency.ts";
 import { routeColorsFor } from "./RouteBadge.tsx";
 import { spacingIcon, spacingText } from "./stopSpacing.ts";
@@ -114,6 +115,12 @@ const RouteCardBody: React.FC<{
           wait arriving at a random time. Colours show the longest wait.
         </Footer>
       }>
+      <AlertsSection
+        engine={engine}
+        snap={snap}
+        alerts={place.alerts}
+        title="Service changes"
+      />
       <NextHour next={place.nextHour} />
       <DayStrip snap={snap} days={engine.routeDays(route)} />
       <Stops snap={snap} place={place} />

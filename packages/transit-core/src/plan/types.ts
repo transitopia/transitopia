@@ -72,6 +72,11 @@ export function routeShortName(
   return r.shortName ?? r.key;
 }
 
+/** A train line (SkyTrain, commuter rail), as alerts and stations treat it: any rail mode. */
+export function isTrainLine(r: Pick<PlanRoute, "mode">): boolean {
+  return r.mode === "skytrain" || r.mode === "rail";
+}
+
 /** Every GTFS route a route is drawn for: its own and any merged into it. */
 export function gtfsRouteIds(
   r: Pick<PlanRoute, "gtfsRouteId" | "mergedGtfsRouteIds">,

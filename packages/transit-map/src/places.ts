@@ -50,6 +50,7 @@ import {
 } from "./plans.ts";
 import { sharedPlace, type Place } from "./url.ts";
 import { feedKey, vehicleId } from "./keys.ts";
+import type { ServiceAlert } from "./alerts.ts";
 
 /** A route + destination leaving a station or stop, with its next departures. */
 export interface PlaceGroup {
@@ -84,6 +85,8 @@ export interface RouteSnapshot {
   /** Its vehicles drawn now, and how many of them have real positions. */
   vehicles: number;
   live: number;
+  /** A train line's alerts changing how it runs at the shown time. */
+  alerts: ServiceAlert[];
   /** Registry ids of the data behind it, for its card's credits. */
   datasets: string[];
 }
@@ -118,6 +121,11 @@ export interface PlaceSnapshot extends Place {
   groups: PlaceGroup[];
   /** Registry ids of the data behind its departures, for its card's credits. */
   datasets: string[];
+  /**
+   * A station's train line alerts at the shown time (those naming its platforms: service changes,
+   * elevators, escalators, entrances, fares), service changes first. Empty for a bus stop or exchange.
+   */
+  alerts: ServiceAlert[];
   /** A bus stop's number on its sign (GTFS stop_code), where the plan has it. */
   code?: string | undefined;
   /**
@@ -233,6 +241,9 @@ export interface PlaceContext {
   datasetsOf: (routes: Iterable<[PlanRoute | undefined, boolean]>) => string[];
   /** A combined route's segment and whether a vehicle is on it, for its card. */
   segment: (p: Place) => SegmentContext | undefined;
+  /** The place's feed's alerts at t: a train line's that change how it runs, and those naming any of some stops. */
+  lineAlerts: (routeKey: string) => ServiceAlert[];
+  stopAlerts: (stopIds: ReadonlySet<string>) => ServiceAlert[];
   /**
    * Other loaded feeds' stops in this station or exchange (the registry puts them in it): their
    * departures, routes and bays join its card (packages/transit-map/README.md#feeds). For a stop,
@@ -301,6 +312,7 @@ export function placeSnapshot(
       speed: routeSpeed(pp, p.id, date, sec, 3600),
       vehicles: mine.length,
       live: mine.filter((v) => v.provenance !== "estimated").length,
+      alerts: ctx.lineAlerts(p.id),
       datasets: ctx.datasetsOf([
         [route, mine.some((v) => v.provenance !== "estimated")],
       ]),
@@ -443,6 +455,8 @@ export function placeSnapshot(
     lon: where.lon,
     lat: where.lat,
     routes,
+    // Its platforms: alerts name those, never the station.
+    alerts: p.kind === "station" ? ctx.stopAlerts(stopsOf(plan, p.id)) : [],
     datasets: ctx.datasetsOf([
       ...routes.map((r): [PlanRoute | undefined, boolean] => [r, false]),
       ...all.flatMap((r) => r.datasets),

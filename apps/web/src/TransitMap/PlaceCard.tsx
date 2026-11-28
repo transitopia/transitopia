@@ -43,6 +43,7 @@ import {
 } from "./RouteBadge.tsx";
 import { bandOf, waitText } from "./frequency.ts";
 import { PlaceChip } from "./PlaceChip.tsx";
+import { AlertsSection } from "./Alerts.tsx";
 
 /** "Eastbound E Hastings St @ Main St" → ["Eastbound", "E Hastings St @ Main St"]. */
 function splitDirection(name: string): [string | undefined, string] {
@@ -694,6 +695,13 @@ const PlaceCardBody: React.FC<{
           />
         </CardSection>
       : null}
+      <AlertsSection
+        engine={engine}
+        snap={snap}
+        alerts={place.alerts}
+        title="Alerts"
+        showLines={railRoutes.length > 1}
+      />
       {sections.map((x) => (
         <DepartureList
           key={x.kind}

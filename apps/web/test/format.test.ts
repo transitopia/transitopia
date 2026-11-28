@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  alertPeriod,
   cardClock,
   cardMinutes,
   clockMinutes,
@@ -103,5 +104,42 @@ describe("time zones", () => {
     expect(cardMinutes(T, same)).toBe("08:04");
     const other = cardClock(T, "America/Edmonton", "America/Vancouver");
     expect(cardMinutes(T, other)).toMatch(/^09:04 \S+$/);
+  });
+});
+
+describe("alertPeriod", () => {
+  const V = "America/Vancouver";
+  // Sat 28 Nov 2026, 04:30 and 10:15 in Vancouver (UTC−7 from 2026-11-01).
+  const start = Date.parse("2026-11-28T11:30:00Z");
+  const end = Date.parse("2026-11-28T17:15:00Z");
+  it("says when an alert applies, in its zone", () => {
+    expect(alertPeriod({ start, end, timezone: V }, start, V)).toBe(
+      "Sat 28 Nov, 04:30–10:15",
+    );
+    expect(
+      alertPeriod({ start, end: end + 86_400_000, timezone: V }, start, V),
+    ).toBe("Sat 28 Nov, 04:30 – Sun 29 Nov, 10:15");
+    expect(alertPeriod({ start, end: undefined, timezone: V }, start, V)).toBe(
+      "Since Sat 28 Nov",
+    );
+    expect(alertPeriod({ start: undefined, end, timezone: V }, start, V)).toBe(
+      "Until Sat 28 Nov, 10:15",
+    );
+    expect(
+      alertPeriod({ start: undefined, end: undefined, timezone: V }, start, V),
+    ).toBeUndefined();
+  });
+
+  it("gives the year of a date in another year", () => {
+    const since = Date.parse("2024-02-25T12:30:00Z");
+    expect(
+      alertPeriod({ start: since, end: undefined, timezone: V }, start, V),
+    ).toBe("Since Sun 25 Feb 2024");
+  });
+
+  it("marks the zone when the time bar's differs", () => {
+    expect(
+      alertPeriod({ start, end, timezone: V }, start, "America/Regina"),
+    ).toBe(`Sat 28 Nov, 04:30–10:15 ${zoneLabel(start, V)}`);
   });
 });
